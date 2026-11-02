@@ -3,6 +3,23 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百七十九轮迭代：应用内“反馈问题”入口（已实施）
+
+依据：自动修复流程要求 issue 带版本号，测试机手填易错易漏；应用内已知版本与平台，应在提交入口自动预填。
+
+**实现要点**
+
+- `internal/services/app.go`：`AppInfo` 新增 `platform`（GOOS/GOARCH），供反馈入口预填环境。
+- 前端 `lib/issue.ts`：`buildIssueReportURL` 构造带 `field:version`、`field:environment` 的 GitHub issue 表单链接；`lib/issue.test.ts` 覆盖 v 前缀、dev、空值与平台映射。
+- `SettingsPage` 关于页新增「反馈问题」按钮，经 `@wailsio/runtime` 的 `Browser.OpenURL` 打开系统浏览器。
+- `.github/ISSUE_TEMPLATE/bug_report.yml` 版本字段改为可选：应用内入口自动填入，手动提交可留空，由自动流程按 issue 创建时间推断。
+
+**测试证据**
+
+- `go vet ./internal/services/`、`go test ./internal/services/` 通过（`TestAppInfoReportsInjectedVersion` 覆盖 platform）。
+- `npx tsc --noEmit` 干净；vitest 21 用例通过（新增 `issue.test.ts` 4 组）；`npm run build` 通过。
+- stub 走查：设置 → 关于出现「反馈问题」按钮与自动填入说明。
+
 ### 第一百七十八轮迭代：自动发布与自带检查更新（已实施）
 
 依据：应用只能靠手工打包分发，且版本号在三处手写并已漂移（`main.go`/`build/config.yml` 为 0.4.0，而 `build/windows/info.json`、`wails_tools.nsh`、`nfpm.yaml` 仍是 0.1.0——安装包元数据与 deb 版本都在说谎）。用户侧则完全没有升级路径。

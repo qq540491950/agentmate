@@ -49,12 +49,14 @@ func NewAppService(s *Services) *AppService { return &AppService{S: s} }
 // AppVersion is injected by main (single source of truth).
 var AppVersion = "dev"
 
-// AppInfo returns static app metadata.
+// AppInfo returns static app metadata. platform feeds the issue-report
+// prefill so testers never hand-type their environment.
 func (a *AppService) AppInfo() map[string]string {
 	return map[string]string{
-		"name":    "WorkBuddy Agent",
-		"version": AppVersion,
-		"adk":     "google adk-go v2",
+		"name":     "WorkBuddy Agent",
+		"version":  AppVersion,
+		"adk":      "google adk-go v2",
+		"platform": runtime.GOOS + "/" + runtime.GOARCH,
 	}
 }
 

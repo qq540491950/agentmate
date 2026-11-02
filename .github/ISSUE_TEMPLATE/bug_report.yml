@@ -15,10 +15,10 @@ body:
     id: version
     attributes:
       label: 版本 / commit
-      description: 关于页显示的版本，或测试机上 exe 对应的 tag / commit
+      description: 应用内「反馈问题」入口会自动填入；直接在 GitHub 提交可留空，自动流程会按最新发布版本推断
       placeholder: v0.5.0 或 624feae
     validations:
-      required: true
+      required: false
   - type: textarea
     id: environment
     attributes:

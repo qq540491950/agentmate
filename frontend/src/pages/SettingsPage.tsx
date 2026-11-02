@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
+import { Browser } from "@wailsio/runtime";
 import { toast } from "sonner";
 import { AgentsPage } from "@/pages/AgentsPage";
 import { TeamsPage } from "@/pages/TeamsPage";
@@ -20,6 +21,7 @@ import {
 import { ArtifactPreview } from "@/components/ToolCallCard";
 import { UpdateCard } from "@/components/UpdateCard";
 import { cn } from "@/lib/utils";
+import { buildIssueReportURL } from "@/lib/issue";
 import { ACCENTS, FONT_SCALES, applyTheme, cacheTheme, type ThemePrefs } from "@/lib/theme";
 import { Chat, App, A2A, Config, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
 
@@ -117,6 +119,17 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
       applyTheme(prefs);
     }
   };
+
+  // 反馈入口：版本和平台由应用自动带上，测试机不需要手填。
+  const reportIssue = useCallback(async () => {
+    try {
+      const info = await App.AppInfo().catch(() => null);
+      const url = buildIssueReportURL(version || info?.version || "", info?.platform ?? "");
+      await Browser.OpenURL(url);
+    } catch (e) {
+      toast.error(`打开浏览器失败: ${errText(e)}`);
+    }
+  }, [version]);
 
   const save = async () => {
     if (!settings) return;
@@ -792,6 +805,12 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
               工具：ADK FunctionTool、MCP Toolset（go-sdk）、Skill Toolset（agentskills.io 规范）。
             </div>
             <UpdateCard version={version} />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={reportIssue}>
+                反馈问题
+              </Button>
+              <span className="text-xs">在浏览器打开 GitHub 表单，自动填入版本与环境</span>
+            </div>
           </CardContent>
         </Card>
         )}

@@ -63,8 +63,17 @@ git fetch origin main
   - 只有本地落后：`git pull --ff-only origin main`；失败则标记 `agent:blocked`。
   - 双方都有新提交（分叉）：标记 `agent:blocked` 并结束，**不要自动 rebase**。
 
-按 issue 的版本、环境、复现步骤在本地定位。本地是 macOS，测试机是 Windows；
-Windows 特有问题无法实机复现时，基于日志和代码分析修复，并在评论中注明验证范围。
+按 issue 的版本、环境、复现步骤在本地定位。版本号可能由应用内「反馈问题」
+入口自动预填，也可能为空；为空时用下面的命令取 `createdAt` 之前最近发布的
+tag 作为推断版本，并在评论中注明这是推断值，不要因此阻塞修复：
+
+```bash
+gh release list --repo qq540491950/go-workbuddy --limit 50 \
+  --json tagName,publishedAt
+```
+
+本地是 macOS，测试机是 Windows；Windows 特有问题无法实机复现时，基于日志和
+代码分析修复，并在评论中注明验证范围。
 
 修改代码，并按照 `AGENTS.md` 约定在**同一包同一目录**添加回归测试
 （`*_test.go`）。不要修改与 issue 无关的文件。

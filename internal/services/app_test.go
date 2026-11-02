@@ -1,6 +1,9 @@
 package services
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
 
 // AppInfo must expose the version injected from main (single source of truth).
 func TestAppInfoReportsInjectedVersion(t *testing.T) {
@@ -10,5 +13,8 @@ func TestAppInfoReportsInjectedVersion(t *testing.T) {
 	info := a.AppInfo()
 	if info["version"] != "9.9.9-test" || info["name"] != "WorkBuddy Agent" {
 		t.Fatalf("AppInfo = %v", info)
+	}
+	if want := runtime.GOOS + "/" + runtime.GOARCH; info["platform"] != want {
+		t.Fatalf("platform = %q, want %q", info["platform"], want)
 	}
 }
