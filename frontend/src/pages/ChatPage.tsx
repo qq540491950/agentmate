@@ -1,9 +1,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dialogs, Events } from "@wailsio/runtime";
 import {
-  Plus, Send, Square, Trash2, Pencil, MessageSquare, Bot, Users, Loader2,
+  Plus, Square, Trash2, Pencil, MessageSquare, Bot, Users, Loader2, ArrowUp,
   Search, Download, Mic, MicOff, Square as SquareStop,
-  Paperclip, X, BarChart3, Brain, Network, GitFork, Pin, PinOff, FileCode2, Archive, ClipboardCopy,
+  X, BarChart3, Brain, Network, GitFork, Pin, PinOff, FileCode2, Archive, ClipboardCopy,
   FolderOpen,
   PanelRightOpen,
   ChevronRight, ChevronDown,
@@ -1749,53 +1749,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               })()
             )}
             {active && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="flex min-w-0 max-w-[160px] items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
-                    title={messages.length > 0
-                      ? `项目：${projects.find((p) => p.id === active.projectId)?.name ?? "默认项目"}（首轮已开始，不可更改）`
-                      : "点击切换此对话所属项目"}
-                    aria-label="当前项目"
-                    onClick={(e) => { if (messages.length > 0) e.preventDefault(); }}
-                  >
-                    <FolderOpen className="h-3 w-3 shrink-0" />
-                    <span className="truncate">
-                      {projects.find((p) => p.id === active.projectId)?.name ?? "默认项目"}
-                    </span>
-                    {messages.length === 0 && <ChevronDown className="h-3 w-3 shrink-0" />}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuItem onClick={() => switchSessionProject(active, "")}>
-                    默认项目（自动任务目录）
-                  </DropdownMenuItem>
-                  {projects.map((p) => (
-                    <DropdownMenuItem key={p.id} title={p.rootDir} onClick={() => switchSessionProject(active, p.id)}>
-                      {p.name}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            {active && (
-              <button
-                className="flex min-w-0 max-w-[260px] items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
-                title={workspaceError
-                  ? `任务工作区错误：${workspaceError}`
-                  : messages.length > 0
-                    ? `任务工作区：${resolvedWorkspace}`
-                    : `任务工作区：${resolvedWorkspace}（首轮前可更改）`}
-                aria-label="当前任务工作区"
-                onClick={changeSessionWorkspace}
-              >
-                <FolderOpen className={cn("h-3 w-3 shrink-0", workspaceError && "text-destructive")} />
-                <span className={cn("truncate", workspaceError && "text-destructive")}>
-                  {workspaceError ? "工作区不可用" : resolvedWorkspace || "读取工作区…"}
-                </span>
-              </button>
-            )}
-            {active && (
               <button
                 className={cn(
                   "rounded p-1 text-muted-foreground transition-opacity hover:text-foreground",
@@ -1815,31 +1768,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
-            )}
-            {active && sessionModels.length > 0 && (
-              <Select
-                value={active.modelOverride || "__default"}
-                onValueChange={(v) => setSessionModel(v)}
-              >
-                <SelectTrigger
-                  className="h-7 w-auto gap-1 border-none bg-muted/50 px-2.5 text-xs font-normal"
-                  title="本会话使用的模型（仅影响当前对话）"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__default">{active.targetType === "agent" ? "Agent 默认模型" : "默认模型"}</SelectItem>
-                  {sessionModels.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.id}</SelectItem>
-                  ))}
-                  <button
-                    className="m-1 flex w-[calc(100%-8px)] items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-                    onClick={() => onOpenSettings("models")}
-                  >
-                    <Boxes className="h-3.5 w-3.5 shrink-0" /> 管理模型供应商…
-                  </button>
-                </SelectContent>
-              </Select>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -2100,53 +2028,29 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               </div>
             )}
           </div>
-          {active && messages.length === 0 && workspaceContext && (
-            <div className="mx-auto mb-1.5 flex max-w-3xl items-center">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="flex items-center gap-1.5 rounded-lg border bg-background px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    title={workspaceContext.path || "自动任务目录（全局工作区）"}
-                  >
-                    <FolderOpen className="h-3.5 w-3.5 shrink-0" />
-                    <span className="max-w-[240px] truncate">{workspaceContext.label}</span>
-                    <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuItem onClick={() => switchSessionProject(active, "")}>
-                    默认项目（自动任务目录）
-                  </DropdownMenuItem>
-                  {projects.map((p) => (
-                    <DropdownMenuItem key={p.id} title={p.rootDir} onClick={() => switchSessionProject(active, p.id)}>
-                      {p.name}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={changeSessionWorkspace}>选择其他目录…</DropdownMenuItem>
-                  <DropdownMenuItem onClick={addProject}>添加新项目…</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          )}
-          <div
-            className="mx-auto flex max-w-3xl items-end gap-2"
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={(e) => {
-              // Child elements fire dragleave on the way through: only clear
-              // when the pointer actually left the drop zone.
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
-            }}
-          >
-            <div className="relative flex-1">
+          <div className="mx-auto max-w-3xl">
+            <div
+              className={cn(
+                "rounded-2xl border bg-card shadow-sm transition-colors focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/15",
+                dragOver && "border-primary ring-2 ring-primary/30",
+                listening && "border-primary/60 ring-1 ring-primary/40",
+              )}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={(e) => {
+                // Child elements fire dragleave on the way through: only clear
+                // when the pointer actually left the drop zone.
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
+              }}
+            >
+              <div className="relative">
               {mentionOpen && (
                 <div className="absolute bottom-full left-0 right-0 z-10 mb-2 overflow-hidden rounded-lg border bg-popover shadow-md" role="listbox" aria-label="@ 助手候选">
                   {mentionCandidates.map((c, i) => (
@@ -2298,18 +2202,14 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   e.preventDefault();
                   addFiles(files);
                 }}
-                placeholder={active ? "输入消息，Enter 发送，Shift+Enter 换行（⌘K 聚焦）" : "输入消息开始新对话；@ 可指定助手"}
+                placeholder={active ? "今天帮你做些什么？输入 @ 添加上下文，/ 调用技能与指令" : "输入消息开始新对话；@ 可指定助手"}
                 aria-label="消息输入框"
                 // Typing stays available while a reply streams (matching the
                 // desktops this app mirrors); send() guards the running state.
                 disabled={!active && providerCount === 0}
                 // Cap the growing textarea so a long paste shrinks the message
                 // list instead of squeezing the composer out of the viewport.
-                className={cn(
-                  "max-h-48 overflow-y-auto",
-                  dragOver && "border-primary ring-2 ring-primary/30",
-                  listening && "border-primary/60 ring-1 ring-primary/40",
-                )}
+                className="max-h-48 min-h-[64px] resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
               />
               <input
                 ref={fileRef}
@@ -2322,40 +2222,140 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   e.target.value = "";
                 }}
               />
-              <button
-                title={modelMultimodal ? "添加图片附件" : "当前模型未开启多模态（在模型配置中开启）"}
-                disabled={(!active && providerCount === 0) || running || !modelMultimodal}
-                onClick={() => fileRef.current?.click()}
-                className={cn(
-                  "absolute bottom-2 right-9 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                  ((!active && providerCount === 0) || running || !modelMultimodal) && "opacity-40",
-                )}
-              >
-                <Paperclip className="h-3.5 w-3.5" />
-              </button>
-              <button
-                title={speechSupported() ? (listening ? "停止语音输入" : "语音输入") : "当前环境不支持语音识别"}
-                disabled={(!active && providerCount === 0) || running || !speechSupported()}
-                onClick={toggleVoiceInput}
-                className={cn(
-                  "absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-                  listening
-                    ? "bg-destructive/15 text-destructive"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                  ((!active && providerCount === 0) || running || !speechSupported()) && "opacity-40",
-                )}
-              >
-                {speechSupported() ? (listening ? <SquareStop className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />) : <MicOff className="h-3.5 w-3.5" />}
-              </button>
+              </div>
+              <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5">
+                <div className="flex items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title={modelMultimodal ? "添加图片附件" : "当前模型未开启多模态（在模型配置中开启）"}
+                    aria-label="添加图片附件"
+                    disabled={(!active && providerCount === 0) || running || !modelMultimodal}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={cn(
+                      listening && "bg-destructive/15 text-destructive",
+                      ((!active && providerCount === 0) || running || !speechSupported()) && "opacity-40",
+                    )}
+                    title={speechSupported() ? (listening ? "停止语音输入" : "语音输入") : "当前环境不支持语音识别"}
+                    aria-label={listening ? "停止语音输入" : "语音输入"}
+                    disabled={(!active && providerCount === 0) || running || !speechSupported()}
+                    onClick={toggleVoiceInput}
+                  >
+                    {speechSupported() ? (listening ? <SquareStop className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />) : <MicOff className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  {active && sessionModels.length > 0 && (
+                    <Select
+                      value={active.modelOverride || "__default"}
+                      onValueChange={(v) => setSessionModel(v)}
+                    >
+                      <SelectTrigger
+                        className="h-7 w-auto max-w-[200px] gap-1 border-none bg-transparent px-2 text-xs font-normal text-muted-foreground hover:bg-accent hover:text-foreground"
+                        title="本会话使用的模型（仅影响当前对话）"
+                        aria-label="选择模型"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="end">
+                        <SelectItem value="__default">{active.targetType === "agent" ? "Agent 默认模型" : "默认模型"}</SelectItem>
+                        {sessionModels.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>{m.id}</SelectItem>
+                        ))}
+                        <button
+                          className="m-1 flex w-[calc(100%-8px)] items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                          onClick={() => onOpenSettings("models")}
+                        >
+                          <Boxes className="h-3.5 w-3.5 shrink-0" /> 管理模型供应商…
+                        </button>
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {running ? (
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="h-8 w-8 rounded-full"
+                      title="停止生成（Esc）"
+                      aria-label="停止生成"
+                      onClick={cancel}
+                    >
+                      <Square className="h-3.5 w-3.5 fill-current" />
+                    </Button>
+                  ) : (
+                    <Button
+                      size="icon"
+                      className="h-8 w-8 rounded-full"
+                      title={editing ? "重新发送（Enter）" : "发送（Enter）"}
+                      aria-label={editing ? "重新发送" : "发送"}
+                      onClick={() => send()}
+                      disabled={(!active && providerCount === 0) || !input.trim()}
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
-            {running ? (
-              <Button variant="destructive" onClick={cancel}>
-                <Square className="mr-1 h-4 w-4" /> 停止
-              </Button>
-            ) : (
-              <Button onClick={() => send()} disabled={(!active && providerCount === 0) || (!input.trim() && !running)}>
-                <Send className="mr-1 h-4 w-4" /> {editing ? "重发" : "发送"}
-              </Button>
+            {active && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="flex min-w-0 max-w-[220px] items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      title={workspaceContext
+                        ? `${workspaceContext.path || "自动任务目录（全局工作区）"}${messages.length > 0 ? "（首轮已开始，不可更改）" : ""}`
+                        : "选择项目与目录"}
+                      aria-label="选择项目与目录"
+                      onClick={(e) => { if (messages.length > 0) e.preventDefault(); }}
+                    >
+                      <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{workspaceContext?.label ?? "默认项目"}</span>
+                      {messages.length === 0 && <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-64">
+                    <DropdownMenuItem onClick={() => switchSessionProject(active, "")}>
+                      默认项目（自动任务目录）
+                    </DropdownMenuItem>
+                    {projects.map((p) => (
+                      <DropdownMenuItem key={p.id} title={p.rootDir} onClick={() => switchSessionProject(active, p.id)}>
+                        {p.name}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={changeSessionWorkspace}>选择其他目录…</DropdownMenuItem>
+                    <DropdownMenuItem onClick={addProject}>添加新项目…</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <button
+                  className={cn(
+                    "flex min-w-0 max-w-[320px] items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                    workspaceError && "text-destructive",
+                  )}
+                  title={workspaceError
+                    ? `任务工作区错误：${workspaceError}`
+                    : messages.length > 0
+                      ? `任务工作区：${resolvedWorkspace}`
+                      : `任务工作区：${resolvedWorkspace}（首轮前可更改）`}
+                  aria-label="当前任务工作区"
+                  onClick={changeSessionWorkspace}
+                >
+                  <FolderInput className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">
+                    {workspaceError ? "工作区不可用" : resolvedWorkspace || "读取工作区…"}
+                  </span>
+                </button>
+                <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">
+                  Enter 发送 · Shift+Enter 换行
+                </span>
+              </div>
             )}
           </div>
         </div>
