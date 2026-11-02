@@ -27,7 +27,11 @@ strip_prefix() {
 }
 
 range_notes() {
-	local range="$1" feat=() fix=() other=() s kind
+	local range="$1" limit="${2:-}" feat=() fix=() other=() s kind
+	local log_args=(--no-merges --pretty=format:%s)
+	if [ -n "$limit" ]; then
+		log_args=(-n "$limit" "${log_args[@]}")
+	fi
 	while IFS= read -r s; do
 		[ -n "$s" ] || continue
 		case "$s" in
@@ -39,7 +43,7 @@ range_notes() {
 		fix) fix+=("- $(strip_prefix "$s")") ;;
 		other) other+=("- $(strip_prefix "$s")") ;;
 		esac
-	done < <(git log "$range" --no-merges --pretty=format:'%s')
+	done < <(git log "$range" "${log_args[@]}")
 
 	if [ ${#feat[@]} -gt 0 ]; then
 		printf '### 新增\n\n'
@@ -58,8 +62,12 @@ range_notes() {
 	fi
 }
 
+# tag_message returns the whole annotated-tag message (subject AND body):
+# `%(contents:subject)` silently drops everything after the first line, which
+# is exactly the multi-paragraph hand-written notes people actually write.
 tag_message() {
-	git for-each-ref --format='%(contents:subject)' "refs/tags/$1" 2>/dev/null | sed '/^$/d' || true
+	git for-each-ref --format='%(contents)' "refs/tags/$1" 2>/dev/null |
+		sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' || true
 }
 
 prev_tag_of() {
@@ -130,7 +138,12 @@ else
 	if [ -n "$PREV" ]; then
 		range_notes "${PREV}..${TAG}"
 	else
-		range_notes "$TAG"
+		# First release: there is no previous tag, so "everything up to TAG"
+		# would dump the entire development history. Summarise recent work and
+		# say so, instead of pretending this release contains all of it.
+		echo "（首次发布：未指定 tag 说明，以下仅列出最近 40 条提交）"
+		echo
+		range_notes "$TAG" 40
 	fi
 fi
 echo "---"
