@@ -257,6 +257,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # `go install .../cmd/wails3` links the linux backend (cgo), so the CLI we
+      # need for manifest signing cannot be built without the GTK4 headers —
+      # the same reason the gate job installs them.
+      - name: Install linux cgo headers (wails3 CLI)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libwebkitgtk-6.0-dev
       - name: Install Wails CLI (manifest signing)
         run: |
           go install "github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}"
