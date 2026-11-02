@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { Dialogs, Events } from "@wailsio/runtime";
 import {
   Plus, Square, Trash2, Pencil, MessageSquare, Bot, Users, Loader2, ArrowUp,
-  Search, Download, Mic, MicOff, Square as SquareStop,
+  Search, Download, Check,
   X, BarChart3, Brain, Network, GitFork, Pin, PinOff, FileCode2, Archive, ClipboardCopy,
   FolderOpen,
   PanelRightOpen,
@@ -24,13 +24,11 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { computeEditFlags, computeRunningTools, computeToolDurations, groupSessionsByProject, groupSessionsByTime, isDayChange, mdToSpeech, type UIMessage } from "@/lib/chatUtils";
+import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
@@ -56,12 +54,6 @@ const SLASH_COMMANDS = [
   { cmd: "/todos", desc: "查看当前任务计划" },
   { cmd: "/new", desc: "新建对话" },
 ];
-
-/** speechSupported reports whether speech recognition is available. */
-function speechSupported(): boolean {
-  const w = window as any;
-  return !!(w.SpeechRecognition || w.webkitSpeechRecognition);
-}
 
 /** speak synthesizes speech for text, cancelling previous playback. */
 function speak(text: string) {
@@ -129,7 +121,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   const [workspaceError, setWorkspaceError] = useState("");
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(false);
   const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
-  const [listening, setListening] = useState(false);
   const [editing, setEditing] = useState(false);
   const [ctxBannerDismissed, setCtxBannerDismissed] = useState(false);
   const [pendingAtts, setPendingAtts] = useState<AttachmentIn[]>([]);
@@ -588,6 +579,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     let sid = targetID ?? activeID;
     const text = (override ?? input).trim();
     if (!text) return;
+    // Whether this send originates from the active composer (or a chat yet to
+    // be created): only then do the pending image attachments belong to it.
+    const fromComposer = !sid || sid === activeID;
     // Composer-first flow: with no session yet, the first message creates a
     // direct chat on the fly. Only a provider is required — never an Agent.
     if (!sid) {
@@ -669,8 +663,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     markRunning(sid, true);
     const wasEditing = editing && sid === activeID;
     setEditing(false);
-    const atts = sid === activeID ? pendingAtts : [];
-    if (sid === activeID) setPendingAtts([]);
+    const atts = fromComposer ? pendingAtts : [];
+    if (fromComposer) setPendingAtts([]);
     turnStartedRef.current = false;
     if (wasEditing) {
       setMessages((prev) => {
@@ -691,7 +685,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       // the round (e.g. token budget exhausted): restore what the user typed
       // instead of silently swallowing it. Only the active chat has drafts to
       // restore — background deliveries carry no UI state.
-      if (sid === activeID && !turnStartedRef.current) {
+      if (fromComposer && !turnStartedRef.current) {
         setInput((cur) => (cur === "" ? text : cur));
         setPendingAtts((prev) => [...atts, ...prev]);
       }
@@ -703,7 +697,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       if (!streamedErrorRef.current) toast.error(`发送失败: ${msg}`);
       streamedErrorRef.current = false;
       markRunning(sid, false);
-      if (sid === activeID) {
+      if (fromComposer) {
         // Restore the draft and attachments (merging, not clobbering: the
         // user may have started typing again while the request was in flight).
         setPendingAtts((prev) => [...atts, ...prev]);
@@ -742,6 +736,11 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
 
   const addFiles = async (files: FileList | File[]) => {
     let added = 0;
+    if (active && !modelMultimodal) {
+      // The multimodal flag is metadata the user may not have flipped yet:
+      // keep the upload path open, but warn that the model may reject images.
+      toast.warning("当前模型未标记多模态，图片可能无法被识别；可在「模型配置」中开启多模态");
+    }
     for (const f of Array.from(files)) {
       if (!allowedMIME.includes(f.type)) {
         toast.error(`不支持的类型 ${f.type || f.name}（仅图片）`);
@@ -770,50 +769,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       added++;
       setPendingAtts((prev) => (prev.length >= 4 ? prev : [...prev, { name: f.name, mime: f.type, data: btoa(binary) }]));
     }
-  };
-
-  const toggleVoiceInput = () => {
-    if (listening) {
-      (window as any).__wbRecognition?.stop();
-      return;
-    }
-    const w = window as any;
-    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (!SR) {
-      toast.error("当前环境不支持语音识别");
-      return;
-    }
-    const rec = new SR();
-    rec.lang = "zh-CN";
-    rec.interimResults = true;
-    rec.continuous = false;
-    // Interim results REPLACE the previously inserted segment of the CURRENT
-    // input (not a snapshot taken at start): typing while recording must not
-    // be clobbered by the recognizer. All bookkeeping happens in the handler
-    // (never inside a setState updater — updaters must stay pure): the DOM
-    // textarea value is the live source of truth, and a partial manual edit
-    // that no longer ends with the recognized segment simply falls back to
-    // appending the new text.
-    let recognized = "";
-    rec.onresult = (e: any) => {
-      let text = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        text += e.results[i][0].transcript;
-      }
-      const cur = inputRef.current?.value ?? "";
-      const base = recognized && cur.endsWith(recognized) ? cur.slice(0, cur.length - recognized.length) : cur;
-      const sep = base && !/\s$/.test(base) ? " " : "";
-      recognized = text;
-      setInput((base + sep + text).trim());
-    };
-    rec.onend = () => {
-      recognized = "";
-      setListening(false);
-    };
-    rec.onerror = () => setListening(false);
-    w.__wbRecognition = rec;
-    setListening(true);
-    rec.start();
   };
 
   const regenerate = useCallback(async () => {
@@ -898,21 +853,28 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   };
 
   const pickWorkspace = async () => {
-    const picked = await Dialogs.OpenFile({
-      CanChooseDirectories: true,
-      CanChooseFiles: false,
-      CanCreateDirectories: true,
-      ResolvesAliases: true,
-      Title: "选择目录",
-      ButtonText: "选择此文件夹",
-    });
-    return typeof picked === "string" ? picked : "";
+    try {
+      const picked = await Dialogs.OpenFile({
+        CanChooseDirectories: true,
+        CanChooseFiles: false,
+        CanCreateDirectories: true,
+        ResolvesAliases: true,
+        Title: "选择目录",
+        ButtonText: "选择此文件夹",
+      });
+      return typeof picked === "string" ? picked : "";
+    } catch (e) {
+      // Closing the native picker is not a failure: Wails reports it as an
+      // error ("cancelled by user"). Only surface genuine dialog failures.
+      if (isDialogCancelError(e)) return "";
+      throw e;
+    }
   };
 
   const addProject = async () => {
-    const picked = await pickWorkspace();
-    if (!picked) return;
     try {
+      const picked = await pickWorkspace();
+      if (!picked) return;
       const p = await Chat.SaveProject("", "", picked);
       reloadProjects();
       toast.success(`已添加项目「${p.name}」`);
@@ -952,6 +914,10 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     if (!active) return;
     if (messages.length > 0) {
       toast.info("首轮已开始，任务工作区已锁定");
+      return;
+    }
+    if (active.projectId) {
+      toast.info("项目会话使用项目根目录，请先移出项目再单独指定工作区");
       return;
     }
     try {
@@ -1155,7 +1121,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     return { provider, model };
   }, [active, agents, teams, providerList]);
 
-  /** modelMultimodal gates the image attachment entry (see ModelInfo). */
+  /** modelMultimodal only tunes the attachment hint: the picker stays open so
+ * users can upload images even before flipping the model's metadata flag. */
   const modelMultimodal = !!target.model?.multimodal;
 
   /** costOf computes ¥ cost from token usage at model rates (per 1M). */
@@ -1202,6 +1169,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     const agent = agents.find((a) => a.id === active.targetId);
     return providerList.find((p) => p.id === agent?.providerId)?.models ?? [];
   }, [active, agents, providerList]);
+
+  // The composer chip shows the effective choice: an explicit per-session
+  // override or the target's own default.
+  const currentModelLabel = active
+    ? active.modelOverride || (active.targetType === "agent" ? "Agent 默认模型" : "默认模型")
+    : "";
 
   const setSessionModel = async (modelID: string) => {
     if (!activeID) return;
@@ -1377,6 +1350,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     }
     return { label: "默认项目", path: "" };
   }, [active, projects, globalWorkspace]);
+
+  // One directory menu: a project chat runs in its project root, and the
+  // binding freezes once the first turn has started.
+  const workspaceLock = active
+    ? workspaceLockReason({ hasProject: !!active.projectId, started: messages.length > 0 })
+    : "";
 
   // renderSessionRow draws one chat list row; shared by the project accordion,
   // the 最近 list and search results so hover actions stay identical.
@@ -1563,12 +1542,16 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                               ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                               : <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                             <span className="min-w-0 flex-1 truncate">{g.label}</span>
-                            <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+                            <span className="flex shrink-0 items-center gap-0.5">
                               {project && (
                                 <>
+                                  {/* The new-chat affordance must stay visible while
+                                      the folder is collapsed or expanded, not
+                                      only on hover. */}
                                   <button
                                     className="rounded p-0.5 hover:bg-background"
                                     title="在此项目中新建对话"
+                                    aria-label={`在项目「${g.label}」中新建对话`}
                                     onClick={(e) => { e.stopPropagation(); createProjectSession(project.id); }}
                                   >
                                     <Plus className="h-3 w-3" />
@@ -1594,8 +1577,15 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                                       <DropdownMenuItem onClick={() => createProjectSession(project.id)}>在此项目中新建对话</DropdownMenuItem>
                                       <DropdownMenuItem onClick={() => { setRenamingProject(project); setRenameProjectText(g.label); }}>重命名项目</DropdownMenuItem>
                                       <DropdownMenuItem onClick={async () => {
-                                        const picked = await pickWorkspace();
-                                        if (picked) await Chat.SaveProject(project.id, "", picked).then(reloadProjects).catch((e) => toast.error(`更改目录失败: ${errText(e)}`));
+                                        try {
+                                          const picked = await pickWorkspace();
+                                          if (!picked) return;
+                                          await Chat.SaveProject(project.id, "", picked);
+                                          reloadProjects();
+                                          toast.success("项目目录已更新");
+                                        } catch (e) {
+                                          toast.error(`更改目录失败: ${errText(e)}`);
+                                        }
                                       }}>
                                         更改项目目录…
                                       </DropdownMenuItem>
@@ -2033,7 +2023,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               className={cn(
                 "rounded-2xl border bg-card shadow-sm transition-colors focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/15",
                 dragOver && "border-primary ring-2 ring-primary/30",
-                listening && "border-primary/60 ring-1 ring-primary/40",
               )}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -2196,7 +2185,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   }
                 }}
                 onPaste={(e) => {
-                  if (!active || !modelMultimodal) return;
+                  if (!active && providerCount === 0) return;
                   const files = Array.from(e.clipboardData.files || []);
                   if (files.length === 0) return;
                   e.preventDefault();
@@ -2228,54 +2217,53 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    title={modelMultimodal ? "添加图片附件" : "当前模型未开启多模态（在模型配置中开启）"}
+                    title={!active || modelMultimodal
+                      ? "添加图片附件（png/jpeg/webp/gif，最大 6MB）"
+                      : "添加图片附件；当前模型未标记多模态，图片可能无法被识别"}
                     aria-label="添加图片附件"
-                    disabled={(!active && providerCount === 0) || running || !modelMultimodal}
+                    disabled={(!active && providerCount === 0) || running}
                     onClick={() => fileRef.current?.click()}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className={cn(
-                      listening && "bg-destructive/15 text-destructive",
-                      ((!active && providerCount === 0) || running || !speechSupported()) && "opacity-40",
-                    )}
-                    title={speechSupported() ? (listening ? "停止语音输入" : "语音输入") : "当前环境不支持语音识别"}
-                    aria-label={listening ? "停止语音输入" : "语音输入"}
-                    disabled={(!active && providerCount === 0) || running || !speechSupported()}
-                    onClick={toggleVoiceInput}
-                  >
-                    {speechSupported() ? (listening ? <SquareStop className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />) : <MicOff className="h-3.5 w-3.5" />}
-                  </Button>
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
                   {active && sessionModels.length > 0 && (
-                    <Select
-                      value={active.modelOverride || "__default"}
-                      onValueChange={(v) => setSessionModel(v)}
-                    >
-                      <SelectTrigger
-                        className="h-7 w-auto max-w-[200px] gap-1 border-none bg-transparent px-2 text-xs font-normal text-muted-foreground hover:bg-accent hover:text-foreground"
-                        title="本会话使用的模型（仅影响当前对话）"
-                        aria-label="选择模型"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent align="end">
-                        <SelectItem value="__default">{active.targetType === "agent" ? "Agent 默认模型" : "默认模型"}</SelectItem>
-                        {sessionModels.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>{m.id}</SelectItem>
-                        ))}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <button
-                          className="m-1 flex w-[calc(100%-8px)] items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-                          onClick={() => onOpenSettings("models")}
+                          className="flex h-7 min-w-0 max-w-[200px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          title={`本会话使用的模型：${currentModelLabel}（仅影响当前对话）`}
+                          aria-label="选择模型"
                         >
-                          <Boxes className="h-3.5 w-3.5 shrink-0" /> 管理模型供应商…
+                          <Boxes className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{currentModelLabel}</span>
+                          <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
                         </button>
-                      </SelectContent>
-                    </Select>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-64">
+                        <DropdownMenuLabel className="truncate">
+                          本会话模型{target.provider?.name ? ` · ${target.provider.name}` : ""}
+                        </DropdownMenuLabel>
+                        <DropdownMenuRadioGroup
+                          value={active.modelOverride || "__default"}
+                          onValueChange={(v) => setSessionModel(v)}
+                        >
+                          <DropdownMenuRadioItem value="__default">
+                            {active.targetType === "agent" ? "Agent 默认模型" : "默认模型"}
+                          </DropdownMenuRadioItem>
+                          {sessionModels.map((m) => (
+                            <DropdownMenuRadioItem key={m.id} value={m.id} className="font-mono text-xs">
+                              <span className="truncate" title={m.id}>{m.id}</span>
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => onOpenSettings("models")}>
+                          <Boxes className="h-3.5 w-3.5 shrink-0" /> 管理模型供应商…
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                   {running ? (
                     <Button
@@ -2306,52 +2294,67 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             {active && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                  <DropdownMenuTrigger asChild disabled={messages.length > 0}>
                     <button
-                      className="flex min-w-0 max-w-[220px] items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                      title={workspaceContext
-                        ? `${workspaceContext.path || "自动任务目录（全局工作区）"}${messages.length > 0 ? "（首轮已开始，不可更改）" : ""}`
-                        : "选择项目与目录"}
-                      aria-label="选择项目与目录"
-                      onClick={(e) => { if (messages.length > 0) e.preventDefault(); }}
+                      className={cn(
+                        "flex min-w-0 max-w-[220px] items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors",
+                        messages.length === 0 ? "hover:bg-accent hover:text-foreground" : "cursor-default opacity-70",
+                      )}
+                      title={messages.length > 0
+                        ? `${workspaceContext?.path || "自动任务目录（全局工作区）"}（首轮已开始，任务目录已锁定）`
+                        : workspaceLock
+                          ? `${workspaceContext?.path || "自动任务目录（全局工作区）"}（${workspaceLock}）`
+                          : `${workspaceContext?.path || "自动任务目录（全局工作区）"}（点击切换项目或目录）`}
+                      aria-label="选择项目与任务目录"
+                      disabled={messages.length > 0}
                     >
                       <FolderOpen className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{workspaceContext?.label ?? "默认项目"}</span>
                       {messages.length === 0 && <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />}
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-64">
+                  <DropdownMenuContent align="start" className="w-72">
+                    <DropdownMenuLabel>任务目录</DropdownMenuLabel>
                     <DropdownMenuItem onClick={() => switchSessionProject(active, "")}>
-                      默认项目（自动任务目录）
+                      {!active.projectId && <Check className="h-3.5 w-3.5" />}
+                      <span className="truncate">默认项目（自动任务目录）</span>
                     </DropdownMenuItem>
                     {projects.map((p) => (
                       <DropdownMenuItem key={p.id} title={p.rootDir} onClick={() => switchSessionProject(active, p.id)}>
-                        {p.name}
+                        {active.projectId === p.id && <Check className="h-3.5 w-3.5" />}
+                        <span className="truncate">{p.name}</span>
                       </DropdownMenuItem>
                     ))}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={changeSessionWorkspace}>选择其他目录…</DropdownMenuItem>
-                    <DropdownMenuItem onClick={addProject}>添加新项目…</DropdownMenuItem>
+                    <DropdownMenuItem disabled={!!workspaceLock} onClick={changeSessionWorkspace}>
+                      <FolderInput className="h-3.5 w-3.5" />
+                      <span>选择其他目录…</span>
+                      {workspaceLock && (
+                        <span className="ml-auto max-w-[150px] truncate text-[10px] text-muted-foreground">
+                          {workspaceLock}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={addProject}>
+                      <FolderPlus className="h-3.5 w-3.5" /> 添加新项目…
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <button
+                <span
                   className={cn(
-                    "flex min-w-0 max-w-[320px] items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                    workspaceError && "text-destructive",
+                    "flex min-w-0 max-w-[320px] items-center gap-1.5 rounded-md px-1.5 py-1 text-xs",
+                    workspaceError ? "text-destructive" : "text-muted-foreground",
                   )}
                   title={workspaceError
                     ? `任务工作区错误：${workspaceError}`
-                    : messages.length > 0
-                      ? `任务工作区：${resolvedWorkspace}`
-                      : `任务工作区：${resolvedWorkspace}（首轮前可更改）`}
+                    : `任务工作区：${resolvedWorkspace}`}
                   aria-label="当前任务工作区"
-                  onClick={changeSessionWorkspace}
                 >
                   <FolderInput className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">
                     {workspaceError ? "工作区不可用" : resolvedWorkspace || "读取工作区…"}
                   </span>
-                </button>
+                </span>
                 <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">
                   Enter 发送 · Shift+Enter 换行
                 </span>
