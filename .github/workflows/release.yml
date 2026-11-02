@@ -33,9 +33,11 @@ env:
 
 jobs:
   # ---------------------------------------------------------------- gate ----
-  # Cheap, fast refusal. Race tests are deliberately skipped: they tripled the
-  # release wall-clock for a class of bug that unit+integration tests already
-  # catch here, and `ci.yml` still runs them on every push to main.
+  # Cheap, fast refusal. Runs *concurrently* with the three platform builds (no
+  # `needs:` on them) so a slow macOS universal build and the test suite overlap;
+  # only `publish` waits for all four. Race tests are deliberately skipped: they
+  # tripled the release wall-clock for a class of bug that unit+integration tests
+  # already catch here, and `ci.yml` still runs them on every push to main.
   gate:
     runs-on: ubuntu-latest
     steps:
@@ -75,7 +77,6 @@ jobs:
 
   # ------------------------------------------------------------- windows ----
   windows:
-    needs: gate
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -129,7 +130,6 @@ jobs:
 
   # --------------------------------------------------------------- linux ----
   linux:
-    needs: gate
     runs-on: ubuntu-latest
     env:
       # linuxdeploy ships as an AppImage and the runner has no FUSE.
@@ -187,7 +187,6 @@ jobs:
 
   # --------------------------------------------------------------- macOS ----
   macos:
-    needs: gate
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -243,7 +242,7 @@ jobs:
   # release behind — never a release that is missing a platform, which would
   # hard-fail `no artifact for <platform>/<arch>` in every client's check.
   publish:
-    needs: [windows, linux, macos]
+    needs: [gate, windows, linux, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

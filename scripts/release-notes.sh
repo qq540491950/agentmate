@@ -122,7 +122,15 @@ if [ -z "$TAG_ARG" ]; then
 	echo "release-notes: no tag given" >&2
 	exit 2
 fi
-[ "$#" -ge 2 ] || PREV="$(prev_tag_of "$TAG_ARG")"
+# Two args = (previous tag, this tag), as the publish job calls it. One arg =
+# this tag only, and the previous one is derived. PREV must be assigned on both
+# paths: the script runs with `set -u`, so an unset PREV is a hard error rather
+# than an empty string.
+if [ "$#" -ge 2 ]; then
+	PREV="${1:-}"
+else
+	PREV="$(prev_tag_of "$TAG_ARG")"
+fi
 # Git refs keep the "v" prefix; display and semver comparisons do not. Resolve
 # the ref once so both `v0.5.0` and `0.5.0` work as arguments.
 if git rev-parse --verify --quiet "refs/tags/${TAG_ARG}" >/dev/null; then
