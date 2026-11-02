@@ -34,7 +34,16 @@ func TestForkSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The default workspace is $HOME/Documents/WorkBuddyWorkspace, which does
+	// not exist on a bare CI runner (and making every test depend on $HOME is
+	// how you get a red build that says nothing about the code). Point the
+	// session workspace at the test's temp dir instead.
+	ws := filepath.Join(dir, "workspace")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	err = store.Update(func(cfg *config.Config) {
+		cfg.Settings.WorkspaceDir = ws
 		cfg.Providers = append(cfg.Providers, config.ModelProvider{
 			ID: "p1", Name: "P", Protocol: config.ProtocolOpenAI,
 			BaseURL: srv.URL, Models: []config.ModelInfo{{ID: "m"}}, IsDefault: true,
