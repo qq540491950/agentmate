@@ -31,9 +31,17 @@ var assets embed.FS
 //go:embed build/appicon.png
 var trayIcon []byte
 
-// Version is the single source of truth for the app version, exposed to the
-// frontend via AppService.AppInfo.
-const Version = "0.4.0"
+// Version is the app version, exposed to the frontend via AppService.AppInfo
+// and used by the updater as the "currently running" version.
+//
+// The git tag is the single source of truth: release builds inject it with
+// `-ldflags "-X main.Version=0.5.0"` (see the VERSION var in Taskfile.yml and
+// scripts/set-version.sh, which also refreshes build/config.yml and the
+// generated build assets so exe metadata, NSIS, Info.plist and deb/rpm all
+// agree). Anything built without a tag — `go run .`, `wails3 dev`, a test
+// binary — reports "dev", which the updater treats as older than every
+// release, so a dev build is always offered the newest one.
+var Version = "dev"
 
 func init() {
 	// Register the chat streaming event so the generated bindings carry a
@@ -107,6 +115,10 @@ func main() {
 	logSvc.SetLogPath(filepath.Join(cfgDir, "logs", "app.log"))
 	logSvc.SetToolAuditPath(filepath.Join(cfgDir, "logs", "tools-audit.jsonl"))
 	logSvc.SetStoragePaths(filepath.Join(cfgDir, "sessions.db"), filepath.Join(cfgDir, "knowledge.index.db"), gormDB)
+	// Update checks run against GitHub Releases (see updateservice.go). The
+	// service is registered before the app exists, so the updater itself is
+	// configured by Bind below.
+	updSvc := services.NewUpdateService(svc)
 
 	app := application.New(application.Options{
 		Name:        "WorkBuddy Agent",
@@ -118,6 +130,7 @@ func main() {
 			application.NewService(services.NewArtifactService(svc)),
 			application.NewService(chatSvc),
 			application.NewService(a2aRPC),
+			application.NewService(updSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -130,10 +143,17 @@ func main() {
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 		OnShutdown: func() {
-			a2aRPC.StopAll() // graceful: unpublish agents before exit
-			mgr.CloseAll()   // then close MCP transports (no orphan stdio children)
+			services.StopUpdates(updSvc) // stop the background update poll
+			a2aRPC.StopAll()             // graceful: unpublish agents before exit
+			mgr.CloseAll()               // then close MCP transports (no orphan stdio children)
 		},
 	})
+
+	// Updates must never block startup: a broken feed, an unreachable proxy or
+	// a malformed pinned key leaves the app fully usable, just without updates.
+	if err := services.BindUpdates(updSvc, app); err != nil {
+		log.Printf("更新服务初始化失败（不影响使用）: %v", err)
+	}
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "WorkBuddy Agent",

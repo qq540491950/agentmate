@@ -302,3 +302,39 @@ func TestUpdateFailedSaveDoesNotMutateMemory(t *testing.T) {
 		t.Fatalf("memory mutated despite failed save: %q", got)
 	}
 }
+
+// The silent update check is opt-out: a fresh config has no autoCheckUpdate
+// key and must still report enabled, or every install would be stuck on the
+// version it was installed with.
+func TestUpdateAutoCheckDefaultsOn(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Settings().UpdateAutoCheckEnabled() {
+		t.Fatal("update auto-check must default to on when unset")
+	}
+	if s.Settings().SkippedVersion != "" {
+		t.Fatalf("skippedVersion = %q, want empty", s.Settings().SkippedVersion)
+	}
+	off := false
+	if err := s.Update(func(cfg *Config) { cfg.Settings.AutoCheckUpdate = &off }); err != nil {
+		t.Fatal(err)
+	}
+	if s.Settings().UpdateAutoCheckEnabled() {
+		t.Fatal("auto-check must report off when the stored pointer is false")
+	}
+	// A pointer is required here: the setting must survive a round trip
+	// through JSON as an explicit false, not decay back to the unset default.
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Settings().AutoCheckUpdate == nil {
+		t.Fatal("autoCheckUpdate=false was dropped on save")
+	}
+	if reopened.Settings().UpdateAutoCheckEnabled() {
+		t.Fatal("auto-check must stay off after a reload")
+	}
+}

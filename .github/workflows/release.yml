@@ -1,0 +1,314 @@
+name: Release
+
+# One push of a version tag publishes everything: three 64-bit builds, the
+# update payloads the in-app updater consumes, the checksums and the signed
+# update manifest. There is no human gate — the gate is the `gate` job plus the
+# single atomic publish step at the end (see "Design notes" below).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)publish, e.g. v0.5.0"
+        required: true
+      dry_run:
+        description: "Build and upload artifacts only; do not create/update the release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# Never let two tag pushes race on `releases/latest`: a half-published release
+# is exactly the state the updater cannot recover from (it would fetch a
+# manifest that points at assets that do not exist yet).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  WAILS_VERSION: v3.0.0
+  NODE_VERSION: "20.19"
+
+jobs:
+  # ---------------------------------------------------------------- gate ----
+  # Cheap, fast refusal. Race tests are deliberately skipped: they tripled the
+  # release wall-clock for a class of bug that unit+integration tests already
+  # catch here, and `ci.yml` still runs them on every push to main.
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Toolchain fingerprint
+        run: go version && node --version
+      - name: Frontend (main.go embeds frontend/dist)
+        working-directory: frontend
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm run --silent test
+          npm run --silent build
+      - name: Vet
+        run: go vet ./internal/... .
+      - name: Test
+        run: go test -count=1 ./internal/... .
+
+  # ------------------------------------------------------------- windows ----
+  windows:
+    needs: gate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+      - name: Install Wails CLI
+        shell: bash
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Stamp version (tag -> build assets)
+        shell: bash
+        env:
+          VERSION: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          export VERSION="${VERSION#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          bash scripts/set-version.sh "$VERSION"
+      # Windows ships one standalone exe and nothing else: no NSIS installer
+      # (so no makensis dependency either) and no zip. The same file is both
+      # what the user downloads and what the updater swaps in place, which is
+      # why a bare binary — not an installer — is the right shape here.
+      - name: Build standalone exe
+        shell: bash
+        run: task windows:build
+      - name: Collect release artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "bin/go-workbuddy.exe" "dist/WorkBuddy-Agent-windows-amd64.exe"
+      - name: Show artifact sizes
+        shell: pwsh
+        run: Get-ChildItem dist | Select-Object Name, @{n = "MB"; e = { [math]::Round($_.Length / 1MB, 1) } } | Format-Table -AutoSize
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-windows
+          path: dist/*
+          if-no-files-found: error
+
+  # --------------------------------------------------------------- linux ----
+  linux:
+    needs: gate
+    runs-on: ubuntu-latest
+    env:
+      # linuxdeploy ships as an AppImage and the runner has no FUSE.
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+      - name: Install GTK4 / WebKitGTK 6 / AppImage tooling deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libwebkitgtk-6.0-dev libfuse2 libgdk-pixbuf-2.0-0 file
+      - name: Install Wails CLI
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Stamp version (tag -> build assets)
+        env:
+          VERSION: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          export VERSION="${VERSION#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          bash scripts/set-version.sh "$VERSION"
+      - name: Build AppImage + deb
+        run: |
+          task linux:create:appimage
+          task linux:create:deb
+      - name: Collect release artifacts
+        run: |
+          mkdir -p dist
+          # The updater matches artifacts by GOOS/GOARCH tokens in the file
+          # name; the packaged defaults (`go-workbuddy.AppImage`,
+          # `go-workbuddy_0.5.0_amd64.deb`) carry neither reliably.
+          mv bin/*.AppImage "dist/WorkBuddy-Agent-linux-amd64.AppImage"
+          mv bin/*.deb "dist/WorkBuddy-Agent-linux-amd64.deb"
+          chmod +x "dist/WorkBuddy-Agent-linux-amd64.AppImage"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-linux
+          path: dist/*
+          if-no-files-found: error
+
+  # --------------------------------------------------------------- macOS ----
+  macos:
+    needs: gate
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+      - name: Install Wails CLI
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Stamp version (tag -> build assets)
+        env:
+          VERSION: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          export VERSION="${VERSION#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          bash scripts/set-version.sh "$VERSION"
+      - name: Build universal .app + dmg
+        run: |
+          task darwin:package:universal
+          # create:dmg (not package:dmg): package:dmg re-runs the single-arch
+          # `package` target and would overwrite the universal bundle.
+          task darwin:create:dmg
+      - name: Collect release artifacts
+        run: |
+          mkdir -p dist
+          cp bin/*.dmg "dist/WorkBuddy-Agent-darwin-universal.dmg"
+          # `ditto` preserves bundle symlinks and permissions; `zip -r` does
+          # not, and a .app that lost its framework symlinks will not launch.
+          # One top-level entry: that is what the updater's archive extractor
+          # requires before it can swap the bundle.
+          ditto -c -k --sequesterRsrc --keepParent "bin/go-workbuddy.app" "dist/WorkBuddy-Agent-darwin-universal-update.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-macos
+          path: dist/*
+          if-no-files-found: error
+
+  # ------------------------------------------------------------- publish ----
+  # Single atomic publish step: every platform uploads into one artifact set,
+  # and only this job creates the release. A build failure anywhere leaves no
+  # release behind — never a release that is missing a platform, which would
+  # hard-fail `no artifact for <platform>/<arch>` in every client's check.
+  publish:
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install Wails CLI (manifest signing)
+        run: |
+          go install "github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Resolve versions
+        env:
+          TAG_INPUT: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          TAG="$TAG_INPUT"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          printf 'PREV_TAG=%s\n' "$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo '')" >> "$GITHUB_ENV"
+      - name: Release notes
+        run: bash scripts/release-notes.sh "${PREV_TAG}" "$TAG" > notes.md
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum ./* | sed 's|\./||' > SHA256SUMS
+      - name: Sign + emit update manifest
+        env:
+          UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
+        run: |
+          key_args=()
+          if [ -n "${UPDATER_SIGNING_KEY:-}" ]; then
+            printf '%s' "$UPDATER_SIGNING_KEY" > "$RUNNER_TEMP/updater.key"
+            chmod 600 "$RUNNER_TEMP/updater.key"
+            key_args=(-key "$RUNNER_TEMP/updater.key")
+          else
+            echo "::warning::UPDATER_SIGNING_KEY is not set — publishing an UNSIGNED manifest. Clients only pin a public key when updatePublicKeyB64 is filled in, so set both or neither."
+          fi
+          # Only the swappable payloads belong in the manifest: an installer
+          # (.dmg/.deb/.exe-setup) can never be renamed over a running install,
+          # so listing one would offer users a download that cannot apply. The
+          # Windows entry is the standalone exe — same file users download and
+          # the updater replaces.
+          cd dist
+          wails3 updater manifest \
+            -version "$VERSION" \
+            -name "WorkBuddy Agent $TAG" \
+            -notes-file ../notes.md \
+            -url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/" \
+            -output manifest.json \
+            "${key_args[@]}" \
+            WorkBuddy-Agent-windows-amd64.exe \
+            WorkBuddy-Agent-linux-amd64.AppImage \
+            WorkBuddy-Agent-darwin-universal-update.zip
+          cat manifest.json
+      - name: Publish release
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Re-run of an existing tag: replace assets in place and re-point
+            # `latest` at it.
+            gh release upload "$TAG" --clobber dist/*
+            gh release edit "$TAG" --title "WorkBuddy Agent $TAG" --notes-file notes.md --latest
+          else
+            gh release create "$TAG" \
+              --title "WorkBuddy Agent $TAG" \
+              --notes-file notes.md \
+              --latest \
+              dist/*
+          fi
+      - name: Dry run summary
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          echo "dry_run: artifacts built but no release was created"
+          ls -lh dist

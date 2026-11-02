@@ -18,6 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { ArtifactPreview } from "@/components/ToolCallCard";
+import { UpdateCard } from "@/components/UpdateCard";
 import { cn } from "@/lib/utils";
 import { ACCENTS, FONT_SCALES, applyTheme, cacheTheme, type ThemePrefs } from "@/lib/theme";
 import { Chat, App, A2A, Config, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
@@ -790,6 +791,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
               Agent 运行时：ADK Runner / LLMAgent / AgentTool；会话存储：SQLite（ADK Database Session Service）；
               工具：ADK FunctionTool、MCP Toolset（go-sdk）、Skill Toolset（agentskills.io 规范）。
             </div>
+            <UpdateCard version={version} />
           </CardContent>
         </Card>
         )}

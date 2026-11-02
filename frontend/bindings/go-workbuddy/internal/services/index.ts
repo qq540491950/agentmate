@@ -7,13 +7,15 @@ import * as ArtifactService from "./artifactservice.js";
 import * as ChatService from "./chatservice.js";
 import * as ConfigService from "./configservice.js";
 import * as MCPService from "./mcpservice.js";
+import * as UpdateService from "./updateservice.js";
 export {
     A2AService,
     AppService,
     ArtifactService,
     ChatService,
     ConfigService,
-    MCPService
+    MCPService,
+    UpdateService
 };
 
 export {
@@ -41,6 +43,7 @@ export type {
     StatDay,
     StorageInfo,
     TaskWorkspaceSnapshot,
+    UpdateStatus,
     UsageInfo,
     WorkspaceFileInfo
 } from "./models.js";

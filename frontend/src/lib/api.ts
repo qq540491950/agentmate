@@ -12,6 +12,8 @@ export const Chat = services.ChatService;
 export const Config = services.ConfigService;
 export const MCP = services.MCPService;
 export const Artifact = services.ArtifactService;
+export const Update = services.UpdateService;
+export type UpdateStatus = serviceModels.UpdateStatus;
 
 export const Protocol = configModels.Protocol;
 export type Protocol = configModels.Protocol;

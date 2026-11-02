@@ -3,6 +3,14 @@ version: '3'
 vars:
   APP_NAME: "go-workbuddy"
   BIN_DIR: "bin"
+  # VERSION is the single source of truth for the app version. It comes from
+  # the git tag at build time (v0.5.0 -> 0.5.0) and is injected into the
+  # binary with `-X main.Version`; tag-less builds fall back to "dev".
+  # Release CI passes VERSION=<tag> explicitly, so a shallow checkout can
+  # never ship a "dev" build by accident. The env var is read inside the shell
+  # so a caller-supplied VERSION always wins over the `git describe` default.
+  VERSION:
+    sh: 'v="${VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || echo)}"; v="${v#v}"; echo "${v:-dev}"'
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   # 9527: 不用 Wails 默认的 9245，避免和本机同时开发的其他应用（如 agent-go）抢端口
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9527}}'
@@ -39,6 +47,22 @@ tasks:
     summary: Runs the application in development mode
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  version:sync:
+    summary: Rewrites build/config.yml + generated build assets to VERSION (git tag by default)
+    desc: |
+      The version lives in three generated places (exe VERSIONINFO, NSIS
+      VIProductVersion, Info.plist, nfpm version) that all derive from
+      build/config.yml. Hand-editing them drifts; this task rewrites
+      build/config.yml from VERSION and lets `wails3 update build-assets`
+      regenerate the rest.
+    cmds:
+      - bash scripts/set-version.sh "{{.VERSION}}"
+
+  release:next:
+    summary: Suggests the next version from conventional commits and previews release notes
+    cmds:
+      - bash scripts/release-notes.sh --next
 
   setup:docker:
     summary: Builds Docker image for cross-compilation (~800MB download)

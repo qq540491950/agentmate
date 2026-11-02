@@ -411,6 +411,21 @@ export interface Settings {
      * or "project" (sessions grouped by their workspace root directory).
      */
     "sidebarGrouping"?: string;
+
+    /**
+     * AutoCheckUpdate runs a silent update check shortly after startup and
+     * then every 24h. Opt-out (nil = on) because an app that only ever updates
+     * through a settings-page button effectively never updates.
+     */
+    "autoCheckUpdate"?: boolean | null;
+
+    /**
+     * SkippedVersion is the release the user asked to ignore. It is the
+     * persisted half of "跳过此版本": the updater is told to skip it on every
+     * launch, so a check keeps returning "已是最新" until a newer release
+     * appears.
+     */
+    "skippedVersion"?: string;
 }
 
 /**

@@ -139,10 +139,45 @@ CI（`.github/workflows/ci.yml`）在每次 push / PR 上跑后端 `vet + test +
 
 ### 打包与发布
 ```bash
-wails3 build && wails3 package   # 产物 bin/WorkBuddy Agent.app
+wails3 build && wails3 package   # 本地产物 bin/<APP_NAME>.app（版本为 dev）
 ```
-- 版本号统一维护在 `main.go` 的 `Version` 常量，经 AppInfo 暴露到界面
-- 构建使用 `-tags production -trimpath -ldflags "-w -s"`
+
+正式发布只走 GitHub Actions：推一个 `v*` tag 即自动构建三平台 64 位产物并发布。
+
+```bash
+task release:next          # 依据 conventional commits 建议下一个版本号 + 预览发布说明
+git tag -a v0.5.0 -m "..." # tag 消息会被当作发布说明（留空则自动按提交归类）
+git push origin v0.5.0     # 触发 .github/workflows/release.yml
+```
+
+- **版本号唯一来源是 git tag**：CI 用 `-ldflags "-X main.Version=X.Y.Z"` 注入二进制，并用 `scripts/set-version.sh` 重写 `build/config.yml` 后由 `wails3 update build-assets` 派生 exe 元数据 / `Info.plist` / deb 版本。无 tag 的构建版本为 `dev`
+- 构建使用 `-tags production -trimpath -ldflags "-w -s"`（Windows 追加 `-H windowsgui`）
+- 产物（每次发布原子出齐，缺一不发）：`WorkBuddy-Agent-windows-amd64.exe`（**免安装，下载即用**）、`WorkBuddy-Agent-linux-amd64.AppImage`、`WorkBuddy-Agent-linux-amd64.deb`、`WorkBuddy-Agent-darwin-universal.dmg`、`WorkBuddy-Agent-darwin-universal-update.zip`、`SHA256SUMS`、`manifest.json`
+- Windows 不发安装包、也不发 zip：那一个 exe 既是用户下载的东西，也是自更新替换的目标，所以把它放在可写目录（`D:\Apps`、下载目录、U 盘）时自更新直接可用
+- 详见 `docs/adr/0001-git-tag-as-version-source.md` 与 `docs/adr/0002-in-app-updater-and-dual-release-artifacts.md`
+
+#### 版本号规则（0.x 阶段）
+
+首个发布版本为 **v0.5.0**（承接此前 0.4.0 的内部版本号，保证任何已装的 0.4.x 都能被判定为「可升级」）。1.0.0 之前只发 `0.MINOR.PATCH`：
+
+| 变更内容 | 递增位 | 例子 |
+|---|---|---|
+| 新功能、用户可感知的行为变化、配置/数据结构调整、破坏性变更 | **MINOR**（+1，PATCH 归零） | `0.5.0 → 0.6.0` |
+| 仅修复、性能、文案、依赖升级、无新能力 | **PATCH**（+1） | `0.6.0 → 0.6.1` |
+
+- `task release:next` 会按上面的规则读 conventional commits 给出建议值（`feat:` → minor，`fix:`/`perf:` → patch），可人工上调
+- 0.x 期间破坏性变更**不另设标记**，一律用 MINOR 表示并在发布说明首行写清「不兼容：…」
+- 一批工作合成一次发布，不要每个 commit 发版（自动检查 24h 一次，发得太密等于频繁打扰用户）
+- **已发布的 tag 不移动、不重复发**；构建坏掉/产物缺失时用 `workflow_dispatch` 重跑同一 tag（`--clobber` 覆盖资产），不递增版本号
+- 不发预发布（`releases/latest` 会跳过 prerelease，等于用户看不到）；需要灰度就先发一个 PATCH
+- 进入 1.0.0 的条件：配置/数据 schema 稳定、对外 A2A 协议稳定，且升级链路已连续跑通若干版本
+
+### 应用内更新
+- 「设置 → 关于」内联更新卡片：检查 / 下载并安装 / 重启完成更新 / 跳过此版本 / 兼容「打开下载页」
+- 启动后约 10 秒静默检查一次，之后每 24 小时一次；**只提示，不自动安装**，可在同处关闭
+- 更新通道：GitHub Releases 上的 `manifest.json`（`releases/latest/download/manifest.json`），经 Wails 原生 `app.Updater` + endpoint provider 消费
+- 能否自动安装由**安装形态**决定：Windows 独立 exe（所在目录可写）、macOS `.app`、Linux `.AppImage` 可自替换；`.deb` 安装版与放在只读位置的 exe 只提示下载（updater 无提权路径）
+- 清单签名：`updatePublicKeyB64`（`internal/services/updateservice.go`）钉公钥后**强制**校验签名；私钥放 CI secret `UPDATER_SIGNING_KEY`。未钉公钥时退化为仅校验清单摘要
 
 ### 稳定性与自愈
 - 单轮默认 10 分钟超时兜底（Agent 可自定义 `MaxTurnSeconds`），供应商无响应不会永久挂起
@@ -168,6 +203,10 @@ wails3 build && wails3 package   # 产物 bin/WorkBuddy Agent.app
 - 团队负责人必须为本地 Agent（远程 A2A 成员仅作为可转移的子代理参与）
 - HTTP 代理设置在启动时注入，修改后需重启应用生效
 - 结果区提供文件级变更、行级 diff（基线内容快照对比，二进制/超大文件自动降级为说明文案）与现有格式预览，不提供 Office 在线预览或网页运行预览
+- **产物未做付费签名**：Windows 会触发 SmartScreen 提示；macOS 未公证，首次打开需右键→「打开」，且自更新替换后的 `.app` 可能被 Gatekeeper 二次拦截（updater 原样搬运字节，不重新签名）
+- **`.deb` 安装版与「放在只读目录的 Windows exe」不支持自动安装更新**（updater 无提权路径），只提示并跳转下载
+- Windows 不提供安装程序：没有卸载项、开始菜单快捷方式与文件关联；把 exe 放进可写目录（如 `D:\Apps`）即可获得自更新能力
+- **不支持降级**：自动更新只升不降；新版本写过 config/sessions 后手动回退旧版，旧程序对未知字段不做守卫（`backupSchemaVersion` 只用于备份导入）
 
 ## 数据存储
 

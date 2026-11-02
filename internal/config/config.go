@@ -222,11 +222,27 @@ type Settings struct {
 	// SidebarGrouping selects the conversation-list grouping: "time" (default)
 	// or "project" (sessions grouped by their workspace root directory).
 	SidebarGrouping string `json:"sidebarGrouping,omitempty"`
+	// AutoCheckUpdate runs a silent update check shortly after startup and
+	// then every 24h. Opt-out (nil = on) because an app that only ever updates
+	// through a settings-page button effectively never updates.
+	AutoCheckUpdate *bool `json:"autoCheckUpdate,omitempty"`
+	// SkippedVersion is the release the user asked to ignore. It is the
+	// persisted half of "跳过此版本": the updater is told to skip it on every
+	// launch, so a check keeps returning "已是最新" until a newer release
+	// appears.
+	SkippedVersion string `json:"skippedVersion,omitempty"`
 }
 
 // AutoTitleEnabled reports whether model-generated titles are wanted.
 func (s *Settings) AutoTitleEnabled() bool {
 	return s.AutoTitle != nil && *s.AutoTitle
+}
+
+// UpdateAutoCheckEnabled reports whether the silent update check runs.
+// Unset means on: an opt-in default would leave most installs stuck on the
+// version they installed.
+func (s Settings) UpdateAutoCheckEnabled() bool {
+	return s.AutoCheckUpdate == nil || *s.AutoCheckUpdate
 }
 
 // normalize fills zero values (older config files) with defaults.

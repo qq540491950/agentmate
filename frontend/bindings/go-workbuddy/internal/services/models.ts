@@ -300,6 +300,23 @@ export interface TaskWorkspaceSnapshot {
 }
 
 /**
+ * UpdateStatus is the snapshot the settings page renders.
+ */
+export interface UpdateStatus {
+    "currentVersion": string;
+    "state": string;
+    "mode": string;
+    "reason"?: string;
+    "availableVersion"?: string;
+    "notes"?: string;
+    "autoCheck": boolean;
+    "skippedVersion"?: string;
+    "error"?: string;
+    "downloadUrl": string;
+    "canAutoInstall": boolean;
+}
+
+/**
  * UsageInfo reports token consumption for a turn or a whole session.
  */
 export interface UsageInfo {

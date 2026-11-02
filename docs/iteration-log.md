@@ -3,6 +3,26 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百七十八轮迭代：自动发布与自带检查更新（已实施）
+
+依据：应用只能靠手工打包分发，且版本号在三处手写并已漂移（`main.go`/`build/config.yml` 为 0.4.0，而 `build/windows/info.json`、`wails_tools.nsh`、`nfpm.yaml` 仍是 0.1.0——安装包元数据与 deb 版本都在说谎）。用户侧则完全没有升级路径。
+
+**实现要点**
+
+- **版本号单一来源**：`main.go` 的 `Version` 由 `const` 改为 `var` + 构建期 `-ldflags "-X main.Version=..."`；`Taskfile.yml` 新增 `VERSION`（取 git tag，可被环境变量覆盖），三平台 `BUILD_FLAGS` 注入；新增 `scripts/set-version.sh` 重写 `build/config.yml` 并调用 `wails3 update build-assets` 派生全部安装包元数据；`task version:sync`、`task release:next` 入口。
+- **应用内更新**：新增 `internal/services/updateservice.go`，基于 Wails v3 原生 `app.Updater` + endpoint provider 读取 GitHub Releases 上的签名清单（`releases/latest/download/manifest.json`）；RPC 为 `Status/CheckNow/InstallUpdate/ApplyUpdate/Skip/SetAutoCheck/OpenDownloadPage`；`BindUpdates`/`StopUpdates` 用包级函数而非方法，避免「用 App 句柄配置自己」被暴露成前端 RPC。
+- **检查策略**：自建 10s 首次 + 24h 循环（**不用** `Config.CheckInterval`，框架的周期循环走 `CheckAndInstall`，会替用户静默安装）；失败只记日志；`Settings.AutoCheckUpdate`（nil=开）+ `Settings.SkippedVersion` 持久化在 `config.json`。
+- **安装形态判定**：`detectUpdateMode` 按 `$APPIMAGE` 与「可执行文件所在目录可写」决定 `auto-install` / `notify-only`，`.deb` 与 Windows 系统级安装降级为「提示 + 打开下载页」（updater 无提权路径）。
+- **前端**：`components/UpdateCard.tsx` 内联在「设置 → 关于」，监听 10 个 `wails:updater:*` 事件后统一回读服务快照（不镜像状态机），含进度条、更新说明折叠、跳过此版本、自动检查开关。
+- **发布流水线**：`.github/workflows/release.yml`——`gate`（tsc/vet/test，不跑 race）→ 三平台构建（Windows 只发免安装 exe；Linux AppImage + deb；macOS universal `.app` zip + dmg，`ditto --keepParent` 保留符号链接）→ 单 job 原子发布（`SHA256SUMS` + `wails3 updater manifest` 签名清单 + `gh release create --latest`），支持 `workflow_dispatch` 重跑与 `dry_run`。
+- **文档**：新增 `GLOSSARY.md`、`docs/adr/0001`、`docs/adr/0002`，README 增补发布/更新/已知边界。
+
+**测试证据**
+
+- 新增 `internal/services/updateservice_test.go`（8 组 `detectUpdateMode` 表格用例、公钥解析、Bind 前 `Status` 不 panic、Skip/自动检查持久化与重载）、`internal/config/config_test.go`（自动检查默认开、`false` 经 JSON 往返不丢失）。
+- `go vet ./internal/... .`、`go test ./internal/config/ ./internal/services/` 全绿；`npx tsc --noEmit` 干净，前端 vitest 17 用例通过。
+- `wails3 generate bindings` 重新生成：7 个服务、92 方法（新增 `updateservice.ts`）。
+
 ### 第一百七十七轮迭代：收官验证（07:10 ALL GREEN）
 
 第三次全量验证通过（verify 链：前端 vitest/tsc → go vet → 全量测试 → -race → wails3 build），无回归。
