@@ -125,9 +125,14 @@ gh run list --repo qq540491950/go-workbuddy --branch main --limit 5 \
 --interval 10` 等待；如果单次命令接近 10 分钟上限，改用轮询
 `gh run view <id> --json status,conclusion` + `sleep 20`，最多等 30 分钟。
 
+CI 现在包含 `windows-build` job（`windows-latest`，执行
+`task windows:build`）。必须等**整个 run** 成功，尤其确认 `windows-build`
+为 success；只看 backend/frontend 绿不算通过。可用
+`gh run view <id> --json jobs` 核对每个 job 的结论。
+
 CI 失败时：
 
-- 评论失败摘要和 run 链接；
+- 评论失败摘要和 run 链接（注明是哪个 job 失败，尤其是 `windows-build`）；
 - 加 `agent:blocked`，移除 `agent:processing`；
 - 不 tag、不关闭 issue，结束。
 

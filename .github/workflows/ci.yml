@@ -3,13 +3,27 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - "LICENSE"
+      - ".gitignore"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - "LICENSE"
+      - ".gitignore"
 
 jobs:
   backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check Windows build coverage
+        run: bash scripts/check-ci-build-coverage.sh
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -57,3 +71,35 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run --silent build
+
+  # The push/PR gate above only tests Go packages and builds frontend assets;
+  # it never compiles the Wails desktop app. A change can therefore pass CI and
+  # still fail at release time on `-tags production`/windowsgui/syso. Build the
+  # Windows exe here, before a tag exists, so the auto-fix flow never has to
+  # discover a broken build after pushing a tag.
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      WAILS_VERSION: v3.0.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.19"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+      - name: Install Wails CLI
+        shell: bash
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Build Windows exe
+        shell: bash
+        run: task windows:build
