@@ -117,18 +117,30 @@ if [ "${1:-}" = "--next" ]; then
 	exit 0
 fi
 
-TAG="${2:-${1:-}}"
-PREV="${1:-}"
-[ "$#" -ge 2 ] || PREV="$(prev_tag_of "$TAG")"
-TAG="${TAG#v}"
-if [ -z "$TAG" ]; then
+TAG_ARG="${2:-${1:-}}"
+if [ -z "$TAG_ARG" ]; then
 	echo "release-notes: no tag given" >&2
 	exit 2
+fi
+[ "$#" -ge 2 ] || PREV="$(prev_tag_of "$TAG_ARG")"
+# Git refs keep the "v" prefix; display and semver comparisons do not. Resolve
+# the ref once so both `v0.5.0` and `0.5.0` work as arguments.
+if git rev-parse --verify --quiet "refs/tags/${TAG_ARG}" >/dev/null; then
+	TAG_REF="$TAG_ARG"
+elif git rev-parse --verify --quiet "refs/tags/v${TAG_ARG}" >/dev/null; then
+	TAG_REF="v${TAG_ARG}"
+else
+	echo "release-notes: tag ${TAG_ARG} not found locally (fetch tags first)" >&2
+	exit 2
+fi
+TAG="${TAG_REF#v}"
+if [ -n "$PREV" ] && ! git rev-parse --verify --quiet "refs/tags/${PREV}" >/dev/null; then
+	PREV="v${PREV}"
 fi
 
 echo "## WorkBuddy Agent v${TAG}"
 echo
-msg="$(tag_message "$TAG" 2>/dev/null || true)"
+msg="$(tag_message "$TAG_REF" 2>/dev/null || true)"
 if printf '%s' "$msg" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
 	msg="" # a bare-version tag message carries no information
 fi
@@ -136,14 +148,14 @@ if [ -n "$msg" ]; then
 	printf '%s\n\n' "$msg"
 else
 	if [ -n "$PREV" ]; then
-		range_notes "${PREV}..${TAG}"
+		range_notes "${PREV}..${TAG_REF}"
 	else
 		# First release: there is no previous tag, so "everything up to TAG"
 		# would dump the entire development history. Summarise recent work and
 		# say so, instead of pretending this release contains all of it.
 		echo "（首次发布：未指定 tag 说明，以下仅列出最近 40 条提交）"
 		echo
-		range_notes "$TAG" 40
+		range_notes "$TAG_REF" 40
 	fi
 fi
 echo "---"
