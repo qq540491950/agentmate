@@ -14,7 +14,7 @@
 - **检查策略**：自建 10s 首次 + 24h 循环（**不用** `Config.CheckInterval`，框架的周期循环走 `CheckAndInstall`，会替用户静默安装）；失败只记日志；`Settings.AutoCheckUpdate`（nil=开）+ `Settings.SkippedVersion` 持久化在 `config.json`。
 - **安装形态判定**：`detectUpdateMode` 按 `$APPIMAGE` 与「可执行文件所在目录可写」决定 `auto-install` / `notify-only`，`.deb` 与 Windows 系统级安装降级为「提示 + 打开下载页」（updater 无提权路径）。
 - **前端**：`components/UpdateCard.tsx` 内联在「设置 → 关于」，监听 10 个 `wails:updater:*` 事件后统一回读服务快照（不镜像状态机），含进度条、更新说明折叠、跳过此版本、自动检查开关。
-- **发布流水线**：`.github/workflows/release.yml`——`gate`（tsc/vet/test，不跑 race）→ 三平台构建（Windows 只发免安装 exe；Linux AppImage + deb；macOS universal `.app` zip + dmg，`ditto --keepParent` 保留符号链接）→ 单 job 原子发布（`SHA256SUMS` + `wails3 updater manifest` 签名清单 + `gh release create --latest`），支持 `workflow_dispatch` 重跑与 `dry_run`。
+- **发布流水线**：`.github/workflows/release.yml`——`gate`（Windows 上跑 tsc/vet/test，不跑 race，与构建并行）→ Windows 构建免安装单文件 exe → 单 job 原子发布（`SHA256SUMS` + `wails3 updater manifest` 清单 + `gh release create --latest`），支持 `workflow_dispatch` 重跑与 `dry_run`。**当前仅发 Windows**：测试环境只有 Windows，Linux/macOS 构建配置保留在 git 历史，测试条件具备后按 0.MINOR 补发。
 - **文档**：新增 `GLOSSARY.md`、`docs/adr/0001`、`docs/adr/0002`，README 增补发布/更新/已知边界。
 
 **测试证据**

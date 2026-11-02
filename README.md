@@ -142,7 +142,7 @@ CI（`.github/workflows/ci.yml`）在每次 push / PR 上跑后端 `vet + test +
 wails3 build && wails3 package   # 本地产物 bin/<APP_NAME>.app（版本为 dev）
 ```
 
-正式发布只走 GitHub Actions：推一个 `v*` tag 即自动构建三平台 64 位产物并发布。
+正式发布只走 GitHub Actions：推一个 `v*` tag 即自动构建并发布。
 
 ```bash
 task release:next          # 依据 conventional commits 建议下一个版本号 + 预览发布说明
@@ -150,10 +150,11 @@ git tag -a v0.5.0 -m "..." # tag 消息会被当作发布说明（留空则自�
 git push origin v0.5.0     # 触发 .github/workflows/release.yml
 ```
 
-- **版本号唯一来源是 git tag**：CI 用 `-ldflags "-X main.Version=X.Y.Z"` 注入二进制，并用 `scripts/set-version.sh` 重写 `build/config.yml` 后由 `wails3 update build-assets` 派生 exe 元数据 / `Info.plist` / deb 版本。无 tag 的构建版本为 `dev`
+- **当前发布范围：仅 Windows 64 位**。维护者的测试环境只有 Windows，未经验证的 Linux/macOS 产物配合自动更新等于给用户装一个坏版本；这两个平台的构建配置（AppImage + deb、universal `.app` + dmg）保留在 git 历史中，测试条件具备后按 `0.MINOR` 规则补发
+- **版本号唯一来源是 git tag**：CI 用 `-ldflags "-X main.Version=X.Y.Z"` 注入二进制，并用 `scripts/set-version.sh` 重写 `build/config.yml` 后由 `wails3 update build-assets` 派生 exe 元数据。无 tag 的构建版本为 `dev`
 - 构建使用 `-tags production -trimpath -ldflags "-w -s"`（Windows 追加 `-H windowsgui`）
-- 产物（每次发布原子出齐，缺一不发）：`WorkBuddy-Agent-windows-amd64.exe`（**免安装，下载即用**）、`WorkBuddy-Agent-linux-amd64.AppImage`、`WorkBuddy-Agent-linux-amd64.deb`、`WorkBuddy-Agent-darwin-universal.dmg`、`WorkBuddy-Agent-darwin-universal-update.zip`、`SHA256SUMS`、`manifest.json`
-- Windows 不发安装包、也不发 zip：那一个 exe 既是用户下载的东西，也是自更新替换的目标，所以把它放在可写目录（`D:\Apps`、下载目录、U 盘）时自更新直接可用
+- 产物（每次发布原子出齐，缺一不发）：`WorkBuddy-Agent-windows-amd64.exe`（**免安装，下载即用**）、`SHA256SUMS`、`manifest.json`
+- 不发安装包、也不发 zip：那一个 exe 既是用户下载的东西，也是自更新替换的目标，所以把它放在可写目录（`D:\Apps`、下载目录、U 盘）时自更新直接可用
 - 详见 `docs/adr/0001-git-tag-as-version-source.md` 与 `docs/adr/0002-in-app-updater-and-dual-release-artifacts.md`
 
 #### 版本号规则（0.x 阶段）
@@ -176,7 +177,7 @@ git push origin v0.5.0     # 触发 .github/workflows/release.yml
 - 「设置 → 关于」内联更新卡片：检查 / 下载并安装 / 重启完成更新 / 跳过此版本 / 兼容「打开下载页」
 - 启动后约 10 秒静默检查一次，之后每 24 小时一次；**只提示，不自动安装**，可在同处关闭
 - 更新通道：GitHub Releases 上的 `manifest.json`（`releases/latest/download/manifest.json`），经 Wails 原生 `app.Updater` + endpoint provider 消费
-- 能否自动安装由**安装形态**决定：Windows 独立 exe（所在目录可写）、macOS `.app`、Linux `.AppImage` 可自替换；`.deb` 安装版与放在只读位置的 exe 只提示下载（updater 无提权路径）
+- 能否自动安装由**安装形态**决定：Windows 独立 exe 在可写目录时可自替换；放在只读位置则只提示下载（updater 无提权路径）。macOS `.app` 与 Linux `.AppImage` 同理，但这两个平台当前未发布产物
 - 清单签名：`updatePublicKeyB64`（`internal/services/updateservice.go`）钉公钥后**强制**校验签名；私钥放 CI secret `UPDATER_SIGNING_KEY`。未钉公钥时退化为仅校验清单摘要
 
 ### 稳定性与自愈

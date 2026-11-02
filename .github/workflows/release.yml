@@ -1,9 +1,14 @@
 name: Release
 
-# One push of a version tag publishes everything: three 64-bit builds, the
-# update payloads the in-app updater consumes, the checksums and the signed
-# update manifest. There is no human gate — the gate is the `gate` job plus the
-# single atomic publish step at the end (see "Design notes" below).
+# Platform scope: **Windows only, for now.** The maintainer's test environment is
+# Windows; shipping linux/macOS artifacts that nobody can smoke-test is how you
+# publish a broken build with an auto-updater attached to it. The linux and macOS
+# jobs (AppImage + deb, universal .app + dmg) are kept in git history and come
+# back in a later version once they can be verified.
+#
+# One push of a version tag publishes everything: the build, the update payload
+# the in-app updater consumes, the checksums and the update manifest. There is no
+# human gate — the gate is the `gate` job plus the single atomic publish step.
 on:
   push:
     tags: ["v*"]
@@ -33,13 +38,15 @@ env:
 
 jobs:
   # ---------------------------------------------------------------- gate ----
-  # Cheap, fast refusal. Runs *concurrently* with the three platform builds (no
-  # `needs:` on them) so a slow macOS universal build and the test suite overlap;
-  # only `publish` waits for all four. Race tests are deliberately skipped: they
-  # tripled the release wall-clock for a class of bug that unit+integration tests
-  # already catch here, and `ci.yml` still runs them on every push to main.
+  # Cheap, fast refusal, running on the platform we actually ship. Windows needs
+  # no cgo headers for `go vet .`/`go test .` (the removed linux jobs needed GTK4
+  # + WebKitGTK), so this is both faster and closer to reality than an ubuntu
+  # gate. Runs *concurrently* with the Windows build; only `publish` waits for
+  # both. Race tests are deliberately skipped here: they tripled the release
+  # wall-clock for a class of bug the unit tests already catch, and `ci.yml`
+  # still runs them on every push to main.
   gate:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,14 +60,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # The root package imports Wails' linux backend, so `go vet .`/`go test .`
-      # need GTK4 + WebKitGTK 6 headers via cgo. Without them the gate fails on
-      # pkg-config, which says nothing about the code under test.
-      - name: Install linux cgo headers
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libgtk-4-dev libwebkitgtk-6.0-dev
       - name: Toolchain fingerprint
         run: go version && node --version
       - name: Frontend (main.go embeds frontend/dist)
@@ -128,121 +127,17 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  # --------------------------------------------------------------- linux ----
-  linux:
-    runs-on: ubuntu-latest
-    env:
-      # linuxdeploy ships as an AppImage and the runner has no FUSE.
-      APPIMAGE_EXTRACT_AND_RUN: "1"
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-      - name: Install GTK4 / WebKitGTK 6 / AppImage tooling deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libgtk-4-dev libwebkitgtk-6.0-dev libfuse2 libgdk-pixbuf-2.0-0 file
-      - name: Install Wails CLI
-        run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - name: Stamp version (tag -> build assets)
-        env:
-          VERSION: ${{ github.event.inputs.tag || github.ref_name }}
-        run: |
-          export VERSION="${VERSION#v}"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          bash scripts/set-version.sh "$VERSION"
-      - name: Build AppImage + deb
-        run: |
-          task linux:create:appimage
-          task linux:create:deb
-      - name: Collect release artifacts
-        run: |
-          mkdir -p dist
-          # The updater matches artifacts by GOOS/GOARCH tokens in the file
-          # name; the packaged defaults (`go-workbuddy.AppImage`,
-          # `go-workbuddy_0.5.0_amd64.deb`) carry neither reliably.
-          mv bin/*.AppImage "dist/WorkBuddy-Agent-linux-amd64.AppImage"
-          mv bin/*.deb "dist/WorkBuddy-Agent-linux-amd64.deb"
-          chmod +x "dist/WorkBuddy-Agent-linux-amd64.AppImage"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: artifacts-linux
-          path: dist/*
-          if-no-files-found: error
-
-  # --------------------------------------------------------------- macOS ----
-  macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-      - name: Install Wails CLI
-        run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - name: Stamp version (tag -> build assets)
-        env:
-          VERSION: ${{ github.event.inputs.tag || github.ref_name }}
-        run: |
-          export VERSION="${VERSION#v}"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          bash scripts/set-version.sh "$VERSION"
-      - name: Build universal .app + dmg
-        run: |
-          task darwin:package:universal
-          # create:dmg (not package:dmg): package:dmg re-runs the single-arch
-          # `package` target and would overwrite the universal bundle.
-          task darwin:create:dmg
-      - name: Collect release artifacts
-        run: |
-          mkdir -p dist
-          cp bin/*.dmg "dist/WorkBuddy-Agent-darwin-universal.dmg"
-          # `ditto` preserves bundle symlinks and permissions; `zip -r` does
-          # not, and a .app that lost its framework symlinks will not launch.
-          # One top-level entry: that is what the updater's archive extractor
-          # requires before it can swap the bundle.
-          ditto -c -k --sequesterRsrc --keepParent "bin/go-workbuddy.app" "dist/WorkBuddy-Agent-darwin-universal-update.zip"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: artifacts-macos
-          path: dist/*
-          if-no-files-found: error
 
   # ------------------------------------------------------------- publish ----
-  # Single atomic publish step: every platform uploads into one artifact set,
-  # and only this job creates the release. A build failure anywhere leaves no
-  # release behind — never a release that is missing a platform, which would
-  # hard-fail `no artifact for <platform>/<arch>` in every client's check.
+  # Single atomic publish step: the build jobs upload into one artifact set and
+  # only this job creates the release, so a failed build never leaves a release
+  # behind that is missing a platform.
+  #
+  # Only Windows is published for now (see "Platform scope" at the top of the
+  # file); the linux/macos jobs are removed rather than disabled so this workflow
+  # cannot half-publish for platforms nobody can test yet.
   publish:
-    needs: [gate, windows, linux, macos]
+    needs: [gate, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -306,9 +201,7 @@ jobs:
             -url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/" \
             -output manifest.json \
             "${key_args[@]}" \
-            WorkBuddy-Agent-windows-amd64.exe \
-            WorkBuddy-Agent-linux-amd64.AppImage \
-            WorkBuddy-Agent-darwin-universal-update.zip
+            WorkBuddy-Agent-windows-amd64.exe
           cat manifest.json
       - name: Publish release
         if: ${{ github.event.inputs.dry_run != 'true' }}
