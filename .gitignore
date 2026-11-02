@@ -25,6 +25,9 @@ frontend/public/__wb-mock.js
 .zcode/skills/
 .zcode/plans/
 
+# 本地代理工具的机器级配置（Claude Code 的 launch.json 等，仅本机使用）
+.claude/
+
 # 绑定生成器的依赖包扫描产物（每次构建自动重建，仅 go-workbuddy 与 github.com 入库）
 frontend/bindings/context
 frontend/bindings/database
