@@ -3,6 +3,23 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百八十八轮迭代：桌面端单实例限制，二次启动唤回已有窗口（已实施）
+
+依据：issue #26（Windows 桌面安装版；版本字段为空，按 `createdAt`（11-03 08:14 UTC）推断为 v0.5.8）。保持应用运行，再次双击桌面图标或从开始菜单启动，会新开一个独立窗口/进程，重复启动可无限多开；期望第二次启动只激活并聚焦已在运行的窗口。
+
+**实现要点**
+
+- **根因**：`application.New` 没有配置 `SingleInstance`，Wails 不会获取任何单实例锁；每次启动都是完整的新进程，自行创建窗口、托盘、全局快捷键并启动后台服务。
+- `main.go`：为应用配置 `application.SingleInstance`，`UniqueID` 使用 `build/config.yml` 的 `productIdentifier`（`com.workbuddy.agent`）且保持跨版本稳定——它同时是运行中实例与二次启动互相发现的锁名，改动会让新旧版本互不可见。第二实例由 Wails 平台内建机制识别（Windows 命名互斥量 + `WM_COPYDATA`，macOS 锁文件 + 分布式通知，Linux D-Bus），把启动信息转发给首个实例后以 `ExitCode` 退出，不再创建窗口或启动服务。
+- 回调 `activateMainWindow`：`UnMinimise()` 还原最小化窗口（不用 `Restore()`，避免把用户的最大化/全屏窗口改回普通状态）→ `Show()` 覆盖关闭到托盘的隐藏态 → `Focus()` 置前。窗口句柄保存在 `atomic.Pointer`，二次启动早于窗口创建时安全跳过，不会触发数据竞争。
+- 与自动更新兼容：Wails updater helper 先等待旧进程退出、再启动新二进制，更新重启仍能正常拿到单实例锁；若 helper 超时后重启旧二进制，新进程会检测到尚未退出的旧实例并转发激活，而不是并排开出两个窗口。
+
+**测试证据**
+
+- 新增 `TestSingleInstanceOptions`：`SingleInstance` 配置必须存在且 `UniqueID` 固定为产品标识（防止将来改锁名重新引入多开）、第二次启动只触发一次窗口激活、nil 激活器与 nil 窗口不 panic。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/... .`、`go test -race -count=1 ./internal/... .` 全绿。
+- 本机为 macOS，Windows 无法实机复现；单实例检测与窗口激活使用 Wails 跨平台内建能力，待测试机更新后双击图标确认第二次启动唤回已有窗口。
+
 ### 第一百八十七轮迭代：项目展开后侧栏操作按钮不再被横向溢出裁掉（已实施）
 
 依据：issue #25（Windows 11，v0.5.7）。所有项目折叠时，项目行右侧的「+ / 编辑 / ⋯」正常可见；只要展开任意一个项目，所有项目行右侧的按钮都消失，只剩空白。

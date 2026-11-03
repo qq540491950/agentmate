@@ -79,6 +79,7 @@ frontend/stub/               # 浏览器视觉回归：setTransport 数据桩 + 
 - **autoTitle**：opt-in（`Settings.AutoTitle`），首轮后异步 30s 侧调用生成标题，仅替换自己写下的兜底标题；goroutine 自带 recover。
 - **A2A 失效联动**：SaveAgent（替换）/DeleteAgent 通过 `Services.StopPublishedAgent` 下线已发布服务器；OAuth 回调端口惰性重绑（授权流程结束必释放）。
 - **单轮超时**：Agent 未配置 `MaxTurnSeconds` 时默认 600 秒兜底；`runTurn` 的 recover 把 panic 转为 `error` + `done` 事件，界面不会卡在运行态。
+- **单实例**：`main.go` 的 `application.Options.SingleInstance` 以 `build/config.yml` 的 `productIdentifier` 为锁名（Windows 命名互斥量 / macOS 锁文件 / Linux D-Bus）；二次启动把激活请求转发给首个实例（`activateMainWindow`：UnMinimise→Show→Focus）后自行退出。UniqueID 不可改——换名等于让新旧版本互不可见，重新可以多开。
 - **导出脱敏**：`ExportConfig(false)` 剥离供应商 API Key 与 MCP AuthToken；`MCPTokens` 任何导出都不携带。
 
 ## 约定
