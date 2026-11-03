@@ -3,6 +3,25 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百九十二轮迭代：下线会话迁居（「移动到项目」）功能（已实施）
+
+依据：issue #29（Windows x64 桌面，v0.5.12）。会话行「…」菜单第一项为「移动到项目（首轮前生效）」，悬停展开默认项目与全部注册项目；用户要求连同子菜单、后端迁居 RPC 一并移除，不留残项。会话在创建时已归属项目（项目内新建走 `NewSessionWithProject`），迁居入口只增加噪音与误操作。
+
+**实现要点**
+
+- **根因**：会话的项目归属在创建时确定，但 `ChatService.SetSessionProject` 允许首轮前把既有会话改绑到任意项目（清空任务目录、重置基线并写审计）；前端两个入口（会话行菜单、输入区「任务目录」下拉）都调用它，形成一套与创建路径重复的状态修改面。
+- `internal/services/chatservice_sessions.go`：删除 `SetSessionProject` 整个方法（含工作区锁、首轮校验、项目存在性校验、基线重建与 `session_project_set` 审计）。创建路径 `NewSessionWithProject`、项目删除回落、`ForkSession` 保留项目的既有行为不变。
+- `internal/services/chatservice_project_test.go`：原首轮锁用例随方法删除；新增 `TestChatServiceHasNoRebindProjectRPC` 以反射守卫断言服务面不再暴露 `SetSessionProject`，防止重新生成绑定后入口复活。
+- `frontend/src/pages/ChatPage.tsx`：删除会话行三点菜单的「移动到项目」子菜单及 `switchSessionProject` 调用；输入区「任务目录」下拉移除项目行，只保留「选择其他目录…」与「添加新项目…」（目录绑定与项目创建是独立能力）。移除随之无用的 `DropdownMenuSub*`、`Check` 导入。
+- `frontend/src/lib/workspace.ts`（含测试）：锁定文案由「请先移出项目再单独指定工作区」改为「不能单独指定工作区」——迁居下线后「移出项目」已无入口，不再给出死路提示。
+- `frontend/stub/main.tsx`：删除 `SetSessionProject` 方法 ID `3134520676` 的桩。`frontend/bindings` 用与 CI 相同的 `wails3 v3.0.0` 重新生成（`SetSessionProject` 绑定消失；`AppInfo` / `ApplyUpdate` 两处注释随源码同步）。
+
+**测试证据**
+
+- `go vet ./internal/... .`、`go test -count=1 ./internal/... .`、`go test -race -count=1 ./internal/... .` 全绿（含新反射守卫用例）。
+- `cd frontend && npx tsc --noEmit && npm test && npm run build`：6 个测试文件、30 个用例全绿，生产构建通过。
+- 本机预览服务未获授权启动，未做浏览器实机点击验证；菜单结构由源码删除与 `tsc`/构建产物覆盖，待测试机安装新版本后确认三点菜单不再出现「移动到项目」。
+
 ### 第一百九十一轮迭代：修复会话行三点菜单弹到窗口左上角（已实施）
 
 依据：issue #28（Windows x64 桌面，v0.5.11）。展开项目分组后点击会话行右侧「…」，菜单固定出现在整个窗口左上角，压住标题栏与「搜索对话」，与按钮完全脱节；任何会话、项目、窗口尺寸均必现，且无日志输出。

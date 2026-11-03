@@ -248,15 +248,6 @@ export function SetSessionModel(sessionID: string, modelID: string): $Cancellabl
 }
 
 /**
- * SetSessionProject moves a chat into (empty id = out of) a project before
- * its first turn. Joining hands the workspace to the project root: the task
- * dir binding is cleared and the baseline restarts from the project.
- */
-export function SetSessionProject(sessionID: string, projectID: string): $CancellablePromise<void> {
-    return $Call.ByID(3134520676, sessionID, projectID);
-}
-
-/**
  * SetSessionWorkspace rebinds a task before its first event. The directory is
  * canonicalized and checked for writability and active-session conflicts.
  */

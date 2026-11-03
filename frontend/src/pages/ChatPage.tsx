@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { Dialogs, Events } from "@wailsio/runtime";
 import {
   Plus, Square, Trash2, Pencil, MessageSquare, Bot, Users, Loader2, ArrowUp,
-  Search, Download, Check,
+  Search, Download,
   X, BarChart3, Brain, Network, GitFork, Pin, PinOff, FileCode2, Archive, ClipboardCopy,
   FolderOpen,
   PanelRightOpen,
@@ -24,7 +24,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { computeEditFlags, computeRunningTools, computeToolDurations, groupSessionsByProject, groupSessionsByTime, isDayChange, mdToSpeech, type UIMessage } from "@/lib/chatUtils";
@@ -884,16 +884,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     }
   };
 
-  const switchSessionProject = async (s: ChatSession, projectID: string) => {
-    try {
-      await Chat.SetSessionProject(s.id, projectID);
-      reloadSessions();
-      reloadProjects();
-    } catch (e) {
-      toast.error(`更改项目失败: ${errText(e)}`);
-    }
-  };
-
   const deleteProject = async (p: Project) => {
     setConfirmRequest({
       title: `删除项目「${p.name}」？`,
@@ -918,7 +908,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       return;
     }
     if (active.projectId) {
-      toast.info("项目会话使用项目根目录，请先移出项目再单独指定工作区");
+      toast.info("项目会话使用项目根目录，不能单独指定工作区");
       return;
     }
     try {
@@ -1432,19 +1422,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <FolderInput className="mr-2 h-3.5 w-3.5" /> 移动到项目（首轮前生效）
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem onClick={() => switchSessionProject(s, "")}>默认项目</DropdownMenuItem>
-                {projects.map((p) => (
-                  <DropdownMenuItem key={p.id} title={p.rootDir} onClick={() => switchSessionProject(s, p.id)}>
-                    {p.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
             <DropdownMenuItem onClick={() => forkSession(s)}>
               <GitFork className="mr-2 h-3.5 w-3.5" /> 分叉此会话
             </DropdownMenuItem>
@@ -2313,8 +2290,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                         ? `${workspaceContext?.path || "自动任务目录（全局工作区）"}（首轮已开始，任务目录已锁定）`
                         : workspaceLock
                           ? `${workspaceContext?.path || "自动任务目录（全局工作区）"}（${workspaceLock}）`
-                          : `${workspaceContext?.path || "自动任务目录（全局工作区）"}（点击切换项目或目录）`}
-                      aria-label="选择项目与任务目录"
+                          : `${workspaceContext?.path || "自动任务目录（全局工作区）"}（点击选择任务目录）`}
+                      aria-label="选择任务目录"
                       disabled={messages.length > 0}
                     >
                       <FolderOpen className="h-3.5 w-3.5 shrink-0" />
@@ -2324,17 +2301,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-72">
                     <DropdownMenuLabel>任务目录</DropdownMenuLabel>
-                    <DropdownMenuItem onClick={() => switchSessionProject(active, "")}>
-                      {!active.projectId && <Check className="h-3.5 w-3.5" />}
-                      <span className="truncate">默认项目（自动任务目录）</span>
-                    </DropdownMenuItem>
-                    {projects.map((p) => (
-                      <DropdownMenuItem key={p.id} title={p.rootDir} onClick={() => switchSessionProject(active, p.id)}>
-                        {active.projectId === p.id && <Check className="h-3.5 w-3.5" />}
-                        <span className="truncate">{p.name}</span>
-                      </DropdownMenuItem>
-                    ))}
-                    <DropdownMenuSeparator />
                     <DropdownMenuItem disabled={!!workspaceLock} onClick={changeSessionWorkspace}>
                       <FolderInput className="h-3.5 w-3.5" />
                       <span>选择其他目录…</span>

@@ -22,7 +22,8 @@ import * as gorm$0 from "../../../gorm.io/gorm/models.js";
 import * as $models from "./models.js";
 
 /**
- * AppInfo returns static app metadata.
+ * AppInfo returns static app metadata. platform feeds the issue-report
+ * prefill so testers never hand-type their environment.
  */
 export function AppInfo(): $CancellablePromise<{ [_ in string]?: string } | null> {
     return $Call.ByID(2925845021);

@@ -298,14 +298,6 @@ const handlers: Record<string, (args: any[]) => any> = {
     histories[id] = [];
     return sess;
   },
-  // SetSessionProject(sessionID, projectID)
-  "3134520676": (args) => {
-    const sess = seedConfig.sessions.find((s) => s.id === args[0]);
-    if (!sess) throw new Error("会话不存在");
-    (sess as any).projectId = args[1] || undefined;
-    delete sess.workspaceDir;
-    return null;
-  },
   // ArtifactService.TaskWorkspaceSnapshot(sessionID)
   "2781372891": async (args) => {
     if (taskSnapshotMode === "slow") {
