@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -54,13 +55,24 @@ var updateAsideEpoch = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
 // updateTargetForExe maps the running executable to the path the Wails
 // updater replaces. Mirrors pkg/updater's bundleTarget: on macOS the app
 // bundle is the replaceable unit, elsewhere it is the executable itself.
+//
+// The answer must depend only on goos, not on the host running the code:
+// os.Executable on macOS always returns an absolute POSIX path, so the
+// slash-based path package is the correct parser even when the tests (or a
+// future cross-platform tool) execute on Windows. filepath would rewrite the
+// input to backslashes there and produce an unusable target.
 func updateTargetForExe(exe, goos string) string {
-	if goos == "darwin" {
-		parts := strings.Split(filepath.Clean(exe), string(os.PathSeparator))
-		for i, p := range parts {
-			if strings.HasSuffix(p, ".app") {
-				return string(os.PathSeparator) + filepath.Join(parts[1:i+1]...)
-			}
+	if goos != "darwin" {
+		return exe
+	}
+	clean := path.Clean(exe)
+	if !strings.HasPrefix(clean, "/") {
+		return exe
+	}
+	parts := strings.Split(clean, "/")
+	for i, p := range parts {
+		if strings.HasSuffix(p, ".app") {
+			return "/" + path.Join(parts[1:i+1]...)
 		}
 	}
 	return exe

@@ -3,6 +3,23 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百九十轮迭代：修复 Windows 发版门禁的 macOS 路径断言（已实施）
+
+依据：v0.5.10 发版失败（Release run 41607432207）。`gate` 在 windows-latest 上执行 `go test -count=1 ./internal/... .` 时，`TestUpdateTargetForExe/darwin_bundle` 失败：`target = "\\Users\\u\\Applications\\WorkBuddy Agent.app"`，期望 `/Users/u/Applications/WorkBuddy Agent.app`；`publish` 因 gate 失败被跳过，没有产生 release。
+
+**实现要点**
+
+- **根因**：`updateTargetForExe` 的 darwin 分支用宿主机语义的 `filepath.Clean` / `os.PathSeparator` / `filepath.Join` 解析传入的 macOS 路径。macOS 上两者一致，但 Windows 上 `filepath.Clean("/Users/...")` 会把斜杠改写成反斜杠，拼回的目标变成 `\Users\u\...`。生产环境只有 macOS 会走到该分支，所以不影响运行；但该函数按 `goos` 参数设计为可跨平台测试，Windows runner 上的门禁必然红。
+- `internal/services/updateleftover.go`：darwin 分支改用斜杠语义的 `path` 包（`path.Clean` / `path.Join`），并保留绝对路径守卫；结果只由 `goos` 决定，与宿主平台无关。
+- `.github/workflows/ci.yml`：`windows-build` job 在构建后增加 `Test (windows)` 步骤，与 release gate 使用同一命令，让 Windows 专属失败在 push/PR 阶段暴露，而不是等打标签后才发现。
+- `scripts/check-ci-build-coverage.sh`：校验 Windows job 的测试步骤存在，防止以后被删掉。
+
+**测试证据**
+
+- `go test -count=1 -run 'TestUpdateTargetForExe|TestSweepUpdateLeftovers' -v ./internal/services`：全部 PASS。
+- `go test -count=1 ./internal/... .` 与 `go test -race -count=1 ./internal/services` 全绿；`go vet ./internal/... .` 通过。
+- `GOOS=windows GOARCH=amd64 go test -c ./internal/services` 交叉编译通过（本机没有 Windows 运行环境，Windows 上的执行验证由 v0.5.11 的 release gate 完成）。
+
 ### 第一百八十九轮迭代：更新后自动清理桌面上的旧版本残留（已实施）
 
 依据：issue #27（Windows 桌面安装版；反馈者自述 v0.5.8）。更新并重启后，桌面上仍留着上一版本应用的备份副本，右键删除 / 拖入回收站提示「文件正在使用」，只能一直留在桌面；期望新版本启动后不再占用旧版本文件。issue 同时指出与 #26（多开）可能互为因果。
