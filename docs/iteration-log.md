@@ -3,6 +3,24 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百九十四轮迭代：供应商编辑面板可滚动、底部操作栏常驻（已实施）
+
+依据：issue #32（Windows x64 桌面，v0.5.12）。供应商编辑面板在模型列表达到 8～9 条后一路撑长，`DialogContent` 没有高度上限也没有滚动容器，底部「保存」「取消」被推到窗口外，既点不到也滚不到，只能 Esc 关闭并丢弃已填内容。期望内容区可纵向滚动、操作栏固定可见、最后一条模型与操作栏不重叠，且窄窗口与键盘 Tab 同样可用。
+
+**实现要点**
+
+- **根因**：`ModelsPage` 的供应商对话框直接使用 shadcn `DialogContent` 默认布局——`grid` + 无 `max-height` 的 `fixed` 居中弹层。表单是普通流式内容，高度只由内容决定，模型行越多弹层越高；超出视口的部分（含 `DialogFooter`）没有任何滚动入口。窗口高度只是决定何时「中招」的阈值，不是根因。
+- `frontend/src/lib/providerEditorLayout.ts`（含测试）：新增两个布局 class 常量，锁定「对话框限高 + 只有表单主体滚动」的契约——`PROVIDER_EDITOR_DIALOG_CLASS` 给 `DialogContent` 加 `flex max-h-[85vh] flex-col`（`flex` 经 `cn` 的 tailwind-merge 覆盖默认 `grid`），`PROVIDER_EDITOR_BODY_CLASS` 给表单主体加 `min-h-0 flex-1 overflow-y-auto`。`min-h-0` 是 flex 收缩的关键：缺省 `min-height:auto` 会让主体拒绝缩到内容高度以下，限高后只会裁切而不是滚动。`overflow-y-auto` 刻意放在主体而非对话框上，保证「取消」「保存」始终留在滚动区之外。
+- `frontend/src/pages/ModelsPage.tsx`：`DialogContent` 改用对话框常量；名称/协议/Base URL/API Key/模型列表/默认供应商开关所在的表单容器改用主体常量（保留 `grid gap-4 py-2`）；`DialogFooter` 仍是 `DialogContent` 的直接子节点，维持在内容区下方常驻。滚动条只在内容溢出时出现，`py-2` 在最后一条模型与操作栏之间留出间距；Tab 聚焦模型行时浏览器自动把输入滚入可视区，底部按钮不受裁切。
+- 该布局与仓库既有可滚动脉冲一致（`ToolCallCard` 的 `flex max-h-[85vh] flex-col` + `min-h-0 flex-1 overflow-auto`），未引入新的 WebView 版本要求。
+
+**测试证据**
+
+- 新增 `frontend/src/lib/providerEditorLayout.test.ts`：#32 回归守卫，断言对话框限高且为纵向 flex、主体独占滚动（对话框本身不得出现 `overflow-y-auto`）、主体具备 `min-h-0 flex-1` 以便在 flex 列内收缩。
+- `cd frontend && npx tsc --noEmit && npm test && npm run build`：9 个测试文件、47 个用例全绿，生产构建通过；构建产物 `dist/assets/index-*.css` 确认生成 `max-h-[85vh]`、`min-h-0`、`flex-1`、`overflow-y-auto`、`flex-col` 工具类。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/... .` 全绿（后端未改动）。
+- 本机预览服务未获授权启动，未做浏览器实机点击验证；布局依据为 flex 收缩语义与构建产物，待测试机安装新版本后按 issue 的期望结果逐条确认（9 条模型滚到底、操作栏常驻、末行不重叠、Tab 可达保存按钮）。
+
 ### 第一百九十三轮迭代：新聊天仅在首条消息发送后才创建会话（已实施）
 
 依据：issue #30（Windows x64 桌面，v0.5.12）。点击「新聊天」会立刻调用 `NewSessionWithWorkspace`，左侧会话列表立即多出一条「新对话」，连点几次就堆满空会话且标题被挤成省略号；期望空白对话只存在于主区域，发出首条消息后才落库并出现在列表。

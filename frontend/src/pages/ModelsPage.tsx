@@ -16,6 +16,10 @@ import {
 } from "@/components/ui/select";
 import {
   Config, Protocol, type ModelProvider, type ModelInfo, errText } from "@/lib/api";
+import {
+  PROVIDER_EDITOR_BODY_CLASS,
+  PROVIDER_EDITOR_DIALOG_CLASS,
+} from "@/lib/providerEditorLayout";
 
 const protocolLabels: Record<string, string> = {
   [Protocol.ProtocolOpenAI]: "OpenAI 兼容 (DeepSeek/Kimi/Ollama...)",
@@ -219,12 +223,12 @@ export function ModelsPage() {
       </div>
 
       <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className={PROVIDER_EDITOR_DIALOG_CLASS}>
           <DialogHeader>
             <DialogTitle>{editing?.id ? "编辑供应商" : "新增供应商"}</DialogTitle>
           </DialogHeader>
           {editing && (
-            <div className="grid gap-4 py-2">
+            <div className={PROVIDER_EDITOR_BODY_CLASS}>
               <div className="grid gap-1.5">
                 <Label>名称</Label>
                 <Input
