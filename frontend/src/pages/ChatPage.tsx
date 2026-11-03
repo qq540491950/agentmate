@@ -1488,8 +1488,14 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             />
           </div>
         </div>
-        <ScrollArea className="flex-1 px-2">
-          <div className="grid gap-1 pb-3">
+        {/* Plain scroll container: Radix ScrollArea wraps its children in a
+            `display: table` div, so a long session title/preview sets the table
+            width to its full nowrap length and every row's right-aligned
+            actions get clipped outside the sidebar. A block container lets
+            `truncate` do its job and keeps the +/edit/… buttons visible no
+            matter which project is expanded. */}
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2">
+          <div className="grid grid-cols-1 gap-1 pb-3">
             {searching ? (
               <>
                 <div className="px-2 pb-0.5 pt-2 text-[11px] font-medium text-muted-foreground">搜索结果（{searchResults.length}）</div>
@@ -1612,7 +1618,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                             </span>
                           </div>
                           {expanded && (
-                            <div className="ml-3 grid gap-0.5 border-l pl-1">
+                            <div className="ml-3 grid grid-cols-1 gap-0.5 border-l pl-1">
                               {g.sessions.map(renderSessionRow)}
                             </div>
                           )}
@@ -1684,7 +1690,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               </>
             )}
           </div>
-        </ScrollArea>
+        </div>
         <div className="flex items-center justify-between border-t px-3 py-2 text-[11px] text-muted-foreground">
           <span className="truncate">ADK Go v2 · Wails v3</span>
           <span className="flex shrink-0 items-center gap-1">

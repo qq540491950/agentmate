@@ -3,6 +3,22 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百八十七轮迭代：项目展开后侧栏操作按钮不再被横向溢出裁掉（已实施）
+
+依据：issue #25（Windows 11，v0.5.7）。所有项目折叠时，项目行右侧的「+ / 编辑 / ⋯」正常可见；只要展开任意一个项目，所有项目行右侧的按钮都消失，只剩空白。
+
+**实现要点**
+
+- **根因**：侧栏项目/最近列表包在 Radix `ScrollArea` 里，它的内容容器固定为 `display: table; min-width: 100%`；同时列表网格没有显式列宽（`grid` 的自动列按 min-content 取宽）。会话标题与 80 字摘要都是 `truncate`（`white-space: nowrap`），其 min/max-content 等于整行文本宽度。项目折叠时，会话行不渲染，侧栏宽度正常；展开后这些长文本把表格/网格撑到 500+ px，`overflow-hidden` 又把超出侧栏的部分裁掉——所有行等宽，于是所有项目行右对齐的三个按钮一起被裁到可视区之外。
+- `frontend/src/pages/ChatPage.tsx`：侧栏列表改为普通块级滚动容器（`min-h-0 flex-1 overflow-x-hidden overflow-y-auto`），不再生成表格包装层；原生滚动条已由 `index.css` 统一为细深色样式，视觉不受影响。
+- 列表网格与展开后的会话网格都补上 `grid-cols-1`（`repeat(1, minmax(0, 1fr))`），让列宽受容器约束，`truncate` 正常出现省略号，长标题/摘要不会再撑宽整行。
+
+**测试证据**
+
+- 用 stub 视觉回归夹具（`npm run stub`）注入一条带长摘要的项目会话，以 headless Chromium 量测：修复前侧栏滚动容器 `clientWidth=223`、`scrollWidth=576`，项目行宽 576px，三个按钮位于 522–574px（全部在可视区外）；修复后 `clientWidth=scrollWidth=239`，行宽 223px，按钮位于 169–221px，展开态与折叠态截图均可见「+ / 编辑 / ⋯」。
+- `cd frontend && npx tsc --noEmit && npm test && npm run build` 通过。
+- 本机为 macOS，Windows 11 无法实机复现；问题为浏览器布局计算，与平台无关，待测试机更新后确认。
+
 ### 第一百八十六轮迭代：项目行新建对话恢复与展开态按钮配色（已实施）
 
 依据：issue #24（Windows 11；版本字段为空，按 `createdAt`（11-03 06:20 UTC）推断为 v0.5.6，晚于 v0.5.6 发布）。展开某个项目分组后点击行内「+」显示异常且无法新建项目会话；收起时同一组按钮显示正常、可以新建。
