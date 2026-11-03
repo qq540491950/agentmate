@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft } from "lucide-react";
-import { Browser } from "@wailsio/runtime";
+import { ArrowLeft, FolderOpen } from "lucide-react";
+import { Browser, Dialogs } from "@wailsio/runtime";
 import { toast } from "sonner";
 import { AgentsPage } from "@/pages/AgentsPage";
 import { TeamsPage } from "@/pages/TeamsPage";
@@ -23,6 +23,7 @@ import { UpdateCard } from "@/components/UpdateCard";
 import { cn } from "@/lib/utils";
 import { buildIssueReportURL } from "@/lib/issue";
 import { ACCENTS, FONT_SCALES, applyTheme, cacheTheme, type ThemePrefs } from "@/lib/theme";
+import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
 import { Chat, App, A2A, Config, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
 
 const SETTINGS_TABS = [
@@ -131,6 +132,27 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
     }
   }, [version]);
 
+  // 工作区目录：与对话页的「添加项目」共用原生目录选择器，Windows/macOS
+  // 都能弹窗选择，不再要求用户手输路径。取消选择不是错误，保持原值。
+  const pickWorkspaceDir = useCallback(async () => {
+    try {
+      const picked = pickedDirectoryValue(await Dialogs.OpenFile({
+        CanChooseDirectories: true,
+        CanChooseFiles: false,
+        CanCreateDirectories: true,
+        ResolvesAliases: true,
+        Title: "选择工作区目录",
+        ButtonText: "选择此文件夹",
+      }));
+      if (picked) {
+        setSettings((prev) => (prev ? { ...prev, workspaceDir: picked } : prev));
+      }
+    } catch (e) {
+      if (isDialogCancelError(e)) return;
+      toast.error(`选择目录失败: ${errText(e)}`);
+    }
+  }, []);
+
   const save = async () => {
     if (!settings) return;
     setSaving(true);
@@ -195,7 +217,14 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
         {tab === "models" && <ModelsPage />}
         {(tab === "general" || tab === "knowledge" || tab === "data" || tab === "about") && (
         <div className="h-full overflow-y-auto p-6">
-      <div className="mx-auto grid max-w-5xl items-start gap-4 lg:grid-cols-2">
+      {/* 卡片按瀑布式两列排布：短卡片不再被同行的高卡片撑出大片空白；
+          单卡片页（知识库/关于）保持单列宽度，避免右半屏空置。 */}
+      <div className={cn("mx-auto", tab === "general" || tab === "data" ? "max-w-5xl" : "max-w-3xl")}>
+      <div className={cn(
+        tab === "general" || tab === "data"
+          ? "columns-1 gap-4 lg:columns-2 [&>div[data-slot=card]]:mb-4 [&>div[data-slot=card]]:break-inside-avoid"
+          : "grid gap-4",
+      )}>
         {tab === "general" && (
         <Card>
           <CardHeader>
@@ -304,13 +333,20 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
           <CardContent className="grid gap-4">
             <div className="grid gap-1.5">
               <Label>工作区目录</Label>
-              <Input
-                value={settings.workspaceDir}
-                onChange={(e) => setSettings({ ...settings, workspaceDir: e.target.value })}
-                placeholder="/Users/you/Documents/WorkBuddyWorkspace"
-              />
+              <div className="flex gap-2">
+                <Input
+                  className="flex-1"
+                  value={settings.workspaceDir}
+                  onChange={(e) => setSettings({ ...settings, workspaceDir: e.target.value })}
+                  placeholder="例如：D:\\WorkBuddyWorkspace"
+                />
+                <Button variant="outline" className="shrink-0" onClick={pickWorkspaceDir}>
+                  <FolderOpen className="mr-1.5 h-4 w-4" />
+                  浏览…
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
-                开启「工作区文件读写」内置工具的 Agent 只能访问该目录内的文件；「产物预览」也仅限该目录。
+                点「浏览…」直接选择目录，也可手动输入；开启「工作区文件读写」内置工具的 Agent 只能访问该目录内的文件，「产物预览」也仅限该目录。修改后对新建任务生效。
               </p>
             </div>
           </CardContent>
@@ -814,9 +850,10 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
           </CardContent>
         </Card>
         )}
+      </div>
 
         {(tab === "general" || tab === "knowledge") && (
-        <div className="sticky bottom-0 mt-2 flex justify-end border-t bg-background/90 px-3 py-3 backdrop-blur lg:col-span-2">
+        <div className="sticky bottom-0 mt-4 flex justify-end border-t bg-background/90 px-3 py-3 backdrop-blur">
           <Button onClick={save} disabled={saving}>保存设置</Button>
         </div>
         )}

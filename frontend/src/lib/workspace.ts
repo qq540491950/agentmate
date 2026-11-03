@@ -11,6 +11,15 @@ export function isDialogCancelError(err: unknown): boolean {
 }
 
 /**
+ * pickedDirectoryValue normalizes a native directory picker result. Wails
+ * returns the chosen absolute path as a string; an empty (or non-string)
+ * value means "nothing selected" and callers must leave the form untouched.
+ */
+export function pickedDirectoryValue(picked: unknown): string {
+  return typeof picked === "string" && picked.trim() !== "" ? picked : "";
+}
+
+/**
  * workspaceLockReason explains why the composer's directory menu must not
  * rebind the task workspace. An empty string means the binding may change.
  * Project chats always run in the project root; a started turn locks the

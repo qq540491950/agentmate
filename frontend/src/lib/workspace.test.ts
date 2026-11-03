@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isDialogCancelError, workspaceLockReason } from "./workspace";
+import { isDialogCancelError, pickedDirectoryValue, workspaceLockReason } from "./workspace";
 
 describe("isDialogCancelError", () => {
   it("treats the Wails picker cancellation as no selection", () => {
@@ -14,6 +14,21 @@ describe("isDialogCancelError", () => {
     expect(isDialogCancelError(new Error("permission denied"))).toBe(false);
     expect(isDialogCancelError(undefined)).toBe(false);
     expect(isDialogCancelError({})).toBe(false);
+  });
+});
+
+describe("pickedDirectoryValue", () => {
+  it("keeps the absolute path returned by the native picker", () => {
+    expect(pickedDirectoryValue("D:\\WorkBuddyWorkspace")).toBe("D:\\WorkBuddyWorkspace");
+    expect(pickedDirectoryValue("/Users/you/Documents/WorkBuddyWorkspace")).toBe("/Users/you/Documents/WorkBuddyWorkspace");
+  });
+
+  it("treats cancellation and malformed results as no selection", () => {
+    expect(pickedDirectoryValue("")).toBe("");
+    expect(pickedDirectoryValue("   ")).toBe("");
+    expect(pickedDirectoryValue(null)).toBe("");
+    expect(pickedDirectoryValue(undefined)).toBe("");
+    expect(pickedDirectoryValue({ path: "/tmp" })).toBe("");
   });
 });
 
