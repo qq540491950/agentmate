@@ -3,6 +3,29 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百八十五轮迭代：模型流式响应正确收尾与工具参数 Schema 透传（已实施）
+
+依据：issue #23（Windows 11；版本字段为空，按 `createdAt`（11-03 02:53 UTC）推断为 v0.5.4）。新会话发送「查看本项目是做什么的？」后一直停在回复等待状态、没有任何内容；模型厂家日志为 `ECONNRESET: The socket connection was closed unexpectedly`。v0.5.4 相对前一版对直聊的唯一行为变化是挂载了工作区文件工具（#21），因此首轮通常是工具调用而非文本。
+
+**实现要点**
+
+- **根因：`[DONE]` 不被当成终止信号**。OpenAI 兼容适配器把 `data: [DONE]` 当普通行跳过，继续等 EOF；Anthropic 适配器同样忽略 `message_stop`。提供方网关/代理在最后一个分块后保持 HTTP 响应不关闭时，适配器会一直阻塞：文本增量（若有）不落最终态、工具调用只存在于最终响应而永远不出现，界面停在「正在回复…」，直到单轮 600 秒兜底超时；客户端此时中断连接，正是模型厂家侧看到的 `ECONNRESET`。现在两个适配器在协议终止标记处立即收尾并产出最终响应。
+- **流式请求收到非 SSE JSON 不再静默成功**：网关在上游断链时常用 HTTP 200 + 纯 JSON 错误对象回复流式请求；旧逻辑按 SSE 扫描后得到空回答。现在识别 JSON 正文并解析（错误对象按供应商错误上报，完整 completion 按非流式结果返回，多个 tool call 按位置保序，修复了完整响应没有 index 字段时全部合并到 0 的问题）。
+- **工具参数 Schema 透传**：ADK 内置工具、Skills 与 MCP 工具把 Schema 放在 `FunctionDeclaration.ParametersJsonSchema`，适配器此前只读旧的 `Parameters` 字段，导致所有工具都以无参数的 `{"type":"object"}` 发出（模型无法正确调用 `read_workspace_file` / skill / MCP 工具）。现在优先取 JSON Schema（`map[string]any` 直接使用，其他类型经 JSON 规范化），旧字段保留兜底。
+- **流式静默看门狗**：流打开后超过 2 分钟没有任何数据（无分块、无 keep-alive）即以明确错误中断本轮，而不是等到 10 分钟单轮上限；错误文案提示检查网络/代理。
+- 顺带：空响应（空正文、仅噪声行、只有终止标记）与纯噪声正文（HTML 代理拦截页）都给出可读错误，而不是以空回答结束回合。
+
+**测试证据**
+
+- 新增 `TestOpenAICompatStopsAtDone` / `TestAnthropicStopsAtMessageStop`：服务端发出终止标记后保持连接不关闭，适配器必须在 2 秒内完成（旧实现会等 5 秒上下文超时）。
+- 新增 `TestOpenAICompatStreamRequestAnsweredWithJSONError` / `TestAnthropicStreamRequestAnsweredWithJSONError`：HTTP 200 + JSON 错误对象必须上报（覆盖 issue 中的 ECONNRESET 形态）。
+- 新增 `TestOpenAICompatStreamRequestAnsweredWithJSONCompletion`：纯 JSON 完整响应中的两个 tool call 都必须保留（含参数）。
+- 新增 `TestStreamIdleTimeoutAbortsStalledProvider`：首个分块后静默的流在缩短的看门狗时间内中断并给出中文错误。
+- 新增 `TestFunctionParametersFromJSONSchema`（OpenAI `parameters` / Anthropic `input_schema` 均携带属性与 required）与 `TestFunctionParametersLegacySchemaStillWorks`。
+- 扩充 `TestDirectChatReadsWorkspaceFiles`：直聊首轮请求必须包含 `"properties":{"path"` 与写入工具的 `required`，钉住 issue 的复现场景。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/...`、`go test -race -count=1 ./internal/...` 全绿。
+- 本机为 macOS，Windows 11 无法实机复现；修复针对的是平台无关的 HTTP/SSE 协议收尾与工具 Schema 透传，待测试机更新后确认。
+
 ### 第一百八十四轮迭代：更新重启不再残留旧进程（已实施）
 
 依据：issue #22（Windows 11；版本字段为空，按 `createdAt`（11-03 02:10 UTC）推断为 v0.5.3，早于 v0.5.4 发布）。「设置 → 关于 → 检查更新 → 下载并安装 → 重启完成更新」后新版本启动，但旧版本窗口仍在，任务管理器里同时有两个应用进程。

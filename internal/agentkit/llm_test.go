@@ -517,3 +517,317 @@ func TestOpenAICompatBrokenToolArgsSkipped(t *testing.T) {
 		t.Fatalf("expected skip note in text: %q", final.Content.Parts[0].Text)
 	}
 }
+
+// holdOpenServer answers once and then keeps the response body open until the
+// test releases it — the shape of a gateway/proxy that never signals EOF after
+// the stream's terminator.
+func holdOpenServer(t *testing.T, send func(http.ResponseWriter)) *httptest.Server {
+	t.Helper()
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		send(w)
+		w.(http.Flusher).Flush()
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(release) })
+	return srv
+}
+
+// TestOpenAICompatStopsAtDone pins issue #23: [DONE] terminates the stream.
+// Providers/gateways that keep the HTTP response open afterwards used to leave
+// the adapter blocked until the whole-turn deadline, with no final response —
+// no answer, no tool call, just an endless "正在回复…".
+func TestOpenAICompatStopsAtDone(t *testing.T) {
+	srv := holdOpenServer(t, func(w http.ResponseWriter) {
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"完成"}}]}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	})
+	llm, _ := NewOpenAICompat(OpenAICompatConfig{BaseURL: srv.URL, Model: "m"})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	var text strings.Builder
+	finals := 0
+	for resp, err := range llm.GenerateContent(ctx, &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)},
+	}, true) {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Partial {
+			text.WriteString(resp.Content.Parts[0].Text)
+		} else {
+			finals++
+		}
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("adapter waited for EOF instead of stopping at [DONE] (%v)", elapsed)
+	}
+	if text.String() != "完成" || finals != 1 {
+		t.Fatalf("text=%q finals=%d", text.String(), finals)
+	}
+}
+
+func TestAnthropicStopsAtMessageStop(t *testing.T) {
+	srv := holdOpenServer(t, func(w http.ResponseWriter) {
+		_, _ = w.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":3}}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"完成\"}}\n\n"))
+		_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	})
+	llm, _ := NewAnthropic(AnthropicConfig{BaseURL: srv.URL, APIKey: "k", Model: "m"})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	var text strings.Builder
+	for resp, err := range llm.GenerateContent(ctx, &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)},
+	}, true) {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Partial {
+			text.WriteString(resp.Content.Parts[0].Text)
+		}
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("adapter waited for EOF instead of stopping at message_stop (%v)", elapsed)
+	}
+	if text.String() != "完成" {
+		t.Fatalf("text=%q", text.String())
+	}
+}
+
+// TestOpenAICompatStreamRequestAnsweredWithJSONError: a gateway that answers
+// the stream request with a plain JSON error object (the reported ECONNRESET
+// case) must surface that error — not end the turn with an empty answer.
+func TestOpenAICompatStreamRequestAnsweredWithJSONError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"error":{"message":"ECONNRESET: The socket connection was closed unexpectedly"}}`))
+	}))
+	defer srv.Close()
+	llm, _ := NewOpenAICompat(OpenAICompatConfig{BaseURL: srv.URL, Model: "m"})
+
+	var got error
+	for _, err := range llm.GenerateContent(context.Background(), &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)},
+	}, true) {
+		if err != nil {
+			got = err
+		}
+	}
+	if got == nil || !strings.Contains(got.Error(), "ECONNRESET") || !strings.Contains(got.Error(), "模型供应商错误") {
+		t.Fatalf("error = %v", got)
+	}
+}
+
+func TestAnthropicStreamRequestAnsweredWithJSONError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"error":{"message":"overloaded"}}`))
+	}))
+	defer srv.Close()
+	llm, _ := NewAnthropic(AnthropicConfig{BaseURL: srv.URL, APIKey: "k", Model: "m"})
+
+	var got error
+	for _, err := range llm.GenerateContent(context.Background(), &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)},
+	}, true) {
+		if err != nil {
+			got = err
+		}
+	}
+	if got == nil || !strings.Contains(got.Error(), "overloaded") {
+		t.Fatalf("error = %v", got)
+	}
+}
+
+// TestOpenAICompatStreamRequestAnsweredWithJSONCompletion: some gateways ignore
+// stream=true and return the whole completion as JSON. Both tool calls must
+// survive (complete responses have no per-call index field).
+func TestOpenAICompatStreamRequestAnsweredWithJSONCompletion(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"好的","tool_calls":[
+			{"id":"c1","type":"function","function":{"name":"read_workspace_file","arguments":"{\"path\":\"README.md\"}"}},
+			{"id":"c2","type":"function","function":{"name":"list_workspace_files","arguments":"{}"}}
+		]}}],"usage":{"prompt_tokens":3,"completion_tokens":4}}`))
+	}))
+	defer srv.Close()
+	llm, _ := NewOpenAICompat(OpenAICompatConfig{BaseURL: srv.URL, Model: "m"})
+
+	var final *model.LLMResponse
+	for resp, err := range llm.GenerateContent(context.Background(), &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)},
+	}, true) {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !resp.Partial {
+			final = resp
+		}
+	}
+	if final == nil {
+		t.Fatal("no final response")
+	}
+	var calls []*genai.FunctionCall
+	text := ""
+	for _, p := range final.Content.Parts {
+		if p.FunctionCall != nil {
+			calls = append(calls, p.FunctionCall)
+		}
+		text += p.Text
+	}
+	if text != "好的" || len(calls) != 2 {
+		t.Fatalf("text=%q calls=%+v", text, calls)
+	}
+	if calls[0].Name != "read_workspace_file" || calls[0].Args["path"] != "README.md" {
+		t.Fatalf("first call = %+v", calls[0])
+	}
+	if calls[1].Name != "list_workspace_files" {
+		t.Fatalf("second call merged/lost: %+v", calls[1])
+	}
+}
+
+// TestStreamIdleTimeoutAbortsStalledProvider: a provider that sends a first
+// chunk and then goes silent must not hold the turn open indefinitely.
+func TestStreamIdleTimeoutAbortsStalledProvider(t *testing.T) {
+	old := streamIdleTimeout
+	streamIdleTimeout = 400 * time.Millisecond
+	defer func() { streamIdleTimeout = old }()
+
+	srv := holdOpenServer(t, func(w http.ResponseWriter) {
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"半"}}]}` + "\n\n"))
+	})
+	llm, _ := NewOpenAICompat(OpenAICompatConfig{BaseURL: srv.URL, Model: "m"})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	var got error
+	for _, err := range llm.GenerateContent(ctx, &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)},
+	}, true) {
+		if err != nil {
+			got = err
+			break
+		}
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("stalled stream not aborted in time (%v)", elapsed)
+	}
+	if got == nil || !strings.Contains(got.Error(), "没有返回任何数据") {
+		t.Fatalf("error = %v", got)
+	}
+}
+
+// TestFunctionParametersFromJSONSchema pins the tool-schema wire format:
+// ADK's built-in/MCP/skill tools publish ParametersJsonSchema, and providers
+// must receive the real properties instead of an argument-less object.
+func TestFunctionParametersFromJSONSchema(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"path": map[string]any{"type": "string"},
+		},
+		"required": []string{"path"},
+	}
+
+	var oaBody map[string]any
+	oaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&oaBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"ok"}}]}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer oaSrv.Close()
+	oa, _ := NewOpenAICompat(OpenAICompatConfig{BaseURL: oaSrv.URL, Model: "m"})
+	for _, err := range oa.GenerateContent(context.Background(), &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText("x", genai.RoleUser)},
+		Config: &genai.GenerateContentConfig{Tools: []*genai.Tool{{FunctionDeclarations: []*genai.FunctionDeclaration{{
+			Name:                 "read_workspace_file",
+			ParametersJsonSchema: schema,
+		}}}}},
+	}, true) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	oaParams := oaBody["tools"].([]any)[0].(map[string]any)["function"].(map[string]any)["parameters"].(map[string]any)
+	if props, _ := oaParams["properties"].(map[string]any); props["path"] == nil {
+		t.Fatalf("openai tool parameters lost the schema: %v", oaParams)
+	}
+
+	var anBody map[string]any
+	anSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&anBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\"}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n"))
+		_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}))
+	defer anSrv.Close()
+	an, _ := NewAnthropic(AnthropicConfig{BaseURL: anSrv.URL, APIKey: "k", Model: "m"})
+	for _, err := range an.GenerateContent(context.Background(), &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText("x", genai.RoleUser)},
+		Config: &genai.GenerateContentConfig{Tools: []*genai.Tool{{FunctionDeclarations: []*genai.FunctionDeclaration{{
+			Name:                 "read_workspace_file",
+			ParametersJsonSchema: schema,
+		}}}}},
+	}, true) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	anParams := anBody["tools"].([]any)[0].(map[string]any)["input_schema"].(map[string]any)
+	if props, _ := anParams["properties"].(map[string]any); props["path"] == nil {
+		t.Fatalf("anthropic tool input_schema lost the schema: %v", anParams)
+	}
+}
+
+// TestFunctionParametersLegacySchemaStillWorks keeps the genai.Schema path for
+// callers that build declarations the old way (tests, remote tool metadata).
+func TestFunctionParametersLegacySchemaStillWorks(t *testing.T) {
+	got := functionParameters(&genai.FunctionDeclaration{
+		Name: "f",
+		Parameters: &genai.Schema{
+			Type:       genai.TypeObject,
+			Properties: map[string]*genai.Schema{"q": {Type: genai.TypeString}},
+			Required:   []string{"q"},
+		},
+	})
+	props, _ := got["properties"].(map[string]any)
+	if props["q"] == nil || got["type"] != "object" {
+		t.Fatalf("legacy schema lost: %v", got)
+	}
+}
+
+// TestOpenAICompatNonSSEBodySurfacesError: a proxy/block page (HTML instead of
+// SSE) must produce a readable error rather than an empty turn.
+func TestOpenAICompatNonSSEBodySurfacesError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html><body>blocked by proxy</body></html>"))
+	}))
+	defer srv.Close()
+	llm, _ := NewOpenAICompat(OpenAICompatConfig{BaseURL: srv.URL, Model: "m"})
+
+	var got error
+	for _, err := range llm.GenerateContent(context.Background(), &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)},
+	}, true) {
+		if err != nil {
+			got = err
+		}
+	}
+	if got == nil || !strings.Contains(got.Error(), "非 SSE 响应") || !strings.Contains(got.Error(), "blocked by proxy") {
+		t.Fatalf("error = %v", got)
+	}
+}

@@ -228,6 +228,12 @@ func TestDirectChatReadsWorkspaceFiles(t *testing.T) {
 	if err := json.Unmarshal([]byte(first), &req); err != nil {
 		t.Fatal(err)
 	}
+	// The model needs the real argument schema to call the tools correctly;
+	// declaring them as an argument-less object (the issue #23 symptom) makes
+	// read_workspace_file unusable.
+	if !strings.Contains(first, `"properties":{"path"`) || !strings.Contains(first, `"required":["path","content"]`) {
+		t.Fatalf("direct chat tools lost their parameter schema: %s", first)
+	}
 	sys := ""
 	for _, m := range req.Messages {
 		if m.Role == "system" {

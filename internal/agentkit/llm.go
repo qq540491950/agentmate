@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/adk/v2/model"
@@ -38,7 +39,7 @@ func readErrBody(body io.Reader) string {
 type adkFunctionDecl struct {
 	name        string
 	description string
-	parameters  *genai.Schema
+	parameters  map[string]any
 }
 
 func configTools(req *model.LLMRequest) []adkFunctionDecl {
@@ -51,10 +52,47 @@ func configTools(req *model.LLMRequest) []adkFunctionDecl {
 			if fd == nil {
 				continue
 			}
-			out = append(out, adkFunctionDecl{name: fd.Name, description: fd.Description, parameters: fd.Parameters})
+			out = append(out, adkFunctionDecl{
+				name:        fd.Name,
+				description: fd.Description,
+				parameters:  functionParameters(fd),
+			})
 		}
 	}
 	return out
+}
+
+// functionParameters resolves a declaration's JSON Schema. ADK's built-in
+// tools (functiontool) and MCP toolsets publish their schema through
+// ParametersJsonSchema; reading only the legacy genai.Schema field advertised
+// every tool to OpenAI-compatible/Anthropic providers as an argument-less
+// {"type":"object"}, so models could not call workspace, skill or MCP tools
+// with the right arguments (issue #23).
+func functionParameters(fd *genai.FunctionDeclaration) map[string]any {
+	if fd.ParametersJsonSchema != nil {
+		if m, ok := jsonSchemaMap(fd.ParametersJsonSchema); ok {
+			return m
+		}
+	}
+	return schemaToJSONSchema(fd.Parameters)
+}
+
+// jsonSchemaMap normalizes a JSON-schema payload (jsonschema-go structs, the
+// map[string]any MCP toolsets use, or any other JSON-marshalable value) into a
+// plain object.
+func jsonSchemaMap(v any) (map[string]any, bool) {
+	if m, ok := v.(map[string]any); ok && len(m) > 0 {
+		return m, true
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, false
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil || len(m) == 0 {
+		return nil, false
+	}
+	return m, true
 }
 
 func schemaToJSONSchema(s *genai.Schema) map[string]any {
@@ -204,6 +242,92 @@ func scanSSE(body io.Reader) *bufio.Scanner {
 	sc := bufio.NewScanner(body)
 	sc.Buffer(make([]byte, 0, 256*1024), 8*1024*1024)
 	return sc
+}
+
+// ---------------------------------------------------------------------------
+// Streaming response plumbing shared by both adapters
+
+// streamIdleTimeout bounds how long an open stream may stay silent. Without
+// it a provider/gateway that stopped sending bytes but never closed the
+// response left the turn in "正在回复…" until the whole-turn deadline (10
+// minutes by default) — the symptom reported in issue #23.
+var streamIdleTimeout = 2 * time.Minute
+
+// startStreamWatchdog turns the request context into one that cancels after
+// `d` without activity. Callers reset the timer for every received line, so
+// only a genuinely stalled stream trips it. stop must run when the stream
+// ends; it does not turn the normal completion path into a failure.
+func startStreamWatchdog(parent context.Context, d time.Duration) (context.Context, *time.Timer, *atomic.Bool, func()) {
+	ctx, cancel := context.WithCancel(parent)
+	var idle atomic.Bool
+	timer := time.AfterFunc(d, func() {
+		idle.Store(true)
+		cancel()
+	})
+	stop := func() {
+		timer.Stop()
+		cancel()
+	}
+	return ctx, timer, &idle, stop
+}
+
+// streamFailure turns a transport error into the most useful message: the
+// caller's own cancellation wins, then a stream watchdog trip, then the raw
+// error.
+func streamFailure(parent context.Context, idle *atomic.Bool, fallback error) error {
+	if parent.Err() != nil {
+		return parent.Err()
+	}
+	if idle != nil && idle.Load() {
+		return fmt.Errorf("模型供应商超过 %s 没有返回任何数据，已中断本轮（请检查网络或代理后重试）", streamIdleTimeout)
+	}
+	return fallback
+}
+
+// bodyKind classifies the start of a model response body.
+type bodyKind int
+
+const (
+	bodySSE bodyKind = iota
+	bodyJSON
+)
+
+// sniffBody reports how a response body starts and replays every byte it
+// consumed. A plain JSON document (some gateways answer a stream request with
+// a single JSON object, often an error when their upstream died) is decoded as
+// a whole; everything else is scanned as SSE, where unrecognised lines are
+// skipped as noise. Treating a JSON error object as SSE silently ended the turn
+// with no content.
+func sniffBody(body io.Reader) (bodyKind, io.Reader, error) {
+	br := bufio.NewReaderSize(body, 64*1024)
+	var prefix []byte
+	for {
+		line, err := br.ReadBytes('\n')
+		prefix = append(prefix, line...)
+		trimmed := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("\xef\xbb\xbf")))
+		if len(trimmed) > 0 {
+			replay := io.MultiReader(bytes.NewReader(prefix), br)
+			if trimmed[0] == '{' || trimmed[0] == '[' {
+				return bodyJSON, replay, nil
+			}
+			return bodySSE, replay, nil
+		}
+		if err != nil || len(prefix) > 64*1024 {
+			// EOF (empty body) or an unreasonable run of blank lines: stop
+			// sniffing and let the SSE scanner deal with the rest.
+			return bodySSE, io.MultiReader(bytes.NewReader(prefix), br), err
+		}
+	}
+}
+
+// bodySnippet returns a short, printable excerpt of an unexpected response
+// body for the error message.
+func bodySnippet(s string) string {
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > 200 {
+		s = string(r[:200]) + "…"
+	}
+	return s
 }
 
 // ---------------------------------------------------------------------------
@@ -390,6 +514,15 @@ func (o *openaiCompatLLM) buildMessages(req *model.LLMRequest) []oaMessage {
 
 func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	return func(yield func(*model.LLMResponse, error) bool) {
+		parentCtx := ctx
+		var idleTimer *time.Timer
+		var idle *atomic.Bool
+		if stream {
+			var stop func()
+			ctx, idleTimer, idle, stop = startStreamWatchdog(parentCtx, streamIdleTimeout)
+			defer stop()
+		}
+
 		body := oaRequest{Model: o.cfg.Model, Messages: o.buildMessages(req), Stream: stream,
 			MaxTokens: maxTokensOf(req), Temperature: temperatureOf(req), Stop: stopSequencesOf(req)}
 		if stream {
@@ -397,83 +530,87 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 				IncludeUsage bool `json:"include_usage"`
 			}{IncludeUsage: true}
 		}
-		var usage *oaUsage
 		for _, fd := range configTools(req) {
 			body.Tools = append(body.Tools, oaTool{Type: "function", Function: oaToolDef{
-				Name: fd.name, Description: fd.description, Parameters: schemaToJSONSchema(fd.parameters),
+				Name: fd.name, Description: fd.description, Parameters: fd.parameters,
 			}})
 		}
 		resp, err := o.post(ctx, body)
 		if err != nil {
-			yield(nil, err)
+			yield(nil, streamFailure(parentCtx, idle, err))
 			return
 		}
 		defer resp.Body.Close()
 
-		var sb strings.Builder
-		calls := map[int]*oaAccumCall{}
-		var order []int
-		addCall := func(idx int, id, name, argDelta string) *oaAccumCall {
-			if idx < 0 || idx > 1024 {
-				return nil // broken/harsh provider index; ignore the fragment
-			}
-			a := calls[idx]
-			if a == nil {
-				a = &oaAccumCall{id: id, name: name}
-				calls[idx] = a
-				order = append(order, idx)
-			}
-			if id != "" {
-				a.id = id
-			}
-			if name != "" {
-				a.name = name
-			}
-			a.args.WriteString(argDelta)
-			return a
-		}
-
 		if !stream {
-			var full struct {
-				Choices []struct {
-					Message struct {
-						Content   string       `json:"content"`
-						ToolCalls []oaToolCall `json:"tool_calls"`
-					} `json:"message"`
-				} `json:"choices"`
-				Usage *oaUsage `json:"usage"`
-				Error *struct {
-					Message string `json:"message"`
-				} `json:"error"`
-			}
-			if err := json.NewDecoder(resp.Body).Decode(&full); err != nil {
+			final, err := o.fullResponse(resp.Body)
+			if err != nil {
 				yield(nil, err)
 				return
 			}
-			if full.Error != nil && full.Error.Message != "" {
-				yield(nil, fmt.Errorf("模型供应商错误（OpenAI 兼容）: %s", full.Error.Message))
-				return
-			}
-			usage = full.Usage
-			if len(full.Choices) > 0 {
-				sb.WriteString(full.Choices[0].Message.Content)
-				for _, tc := range full.Choices[0].Message.ToolCalls {
-					addCall(tc.Index, tc.ID, tc.Function.Name, tc.Function.Arguments)
-				}
-			}
-			yield(withUsage(o.final(sb.String(), calls, order), usage), nil)
+			yield(final, nil)
 			return
 		}
 
-		scanner := scanSSE(resp.Body)
+		kind, bodyReader, serr := sniffBody(resp.Body)
+		if serr != nil {
+			if serr == io.EOF {
+				yield(nil, fmt.Errorf("模型供应商 %s 返回空响应", o.cfg.Model))
+				return
+			}
+			yield(nil, streamFailure(parentCtx, idle, serr))
+			return
+		}
+		if kind == bodyJSON {
+			// Some gateways ignore "stream":true and answer with one plain
+			// document (often an error object when their upstream died).
+			// Parsing it keeps the failure visible instead of ending the turn
+			// with no content.
+			final, err := o.fullResponse(bodyReader)
+			if err != nil {
+				yield(nil, streamFailure(parentCtx, idle, err))
+				return
+			}
+			yield(final, nil)
+			return
+		}
+
+		var usage *oaUsage
+		var sb strings.Builder
+		calls := map[int]*oaAccumCall{}
+		var order []int
+		// Leading non-SSE lines are skipped as noise (some gateways prepend
+		// status text), but remembering the first one lets an HTML/plain-text
+		// failure page surface as an error instead of an empty answer.
+		var noise strings.Builder
+		sawData := false
+
+		scanner := scanSSE(bodyReader)
 		for scanner.Scan() {
+			if idleTimer != nil {
+				idleTimer.Reset(streamIdleTimeout)
+			}
 			line := scanner.Text()
 			if !strings.HasPrefix(line, "data:") {
+				if !sawData && noise.Len() < 512 {
+					if remain := 512 - noise.Len(); len(line) > remain {
+						line = line[:remain]
+					}
+					noise.WriteString(line)
+					noise.WriteString("\n")
+				}
 				continue
 			}
+			sawData = true
 			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			if data == "" || data == "[DONE]" {
+			if data == "" {
 				continue
+			}
+			if data == "[DONE]" {
+				// [DONE] is the protocol terminator. Waiting for EOF instead
+				// hung the turn whenever a gateway/proxy kept the response open
+				// after the last chunk (issue #23).
+				break
 			}
 			var chunk oaChunk
 			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
@@ -497,19 +634,85 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 				}
 			}
 			for _, tc := range d.ToolCalls {
-				addCall(tc.Index, tc.ID, tc.Function.Name, tc.Function.Arguments)
+				oaAccumulate(calls, &order, tc.Index, tc.ID, tc.Function.Name, tc.Function.Arguments)
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			if ctx.Err() != nil {
-				yield(nil, ctx.Err())
+			yield(nil, streamFailure(parentCtx, idle, err))
+			return
+		}
+		if sb.Len() == 0 && len(order) == 0 {
+			if !sawData && strings.TrimSpace(noise.String()) != "" {
+				yield(nil, fmt.Errorf("模型供应商 %s 返回了非 SSE 响应（HTTP 200）: %s",
+					o.cfg.Model, bodySnippet(noise.String())))
 				return
 			}
-			yield(nil, err)
+			yield(nil, fmt.Errorf("模型供应商 %s 返回空响应", o.cfg.Model))
 			return
 		}
 		yield(withUsage(o.final(sb.String(), calls, order), usage), nil)
 	}
+}
+
+// oaFullResponse is a complete (non-SSE) Chat Completions response.
+type oaFullResponse struct {
+	Choices []struct {
+		Message struct {
+			Content   string       `json:"content"`
+			ToolCalls []oaToolCall `json:"tool_calls"`
+		} `json:"message"`
+	} `json:"choices"`
+	Usage *oaUsage `json:"usage"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// fullResponse decodes a complete chat completion, surfacing a provider error
+// object and refusing an answer-less payload instead of silently ending the
+// turn.
+func (o *openaiCompatLLM) fullResponse(r io.Reader) (*model.LLMResponse, error) {
+	var full oaFullResponse
+	if err := json.NewDecoder(io.LimitReader(r, 8<<20)).Decode(&full); err != nil {
+		return nil, fmt.Errorf("解析模型响应失败: %w", err)
+	}
+	if full.Error != nil && full.Error.Message != "" {
+		return nil, fmt.Errorf("模型供应商错误（OpenAI 兼容）: %s", full.Error.Message)
+	}
+	if len(full.Choices) == 0 {
+		return nil, fmt.Errorf("模型供应商 %s 返回空响应", o.cfg.Model)
+	}
+	var sb strings.Builder
+	calls := map[int]*oaAccumCall{}
+	var order []int
+	sb.WriteString(full.Choices[0].Message.Content)
+	for i, tc := range full.Choices[0].Message.ToolCalls {
+		// Complete responses carry no per-call index; the slice position is
+		// the only ordering. Using tc.Index merged every call into index 0.
+		oaAccumulate(calls, &order, i, tc.ID, tc.Function.Name, tc.Function.Arguments)
+	}
+	return withUsage(o.final(sb.String(), calls, order), full.Usage), nil
+}
+
+// oaAccumulate groups streamed tool-call fragments by index.
+func oaAccumulate(calls map[int]*oaAccumCall, order *[]int, idx int, id, name, argDelta string) *oaAccumCall {
+	if idx < 0 || idx > 1024 {
+		return nil // broken/harsh provider index; ignore the fragment
+	}
+	a := calls[idx]
+	if a == nil {
+		a = &oaAccumCall{id: id, name: name}
+		calls[idx] = a
+		*order = append(*order, idx)
+	}
+	if id != "" {
+		a.id = id
+	}
+	if name != "" {
+		a.name = name
+	}
+	a.args.WriteString(argDelta)
+	return a
 }
 
 func (o *openaiCompatLLM) final(text string, calls map[int]*oaAccumCall, order []int) *model.LLMResponse {
@@ -693,27 +896,67 @@ func (a *anthropicLLM) buildMessages(req *model.LLMRequest) []anMessage {
 
 func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	return func(yield func(*model.LLMResponse, error) bool) {
+		parentCtx := ctx
+		var idleTimer *time.Timer
+		var idle *atomic.Bool
+		if stream {
+			var stop func()
+			ctx, idleTimer, idle, stop = startStreamWatchdog(parentCtx, streamIdleTimeout)
+			defer stop()
+		}
+
 		maxTok := maxTokensOf(req)
 		if maxTok <= 0 {
 			maxTok = 8192
 		}
 		body := anRequest{Model: a.cfg.Model, Messages: a.buildMessages(req), System: systemText(req),
 			MaxTokens: maxTok, Stream: stream, Temp: temperatureOf(req), StopSequences: stopSequencesOf(req)}
-		var usage *anUsage
 		for _, fd := range configTools(req) {
 			body.Tools = append(body.Tools, anTool{
-				Name: fd.name, Description: fd.description, InputSchema: schemaToJSONSchema(fd.parameters),
+				Name: fd.name, Description: fd.description, InputSchema: fd.parameters,
 			})
 		}
 		resp, err := a.post(ctx, body)
 		if err != nil {
-			yield(nil, err)
+			yield(nil, streamFailure(parentCtx, idle, err))
 			return
 		}
 		defer resp.Body.Close()
 
+		if !stream {
+			final, err := a.fullResponse(resp.Body)
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			yield(final, nil)
+			return
+		}
+
+		kind, bodyReader, serr := sniffBody(resp.Body)
+		if serr != nil {
+			if serr == io.EOF {
+				yield(nil, fmt.Errorf("模型供应商 %s 返回空响应", a.cfg.Model))
+				return
+			}
+			yield(nil, streamFailure(parentCtx, idle, serr))
+			return
+		}
+		if kind == bodyJSON {
+			final, err := a.fullResponse(bodyReader)
+			if err != nil {
+				yield(nil, streamFailure(parentCtx, idle, err))
+				return
+			}
+			yield(final, nil)
+			return
+		}
+
+		var usage *anUsage
 		var sb strings.Builder
 		var tools []*anAccumTool
+		var noise strings.Builder
+		sawData := false
 		// Anthropic indexes content blocks; a hostile/broken endpoint can send
 		// negative or absurd indexes (panic / OOM via unbounded append).
 		const maxContentBlocks = 1024
@@ -727,45 +970,24 @@ func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 			return tools[idx]
 		}
 
-		if !stream {
-			var full struct {
-				Content []anBlock `json:"content"`
-				Usage   *anUsage  `json:"usage"`
-				Error   *struct {
-					Message string `json:"message"`
-				} `json:"error"`
-			}
-			if err := json.NewDecoder(resp.Body).Decode(&full); err != nil {
-				yield(nil, err)
-				return
-			}
-			if full.Error != nil && full.Error.Message != "" {
-				yield(nil, fmt.Errorf("模型供应商错误（Anthropic）: %s", full.Error.Message))
-				return
-			}
-			usage = full.Usage
-			for _, b := range full.Content {
-				switch b.Type {
-				case "text":
-					sb.WriteString(b.Text)
-				case "tool_use":
-					t := &anAccumTool{id: b.ID, name: b.Name}
-					t.input.Write(argsToJSON(b.Input))
-					tools = append(tools, t)
-				}
-			}
-			// Non-stream responses (the A2A executor path) must carry usage
-			// too — without this the server-side token accounting was empty.
-			yield(withUsageA(a.final(sb.String(), tools), usage), nil)
-			return
-		}
-
-		scanner := scanSSE(resp.Body)
+		scanner := scanSSE(bodyReader)
+	scan:
 		for scanner.Scan() {
+			if idleTimer != nil {
+				idleTimer.Reset(streamIdleTimeout)
+			}
 			line := scanner.Text()
 			if !strings.HasPrefix(line, "data:") {
+				if !sawData && noise.Len() < 512 {
+					if remain := 512 - noise.Len(); len(line) > remain {
+						line = line[:remain]
+					}
+					noise.WriteString(line)
+					noise.WriteString("\n")
+				}
 				continue
 			}
+			sawData = true
 			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 			if data == "" {
 				continue
@@ -796,6 +1018,11 @@ func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 				continue
 			}
 			switch ev.Type {
+			case "message_stop":
+				// The protocol terminator. Waiting for EOF instead hung the
+				// turn whenever the gateway kept the connection open after the
+				// final event (issue #23).
+				break scan
 			case "error":
 				msg := "unknown error"
 				if ev.Error != nil {
@@ -842,15 +1069,68 @@ func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			if ctx.Err() != nil {
-				yield(nil, ctx.Err())
+			yield(nil, streamFailure(parentCtx, idle, err))
+			return
+		}
+		if sb.Len() == 0 && !anyAnTool(tools) {
+			if !sawData && strings.TrimSpace(noise.String()) != "" {
+				yield(nil, fmt.Errorf("模型供应商 %s 返回了非 SSE 响应（HTTP 200）: %s",
+					a.cfg.Model, bodySnippet(noise.String())))
 				return
 			}
-			yield(nil, err)
+			yield(nil, fmt.Errorf("模型供应商 %s 返回空响应", a.cfg.Model))
 			return
 		}
 		yield(withUsageA(a.final(sb.String(), tools), usage), nil)
 	}
+}
+
+// anFullResponse is a complete (non-SSE) Anthropic Messages response.
+type anFullResponse struct {
+	Content []anBlock `json:"content"`
+	Usage   *anUsage  `json:"usage"`
+	Error   *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// fullResponse decodes a complete Messages response. Non-stream responses (the
+// A2A executor path) carry usage too — without it the server-side token
+// accounting was empty.
+func (a *anthropicLLM) fullResponse(r io.Reader) (*model.LLMResponse, error) {
+	var full anFullResponse
+	if err := json.NewDecoder(io.LimitReader(r, 8<<20)).Decode(&full); err != nil {
+		return nil, fmt.Errorf("解析模型响应失败: %w", err)
+	}
+	if full.Error != nil && full.Error.Message != "" {
+		return nil, fmt.Errorf("模型供应商错误（Anthropic）: %s", full.Error.Message)
+	}
+	if len(full.Content) == 0 {
+		return nil, fmt.Errorf("模型供应商 %s 返回空响应", a.cfg.Model)
+	}
+	var sb strings.Builder
+	var tools []*anAccumTool
+	for _, b := range full.Content {
+		switch b.Type {
+		case "text":
+			sb.WriteString(b.Text)
+		case "tool_use":
+			t := &anAccumTool{id: b.ID, name: b.Name}
+			t.input.Write(argsToJSON(b.Input))
+			tools = append(tools, t)
+		}
+	}
+	return withUsageA(a.final(sb.String(), tools), full.Usage), nil
+}
+
+// anyAnTool reports whether any content-block slot holds a tool call.
+func anyAnTool(tools []*anAccumTool) bool {
+	for _, t := range tools {
+		if t != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *anthropicLLM) final(text string, tools []*anAccumTool) *model.LLMResponse {
