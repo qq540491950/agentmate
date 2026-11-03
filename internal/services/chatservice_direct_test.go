@@ -1,8 +1,10 @@
 package services
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -169,6 +171,133 @@ func TestMentionUnknownFallsBackToDirect(t *testing.T) {
 	}
 	if author != "助手" {
 		t.Fatalf("unknown mention should fall back to direct chat, author=%q", author)
+	}
+}
+
+// TestDirectChatReadsWorkspaceFiles pins the issue #21 contract: a project
+// chat with no configured agent must be able to inspect its workspace instead
+// of only promising "我来查看当前项目情况". The fake model lists the directory,
+// reads README.md and answers from its actual content.
+func TestDirectChatReadsWorkspaceFiles(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("cloud 是一个云原生示例项目。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	turn := 0
+	chat, _, bodies := newDirectChat(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		turn++
+		switch turn {
+		case 1:
+			_, _ = w.Write([]byte(sseText("我来查看当前项目情况。") +
+				sseToolCall("call_1", "list_workspace_files", `"{}"`) + sseDone))
+		case 2:
+			_, _ = w.Write([]byte(sseToolCall("call_2", "read_workspace_file", `"{\"path\":\"README.md\"}"`) + sseDone))
+		case 3:
+			_, _ = w.Write([]byte(sseText("cloud 是一个云原生示例项目。") + sseDone))
+		default:
+			t.Errorf("unexpected model turn %d", turn)
+			_, _ = w.Write([]byte(sseDone))
+		}
+	})
+	events := hookEvents(t)
+
+	sess, err := chat.NewSessionWithWorkspace("", "", "", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := chat.Send(sess.ID, "当前项目主要是做什么的？", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(*bodies) != 3 {
+		t.Fatalf("expected 3 model calls (list, read, answer), got %d", len(*bodies))
+	}
+
+	// The direct agent must advertise the workspace read tools and tell the
+	// model which directory it may inspect.
+	first := (*bodies)[0]
+	if !strings.Contains(first, `"name":"list_workspace_files"`) || !strings.Contains(first, `"name":"read_workspace_file"`) {
+		t.Fatalf("direct chat request is missing workspace tools: %s", first)
+	}
+	var req struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content any    `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal([]byte(first), &req); err != nil {
+		t.Fatal(err)
+	}
+	sys := ""
+	for _, m := range req.Messages {
+		if m.Role == "system" {
+			if s, ok := m.Content.(string); ok {
+				sys = s
+			}
+		}
+	}
+	if !strings.Contains(sys, canonicalDir(t, root)) {
+		t.Fatalf("system prompt does not mention the workspace %q: %q", root, sys)
+	}
+
+	// The tool result streams back into the next model call: first the
+	// directory listing, then the file content.
+	if !strings.Contains((*bodies)[1], "README.md") {
+		t.Fatalf("listing result missing from second model call: %s", (*bodies)[1])
+	}
+	if !strings.Contains((*bodies)[2], "cloud 是一个云原生示例项目。") {
+		t.Fatalf("file content missing from third model call: %s", (*bodies)[2])
+	}
+
+	var sawListCall, sawListResult, sawReadCall, sawFinal bool
+	for _, ev := range *events {
+		switch {
+		case ev.Kind == "tool_call" && ev.ToolName == "list_workspace_files":
+			sawListCall = true
+		case ev.Kind == "tool_result" && ev.ToolName == "list_workspace_files":
+			sawListResult = true
+		case ev.Kind == "tool_call" && ev.ToolName == "read_workspace_file":
+			sawReadCall = true
+		case ev.Kind == "message" && ev.Text == "cloud 是一个云原生示例项目。":
+			sawFinal = true
+		}
+	}
+	if !sawListCall || !sawListResult || !sawReadCall || !sawFinal {
+		t.Fatalf("missing tool/answer stream events: list=%v result=%v read=%v final=%v",
+			sawListCall, sawListResult, sawReadCall, sawFinal)
+	}
+}
+
+// TestDirectChatWriteAsksConfirmation: direct chats get the file tools too,
+// but writes stay behind the HITL confirmation contract (same as configured
+// agents) — nothing is written before the user approves.
+func TestDirectChatWriteAsksConfirmation(t *testing.T) {
+	root := t.TempDir()
+	chat, _, _ := newDirectChat(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(sseToolCall("call_1", "write_workspace_file",
+			`"{\"path\":\"notes/new.txt\",\"content\":\"hello\"}"`) + sseDone))
+	})
+	events := hookEvents(t)
+
+	sess, err := chat.NewSessionWithWorkspace("", "", "", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := chat.Send(sess.ID, "写个文件", nil); err != nil {
+		t.Fatal(err)
+	}
+	var req *ChatStreamEvent
+	for i := range *events {
+		if (*events)[i].Kind == "confirm_request" {
+			req = &(*events)[i]
+		}
+	}
+	if req == nil || req.ToolName != "write_workspace_file" || req.CallID == "" {
+		t.Fatalf("expected a write confirmation request, got: %+v", *events)
+	}
+	if _, err := os.Stat(filepath.Join(root, "notes", "new.txt")); !os.IsNotExist(err) {
+		t.Fatal("file must not be written before the user approves")
 	}
 }
 

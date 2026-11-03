@@ -702,6 +702,12 @@ type pathArgs struct {
 	Path string `json:"path" jsonschema:"relative path inside the workspace"`
 }
 
+// listArgs keeps Path optional: listing the workspace root is the common
+// first call and should not fail JSON-schema validation.
+type listArgs struct {
+	Path string `json:"path,omitempty" jsonschema:"relative path inside the workspace; omit for the workspace root"`
+}
+
 // SafeWorkspacePath resolves rel inside workspace and blocks traversal.
 func SafeWorkspacePath(workspace, rel string) (string, error) {
 	return safeWorkspacePath(workspace, rel)
@@ -811,12 +817,14 @@ func isWithin(root, target string) bool {
 	return target == root || strings.HasPrefix(target, root+string(filepath.Separator))
 }
 
-// ListFilesTool lists workspace files.
+// ListFilesTool lists workspace files. Path is optional so a model can ask
+// for the workspace root without having to guess "." (issue #21: the first
+// "look at the project" call is usually argument-less).
 func ListFilesTool(workspace string) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "list_workspace_files",
-		Description: "List files and folders under a path inside the user's workspace.",
-	}, func(ctx agent.Context, args pathArgs) (filesResult, error) {
+		Description: "List files and folders under a path inside the user's workspace (omit path for the workspace root).",
+	}, func(ctx agent.Context, args listArgs) (filesResult, error) {
 		root, err := safeWorkspacePath(workspace, args.Path)
 		if err != nil {
 			return filesResult{}, err

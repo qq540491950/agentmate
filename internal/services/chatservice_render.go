@@ -144,8 +144,11 @@ func (c *ChatService) targetAgentConfig(cfg config.Config, target *config.ChatSe
 }
 
 // directAgentConfig builds the implicit target behind a direct chat: the
-// default provider's first model with a generic system prompt. Nothing is
-// persisted — direct sessions only materialize an agent per turn.
+// default provider's first model, a workspace-aware prompt and the workspace
+// file tools. Nothing is persisted — direct sessions only materialize an
+// agent per turn. Without the file tools a project chat could only promise
+// "我来查看项目" and stop: the model had no way to read the directory it was
+// asked about (issue #21). Writes stay behind HITL confirmation.
 func directAgentConfig(cfg config.Config) (config.AgentConfig, error) {
 	var provider *config.ModelProvider
 	for i := range cfg.Providers {
@@ -168,11 +171,18 @@ func directAgentConfig(cfg config.Config) (config.AgentConfig, error) {
 		return config.AgentConfig{}, fmt.Errorf("默认供应商 %s 尚未配置模型，请先在「模型配置」页添加模型", provider.Name)
 	}
 	return config.AgentConfig{
-		ID:           "direct",
-		Name:         directAssistantName,
-		ProviderID:   provider.ID,
-		Model:        model,
-		SystemPrompt: "你是 WorkBuddy 桌面助手。用中文简洁、准确地回答用户问题。",
+		ID:         "direct",
+		Name:       directAssistantName,
+		ProviderID: provider.ID,
+		Model:      model,
+		SystemPrompt: "你是 WorkBuddy 桌面助手。用中文简洁、准确地回答用户问题。\n" +
+			"当前任务工作区：{{workspace}}。当问题涉及项目或文件内容时，先调用 " +
+			"list_workspace_files 查看目录结构，再按需调用 read_workspace_file 读取文件，" +
+			"基于实际内容回答，不要凭空猜测。",
+		BuiltinTools: []string{"files"},
+		// Reads are automatic; writes pause for human approval, the same
+		// contract configured agents get.
+		ConfirmTools: []string{"files"},
 	}, nil
 }
 

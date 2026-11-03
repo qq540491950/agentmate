@@ -3,6 +3,26 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百八十三轮迭代：直聊项目会话可读取工作区（已实施）
+
+依据：issue #21（Windows 11；版本字段为空，按 `createdAt` 推断为 v0.5.3；截图中会话时间为 11 月 2 日 20:28，早于 v0.5.2 发布）。两处症状：
+
+- 项目分组展开后看不到「新增会话」按钮。截图为 v0.5.1 的「按钮仅悬停显示」；该问题已在第一百八十一轮（v0.5.2）改为常驻显示，当前代码对已注册项目分组始终渲染加号，无需再改。
+- 在项目会话里问「当前项目主要是做什么的？」，助手只回「我来查看当前项目情况。」便停住，没有工具过程与后续回答。根因：直聊的临时 Agent（`directAgentConfig`）没有任何内置工具，系统提示也不包含会话工作区，模型无法读取目录，只能口头承诺后结束。
+
+**实现要点**
+
+- `internal/services/chatservice_render.go`：直聊临时 Agent 挂载 `files` 内置工具（列目录 / 读文件 / 写文件），`ConfirmTools` 同步设为 `files`——读取自动执行，写入仍走 HITL 人工确认；系统提示加入 `{{workspace}}`，要求先列目录、再按需读文件、基于实际内容回答。
+- `internal/agentkit/kit.go`：`ListFilesTool` 改用独立的 `listArgs`，`path` 变为可选（省略即工作区根），避免模型第一次「看看项目」的无参调用被 JSON Schema 的 required 拒绝。
+- `internal/agentkit/kit.go` 的直聊装配复用既有会话工作区解析：项目会话读取项目根，任务会话读取任务目录，`@` 路由到具名 Agent 时仍用该 Agent 自己的工具配置。
+
+**测试证据**
+
+- 新增 `TestDirectChatReadsWorkspaceFiles`：假 SSE 模型走「列目录 → 读 README → 回答」三轮，断言请求携带工作区工具与 `{{workspace}}` 解析后的路径、工具结果回传给模型、事件流包含两次 `tool_call`/`tool_result` 与最终消息。
+- 新增 `TestDirectChatWriteAsksConfirmation`：直聊写文件先产生 `confirm_request`，未批准前文件不落盘。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/...`、`go test -race -count=1 ./internal/...` 全绿。
+- 本机为 macOS，Windows 11 无法实机复现；改动均为平台无关的 Agent 装配与工具 Schema，待测试机更新后确认。
+
 ### 第一百八十二轮迭代：设置通用页目录选择与布局修复（已实施）
 
 依据：issue #20（Windows 11，v0.5.2）——「设置 → 通用」的工作区目录只有输入框，无法弹窗选择；两列网格按行等高，外观、A2A 等高卡片把同行的短卡片撑出大片空白，整体显得松散。
