@@ -3,6 +3,24 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百八十六轮迭代：项目行新建对话恢复与展开态按钮配色（已实施）
+
+依据：issue #24（Windows 11；版本字段为空，按 `createdAt`（11-03 06:20 UTC）推断为 v0.5.6，晚于 v0.5.6 发布）。展开某个项目分组后点击行内「+」显示异常且无法新建项目会话；收起时同一组按钮显示正常、可以新建。
+
+**实现要点**
+
+- **根因（功能）**：目录在注册为项目之前，旧任务会话可能仍以显式工作区（`WorkspaceDir`）独占地占用该目录。`newSession` 对项目会话同样执行了任务互斥的 `workspaceConflict`，于是点击「+」只得到「工作区已被任务「…」使用」的错误，没有创建任何会话；收起/展开本身不改变后端行为，用户观察到的差异来自点到的是哪个项目分组。
+- **根因（视觉）**：项目行三个操作按钮的悬停底色是 `hover:bg-background`——深色主题下 `background` 是近黑色。收起行的背景与侧栏同为 `background`，悬停方块看不出来；展开行是 `bg-accent/60` 高亮，悬停时按钮就出现突兀的近黑色圆角方块（issue 截图中的「…」）。
+- `internal/services/chatservice_sessions.go`：`projectRootConflict` 与 `workspaceConflict` 仅在创建**任务会话**（`projectID == ""`）时执行。项目会话按设计共享项目根目录，遗留任务会话的独占绑定不再阻塞新建项目对话；任务会话之间仍保持目录互斥。
+- `frontend/src/pages/ChatPage.tsx`：侧栏项目行与会话行的操作按钮悬停底色统一改为 `hover:bg-foreground/10`，在展开高亮行和普通行上都呈现一致的淡淡蒙层。
+
+**测试证据**
+
+- 新增 `TestNewSessionWithProjectSharesRootWithLegacyTask`：旧任务会话占用目录后注册项目，项目会话必须创建成功且仍解析到项目根；同一目录上的第二个任务会话仍被「已被任务」拒绝。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/...`、`go test -race -count=1 ./internal/...` 全绿。
+- `npx tsc --noEmit`、`npm test`（28 用例）、`npm run build` 通过。
+- 本机为 macOS，Windows 11 无法实机复现；后端修复为平台无关的工作区校验逻辑，悬停底色为纯样式变更，待测试机更新后确认视觉与新建流程。
+
 ### 第一百八十五轮迭代：模型流式响应正确收尾与工具参数 Schema 透传（已实施）
 
 依据：issue #23（Windows 11；版本字段为空，按 `createdAt`（11-03 02:53 UTC）推断为 v0.5.4）。新会话发送「查看本项目是做什么的？」后一直停在回复等待状态、没有任何内容；模型厂家日志为 `ECONNRESET: The socket connection was closed unexpectedly`。v0.5.4 相对前一版对直聊的唯一行为变化是挂载了工作区文件工具（#21），因此首轮通常是工具调用而非文本。

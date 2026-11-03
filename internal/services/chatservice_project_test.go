@@ -90,6 +90,42 @@ func TestNewSessionWithProject(t *testing.T) {
 	}
 }
 
+// TestNewSessionWithProjectSharesRootWithLegacyTask pins issue #24: a
+// directory can be registered as a project while older task sessions still
+// hold it as their explicit workspace. Task sessions keep their exclusive
+// right to such directories, but the project root is shared by design, so
+// creating a project chat must not fail with "工作区已被任务…使用".
+func TestNewSessionWithProjectSharesRootWithLegacyTask(t *testing.T) {
+	chat, store, _ := newProjectTestChat(t)
+	root := t.TempDir()
+	legacy, err := chat.NewSessionWithWorkspace("", "", "旧任务", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.WorkspaceDir == "" {
+		t.Fatal("legacy session should own the explicit workspace")
+	}
+	// Task sessions still refuse to share an explicitly bound directory.
+	if _, err := chat.NewSessionWithWorkspace("", "", "第二个任务", root); err == nil || !strings.Contains(err.Error(), "已被任务") {
+		t.Fatalf("expected exclusive task-workspace rejection, got %v", err)
+	}
+	p, err := chat.SaveProject("", "", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := chat.NewSessionWithProject("", "", "项目对话", p.ID)
+	if err != nil {
+		t.Fatalf("project chat must share the root with the legacy task: %v", err)
+	}
+	stored := findStoredSession(t, store, sess.ID)
+	if stored.ProjectID != p.ID || stored.WorkspaceDir != "" {
+		t.Fatalf("unexpected project session row: %+v", stored)
+	}
+	if ws, err := chat.SessionWorkspace(sess.ID); err != nil || ws != p.RootDir {
+		t.Fatalf("SessionWorkspace = %q, %v; want project root %q", ws, err, p.RootDir)
+	}
+}
+
 func TestSetSessionProjectBeforeFirstTurnOnly(t *testing.T) {
 	chat, store, _ := newProjectTestChat(t)
 	p, err := chat.SaveProject("", "", t.TempDir())

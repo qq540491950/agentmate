@@ -79,10 +79,15 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 			cleanupCreatedDir(createdDir)
 			return config.ChatSession{}, err
 		}
-	}
-	if err := workspaceConflict(c.S.Store.Get(), workspaceDir, ""); err != nil {
-		cleanupCreatedDir(createdDir)
-		return config.ChatSession{}, err
+		// Task sessions own their explicit directory exclusively. Project
+		// chats share the project root by design, including with legacy task
+		// sessions bound to that root before the directory was registered as a
+		// project — those must not block new project chats (issue #24: the
+		// project row's + reported "工作区已被任务…使用" and created nothing).
+		if err := workspaceConflict(c.S.Store.Get(), workspaceDir, ""); err != nil {
+			cleanupCreatedDir(createdDir)
+			return config.ChatSession{}, err
+		}
 	}
 	if _, err := ensureTaskBaseline(c.S.Store, id, workspaceDir); err != nil {
 		cleanupCreatedDir(createdDir)

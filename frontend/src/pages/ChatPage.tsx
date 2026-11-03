@@ -1396,7 +1396,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         {/* Frequent state toggles stay one click; the rest collapse into one
             menu so the row keeps four controls instead of six. */}
         <button
-          className="rounded p-0.5 hover:bg-background"
+          className="rounded p-0.5 hover:bg-foreground/10"
           title={s.archived ? "取消归档" : "归档此会话"}
           aria-label={s.archived ? "取消归档" : "归档此会话"}
           onClick={(e) => {
@@ -1407,7 +1407,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
           <Archive className="h-3 w-3" />
         </button>
         <button
-          className="rounded p-0.5 hover:bg-background"
+          className="rounded p-0.5 hover:bg-foreground/10"
           title={s.pinned ? "取消置顶" : "置顶此会话"}
           aria-label={s.pinned ? "取消置顶" : "置顶此会话"}
           onClick={(e) => {
@@ -1420,7 +1420,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="rounded p-0.5 hover:bg-background"
+              className="rounded p-0.5 hover:bg-foreground/10"
               title="会话操作"
               aria-label="会话操作"
               onClick={(e) => e.stopPropagation()}
@@ -1549,7 +1549,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                                       the folder is collapsed or expanded, not
                                       only on hover. */}
                                   <button
-                                    className="rounded p-0.5 hover:bg-background"
+                                    className="rounded p-0.5 hover:bg-foreground/10"
                                     title="在此项目中新建对话"
                                     aria-label={`在项目「${g.label}」中新建对话`}
                                     onClick={(e) => { e.stopPropagation(); createProjectSession(project.id); }}
@@ -1557,7 +1557,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                                     <Plus className="h-3 w-3" />
                                   </button>
                                   <button
-                                    className="rounded p-0.5 hover:bg-background"
+                                    className="rounded p-0.5 hover:bg-foreground/10"
                                     title="重命名项目"
                                     onClick={(e) => { e.stopPropagation(); setRenamingProject(project); setRenameProjectText(g.label); }}
                                   >
@@ -1567,7 +1567,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                               )}
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <button title={project ? "管理项目" : "目录操作"} onClick={(e) => e.stopPropagation()} className="rounded p-0.5 hover:bg-background">
+                                  <button title={project ? "管理项目" : "目录操作"} onClick={(e) => e.stopPropagation()} className="rounded p-0.5 hover:bg-foreground/10">
                                     <MoreHorizontal className="h-3 w-3" />
                                   </button>
                                 </DropdownMenuTrigger>
