@@ -29,6 +29,10 @@ import {
 import { cn } from "@/lib/utils";
 import { computeEditFlags, computeRunningTools, computeToolDurations, groupSessionsByProject, groupSessionsByTime, isDayChange, mdToSpeech, type UIMessage } from "@/lib/chatUtils";
 import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
+import {
+  SIDEBAR_KEYBOARD_STEP, SIDEBAR_MIN_WIDTH,
+  clampSidebarWidth, parseStoredSidebarWidth, sidebarMaxWidth,
+} from "@/lib/sidebarWidth";
 import { shouldOpenLatestSession } from "@/lib/sessionDraft";
 import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
@@ -48,6 +52,11 @@ const nextId = () => `m${++mid}`;
 
 // RENDER_LIMIT caps how many messages render at once for smooth long sessions.
 const RENDER_LIMIT = 200;
+
+// The sidebar width lives in localStorage rather than config.json: it is a
+// per-window view preference, and the config schema round-trips through Go
+// bindings that do not need to grow for a splitter drag.
+const SIDEBAR_WIDTH_STORAGE_KEY = "wb-chat-sidebar-width";
 
 const SLASH_COMMANDS = [
   { cmd: "/export", desc: "导出会话为 Markdown" },
@@ -120,6 +129,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   const [autoSpeak, setAutoSpeak] = useState(false);
   const [globalWorkspace, setGlobalWorkspace] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    parseStoredSidebarWidth(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY), window.innerWidth));
+  const [resizingSidebar, setResizingSidebar] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [recentOpen, setRecentOpen] = useState(true);
   const [expandedFolderKey, setExpandedFolderKey] = useState<string | null>(null);
@@ -141,6 +153,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   const autoSpeakRef = useRef(autoSpeak);
   useEffect(() => { autoSpeakRef.current = autoSpeak; }, [autoSpeak]);
+  const sidebarWidthRef = useRef(sidebarWidth);
+  useEffect(() => { sidebarWidthRef.current = sidebarWidth; }, [sidebarWidth]);
+  // Snapshot taken on pointerdown: the drag computes width from the pointer
+  // delta, not from the live state, so a fast drag cannot accumulate error.
+  const sidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const sidebarResizeFrame = useRef<number | null>(null);
+  const pendingSidebarWidthRef = useRef<number | null>(null);
   // Set when the stream emitted an inline error, so send()'s catch does not
   // also toast the same failure.
   const streamedErrorRef = useRef(false);
@@ -1026,6 +1045,87 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     return () => window.removeEventListener("wb-toggle-sidebar", onToggle);
   }, [toggleSidebar]);
 
+  const persistSidebarWidth = (width: number) => {
+    sidebarWidthRef.current = width;
+    setSidebarWidth(width);
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width));
+    } catch { /* storage unavailable: keep the in-memory width */ }
+  };
+
+  // The splitter drags the sidebar edge. Pointer capture keeps the gesture
+  // alive when the cursor leaves the 6px handle, and body-level cursor +
+  // selection suppression stop the drag from selecting session rows or text
+  // in the chat area (issue #31). Width updates ride rAF so a drag does not
+  // re-render the message list on every pointermove.
+  const commitSidebarWidthFrame = () => {
+    sidebarResizeFrame.current = null;
+    const next = pendingSidebarWidthRef.current;
+    if (next == null) return;
+    pendingSidebarWidthRef.current = null;
+    sidebarWidthRef.current = next;
+    setSidebarWidth(next);
+  };
+  const startSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    sidebarDragRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+    setResizingSidebar(true);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const moveSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = sidebarDragRef.current;
+    if (!drag) return;
+    e.preventDefault();
+    pendingSidebarWidthRef.current = clampSidebarWidth(drag.startWidth + (e.clientX - drag.startX), window.innerWidth);
+    if (sidebarResizeFrame.current == null) {
+      sidebarResizeFrame.current = requestAnimationFrame(commitSidebarWidthFrame);
+    }
+  };
+  const endSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!sidebarDragRef.current) return;
+    sidebarDragRef.current = null;
+    if (sidebarResizeFrame.current != null) {
+      cancelAnimationFrame(sidebarResizeFrame.current);
+      commitSidebarWidthFrame();
+    }
+    pendingSidebarWidthRef.current = null;
+    setResizingSidebar(false);
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    persistSidebarWidth(sidebarWidthRef.current);
+  };
+  const resizeSidebarWithKeyboard = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const delta = e.key === "ArrowLeft" ? -SIDEBAR_KEYBOARD_STEP : SIDEBAR_KEYBOARD_STEP;
+    persistSidebarWidth(clampSidebarWidth(sidebarWidthRef.current + delta, window.innerWidth));
+  };
+
+  useEffect(() => () => {
+    if (sidebarResizeFrame.current != null) cancelAnimationFrame(sidebarResizeFrame.current);
+  }, []);
+
+  useEffect(() => {
+    if (!resizingSidebar) return;
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
+    };
+  }, [resizingSidebar]);
+
+  // Window shrinks past the stored width: clamp back into the visible range
+  // instead of letting the sidebar eat the chat area.
+  useEffect(() => {
+    const onResize = () => setSidebarWidth((w) => clampSidebarWidth(w, window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   // Sidebar sections: 「项目」 folders derive from chat workspaces —
   // registered projects first, then ad-hoc explicit directories (basename
   // labels). Chats filed into a folder leave the 「最近」 recency list, the
@@ -1453,7 +1553,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     <div className="flex h-full">
       {/* Sessions */}
       {!sidebarCollapsed && (
-      <div className="flex w-60 shrink-0 flex-col border-r">
+      <>
+      <div className="flex shrink-0 flex-col border-r" style={{ width: sidebarWidth }}>
         <div className="grid gap-2 p-3">
           <div className="flex items-center gap-1">
             <Button className="min-w-0 flex-1 justify-start" size="sm" variant="secondary" onClick={createDirectSession}>
@@ -1697,6 +1798,31 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
           </span>
         </div>
       </div>
+      {/* Resize handle: a 6px strip on the sidebar border. Pointer capture
+          keeps the drag alive outside the strip; the keyboard path keeps the
+          splitter reachable without a mouse. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="拖动调整对话列表宽度"
+        aria-valuemin={SIDEBAR_MIN_WIDTH}
+        aria-valuemax={sidebarMaxWidth(window.innerWidth)}
+        aria-valuenow={sidebarWidth}
+        tabIndex={0}
+        title="拖动调整对话列表宽度"
+        onPointerDown={startSidebarResize}
+        onPointerMove={moveSidebarResize}
+        onPointerUp={endSidebarResize}
+        onPointerCancel={endSidebarResize}
+        onLostPointerCapture={endSidebarResize}
+        onKeyDown={resizeSidebarWithKeyboard}
+        className={cn(
+          "w-1.5 shrink-0 cursor-col-resize touch-none select-none bg-transparent transition-colors",
+          "hover:bg-primary/40 focus-visible:bg-primary/50 focus-visible:outline-none",
+          resizingSidebar && "bg-primary/50",
+        )}
+      />
+      </>
       )}
 
       {/* Chat area */}
