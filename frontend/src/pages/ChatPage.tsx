@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { computeEditFlags, computeRunningTools, computeToolDurations, groupSessionsByProject, groupSessionsByTime, isDayChange, mdToSpeech, type UIMessage } from "@/lib/chatUtils";
+import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
 import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
@@ -1392,7 +1393,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       {s.archived && <Badge variant="outline" className="shrink-0 px-1 py-0 text-[10px] text-muted-foreground">归档</Badge>}
       {runningMap[s.id] && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" aria-label="生成中" />}
       {!runningMap[s.id] && unread[s.id] && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="有新回复未查看" />}
-      <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+      {/* The cluster hosts the "…" dropdown anchor, so it must keep its layout
+          box while the menu is open — see SESSION_ROW_ACTIONS_CLASS (#28). */}
+      <span className={SESSION_ROW_ACTIONS_CLASS} data-slot="session-row-actions">
         {/* Frequent state toggles stay one click; the rest collapse into one
             menu so the row keeps four controls instead of six. */}
         <button

@@ -3,6 +3,25 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百九十一轮迭代：修复会话行三点菜单弹到窗口左上角（已实施）
+
+依据：issue #28（Windows x64 桌面，v0.5.11）。展开项目分组后点击会话行右侧「…」，菜单固定出现在整个窗口左上角，压住标题栏与「搜索对话」，与按钮完全脱节；任何会话、项目、窗口尺寸均必现，且无日志输出。
+
+**实现要点**
+
+- **根因**：会话行右侧操作区用 `hidden group-hover:flex group-focus-within:flex` 收起，而「…」按钮正是 Radix 下拉菜单的 popper 锚点。菜单打开时 Radix 的模态层会把 `document.body` 设为 `pointer-events: none`，行不再命中 `:hover`；焦点同时移入 portal 里的菜单内容，`group-focus-within` 也随之失效。两个分支都消失后操作区回到 `display: none`，触发按钮没有任何布局盒，floating-ui 量到 0×0 的锚点矩形，于是把弹层放在视口 (0,0)——即窗口左上角。
+- `frontend/src/lib/sessionRowActions.ts`：新增 `SESSION_ROW_ACTIONS_CLASS` 常量，在原有 hover / focus-within 分支之外补 `group-has-data-[state=open]:flex`。Radix 给触发按钮写入 `data-state="open"`，`:has()` 是纯 DOM 结构匹配、不受 `display:none` 与 `pointer-events` 影响，因此菜单打开的整段时间操作区都保持 `display:flex`，锚点矩形可正常测量。
+- `frontend/src/pages/ChatPage.tsx`：会话行操作区改用该常量并加 `data-slot="session-row-actions"`；其余布局与交互不变（仍只在悬停/聚焦时露出，不长期占位）。
+- 该选择器依赖 `:has()`，与本仓库 shadcn 组件已在使用的 `has-data-*` / `group-has-*` 变体同一机制，未引入新的 WebView 版本要求。
+
+**测试证据**
+
+- 新增 `frontend/src/lib/sessionRowActions.test.ts`：断言 class 含 `group-has-data-[state=open]:flex`（#28 回归守卫），并保留 `hidden` / `group-hover:flex` / `group-focus-within:flex`。
+- `cd frontend && npx tsc --noEmit && npm test`：6 个文件、30 个用例全绿；`npm run build` 通过。
+- 构建产物 `dist/assets/index-*.css` 确认生成 `.group-has-data-\[state\=open\]\:flex:is(:where(.group):has([data-state=open]) *){display:flex}`，特异性 (0,2,0) 高于 `.hidden` 的 (0,1,0) 且出现顺序在后，菜单打开时必然覆盖 `display:none`。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/...` 全绿。
+- 本机预览服务未获授权启动，未做浏览器实机点击验证；修复依据为 Radix 模态层的 pointer-events / 焦点行为与构建产物选择器，待测试机安装新版本后确认菜单锚定位置。
+
 ### 第一百九十轮迭代：修复 Windows 发版门禁的 macOS 路径断言（已实施）
 
 依据：v0.5.10 发版失败（Release run 41607432207）。`gate` 在 windows-latest 上执行 `go test -count=1 ./internal/... .` 时，`TestUpdateTargetForExe/darwin_bundle` 失败：`target = "\\Users\\u\\Applications\\WorkBuddy Agent.app"`，期望 `/Users/u/Applications/WorkBuddy Agent.app`；`publish` 因 gate 失败被跳过，没有产生 release。
