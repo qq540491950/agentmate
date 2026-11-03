@@ -3,6 +3,26 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百八十九轮迭代：更新后自动清理桌面上的旧版本残留（已实施）
+
+依据：issue #27（Windows 桌面安装版；反馈者自述 v0.5.8）。更新并重启后，桌面上仍留着上一版本应用的备份副本，右键删除 / 拖入回收站提示「文件正在使用」，只能一直留在桌面；期望新版本启动后不再占用旧版本文件。issue 同时指出与 #26（多开）可能互为因果。
+
+**实现要点**
+
+- **根因（残留必然存在）**：Wails updater 在 Windows 上无法删除仍被映射的可执行文件，只能先把目标改名为 `<exe>.old.<unixnano>` 再放入新文件；执行删除和清扫时 helper 自己仍运行在这个已改名的文件上，删除必然失败。helper 的清扫又只在下一次更新时发生——于是**每次 Windows 更新都会把上一版本副本留在应用旁边**；应用放在桌面时，这个副本就出现在桌面上。
+- **根因（长期被占用）**：v0.5.8 及更早没有单实例锁，多开时只有发起更新的那个进程退出，其他旧实例仍映射着旧 exe（改名后即 `.old.*` 文件），Windows 因此持续拒绝删除，直到这些实例全部退出。#26 的单实例修复（v0.5.9）阻止再产生新的多实例，但已留下的残留文件仍需新版本主动清走。
+- `internal/services/updateleftover.go`：新增启动清扫。目标路径按 updater 的同一规则推导（Windows/Linux 为 exe 本身，macOS 为 `.app` 包），只匹配 `<target>.old.<unixnano>`（UnixNano 时间戳须晚于 2020，避免误删用户同前缀文件）与 `<target>.bak`。
+- 安全边界：**安装目标不存在时一律不清理**（此时备份可能是唯一可恢复的副本）；只删除常规残留文件，目录型 `.bak`（macOS bundle）在目标存在时才 `RemoveAll`；30 秒内的新文件不碰，避免与仍在进行的更新交接竞争。
+- `UpdateService.attach` 在单实例锁已获取后启动清扫协程（二次启动进程在 `application.New` 内退出，不会误清）；30 秒重试一次、最多持续 10 分钟——helper 通常在新进程启动后 1 秒内退出，第一次重试即可删除；仍被旧实例占用时留待其退出或下次启动继续。`StopUpdates` 同时停止清扫协程。
+
+**测试证据**
+
+- 新增 `TestUpdateTargetForExe`：Windows 桌面 exe、Linux AppImage、macOS `.app` 包、普通二进制四种目标推导。
+- 新增 `TestSweepUpdateLeftovers`：陈旧的 `.old.*` 删除、新鲜残留保留、`.bak` 文件删除、bundle `.bak` 目录删除、目标缺失时全部保留、`old.123` / 非数字后缀 / 其他应用的同名文件不误删、含 glob 元字符的目录名按字面匹配。
+- 新增 `TestSweepUpdateLeftoversLoopRetriesUntilUnlocked`（首次因「过新」跳过、第二次重试删除）与 `TestSweepUpdateLeftoversLoopExitsWhenClean`（无残留立即退出）。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/... .`、`go test -race -count=1 ./internal/... .` 全绿。
+- 本机为 macOS，Windows 的「文件被占用」无法实机复现；修复针对 updater 的平台无关残留命名与清理时机，待测试机再走一次更新并重启后确认桌面残留副本是否自动消失。
+
 ### 第一百八十八轮迭代：桌面端单实例限制，二次启动唤回已有窗口（已实施）
 
 依据：issue #26（Windows 桌面安装版；版本字段为空，按 `createdAt`（11-03 08:14 UTC）推断为 v0.5.8）。保持应用运行，再次双击桌面图标或从开始菜单启动，会新开一个独立窗口/进程，重复启动可无限多开；期望第二次启动只激活并聚焦已在运行的窗口。

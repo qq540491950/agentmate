@@ -80,6 +80,7 @@ frontend/stub/               # 浏览器视觉回归：setTransport 数据桩 + 
 - **A2A 失效联动**：SaveAgent（替换）/DeleteAgent 通过 `Services.StopPublishedAgent` 下线已发布服务器；OAuth 回调端口惰性重绑（授权流程结束必释放）。
 - **单轮超时**：Agent 未配置 `MaxTurnSeconds` 时默认 600 秒兜底；`runTurn` 的 recover 把 panic 转为 `error` + `done` 事件，界面不会卡在运行态。
 - **单实例**：`main.go` 的 `application.Options.SingleInstance` 以 `build/config.yml` 的 `productIdentifier` 为锁名（Windows 命名互斥量 / macOS 锁文件 / Linux D-Bus）；二次启动把激活请求转发给首个实例（`activateMainWindow`：UnMinimise→Show→Focus）后自行退出。UniqueID 不可改——换名等于让新旧版本互不可见，重新可以多开。
+- **更新残留清理**：Wails updater 在 Windows 上只能把旧 exe 改名成 `<exe>.old.<unixnano>`，且删除时 helper 仍映射该文件，故每次更新都会留下上一版本副本。新版本启动（单实例锁之后）由 `updateleftover.go` 清扫 `<exe>.old.*` 与 `<exe>.bak`：目标必须存在、只认 updater 命名、30 秒内新文件不碰、30 秒重试最多 10 分钟。
 - **导出脱敏**：`ExportConfig(false)` 剥离供应商 API Key 与 MCP AuthToken；`MCPTokens` 任何导出都不携带。
 
 ## 约定
