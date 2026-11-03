@@ -44,6 +44,23 @@ const (
 	checkInterval = 24 * time.Hour
 	// checkTimeout bounds one whole check (manifest fetch + redirects).
 	checkTimeout = 90 * time.Second
+
+	// Restart watchdog timings. The framework's helper waits 30 s for this
+	// process to exit before it swaps the binary and relaunches; when that
+	// wait lapses it gives up on the swap and relaunches the OLD binary
+	// instead (exit code 17 in pkg/updater/helper.go). That is how an update
+	// ends with the old window still on screen next to a freshly started app.
+	// ApplyUpdate therefore does not trust the graceful shutdown alone:
+	//
+	//   - applyWatchdog bounds how long we wait for Restart to settle. Past
+	//     it, the helper's readiness file decides: once it says "ready" the
+	//     helper is blocking on this PID, so exiting now completes the swap.
+	//   - applyExitGrace covers the same risk after Restart reported success
+	//     (the helper is ready by definition then): a process still alive
+	//     when the grace lapses exits hard.
+	applyWatchdog  = 12 * time.Second
+	applyPoll      = 250 * time.Millisecond
+	applyExitGrace = 5 * time.Second
 )
 
 // updatePublicKeyB64 is the trust root for update signatures: the base64 of
@@ -272,11 +289,103 @@ func (u *UpdateService) InstallUpdate() (UpdateStatus, error) {
 
 // ApplyUpdate hands the staged payload to the updater helper and quits; the
 // helper swaps the binary/bundle and relaunches the new version.
+//
+// Restart blocks on this process's graceful shutdown, so it runs on its own
+// goroutine under a watchdog: see the applyWatchdog comment for why a wedged
+// quit must become a hard exit rather than a second copy of the old app.
 func (u *UpdateService) ApplyUpdate() error {
 	if u.app == nil || u.app.Updater == nil {
 		return errors.New("更新服务未初始化")
 	}
-	return u.app.Updater.Restart(context.Background())
+	return applyWithWatchdog(
+		func() error { return u.app.Updater.Restart(context.Background()) },
+		func() bool { return helperAwaitingExit(os.TempDir(), os.Getpid()) },
+		applyWatchdog, applyPoll, applyExitGrace,
+		forceExitForUpdate,
+	)
+}
+
+// applyWithWatchdog runs restart and makes sure a successful update is not
+// left half-applied. The forceExit callback is the last resort: production
+// exits the process, tests record the call.
+func applyWithWatchdog(restart func() error, helperReady func() bool, watchdog, poll, grace time.Duration, forceExit func(string)) error {
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("更新重启异常: %v", r)
+			}
+		}()
+		done <- restart()
+	}()
+
+	// armExit applies only when Restart reported success: the helper is
+	// standing by by definition, so the process must not outlive the handoff.
+	armExit := func() {
+		if grace <= 0 {
+			return
+		}
+		go func() {
+			time.Sleep(grace)
+			forceExit("重启完成更新后进程未退出")
+		}()
+	}
+
+	timer := time.NewTimer(watchdog)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		if err != nil {
+			return err
+		}
+		armExit()
+		return nil
+	case <-timer.C:
+	}
+
+	// Restart is still in flight. If the helper is ready, the only thing
+	// between the user and the new version is our own shutdown.
+	for {
+		if helperReady() {
+			forceExit("关闭流程超时，更新助手已在等待本进程退出")
+			return nil // only reached when forceExit is a test recorder
+		}
+		select {
+		case err := <-done:
+			if err != nil {
+				return err
+			}
+			armExit()
+			return nil
+		case <-time.After(poll):
+		}
+	}
+}
+
+// helperAwaitingExit reports whether the updater helper this process spawned
+// has reached helper mode and is now blocking on our exit. Wails hands that
+// readiness signal through <tmp>/wails-update-<pid>-<nano>.ready ("ready")
+// and deletes it when Restart returns, so while Restart is still blocked the
+// file proves that exiting now completes the swap rather than abandoning it.
+// A file carrying an "error:" payload means the helper gave up — never exit
+// on that.
+func helperAwaitingExit(tmpDir string, pid int) bool {
+	matches, err := filepath.Glob(filepath.Join(tmpDir, fmt.Sprintf("wails-update-%d-*.ready", pid)))
+	if err != nil {
+		return false
+	}
+	for _, path := range matches {
+		data, err := os.ReadFile(path)
+		if err == nil && strings.TrimSpace(string(data)) == "ready" {
+			return true
+		}
+	}
+	return false
+}
+
+func forceExitForUpdate(reason string) {
+	log.Printf("强制退出以完成更新：%s", reason)
+	os.Exit(0)
 }
 
 // Skip records the version the user does not want to be reminded about. A

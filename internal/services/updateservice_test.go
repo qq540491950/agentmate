@@ -3,8 +3,14 @@ package services
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"go-workbuddy/internal/config"
 )
@@ -167,5 +173,132 @@ func TestSkipRejectsEmptyVersion(t *testing.T) {
 	u := NewUpdateService(nil)
 	if err := u.Skip("  "); err == nil {
 		t.Fatal("expected an error for an empty version")
+	}
+}
+
+// helperAwaitingExit decides whether a forced exit is safe, so it must read
+// only the handshake of *this* process and only the "ready" payload.
+func TestHelperAwaitingExit(t *testing.T) {
+	const pid = 4242
+	write := func(t *testing.T, dir, name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("no readiness file", func(t *testing.T) {
+		if helperAwaitingExit(t.TempDir(), pid) {
+			t.Fatal("a missing handshake must not count as a helper standing by")
+		}
+	})
+	t.Run("helper reported an error", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, fmt.Sprintf("wails-update-%d-1.ready", pid), "error: staged artifact is unavailable")
+		if helperAwaitingExit(dir, pid) {
+			t.Fatal("a helper that gave up must not trigger an exit")
+		}
+	})
+	t.Run("helper is standing by", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, fmt.Sprintf("wails-update-%d-1.ready", pid), "ready\n")
+		if !helperAwaitingExit(dir, pid) {
+			t.Fatal("ready handshake not detected")
+		}
+	})
+	t.Run("another process's handshake", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, fmt.Sprintf("wails-update-%d-1.ready", pid+1), "ready")
+		if helperAwaitingExit(dir, pid) {
+			t.Fatal("another process's handshake must not match")
+		}
+	})
+}
+
+// A restart that returns must never force an exit while it can still fail:
+// success arms the post-restart grace exit, an error keeps the app running.
+func TestApplyWithWatchdogRestartResult(t *testing.T) {
+	t.Run("success arms the grace exit", func(t *testing.T) {
+		forced := make(chan string, 4)
+		err := applyWithWatchdog(
+			func() error { return nil },
+			func() bool { return false },
+			50*time.Millisecond, 5*time.Millisecond, 20*time.Millisecond,
+			func(reason string) { forced <- reason },
+		)
+		if err != nil {
+			t.Fatalf("successful restart = %v", err)
+		}
+		select {
+		case <-forced:
+		case <-time.After(2 * time.Second):
+			t.Fatal("a successful restart must arm the post-restart forced exit")
+		}
+	})
+
+	t.Run("error keeps the app running", func(t *testing.T) {
+		wantErr := errors.New("updater: helper did not signal readiness")
+		var forced atomic.Bool
+		err := applyWithWatchdog(
+			func() error { return wantErr },
+			func() bool { return true }, // even a ready helper must not exit on failure
+			20*time.Millisecond, 5*time.Millisecond, 20*time.Millisecond,
+			func(string) { forced.Store(true) },
+		)
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("err = %v, want %v", err, wantErr)
+		}
+		time.Sleep(100 * time.Millisecond)
+		if forced.Load() {
+			t.Fatal("a failed restart must leave the app running")
+		}
+	})
+}
+
+// The reported defect: the old process hangs in shutdown, so the helper's
+// parent wait lapses and the update degenerates into a second app. Once the
+// helper acknowledges it is waiting for this PID, ApplyUpdate must exit
+// instead of waiting for the wedged quit.
+func TestApplyWithWatchdogExitsWhenHelperStandsBy(t *testing.T) {
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	forced := make(chan string, 1)
+	readyAfter := time.Now().Add(50 * time.Millisecond)
+
+	err := applyWithWatchdog(
+		func() error { <-block; return nil }, // the app's Quit never returns
+		func() bool { return time.Now().After(readyAfter) },
+		10*time.Millisecond, 5*time.Millisecond, 0,
+		func(reason string) { forced <- reason },
+	)
+	if err != nil {
+		t.Fatalf("applyWithWatchdog = %v", err)
+	}
+	select {
+	case reason := <-forced:
+		if reason == "" {
+			t.Fatal("forced exit must carry a reason for the log")
+		}
+	default:
+		t.Fatal("a standing-by helper must trigger the forced exit")
+	}
+}
+
+// A slow helper startup is not a wedged quit: if it never signals readiness
+// and Restart eventually fails, the error is returned and nothing is forced.
+func TestApplyWithWatchdogSlowHelperFailure(t *testing.T) {
+	wantErr := errors.New("updater: helper did not signal readiness")
+	var forced atomic.Bool
+	err := applyWithWatchdog(
+		func() error { time.Sleep(60 * time.Millisecond); return wantErr },
+		func() bool { return false },
+		10*time.Millisecond, 5*time.Millisecond, 10*time.Millisecond,
+		func(string) { forced.Store(true) },
+	)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, want %v", err, wantErr)
+	}
+	if forced.Load() {
+		t.Fatal("a helper that never became ready must not force an exit")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestRotatingWriterRotates: exceeding maxBytes moves the file to .old and
@@ -39,4 +40,29 @@ func TestRotatingWriterRotates(t *testing.T) {
 	if err != nil || !strings.HasPrefix(string(oldData), "0123456789") {
 		t.Fatalf("old log missing first generation: err=%v", err)
 	}
+}
+
+// TestShutdownBounded: a wedged shutdown hook must not hold Quit() — and with
+// it the in-app updater's 30 s parent-exit window — hostage. Missing that
+// window makes the updater relaunch the OLD binary, i.e. two apps at once.
+func TestShutdownBounded(t *testing.T) {
+	wedged := make(chan struct{})
+	t.Cleanup(func() { close(wedged) })
+
+	start := time.Now()
+	shutdownBounded("测试挂死钩子", 25*time.Millisecond, func() { <-wedged })
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("shutdownBounded waited %s for a wedged hook", elapsed)
+	}
+
+	ran := make(chan struct{})
+	shutdownBounded("测试正常钩子", time.Second, func() { close(ran) })
+	select {
+	case <-ran:
+	default:
+		t.Fatal("shutdownBounded must run the hook")
+	}
+
+	// A panicking hook is logged, never propagated into Quit().
+	shutdownBounded("测试恐慌钩子", time.Second, func() { panic("boom") })
 }

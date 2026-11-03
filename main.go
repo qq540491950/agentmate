@@ -144,8 +144,14 @@ func main() {
 		},
 		OnShutdown: func() {
 			services.StopUpdates(updSvc) // stop the background update poll
-			a2aRPC.StopAll()             // graceful: unpublish agents before exit
-			mgr.CloseAll()               // then close MCP transports (no orphan stdio children)
+			// Wails runs OnShutdown synchronously inside Quit(). The in-app
+			// updater's helper only waits 30 s for this process to exit before
+			// it gives up on the swap and relaunches the OLD binary, leaving
+			// two copies of the app running. Teardown that can stall (an MCP
+			// stdio child that ignores stdin close, an A2A stream still in
+			// flight) must therefore never spend that whole budget.
+			shutdownBounded("A2A 服务下线", shutdownHookTimeout, a2aRPC.StopAll) // graceful: unpublish agents before exit
+			shutdownBounded("MCP 连接关闭", shutdownHookTimeout, mgr.CloseAll)   // then close MCP transports (no orphan stdio children)
 		},
 	})
 
@@ -212,6 +218,35 @@ func main() {
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// shutdownHookTimeout bounds one shutdown hook. Each hook here tears down
+// network listeners or child processes, work that can stall for long enough
+// to matter: Quit() is synchronous, and the in-app updater gives the old
+// process a 30-second window to exit (see services.ApplyUpdate). Two hooks
+// at 5 s each stay well inside it.
+const shutdownHookTimeout = 5 * time.Second
+
+// shutdownBounded runs fn in the background and returns once it finishes or
+// the timeout passes, whichever comes first. A timed-out hook keeps running
+// while the process exits underneath it; the alternative is a wedged Quit
+// that turns an update into two copies of the old app.
+func shutdownBounded(name string, timeout time.Duration, fn func()) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("关闭%s异常: %v", name, r)
+			}
+		}()
+		fn()
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		log.Printf("关闭%s超时（%s），继续退出", name, timeout)
 	}
 }
 

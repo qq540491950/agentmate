@@ -3,6 +3,25 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百八十四轮迭代：更新重启不再残留旧进程（已实施）
+
+依据：issue #22（Windows 11；版本字段为空，按 `createdAt`（11-03 02:10 UTC）推断为 v0.5.3，早于 v0.5.4 发布）。「设置 → 关于 → 检查更新 → 下载并安装 → 重启完成更新」后新版本启动，但旧版本窗口仍在，任务管理器里同时有两个应用进程。
+
+**实现要点**
+
+- 根因分两层：Wails v3 updater 的 helper 只给父进程 **30 秒**退出窗口（`pkg/updater/helper.go`），超时会放弃替换并重启**旧版**二进制（退出码 17）——用户看到的就是「又启动一个应用、旧的还在」；而 `App.Quit()` 是同步阻塞的，本应用 `OnShutdown` 里的 `MCP.CloseAll()`/`A2A.StopAll()` 会在主线程上等待子进程与流式请求收尾，单个 MCP stdio 子进程关闭最多可花 10 秒级，足以把整个关闭流程拖过 helper 的等待窗口。
+- `main.go`：新增 `shutdownBounded`（5 秒上限 + panic 兜底），`OnShutdown` 的 A2A 下线与 MCP 关闭各自独立限时，任何挂死的收尾都不能再占满 Quit 与 helper 之间的预算；超时只记日志并继续退出。
+- `internal/services/updateservice.go`：`ApplyUpdate` 不再直接同步调用 `Updater.Restart`，改为 `applyWithWatchdog` 看守——12 秒看门狗之后若 helper 的就绪握手文件（`<tmp>/wails-update-<pid>-*.ready` 内容为 `ready`）已存在，说明 helper 正阻塞等待本进程退出，此时强制 `os.Exit(0)` 让替换与重启完成；`Restart` 返回成功后额外保留 5 秒宽限，进程若仍未退出也强制退出。`Restart` 失败（含 helper 未就绪）时不强制退出，保持应用可重试。
+- 就绪文件只认本进程 PID 且内容必须为 `ready`：`error:` 载荷（helper 已放弃）与其他进程的握手都不会触发退出，避免把「更新未完成」变成「应用直接消失」。
+
+**测试证据**
+
+- 新增 `TestHelperAwaitingExit`（无文件 / error 载荷 / ready 载荷 / 其他 PID 四组）。
+- 新增 `TestApplyWithWatchdogRestartResult`（成功arm宽限退出、失败保持运行）、`TestApplyWithWatchdogExitsWhenHelperStandsBy`（Quit 永不返回 + helper 就绪 → 触发强制退出）、`TestApplyWithWatchdogSlowHelperFailure`（helper 未就绪且 Restart 失败 → 错误透传、不退出）。
+- 新增根包 `TestShutdownBounded`：挂死钩子 25ms 超时返回、正常钩子执行、panic 不向 Quit 传播。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/... .`、`go test -race -count=1 ./internal/... .` 全绿。
+- 本机为 macOS，Windows 11 的双应用现象无法实机复现；修复针对的是平台无关的关闭预算与 helper 握手契约，待测试机更新到新版本后再走一次「下载安装 → 重启生效」确认。
+
 ### 第一百八十三轮迭代：直聊项目会话可读取工作区（已实施）
 
 依据：issue #21（Windows 11；版本字段为空，按 `createdAt` 推断为 v0.5.3；截图中会话时间为 11 月 2 日 20:28，早于 v0.5.2 发布）。两处症状：
