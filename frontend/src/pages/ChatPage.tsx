@@ -29,6 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { computeEditFlags, computeRunningTools, computeToolDurations, groupSessionsByProject, groupSessionsByTime, isDayChange, mdToSpeech, type UIMessage } from "@/lib/chatUtils";
 import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
+import { shouldOpenLatestSession } from "@/lib/sessionDraft";
 import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
@@ -81,6 +82,10 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // Draft typed before any session exists: direct chats are created lazily
   // on the first send, like the composer-first flow of Codex/ChatGPT desktop.
   const [freshInput, setFreshInput] = useState("");
+  // Set by「新聊天」: the blank conversation stays a local draft until its
+  // first message is sent, so no empty row lands in the sidebar/database and
+  // the auto-open-newest effect must not replace it (issue #30).
+  const [newChatDraft, setNewChatDraft] = useState(false);
   const input = activeID ? (drafts[activeID] ?? "") : freshInput;
   const setInput = useCallback(
     (v: string | ((prev: string) => string)) => {
@@ -187,16 +192,16 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // New chats are ALWAYS direct (no target): turns run on the default
   // provider's model, and leading @助手 mentions route individual turns to
   // agents, teams or remote A2A agents. No dialog, no pre-configuration.
-  const createDirectSession = useCallback(async () => {
-    try {
-      const s = await Chat.NewSessionWithWorkspace("", "", "", "");
-      setMessages([]);
-      reloadSessions();
-      setActiveID(s.id);
-    } catch (e) {
-      toast.error(`创建会话失败: ${errText(e)}`);
-    }
-  }, [reloadSessions]);
+  // 「新聊天」only opens a local draft; the session is created by send() when
+  // the first message actually goes out (issue #30).
+  const createDirectSession = useCallback(() => {
+    setActiveID("");
+    setNewChatDraft(true);
+    setMessages([]);
+    setFreshInput("");
+    setEditing(false);
+    setSessionUsage(null);
+  }, []);
   createDirectSessionRef.current = createDirectSession;
   const createProjectSession = useCallback(async (projectID: string) => {
     try {
@@ -249,12 +254,18 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     };
   }, [activeID, active?.workspaceDir, active?.projectId]);
 
-  // Open the newest session on first load.
+  // Open the newest session on first load — unless「新聊天」deliberately left
+  // the page on an unsaved draft (issue #30). Any session becoming active
+  // ends draft mode.
   useEffect(() => {
-    if (!activeID && sessions.length > 0) {
+    if (shouldOpenLatestSession({ activeID, draft: newChatDraft, sessionCount: sessions.length })) {
       setActiveID(sessions[0].id);
     }
-  }, [sessions, activeID]);
+  }, [sessions, activeID, newChatDraft]);
+
+  useEffect(() => {
+    if (activeID) setNewChatDraft(false);
+  }, [activeID]);
 
   // The filter is session-scoped: a query left over from another chat would
   // present an unexplained empty list here.
