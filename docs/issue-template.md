@@ -111,22 +111,29 @@ MCP：filesystem
 
 ## 多个 Issue 一起提交时怎么处理
 
-### 1. 默认：FIFO 串行队列
+### 1. 流水线并发，不再是单票 FIFO
 
-自动流程每 15 分钟检查一次，每轮只取**创建时间最早**的一个待处理 issue。
-其余 issue 保持 open 排队，不会丢失；一个修完（推送、发版、评论、关闭）后，
-下一轮再处理下一个。
+自动流程每 15 分钟做一次短动作，多个 issue 可以同时在途：
 
-不会并行修改 `main`，避免多个修复互相覆盖。
+- 不同 module 可以同时在途；编码动作按轮次串行，CI 与集成并行；
+- 同一 module 同时最多一个；
+- 全局最多 3 个自动 PR 在途；
+- 每个修复在独立 `git worktree` 完成并开 PR，由 Integrator 串行合入
+  `main`，不会互相覆盖；
+- 一个 issue 的 CI 等待或失败不会让整条队列停下。
+
+其余 issue 保持 open 排队，不会丢失。
 
 ### 2. 紧急问题可以插队
 
-默认按创建时间处理。如果是阻塞性、会导致无法继续测试的问题：
+默认按 `priority:p0` → 创建时间排序。如果是阻塞性、会导致无法继续测试的
+问题：
 
 - 在标题前加 `[P0]`，例如 `[P0] [chat] 应用启动即崩溃`；
-- 或在 issue 里明确写“阻塞测试”。
+- 或在 issue 里明确写“阻塞测试”；
+- 提交时加 `priority:p0` 标签（`github-bug-relay` 会自动加）。
 
-自动流程仍会优先看最早创建的 issue；遇到 P0 时会人工调整顺序。
+P0 会被 Dispatcher 优先选取，发版可走最短 15 分钟窗口。
 
 ### 3. 重复 Issue
 
@@ -147,15 +154,23 @@ MCP：filesystem
 `agent:pending-release`，等待下一个发版窗口；同一窗口内的所有修复合并成一个
 patch 版本（例如 `v0.5.1`）。
 
+发版开始时会对当时的 pending 队列做快照：
+
+- 只关闭修复提交是该 tag 祖先的 issue；
+- 发版期间新合入的 pending 留到下一批，不会被误关；
 - 测试机最多约 1 小时后可以更新；
-- 发版成功后统一评论并关闭本批所有 issue；
 - 没有待发版 issue 的窗口不会产生空 Release。
+- `priority:p0` 可以走最短 15 分钟窗口。
 
 ### 6. 失败不阻塞队列
 
-- 无法复现或信息不足：标 `needs-info`，评论请求补充信息，继续处理下一个。
-- 修复或 CI 失败：标 `agent:blocked`，继续处理下一个。
-- 发版失败：本批待发版 issue 标 `agent:blocked`，等人工处理；不会连续打 tag。
+- 无法复现或信息不足：标 `needs-info`，评论请求补充信息；作者补充后自动
+  回队，不阻塞其他 issue。
+- 修复或 CI 失败：标 `agent:blocked` + `agent:retryable` 或
+  `agent:permanent`。可重试的 30 分钟后自动回队；永久失败等人工处理，但
+  不会阻塞其他 issue。
+- 发版失败：只影响本批快照里的 issue，标 `agent:retryable`，新 pending
+  不受影响；不会连续打 tag。
 
 ### 7. 提交建议
 
@@ -167,16 +182,24 @@ patch 版本（例如 `v0.5.1`）。
 
 | 标签 | 含义 |
 |---|---|
-| `agent:processing` | 正在处理，防止重复抓取 |
-| `agent:pending-release` | 已修复并合入 main，等待批量发版 |
-| `agent:fixed` | 已修复并关闭 |
+| `module:<模块>` | 路由标签，决定 module 互斥与并行车道 |
+| `priority:p0` | 阻塞性问题，优先处理并走最短发版窗口 |
+| `ready-for-agent` | enhancement 验收标准明确，可以进入实现队列 |
+| `agent:processing` | 已认领，编码或 PR 阶段 |
+| `agent:pending-release` | 已合入 main，等待批量发版 |
+| `agent:fixed` | 已发布并关闭 |
 | `needs-info` | 信息不足，等待补充 |
-| `agent:blocked` | 修复、CI 或发版失败，需要人工 |
+| `agent:blocked` | 修复、CI 或发版失败 |
+| `agent:retryable` | 失败可自动重试，30 分钟后回队 |
+| `agent:permanent` | 失败需要人工，不再自动重试 |
 | `bug` | 由 Bug 表单自动添加 |
-| `enhancement` | 功能需求；自动流程会实现，需求不清时先询问 |
+| `enhancement` | 功能需求；验收明确时才进入实现 |
 | `duplicate` | 重复 issue，引用先提交的编号 |
 
-请不要手动修改 `agent:*` 标签，否则可能导致重复处理或漏处理。
+`agent-fix`、`agent:ready-to-merge` 是自动修复 PR 的标签，不出现在 issue 上。
+
+请不要手动修改 `agent:*`、`module:*`、`priority:*` 标签，否则可能导致重复
+处理或漏处理。
 
 ## 注意事项
 

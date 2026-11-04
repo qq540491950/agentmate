@@ -11,7 +11,7 @@ disable-model-invocation: true
 本仓库的缺陷闭环分两侧，你只做**提交侧**：
 
 - **提交侧（本 skill）**：把口述的问题变成一张远端能自动抓取的 issue。
-- **修复侧**：[`docs/issue-fixer-prompt.md`](../../../docs/issue-fixer-prompt.md) —— 远端定时任务每 15 分钟一轮：FIFO 取创建最早的一张票、认领、复现、修、过质量门禁、push、等 CI（含 `windows-build`）、打 patch tag 发版、评论关闭。
+- **修复侧**：[`docs/issue-fixer-prompt.md`](../../../docs/issue-fixer-prompt.md) —— 流水线模式：Dispatcher 每轮只做一个短动作（认领 / 集成 / 修复 / 发版），Worker 在独立 worktree 修复并开 PR，Integrator 串行合入，Release 批量打 patch tag、评论关闭。设计与状态机见 [`docs/issue-pipeline.md`](../../../docs/issue-pipeline.md)。
 
 ## 铁律
 
@@ -55,8 +55,8 @@ disable-model-invocation: true
 拆分后的关联：
 
 - 子票正文首行写 `parent #<母票号>`；母票正文列 `sub-issues: #a, #b`。
-- 优先级继承：母票带 `[P0]`，子票也带 `[P0]`。
-- 拆完先问用户：逐票发版还是批量发版（见「边界」）。
+- 优先级继承：母票带 `[P0]`，子票也带 `[P0]`，并加 `priority:p0` 标签。
+- 拆完默认**批量发版**，不再询问逐票还是批量；P0 由修复侧按最短窗口优先发版。
 
 ## 1. 收料
 
@@ -77,6 +77,19 @@ disable-model-invocation: true
 - 按「拆票判据」确认这一条装得下同一个问题；同一根因的多症状合并，并注明「同一根因」。
 
 完成判据：类别唯一、标题合规。
+
+### 路由标签契约
+
+提票时同时应用以下标签，供修复侧 Dispatcher 做 module 互斥与优先级排序：
+
+| 标签 | 何时加 | 说明 |
+|---|---|---|
+| `module:<模块>` | 总是 | 模块取标题里的白名单值；不是标题的替代品，只是机器可读路由 |
+| `priority:p0` | 标题带 `[P0]` 或正文写明“阻塞测试” | 修复侧优先处理，发版可走最短窗口 |
+| `ready-for-agent` | enhancement 且验收标准明确 | 需求不清时不加，让修复侧先走 `needs-info` |
+
+不要添加任何 `agent:*` 标签：`agent:processing`、`agent:pending-release`、
+`agent:blocked` 等由修复侧维护。
 
 ## 3. 脱敏
 
@@ -130,9 +143,13 @@ Windows 11 23H2 x64；模型：…；MCP：…；工作区：<path>
 ## 6. 提票
 
 ```bash
+# 模块取标题里的白名单值；P0 追加 priority:p0；enhancement 验收明确时追加 ready-for-agent
+LABELS="bug,module:<模块>"
+# LABELS="$LABELS,priority:p0"
+# LABELS="$LABELS,ready-for-agent"
 gh issue create --repo qq540491950/go-workbuddy \
   --title "[模块] 简短现象" \
-  --label bug \
+  --label "$LABELS" \
   --body "<上面拼好的正文>"
 ```
 
@@ -141,10 +158,16 @@ gh issue create --repo qq540491950/go-workbuddy \
 提完复核：
 
 ```bash
-gh issue view <N> --repo qq540491950/go-workbuddy --json number,author,state,labels,url
+gh issue view <N> --repo qq540491950/go-workbuddy \
+  --json number,author,state,labels,url
 ```
 
-完成判据：author 为 `qq540491950`、state 为 OPEN、没有任何 `agent:*` 标签；编号与链接已报给用户。
+`module:<模块>` 必须存在；`priority:p0` 只在 P0 票上出现；enhancement 只有在
+验收标准明确时才带 `ready-for-agent`。标签写错会直接影响修复侧的 module
+互斥与排序。
+
+完成判据：author 为 `qq540491950`、state 为 OPEN、没有任何
+`agent:*` 标签；编号与链接已报给用户。
 
 ## 7. 交接与收回
 
@@ -158,9 +181,11 @@ gh issue view <N> --repo qq540491950/go-workbuddy --json state,labels,comments
 
 标签翻译成人话：
 
-- `agent:processing` —— 远端正在修，不用管。
+- `agent:processing` —— 已认领，编码或 PR 阶段，不用管。
+- `agent:pending-release` —— 已合入 main，等待下一批 patch 版本。
 - `needs-info` —— 按「提问预算」让用户补版本/日志/步骤，补完评论在原票，不重开新票。
-- `agent:blocked` —— 从评论里抄出失败摘要（哪个 job、哪条测试、run 链接），给用户两个选择：人工接手，或拆成更小的一张票重提。
+- `agent:blocked` + `agent:retryable` —— 可自动重试的失败，30 分钟后会回队，不用人工改标签。
+- `agent:blocked` + `agent:permanent` —— 需要人工判断，从评论抄出失败摘要给用户。
 - `agent:fixed` —— 报版本号 + 更新方法（重启应用，或「设置 → 关于 → 检查更新」），并提示「如仍未解决，请重开并附新日志和复现步骤」。
 
 完成判据：票处于终态之一，且用户知道下一步动作。
@@ -170,5 +195,5 @@ gh issue view <N> --repo qq540491950/go-workbuddy --json state,labels,comments
 - 一次一张票；该不该拆看「拆票判据」，拆出来的票互相引用。不动 `agent:*` 标签，不自己关票（远端关）。
 - 不 force push、不删 tag、不改 release 资产。
 - 不在本机跑 `go test`、不构建、不启动应用验证——复现与质量门禁都是远端的事。
-- 一次提多票时先问：逐票发版（每票一个 patch tag）还是批量发版（队列清空后统一打 tag）。
+- 多票默认批量发版：修复侧按 60 分钟窗口合并成一个 patch tag；P0 可走最短 15 分钟窗口。不再逐票询问发版方式。
 - 修复侧本地是 macOS、测试机是 Windows，Windows 特有问题远端只能靠日志 + 代码分析；票里把日志和复现步骤给足，它的修复结论才站得住。

@@ -83,11 +83,35 @@ frontend/stub/               # 浏览器视觉回归：setTransport 数据桩 + 
 - **更新残留清理**：Wails updater 在 Windows 上只能把旧 exe 改名成 `<exe>.old.<unixnano>`，且删除时 helper 仍映射该文件，故每次更新都会留下上一版本副本。新版本启动（单实例锁之后）由 `updateleftover.go` 清扫 `<exe>.old.*` 与 `<exe>.bak`：目标必须存在、只认 updater 命名、30 秒内新文件不碰、30 秒重试最多 10 分钟。
 - **导出脱敏**：`ExportConfig(false)` 剥离供应商 API Key 与 MCP AuthToken；`MCPTokens` 任何导出都不携带。
 
+## Issue 自动修复流水线
+
+自动修复不再直接修改 `main`。流程、状态机与标签约定见
+[`docs/issue-pipeline.md`](docs/issue-pipeline.md)，可执行步骤见
+[`docs/issue-fixer-prompt.md`](docs/issue-fixer-prompt.md)。
+
+- **四角色**：Dispatcher（认领/调度）、Worker（worktree + 分支 + PR）、
+  Integrator（串行合入）、Release（批量发版）。单轮只做一个短动作，不在
+  进程内等 CI。
+- **隔离**：Worker 一律在 `git worktree` 中工作，主 checkout 不参与自动修复；
+  `main` 只由 Integrator 推进。全局 WIP ≤ 3，同一 module 同时 ≤ 1。
+- **共享文件**由 Integrator 统一维护：`docs/iteration-log.md`、
+  `frontend/bindings/**`、`go.mod` / `go.sum`、`frontend/package-lock.json`、
+  版本号与构建产物。Worker 不直接改这些文件。
+- **运行手册自身**只通过独立的工具链 issue/PR 修改，禁止在修产品 bug 的
+  同一轮「顺手」改流程。
+- 辅助命令：`scripts/issue-env.sh`（source 后提供流水线变量）、
+  `scripts/issue-queue.sh`（队列快照）、`scripts/issue-lease.sh`
+  （认领租约）、`scripts/issue-release.sh`（发版快照与按祖先关系关票）、
+  `scripts/issue-labels.sh`（首次部署或新仓库创建路由标签）。
+
 ## 约定
 
 - 测试与被测代码同包同目录（`*_test.go`），e2e 用 `httptest` 假服务器（fake SSE 模型 / 假授权服务器 / 内存 A2A 服务端），不依赖外部网络。
 - UI 文案为中文；错误经 `errText()` 透传到 toast。
 - 每轮功能迭代在 `docs/iteration-log.md` 顶层「视觉测试与体验设计」章节**顶部**追加「### 第 N 轮迭代：<主题>（已实施）」记录（含依据、实现要点、测试证据）。README 只保留概览与「质量与验证」。
+- **自动修复流水线中的功能迭代**先写 `docs/iterations/issue-<N>-<slug>.md`
+  片段，由 Integrator 在合入时统一插入 `docs/iteration-log.md` 顶部，避免
+  并行分支都改同一个文件；人工直接提交的迭代仍可直接追加。
 - 提交信息采用约定式前缀（feat / fix / docs / test / chore / refactor）+ scope，如 `feat(chat): 主题 — 要点`；正文列出实现与测试清单。
 
 ## 已知边界
