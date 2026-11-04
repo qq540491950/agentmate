@@ -8,7 +8,8 @@
 
 ## 1. 选取 issue
 
-只处理**作者为 `qq540491950`** 的 open issue。忽略 PR、他人 issue、机器人。
+**先执行 1.1 的队列自愈，再按本节选取。** 只处理**作者为 `qq540491950`** 的 open issue。
+忽略 PR、他人 issue、机器人。
 
 ```bash
 gh issue list --repo qq540491950/go-workbuddy --state open \
@@ -27,7 +28,7 @@ gh issue list --repo qq540491950/go-workbuddy --state open \
 - `invalid`
 
 按 `createdAt` 升序取**最早的一个**。没有可处理的 issue 就输出
-“无待处理 issue”并结束，不修改任何文件。
+“无待处理 issue”并结束，不修改任何文件（若刚做过 1.1 自愈，重新选取一次再判断）。
 
 如果选中的 issue 带 `enhancement` 标签：评论说明“自动流程当前只修复 bug，
 功能建议需要人工评估”，加 `needs-info`，不要改代码，结束。
