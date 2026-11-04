@@ -92,9 +92,15 @@ jobs:
           node-version: "20.19"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: arduino/setup-task@v3
-        with:
-          version: 3.x
+      - name: Install Task CLI
+        shell: bash
+        run: |
+          # Install from the Go module proxy instead of arduino/setup-task:
+          # that action resolves the release through GitHub's API and hit a
+          # shared-runner rate limit on #39's CI. go install also keeps the
+          # version pinned and reproducible (same as release.yml).
+          go install github.com/go-task/task/v3/cmd/task@v3.54.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Install Wails CLI
         shell: bash
         run: |
