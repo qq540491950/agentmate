@@ -30,10 +30,6 @@ func TestShellToolBuildsRunCommand(t *testing.T) {
 // command actually runs and its working directory is the task workspace.
 func TestRunShellCommandInWorkspace(t *testing.T) {
 	dir := t.TempDir()
-	want, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
 	command := "pwd"
 	if runtime.GOOS == "windows" {
 		command = "cd"
@@ -45,15 +41,19 @@ func TestRunShellCommandInWorkspace(t *testing.T) {
 	if res.ExitCode != 0 || res.TimedOut {
 		t.Fatalf("unexpected result: %+v", res)
 	}
+	// Compare directory identity instead of spelling: Windows t.TempDir()
+	// returns an 8.3 short path (RUNNER~1) that `cd` may print in long form.
 	got := strings.TrimSpace(res.Output)
-	if runtime.GOOS == "windows" {
-		if !strings.EqualFold(filepath.Clean(got), filepath.Clean(want)) {
-			t.Fatalf("cwd = %q, want %q", got, want)
-		}
-		return
+	gotInfo, err := os.Stat(got)
+	if err != nil {
+		t.Fatalf("stat command cwd %q: %v", got, err)
 	}
-	if got != want {
-		t.Fatalf("cwd = %q, want %q", got, want)
+	wantInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(gotInfo, wantInfo) {
+		t.Fatalf("cwd = %q, want %q", got, dir)
 	}
 }
 
