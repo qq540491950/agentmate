@@ -166,15 +166,15 @@ type AgentConfig struct {
 	MaxTokens    int       `json:"maxTokens"`
 	SkillIDs     []string  `json:"skillIds"`     // skills attached to this agent
 	MCPServerIDs []string  `json:"mcpServerIds"` // MCP servers whose tools are available
-	BuiltinTools []string  `json:"builtinTools"` // subset of builtin tool names: time, files, knowledge
+	BuiltinTools []string  `json:"builtinTools"` // subset of builtin tool names: time, files, knowledge, memory, todos, shell
 	CreatedAt    time.Time `json:"createdAt"`
 	// EnableGuardrails masks secrets in user input/model output (default on
 	// when unset). Pointers distinguish "unset" from explicit false.
 	EnableGuardrails *bool `json:"enableGuardrails,omitempty"`
 	// ConfirmTools lists builtin tool categories whose side-effectful calls
-	// need human approval before execution (ADK HITL). Only "files" is
-	// meaningful today: write_workspace_file asks for confirmation while
-	// list/read stay automatic. Empty = never ask.
+	// need human approval before execution (ADK HITL). "files" gates
+	// write_workspace_file; "shell" gates every run_command call. Empty =
+	// never ask.
 	ConfirmTools []string `json:"confirmTools,omitempty"`
 	// Run guardrails against runaway loops/cost. 0 = unlimited.
 	MaxTurnSeconds int `json:"maxTurnSeconds,omitempty"`

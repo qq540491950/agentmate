@@ -252,6 +252,12 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 			}
 			tools = append(tools, t)
+		case "shell":
+			t, err := ShellTool(workspace, confirmsTool(ac, "shell"))
+			if err != nil {
+				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
+			}
+			tools = append(tools, t)
 		}
 	}
 

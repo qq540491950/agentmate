@@ -3,6 +3,24 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百九十六轮迭代：本地 Agent 终端命令工具 run_command（已实施）
+
+依据：issue #36（Windows x64，v0.5.17，本地自建 Agent + glm-5.3-flash）。用户让 Agent「拉取最新代码」，模型明确回答没有终端 / Shell 执行工具，无法运行 `git pull`、`go build`、`npm install` 等命令；期望本地 Agent 至少能完成拉取代码这类操作。核查确认这不是模型误判：内置工具装配只有时间、工作区文件读写、知识库、长期记忆与任务计划，整个仓库不存在命令执行工具，界面上也没有可开启的入口。
+
+**实现要点**
+
+- `internal/agentkit/shell.go`：新增内置工具 `run_command`，由 Agent 的 `builtinTools` 新增类别 `shell` 挂载（默认不开启，避免升级后静默获得命令执行能力）。命令以任务工作区为 cwd，Windows 走 `cmd.exe /d /c`（先 `chcp 65001` 统一 UTF-8 输出），其他平台走 `/bin/sh -c`；继承用户环境与系统权限。
+- 结果契约：返回 `{exitCode, output, truncated, timedOut}`；非零退出码是正常工具结果而不是工具错误，模型可据此调整命令。stdout/stderr 合并，最多回传 64KB，超出部分丢弃但继续排空管道避免子进程阻塞；输出含 64KB 截断标记。
+- 超时与取消：默认单条命令 300 秒，模型可传 `timeoutSeconds`（上限 600 秒，低于单轮 600 秒兜底，保证模型能拿到超时结果而不是整轮丢失）。Unix 用独立进程组 + 组级 SIGKILL 清理 `sh` 派生的构建子进程；Windows 用 `taskkill /T /F` 终止整棵进程树，失败时回落到 `Process.Kill`。用户在对话中停止时命令随运行上下文一起取消。
+- HITL：`ConfirmTools` 新增 `shell` 类别，开启后每次 `run_command` 都走既有 `adk_request_confirmation` 暂停 / 批准协议；Agents 页勾选「终端命令（run_command）」时默认同步勾上「执行终端命令需人工确认」，用户可显式关闭。
+- 前端：Agents 页内置工具行新增终端开关（容器改为 `flex-wrap` 适配窄窗口），下方复用与「写入文件需人工确认」一致的确认开关样式。
+
+**测试证据**
+
+- 新增 `internal/agentkit/shell_test.go`：空工作区/空命令拒绝、工具名契约、命令确实在工作区内执行（`pwd` / `cd`）、非零退出码透传、超 64KB 输出截断且保留前 64KB、300ms 超时被及时终止并标记 `timedOut`。
+- `TestBuildAgentWithBuiltinTools` 的内置工具列表加入 `shell`，锁定 Agent 构建路径能装配新工具。
+- `go vet ./internal/agentkit/... ./internal/config/...`、`go test -count=1 ./internal/agentkit/... ./internal/config/...` 通过。
+
 ### 第一百九十五轮迭代：模型显示名、思考强度配置与会话级档位（已实施）
 
 依据：issue #33 / #34 / #35（Windows x64 桌面，v0.5.12，同批模型设置改造）。模型列表与对话模型选择器只能显示长模型 ID，无法为模型起可读名称；模型级设置缺少「推理档位 → API 参数值」映射，用户无法表达同一供应商下不同推理模型各自的思考档位；对话输入框也没有会话级思考强度入口，只能改全局配置。三张票共用同一套配置与表单，按批次一次实现并在同一版本发布。

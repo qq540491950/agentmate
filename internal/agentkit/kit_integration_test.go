@@ -31,7 +31,7 @@ func TestBuildAgentWithBuiltinTools(t *testing.T) {
 		cfg.Agents = append(cfg.Agents, config.AgentConfig{
 			ID: "a1", Name: "助手 A", ProviderID: "p1", Model: "m1",
 			SystemPrompt: "你好 {不是状态占位符} 可以包含大括号",
-			BuiltinTools: []string{"time"},
+			BuiltinTools: []string{"time", "shell"},
 		})
 	})
 	if err != nil {
