@@ -1,0 +1,49 @@
+name: 功能需求（enhancement）
+description: 描述期望的新功能或行为改进；自动流程会评估并实现
+title: "[模块] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请写清目标行为和验收标准。需求不明确时自动流程会先评论询问。
+
+        **一个 issue 只描述一个需求**；多个需求请分别提交。
+
+        标题格式：`[模块] 简短需求`，模块可用 `chat`、`agents`、`teams`、`skills`、`mcp`、`models`、`settings`、`workspace`、`update`、`other`。
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标 / 背景
+      description: 希望解决什么问题，为什么需要这个功能
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 期望行为 / 验收标准
+      description: 满足哪些条件算完成，尽量具体、可验证
+    validations:
+      required: true
+  - type: input
+    id: scope
+    attributes:
+      label: 影响范围
+      description: 涉及页面、模块、Agent、MCP、设置等
+      placeholder: 例：任务结果区 / TaskWorkspacePanel
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 可选方案 / 备注
+      description: 交互草图、边界条件、替代方案；可留空
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 一个 issue 只描述一个需求
+          required: true

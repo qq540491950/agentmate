@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Print "due" when the last GitHub Release is older than the batch interval,
-# "not-due" when it is too recent. Used by the issue-fixer runbook before a
-# batch tag. The interval defaults to 60 minutes; override with
-# RELEASE_INTERVAL_MINUTES.
+# Report whether the batch release window is ready:
+#   due            — interval elapsed and current main has new commits
+#   not-due        — too soon since the last release
+#   no-new-commits — the latest release already contains current main
+#   not-synced     — local main differs from origin/main; do not release
+#
+# The interval defaults to 60 minutes; override with RELEASE_INTERVAL_MINUTES.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -12,10 +15,39 @@ if ! printf '%s' "$interval" | grep -Eq '^[0-9]+$'; then
 	exit 2
 fi
 
-last="$(gh release list --repo qq540491950/go-workbuddy --limit 1 \
-	--json publishedAt --jq '.[0].publishedAt // empty' 2>/dev/null || true)"
-if [ -z "$last" ]; then
+if ! git fetch origin main --quiet; then
+	echo "not-synced"
+	exit 0
+fi
+git fetch --tags --quiet origin 2>/dev/null || true
+
+ahead=$(git rev-list --count origin/main..HEAD)
+behind=$(git rev-list --count HEAD..origin/main)
+if [ "$ahead" -ne 0 ] || [ "$behind" -ne 0 ]; then
+	echo "not-synced"
+	exit 0
+fi
+
+if ! latest="$(gh release list --repo qq540491950/go-workbuddy --limit 1 \
+	--json tagName,publishedAt \
+	--jq 'if length == 0 then "" else (.[0].tagName + "\t" + .[0].publishedAt) end')"; then
+	echo "release-due: gh release list failed" >&2
+	exit 2
+fi
+if [ -z "$latest" ]; then
 	echo "due"
+	exit 0
+fi
+
+tag="${latest%%$'\t'*}"
+last="${latest#*$'\t'}"
+
+if ! git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+	echo "release-due: latest release tag '$tag' not found locally" >&2
+	exit 2
+fi
+if [ "$(git rev-list --count "$tag"..HEAD)" -eq 0 ]; then
+	echo "no-new-commits"
 	exit 0
 fi
 
