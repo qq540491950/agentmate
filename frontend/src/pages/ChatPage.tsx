@@ -35,6 +35,7 @@ import {
 } from "@/lib/sidebarWidth";
 import { shouldOpenLatestSession } from "@/lib/sessionDraft";
 import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
+import { levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
@@ -1272,20 +1273,44 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     return providerList.find((p) => p.id === agent?.providerId)?.models ?? [];
   }, [active, agents, providerList]);
 
-  // The composer chip shows the effective choice: an explicit per-session
-  // override or the target's own default.
-  const currentModelLabel = active
-    ? active.modelOverride || (active.targetType === "agent" ? "Agent 默认模型" : "默认模型")
+  // The composer chip shows the effective choice: the resolved model's display
+  // name, or the target's own default label when no model metadata is known.
+  const currentModelLabel = target.model
+    ? modelLabel(target.model)
+    : active
+      ? active.modelOverride || (active.targetType === "agent" ? "Agent 默认模型" : "默认模型")
+      : "";
+
+  // Chat-level thinking picker: only models with an enabled level table get
+  // one. An empty value means "use the model's configured default".
+  const availableLevels = useMemo(() => reasoningLevels(target.model), [target.model]);
+  const sessionReasoning = active?.reasoningLevel && availableLevels.some((l) => l.level === active.reasoningLevel)
+    ? active.reasoningLevel
     : "";
+  const sessionReasoningLabel = sessionReasoning ? levelLabel(sessionReasoning) : "默认";
+  const defaultReasoningLevel = target.model?.reasoning?.defaultLevel || availableLevels[0]?.level || "";
 
   const setSessionModel = async (modelID: string) => {
     if (!activeID) return;
+    const picked = sessionModels.find((m) => m.id === modelID);
+    const label = picked ? modelLabel(picked) : modelID;
     try {
       await Chat.SetSessionModel(activeID, modelID === "__default" ? "" : modelID);
       reloadSessions();
-      toast.success(modelID === "__default" ? "已恢复默认模型" : `本会话已切换到 ${modelID}`);
+      toast.success(modelID === "__default" ? "已恢复默认模型" : `本会话已切换到 ${label}`);
     } catch (e) {
       toast.error(`切换模型失败: ${errText(e)}`);
+    }
+  };
+
+  const setSessionReasoning = async (level: string) => {
+    if (!activeID) return;
+    try {
+      await Chat.SetSessionReasoningLevel(activeID, level === "__default" ? "" : level);
+      reloadSessions();
+      toast.success(level === "__default" ? "已恢复模型默认思考强度" : `本会话思考强度：${levelLabel(level)}`);
+    } catch (e) {
+      toast.error(`切换思考强度失败: ${errText(e)}`);
     }
   };
 
@@ -2351,6 +2376,38 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   </Button>
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
+                  {active && availableLevels.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="flex h-7 min-w-0 max-w-[136px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          title={`本会话思考强度：${sessionReasoningLabel}（仅影响当前对话）`}
+                          aria-label="选择思考强度"
+                        >
+                          <Brain className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{sessionReasoningLabel}</span>
+                          <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuLabel>本会话思考强度</DropdownMenuLabel>
+                        <DropdownMenuRadioGroup
+                          value={sessionReasoning || "__default"}
+                          onValueChange={(v) => setSessionReasoning(v)}
+                        >
+                          <DropdownMenuRadioItem value="__default" className="text-xs">
+                            模型默认{defaultReasoningLevel ? `（${levelLabel(defaultReasoningLevel)}）` : ""}
+                          </DropdownMenuRadioItem>
+                          {availableLevels.map((l) => (
+                            <DropdownMenuRadioItem key={l.level} value={l.level} className="text-xs">
+                              <span className="flex-1">{levelLabel(l.level)}</span>
+                              <span className="font-mono text-[10px] text-muted-foreground">{l.level}</span>
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                   {active && sessionModels.length > 0 && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -2376,8 +2433,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                             {active.targetType === "agent" ? "Agent 默认模型" : "默认模型"}
                           </DropdownMenuRadioItem>
                           {sessionModels.map((m) => (
-                            <DropdownMenuRadioItem key={m.id} value={m.id} className="font-mono text-xs">
-                              <span className="truncate" title={m.id}>{m.id}</span>
+                            <DropdownMenuRadioItem key={m.id} value={m.id} className="text-xs">
+                              <span className="truncate" title={`${modelLabel(m)} · ${m.id}`}>{modelLabel(m)}</span>
                             </DropdownMenuRadioItem>
                           ))}
                         </DropdownMenuRadioGroup>

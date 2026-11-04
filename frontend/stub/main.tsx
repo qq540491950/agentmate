@@ -28,8 +28,34 @@ const seedConfig = {
       baseUrl: "https://api.openai.com/v1",
       apiKey: "sk-stub",
       models: [
-        { id: "gpt-5-mini", multimodal: true, contextWindow: 400000, priceIn: 2, priceOut: 8 },
-        { id: "gpt-5-max", multimodal: true, contextWindow: 400000, priceIn: 10, priceOut: 40 },
+        {
+          id: "gpt-5-mini",
+          displayName: "GPT-5 Mini",
+          multimodal: true,
+          contextWindow: 400000,
+          maxOutputTokens: 8192,
+          priceIn: 2,
+          priceOut: 8,
+          reasoning: {
+            enabled: true,
+            defaultLevel: "medium",
+            levels: [
+              { level: "off", param: "reasoning_effort", value: "none" },
+              { level: "low", param: "reasoning_effort", value: "low" },
+              { level: "medium", param: "reasoning_effort", value: "medium" },
+              { level: "high", param: "reasoning_effort", value: "high" },
+              { level: "max", param: "reasoning_effort", value: "max" },
+            ],
+          },
+        },
+        {
+          id: "gpt-5-max",
+          displayName: "GPT-5 Max",
+          multimodal: true,
+          contextWindow: 400000,
+          priceIn: 10,
+          priceOut: 40,
+        },
       ],
       isDefault: true,
     },
@@ -216,7 +242,17 @@ const handlers: Record<string, (args: any[]) => any> = {
   // SetSessionModel(sessionID, modelID)
   "359717012": (args) => {
     for (const sess of seedConfig.sessions) {
-      if (sess.id === args[0]) sess.modelOverride = args[1] || "";
+      if (sess.id === args[0]) {
+        sess.modelOverride = args[1] || "";
+        (sess as any).reasoningLevel = "";
+      }
+    }
+    return null;
+  },
+  // SetSessionReasoningLevel(sessionID, level)
+  "3185250285": (args) => {
+    for (const sess of seedConfig.sessions) {
+      if (sess.id === args[0]) (sess as any).reasoningLevel = args[1] || "";
     }
     return null;
   },
@@ -460,6 +496,11 @@ const handlers: Record<string, (args: any[]) => any> = {
   },
   // ListProviderModels
   "729587208": () => ["gpt-5-mini", "gpt-5"],
+  // SuggestModels(ids)
+  "1306580425": (args) => (args[0] ?? []).map((id: string) => {
+    const hit = seedConfig.providers[0].models.find((m) => m.id === id);
+    return hit ? { ...hit } : { id, displayName: id };
+  }),
   // ConfigService.KnowledgeIndexStats
   "2250008310": () => ({ files: 3, chunks: 12, model: "text-embedding-3-small" }),
   // ConfigService.ListKnowledgeFiles
