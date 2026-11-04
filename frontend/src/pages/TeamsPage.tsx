@@ -17,9 +17,15 @@ import {
 } from "@/components/ui/select";
 import {
   Config, type TeamConfig, type AgentConfig, type ModelProvider, type RemoteAgentConfig, errText } from "@/lib/api";
+import { modelLabel } from "@/lib/modelLabel";
 
 /** TeamTopology renders a lead→members hierarchy for a team. */
-function TeamTopology({ team, agentName, remoteName }: { team: TeamConfig; agentName: (id: string) => string; remoteName: (id: string) => string }) {
+function TeamTopology({ team, agentName, remoteName, modelName }: {
+  team: TeamConfig;
+  agentName: (id: string) => string;
+  remoteName: (id: string) => string;
+  modelName: (id: string) => string;
+}) {
   const isAuto = team.autoCoordinate;
   const localMembers = (team.memberAgentIds ?? []).filter((id) => isAuto || id !== team.leadAgentId);
   const members = [
@@ -34,7 +40,7 @@ function TeamTopology({ team, agentName, remoteName }: { team: TeamConfig; agent
             {isAuto ? "🧭 自动协调员" : `👑 ${agentName(team.leadAgentId)}`}
           </div>
           <div className="text-[10px] text-muted-foreground">
-            {isAuto ? team.model || "分派任务 · 汇总结果" : "调度成员 · 汇总结果"}
+            {isAuto ? modelName(team.model) || "分派任务 · 汇总结果" : "调度成员 · 汇总结果"}
           </div>
         </div>
         {members.length > 0 && (
@@ -101,6 +107,8 @@ export function TeamsPage() {
   useEffect(reload, [reload]);
 
   const providerOf = (id: string) => providers.find((p) => p.id === id);
+  const modelName = (providerId: string, modelId: string) =>
+    modelLabel(providerOf(providerId)?.models?.find((m) => m.id === modelId)) || modelId;
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? "?";
 
   const save = async () => {
@@ -199,7 +207,7 @@ export function TeamsPage() {
                     <div className="font-medium">{t.name}</div>
                     <div className="text-xs text-muted-foreground">
                       {t.autoCoordinate
-                        ? `自动协调员 · ${t.model || "?"}`
+                        ? `自动协调员 · ${modelName(t.providerId, t.model) || "?"}`
                         : `负责人: ${agentName(t.leadAgentId)}`}
                     </div>
                   </div>
@@ -220,7 +228,8 @@ export function TeamsPage() {
                 <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{t.description}</p>
               )}
               <div className="mt-3">
-                <TeamTopology team={t} agentName={agentName} remoteName={remoteName} />
+                <TeamTopology team={t} agentName={agentName} remoteName={remoteName}
+                  modelName={(id) => modelName(t.providerId, id)} />
               </div>
             </CardContent>
           </Card>
@@ -332,7 +341,7 @@ export function TeamsPage() {
                         <SelectTrigger><SelectValue placeholder="选择模型" /></SelectTrigger>
                         <SelectContent>
                           {(providerOf(editing.providerId)?.models ?? []).map((m) => (
-                            <SelectItem key={m.id} value={m.id}>{m.id}</SelectItem>
+                            <SelectItem key={m.id} value={m.id} title={m.id}>{modelLabel(m)}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>

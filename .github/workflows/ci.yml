@@ -103,3 +103,9 @@ jobs:
       - name: Build Windows exe
         shell: bash
         run: task windows:build
+      # Release runs its gate on windows-latest; keep the same test command here
+      # so a Windows-only failure is caught on the push, not after a tag exists.
+      # frontend/dist is already built by the step above (main.go embeds it).
+      - name: Test (windows)
+        shell: bash
+        run: go test -count=1 ./internal/... .

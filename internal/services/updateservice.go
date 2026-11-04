@@ -111,12 +111,13 @@ type UpdateService struct {
 	S   *Services
 	app *application.App
 
-	mu         sync.Mutex
-	release    *updater.Release
-	lastErr    string
-	mode       string
-	reason     string
-	autoCancel context.CancelFunc
+	mu          sync.Mutex
+	release     *updater.Release
+	lastErr     string
+	mode        string
+	reason      string
+	autoCancel  context.CancelFunc
+	sweepCancel context.CancelFunc
 }
 
 // NewUpdateService creates the service. Bind must run after application.New.
@@ -133,8 +134,12 @@ func NewUpdateService(s *Services) *UpdateService {
 // something page JavaScript should be able to invoke.
 func BindUpdates(u *UpdateService, app *application.App) error { return u.attach(app) }
 
-// StopUpdates ends the background update poll (app shutdown hook).
-func StopUpdates(u *UpdateService) { u.stop() }
+// StopUpdates ends the background update poll and the leftover sweep (app
+// shutdown hook).
+func StopUpdates(u *UpdateService) {
+	u.stop()
+	u.stopSweep()
+}
 
 // attach wires the service to the running application and configures the
 // updater. The caller decides whether a configuration error is fatal; updates
@@ -144,6 +149,10 @@ func (u *UpdateService) attach(app *application.App) error {
 		return errors.New("update: nil app")
 	}
 	u.app = app
+	// Clean up whatever the previous update could not delete (see
+	// updateleftover.go). Runs even when the updater itself cannot be
+	// configured: old leftovers would otherwise stay on disk forever.
+	u.startLeftoverSweep()
 	if app.Updater == nil {
 		return errors.New("update: 当前 Wails 运行时没有 updater")
 	}

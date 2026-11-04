@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { Dialogs, Events } from "@wailsio/runtime";
 import {
   Plus, Square, Trash2, Pencil, MessageSquare, Bot, Users, Loader2, ArrowUp,
-  Search, Download, Check,
+  Search, Download,
   X, BarChart3, Brain, Network, GitFork, Pin, PinOff, FileCode2, Archive, ClipboardCopy,
   FolderOpen,
   PanelRightOpen,
@@ -24,11 +24,18 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { computeEditFlags, computeRunningTools, computeToolDurations, groupSessionsByProject, groupSessionsByTime, isDayChange, mdToSpeech, type UIMessage } from "@/lib/chatUtils";
+import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
+import {
+  SIDEBAR_KEYBOARD_STEP, SIDEBAR_MIN_WIDTH,
+  clampSidebarWidth, parseStoredSidebarWidth, sidebarMaxWidth,
+} from "@/lib/sidebarWidth";
+import { shouldOpenLatestSession } from "@/lib/sessionDraft";
 import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
+import { levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
@@ -46,6 +53,11 @@ const nextId = () => `m${++mid}`;
 
 // RENDER_LIMIT caps how many messages render at once for smooth long sessions.
 const RENDER_LIMIT = 200;
+
+// The sidebar width lives in localStorage rather than config.json: it is a
+// per-window view preference, and the config schema round-trips through Go
+// bindings that do not need to grow for a splitter drag.
+const SIDEBAR_WIDTH_STORAGE_KEY = "wb-chat-sidebar-width";
 
 const SLASH_COMMANDS = [
   { cmd: "/export", desc: "导出会话为 Markdown" },
@@ -80,6 +92,10 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // Draft typed before any session exists: direct chats are created lazily
   // on the first send, like the composer-first flow of Codex/ChatGPT desktop.
   const [freshInput, setFreshInput] = useState("");
+  // Set by「新聊天」: the blank conversation stays a local draft until its
+  // first message is sent, so no empty row lands in the sidebar/database and
+  // the auto-open-newest effect must not replace it (issue #30).
+  const [newChatDraft, setNewChatDraft] = useState(false);
   const input = activeID ? (drafts[activeID] ?? "") : freshInput;
   const setInput = useCallback(
     (v: string | ((prev: string) => string)) => {
@@ -114,6 +130,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   const [autoSpeak, setAutoSpeak] = useState(false);
   const [globalWorkspace, setGlobalWorkspace] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    parseStoredSidebarWidth(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY), window.innerWidth));
+  const [resizingSidebar, setResizingSidebar] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [recentOpen, setRecentOpen] = useState(true);
   const [expandedFolderKey, setExpandedFolderKey] = useState<string | null>(null);
@@ -135,6 +154,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   const autoSpeakRef = useRef(autoSpeak);
   useEffect(() => { autoSpeakRef.current = autoSpeak; }, [autoSpeak]);
+  const sidebarWidthRef = useRef(sidebarWidth);
+  useEffect(() => { sidebarWidthRef.current = sidebarWidth; }, [sidebarWidth]);
+  // Snapshot taken on pointerdown: the drag computes width from the pointer
+  // delta, not from the live state, so a fast drag cannot accumulate error.
+  const sidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const sidebarResizeFrame = useRef<number | null>(null);
+  const pendingSidebarWidthRef = useRef<number | null>(null);
   // Set when the stream emitted an inline error, so send()'s catch does not
   // also toast the same failure.
   const streamedErrorRef = useRef(false);
@@ -186,16 +212,16 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // New chats are ALWAYS direct (no target): turns run on the default
   // provider's model, and leading @助手 mentions route individual turns to
   // agents, teams or remote A2A agents. No dialog, no pre-configuration.
-  const createDirectSession = useCallback(async () => {
-    try {
-      const s = await Chat.NewSessionWithWorkspace("", "", "", "");
-      setMessages([]);
-      reloadSessions();
-      setActiveID(s.id);
-    } catch (e) {
-      toast.error(`创建会话失败: ${errText(e)}`);
-    }
-  }, [reloadSessions]);
+  // 「新聊天」only opens a local draft; the session is created by send() when
+  // the first message actually goes out (issue #30).
+  const createDirectSession = useCallback(() => {
+    setActiveID("");
+    setNewChatDraft(true);
+    setMessages([]);
+    setFreshInput("");
+    setEditing(false);
+    setSessionUsage(null);
+  }, []);
   createDirectSessionRef.current = createDirectSession;
   const createProjectSession = useCallback(async (projectID: string) => {
     try {
@@ -248,12 +274,18 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     };
   }, [activeID, active?.workspaceDir, active?.projectId]);
 
-  // Open the newest session on first load.
+  // Open the newest session on first load — unless「新聊天」deliberately left
+  // the page on an unsaved draft (issue #30). Any session becoming active
+  // ends draft mode.
   useEffect(() => {
-    if (!activeID && sessions.length > 0) {
+    if (shouldOpenLatestSession({ activeID, draft: newChatDraft, sessionCount: sessions.length })) {
       setActiveID(sessions[0].id);
     }
-  }, [sessions, activeID]);
+  }, [sessions, activeID, newChatDraft]);
+
+  useEffect(() => {
+    if (activeID) setNewChatDraft(false);
+  }, [activeID]);
 
   // The filter is session-scoped: a query left over from another chat would
   // present an unexplained empty list here.
@@ -883,16 +915,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     }
   };
 
-  const switchSessionProject = async (s: ChatSession, projectID: string) => {
-    try {
-      await Chat.SetSessionProject(s.id, projectID);
-      reloadSessions();
-      reloadProjects();
-    } catch (e) {
-      toast.error(`更改项目失败: ${errText(e)}`);
-    }
-  };
-
   const deleteProject = async (p: Project) => {
     setConfirmRequest({
       title: `删除项目「${p.name}」？`,
@@ -917,7 +939,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       return;
     }
     if (active.projectId) {
-      toast.info("项目会话使用项目根目录，请先移出项目再单独指定工作区");
+      toast.info("项目会话使用项目根目录，不能单独指定工作区");
       return;
     }
     try {
@@ -1023,6 +1045,87 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     window.addEventListener("wb-toggle-sidebar", onToggle);
     return () => window.removeEventListener("wb-toggle-sidebar", onToggle);
   }, [toggleSidebar]);
+
+  const persistSidebarWidth = (width: number) => {
+    sidebarWidthRef.current = width;
+    setSidebarWidth(width);
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width));
+    } catch { /* storage unavailable: keep the in-memory width */ }
+  };
+
+  // The splitter drags the sidebar edge. Pointer capture keeps the gesture
+  // alive when the cursor leaves the 6px handle, and body-level cursor +
+  // selection suppression stop the drag from selecting session rows or text
+  // in the chat area (issue #31). Width updates ride rAF so a drag does not
+  // re-render the message list on every pointermove.
+  const commitSidebarWidthFrame = () => {
+    sidebarResizeFrame.current = null;
+    const next = pendingSidebarWidthRef.current;
+    if (next == null) return;
+    pendingSidebarWidthRef.current = null;
+    sidebarWidthRef.current = next;
+    setSidebarWidth(next);
+  };
+  const startSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    sidebarDragRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+    setResizingSidebar(true);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const moveSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = sidebarDragRef.current;
+    if (!drag) return;
+    e.preventDefault();
+    pendingSidebarWidthRef.current = clampSidebarWidth(drag.startWidth + (e.clientX - drag.startX), window.innerWidth);
+    if (sidebarResizeFrame.current == null) {
+      sidebarResizeFrame.current = requestAnimationFrame(commitSidebarWidthFrame);
+    }
+  };
+  const endSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!sidebarDragRef.current) return;
+    sidebarDragRef.current = null;
+    if (sidebarResizeFrame.current != null) {
+      cancelAnimationFrame(sidebarResizeFrame.current);
+      commitSidebarWidthFrame();
+    }
+    pendingSidebarWidthRef.current = null;
+    setResizingSidebar(false);
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    persistSidebarWidth(sidebarWidthRef.current);
+  };
+  const resizeSidebarWithKeyboard = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const delta = e.key === "ArrowLeft" ? -SIDEBAR_KEYBOARD_STEP : SIDEBAR_KEYBOARD_STEP;
+    persistSidebarWidth(clampSidebarWidth(sidebarWidthRef.current + delta, window.innerWidth));
+  };
+
+  useEffect(() => () => {
+    if (sidebarResizeFrame.current != null) cancelAnimationFrame(sidebarResizeFrame.current);
+  }, []);
+
+  useEffect(() => {
+    if (!resizingSidebar) return;
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
+    };
+  }, [resizingSidebar]);
+
+  // Window shrinks past the stored width: clamp back into the visible range
+  // instead of letting the sidebar eat the chat area.
+  useEffect(() => {
+    const onResize = () => setSidebarWidth((w) => clampSidebarWidth(w, window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Sidebar sections: 「项目」 folders derive from chat workspaces —
   // registered projects first, then ad-hoc explicit directories (basename
@@ -1170,20 +1273,44 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     return providerList.find((p) => p.id === agent?.providerId)?.models ?? [];
   }, [active, agents, providerList]);
 
-  // The composer chip shows the effective choice: an explicit per-session
-  // override or the target's own default.
-  const currentModelLabel = active
-    ? active.modelOverride || (active.targetType === "agent" ? "Agent 默认模型" : "默认模型")
+  // The composer chip shows the effective choice: the resolved model's display
+  // name, or the target's own default label when no model metadata is known.
+  const currentModelLabel = target.model
+    ? modelLabel(target.model)
+    : active
+      ? active.modelOverride || (active.targetType === "agent" ? "Agent 默认模型" : "默认模型")
+      : "";
+
+  // Chat-level thinking picker: only models with an enabled level table get
+  // one. An empty value means "use the model's configured default".
+  const availableLevels = useMemo(() => reasoningLevels(target.model), [target.model]);
+  const sessionReasoning = active?.reasoningLevel && availableLevels.some((l) => l.level === active.reasoningLevel)
+    ? active.reasoningLevel
     : "";
+  const sessionReasoningLabel = sessionReasoning ? levelLabel(sessionReasoning) : "默认";
+  const defaultReasoningLevel = target.model?.reasoning?.defaultLevel || availableLevels[0]?.level || "";
 
   const setSessionModel = async (modelID: string) => {
     if (!activeID) return;
+    const picked = sessionModels.find((m) => m.id === modelID);
+    const label = picked ? modelLabel(picked) : modelID;
     try {
       await Chat.SetSessionModel(activeID, modelID === "__default" ? "" : modelID);
       reloadSessions();
-      toast.success(modelID === "__default" ? "已恢复默认模型" : `本会话已切换到 ${modelID}`);
+      toast.success(modelID === "__default" ? "已恢复默认模型" : `本会话已切换到 ${label}`);
     } catch (e) {
       toast.error(`切换模型失败: ${errText(e)}`);
+    }
+  };
+
+  const setSessionReasoning = async (level: string) => {
+    if (!activeID) return;
+    try {
+      await Chat.SetSessionReasoningLevel(activeID, level === "__default" ? "" : level);
+      reloadSessions();
+      toast.success(level === "__default" ? "已恢复模型默认思考强度" : `本会话思考强度：${levelLabel(level)}`);
+    } catch (e) {
+      toast.error(`切换思考强度失败: ${errText(e)}`);
     }
   };
 
@@ -1392,7 +1519,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       {s.archived && <Badge variant="outline" className="shrink-0 px-1 py-0 text-[10px] text-muted-foreground">归档</Badge>}
       {runningMap[s.id] && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" aria-label="生成中" />}
       {!runningMap[s.id] && unread[s.id] && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="有新回复未查看" />}
-      <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+      {/* The cluster hosts the "…" dropdown anchor, so it must keep its layout
+          box while the menu is open — see SESSION_ROW_ACTIONS_CLASS (#28). */}
+      <span className={SESSION_ROW_ACTIONS_CLASS} data-slot="session-row-actions">
         {/* Frequent state toggles stay one click; the rest collapse into one
             menu so the row keeps four controls instead of six. */}
         <button
@@ -1429,19 +1558,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <FolderInput className="mr-2 h-3.5 w-3.5" /> 移动到项目（首轮前生效）
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem onClick={() => switchSessionProject(s, "")}>默认项目</DropdownMenuItem>
-                {projects.map((p) => (
-                  <DropdownMenuItem key={p.id} title={p.rootDir} onClick={() => switchSessionProject(s, p.id)}>
-                    {p.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
             <DropdownMenuItem onClick={() => forkSession(s)}>
               <GitFork className="mr-2 h-3.5 w-3.5" /> 分叉此会话
             </DropdownMenuItem>
@@ -1462,7 +1578,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     <div className="flex h-full">
       {/* Sessions */}
       {!sidebarCollapsed && (
-      <div className="flex w-60 shrink-0 flex-col border-r">
+      <>
+      <div className="flex shrink-0 flex-col border-r" style={{ width: sidebarWidth }}>
         <div className="grid gap-2 p-3">
           <div className="flex items-center gap-1">
             <Button className="min-w-0 flex-1 justify-start" size="sm" variant="secondary" onClick={createDirectSession}>
@@ -1488,8 +1605,14 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             />
           </div>
         </div>
-        <ScrollArea className="flex-1 px-2">
-          <div className="grid gap-1 pb-3">
+        {/* Plain scroll container: Radix ScrollArea wraps its children in a
+            `display: table` div, so a long session title/preview sets the table
+            width to its full nowrap length and every row's right-aligned
+            actions get clipped outside the sidebar. A block container lets
+            `truncate` do its job and keeps the +/edit/… buttons visible no
+            matter which project is expanded. */}
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2">
+          <div className="grid grid-cols-1 gap-1 pb-3">
             {searching ? (
               <>
                 <div className="px-2 pb-0.5 pt-2 text-[11px] font-medium text-muted-foreground">搜索结果（{searchResults.length}）</div>
@@ -1612,7 +1735,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                             </span>
                           </div>
                           {expanded && (
-                            <div className="ml-3 grid gap-0.5 border-l pl-1">
+                            <div className="ml-3 grid grid-cols-1 gap-0.5 border-l pl-1">
                               {g.sessions.map(renderSessionRow)}
                             </div>
                           )}
@@ -1684,7 +1807,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               </>
             )}
           </div>
-        </ScrollArea>
+        </div>
         <div className="flex items-center justify-between border-t px-3 py-2 text-[11px] text-muted-foreground">
           <span className="truncate">ADK Go v2 · Wails v3</span>
           <span className="flex shrink-0 items-center gap-1">
@@ -1700,6 +1823,31 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
           </span>
         </div>
       </div>
+      {/* Resize handle: a 6px strip on the sidebar border. Pointer capture
+          keeps the drag alive outside the strip; the keyboard path keeps the
+          splitter reachable without a mouse. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="拖动调整对话列表宽度"
+        aria-valuemin={SIDEBAR_MIN_WIDTH}
+        aria-valuemax={sidebarMaxWidth(window.innerWidth)}
+        aria-valuenow={sidebarWidth}
+        tabIndex={0}
+        title="拖动调整对话列表宽度"
+        onPointerDown={startSidebarResize}
+        onPointerMove={moveSidebarResize}
+        onPointerUp={endSidebarResize}
+        onPointerCancel={endSidebarResize}
+        onLostPointerCapture={endSidebarResize}
+        onKeyDown={resizeSidebarWithKeyboard}
+        className={cn(
+          "w-1.5 shrink-0 cursor-col-resize touch-none select-none bg-transparent transition-colors",
+          "hover:bg-primary/40 focus-visible:bg-primary/50 focus-visible:outline-none",
+          resizingSidebar && "bg-primary/50",
+        )}
+      />
+      </>
       )}
 
       {/* Chat area */}
@@ -2228,6 +2376,38 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   </Button>
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
+                  {active && availableLevels.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="flex h-7 min-w-0 max-w-[136px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          title={`本会话思考强度：${sessionReasoningLabel}（仅影响当前对话）`}
+                          aria-label="选择思考强度"
+                        >
+                          <Brain className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{sessionReasoningLabel}</span>
+                          <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuLabel>本会话思考强度</DropdownMenuLabel>
+                        <DropdownMenuRadioGroup
+                          value={sessionReasoning || "__default"}
+                          onValueChange={(v) => setSessionReasoning(v)}
+                        >
+                          <DropdownMenuRadioItem value="__default" className="text-xs">
+                            模型默认{defaultReasoningLevel ? `（${levelLabel(defaultReasoningLevel)}）` : ""}
+                          </DropdownMenuRadioItem>
+                          {availableLevels.map((l) => (
+                            <DropdownMenuRadioItem key={l.level} value={l.level} className="text-xs">
+                              <span className="flex-1">{levelLabel(l.level)}</span>
+                              <span className="font-mono text-[10px] text-muted-foreground">{l.level}</span>
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                   {active && sessionModels.length > 0 && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -2253,8 +2433,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                             {active.targetType === "agent" ? "Agent 默认模型" : "默认模型"}
                           </DropdownMenuRadioItem>
                           {sessionModels.map((m) => (
-                            <DropdownMenuRadioItem key={m.id} value={m.id} className="font-mono text-xs">
-                              <span className="truncate" title={m.id}>{m.id}</span>
+                            <DropdownMenuRadioItem key={m.id} value={m.id} className="text-xs">
+                              <span className="truncate" title={`${modelLabel(m)} · ${m.id}`}>{modelLabel(m)}</span>
                             </DropdownMenuRadioItem>
                           ))}
                         </DropdownMenuRadioGroup>
@@ -2304,8 +2484,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                         ? `${workspaceContext?.path || "自动任务目录（全局工作区）"}（首轮已开始，任务目录已锁定）`
                         : workspaceLock
                           ? `${workspaceContext?.path || "自动任务目录（全局工作区）"}（${workspaceLock}）`
-                          : `${workspaceContext?.path || "自动任务目录（全局工作区）"}（点击切换项目或目录）`}
-                      aria-label="选择项目与任务目录"
+                          : `${workspaceContext?.path || "自动任务目录（全局工作区）"}（点击选择任务目录）`}
+                      aria-label="选择任务目录"
                       disabled={messages.length > 0}
                     >
                       <FolderOpen className="h-3.5 w-3.5 shrink-0" />
@@ -2315,17 +2495,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-72">
                     <DropdownMenuLabel>任务目录</DropdownMenuLabel>
-                    <DropdownMenuItem onClick={() => switchSessionProject(active, "")}>
-                      {!active.projectId && <Check className="h-3.5 w-3.5" />}
-                      <span className="truncate">默认项目（自动任务目录）</span>
-                    </DropdownMenuItem>
-                    {projects.map((p) => (
-                      <DropdownMenuItem key={p.id} title={p.rootDir} onClick={() => switchSessionProject(active, p.id)}>
-                        {active.projectId === p.id && <Check className="h-3.5 w-3.5" />}
-                        <span className="truncate">{p.name}</span>
-                      </DropdownMenuItem>
-                    ))}
-                    <DropdownMenuSeparator />
                     <DropdownMenuItem disabled={!!workspaceLock} onClick={changeSessionWorkspace}>
                       <FolderInput className="h-3.5 w-3.5" />
                       <span>选择其他目录…</span>

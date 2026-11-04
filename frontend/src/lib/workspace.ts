@@ -27,6 +27,6 @@ export function pickedDirectoryValue(picked: unknown): string {
  */
 export function workspaceLockReason(opts: { hasProject: boolean; started: boolean }): string {
   if (opts.started) return "首轮已开始，任务工作区已锁定";
-  if (opts.hasProject) return "项目会话使用项目根目录，请先移出项目再单独指定工作区";
+  if (opts.hasProject) return "项目会话使用项目根目录，不能单独指定工作区";
   return "";
 }

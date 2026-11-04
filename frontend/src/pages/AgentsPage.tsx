@@ -19,6 +19,7 @@ import {
 import {
   Config, type AgentConfig, type ModelProvider, type SkillConfig, type MCPServerConfig,
   type RemoteAgentConfig, type RemoteAgentInfo, App, errText } from "@/lib/api";
+import { modelLabel } from "@/lib/modelLabel";
 
 const agentTemplates: { label: string; make: () => AgentConfig }[] = [
   {
@@ -282,7 +283,7 @@ export function AgentsPage() {
                     <div>
                       <div className="font-medium">{a.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {a.model} · {p?.name ?? "未知供应商"}
+                        {modelLabel(p?.models?.find((m) => m.id === a.model)) || a.model} · {p?.name ?? "未知供应商"}
                       </div>
                     </div>
                   </div>
@@ -509,7 +510,7 @@ export function AgentsPage() {
                     <SelectTrigger><SelectValue placeholder="选择模型" /></SelectTrigger>
                     <SelectContent>
                       {(providerOf(editing.providerId)?.models ?? []).map((m) => (
-                        <SelectItem key={m.id} value={m.id}>{m.id}</SelectItem>
+                        <SelectItem key={m.id} value={m.id} title={m.id}>{modelLabel(m)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -560,7 +561,7 @@ export function AgentsPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label>内置工具</Label>
-                <div className="flex gap-4 rounded-lg border p-3">
+                <div className="flex flex-wrap gap-4 rounded-lg border p-3">
                   <label className="flex items-center gap-2 text-sm">
                     <Checkbox
                       checked={(editing.builtinTools ?? []).includes("time")}
@@ -595,6 +596,25 @@ export function AgentsPage() {
                       onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(editing.builtinTools ?? [], "todos") })}
                     />
                     任务计划（plan_todos）
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={(editing.builtinTools ?? []).includes("shell")}
+                      onCheckedChange={() => {
+                        const enabled = !(editing.builtinTools ?? []).includes("shell");
+                        const nextConfirm = new Set(editing.confirmTools ?? []);
+                        // Enabling the terminal defaults to HITL approval;
+                        // the switch below can turn it off deliberately.
+                        if (enabled) nextConfirm.add("shell");
+                        else nextConfirm.delete("shell");
+                        setEditing({
+                          ...editing,
+                          builtinTools: toggle(editing.builtinTools ?? [], "shell"),
+                          confirmTools: [...nextConfirm],
+                        });
+                      }}
+                    />
+                    终端命令（run_command）
                   </label>
                 </div>
               </div>
@@ -659,6 +679,25 @@ export function AgentsPage() {
                       const next = new Set(editing.confirmTools ?? []);
                       if (v) next.add("files");
                       else next.delete("files");
+                      setEditing({ ...editing, confirmTools: [...next] });
+                    }}
+                  />
+                </div>
+              )}
+              {(editing.builtinTools ?? []).includes("shell") && (
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <div className="text-sm font-medium">执行终端命令需人工确认</div>
+                    <div className="text-xs text-muted-foreground">
+                      模型调用 run_command 前暂停等待你的批准；命令以当前用户权限、在任务工作区内执行
+                    </div>
+                  </div>
+                  <Switch
+                    checked={(editing.confirmTools ?? []).includes("shell")}
+                    onCheckedChange={(v) => {
+                      const next = new Set(editing.confirmTools ?? []);
+                      if (v) next.add("shell");
+                      else next.delete("shell");
                       setEditing({ ...editing, confirmTools: [...next] });
                     }}
                   />

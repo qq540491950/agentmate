@@ -39,7 +39,7 @@ describe("workspaceLockReason", () => {
   });
 
   it("blocks project chats before the first turn", () => {
-    expect(workspaceLockReason({ hasProject: true, started: false })).toContain("项目会话使用项目根目录");
+    expect(workspaceLockReason({ hasProject: true, started: false })).toBe("项目会话使用项目根目录，不能单独指定工作区");
   });
 
   it("allows an explicit directory before the first turn", () => {

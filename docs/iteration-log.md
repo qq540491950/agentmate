@@ -3,6 +3,191 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百九十六轮迭代：本地 Agent 终端命令工具 run_command（已实施）
+
+依据：issue #36（Windows x64，v0.5.17，本地自建 Agent + glm-5.3-flash）。用户让 Agent「拉取最新代码」，模型明确回答没有终端 / Shell 执行工具，无法运行 `git pull`、`go build`、`npm install` 等命令；期望本地 Agent 至少能完成拉取代码这类操作。核查确认这不是模型误判：内置工具装配只有时间、工作区文件读写、知识库、长期记忆与任务计划，整个仓库不存在命令执行工具，界面上也没有可开启的入口。
+
+**实现要点**
+
+- `internal/agentkit/shell.go`：新增内置工具 `run_command`，由 Agent 的 `builtinTools` 新增类别 `shell` 挂载（默认不开启，避免升级后静默获得命令执行能力）。命令以任务工作区为 cwd，Windows 走 `cmd.exe /d /c`（先 `chcp 65001` 统一 UTF-8 输出），其他平台走 `/bin/sh -c`；继承用户环境与系统权限。
+- 结果契约：返回 `{exitCode, output, truncated, timedOut}`；非零退出码是正常工具结果而不是工具错误，模型可据此调整命令。stdout/stderr 合并，最多回传 64KB，超出部分丢弃但继续排空管道避免子进程阻塞；输出含 64KB 截断标记。
+- 超时与取消：默认单条命令 300 秒，模型可传 `timeoutSeconds`（上限 600 秒，低于单轮 600 秒兜底，保证模型能拿到超时结果而不是整轮丢失）。Unix 用独立进程组 + 组级 SIGKILL 清理 `sh` 派生的构建子进程；Windows 用 `taskkill /T /F` 终止整棵进程树，失败时回落到 `Process.Kill`。用户在对话中停止时命令随运行上下文一起取消。
+- HITL：`ConfirmTools` 新增 `shell` 类别，开启后每次 `run_command` 都走既有 `adk_request_confirmation` 暂停 / 批准协议；Agents 页勾选「终端命令（run_command）」时默认同步勾上「执行终端命令需人工确认」，用户可显式关闭。
+- 前端：Agents 页内置工具行新增终端开关（容器改为 `flex-wrap` 适配窄窗口），下方复用与「写入文件需人工确认」一致的确认开关样式。
+
+**测试证据**
+
+- 新增 `internal/agentkit/shell_test.go`：空工作区/空命令拒绝、工具名契约、命令确实在工作区内执行（`pwd` / `cd`）、非零退出码透传、超 64KB 输出截断且保留前 64KB、300ms 超时被及时终止并标记 `timedOut`。
+- `TestBuildAgentWithBuiltinTools` 的内置工具列表加入 `shell`，锁定 Agent 构建路径能装配新工具。
+- `go vet ./internal/agentkit/... ./internal/config/...`、`go test -count=1 ./internal/agentkit/... ./internal/config/...` 通过。
+
+### 第一百九十五轮迭代：模型显示名、思考强度配置与会话级档位（已实施）
+
+依据：issue #33 / #34 / #35（Windows x64 桌面，v0.5.12，同批模型设置改造）。模型列表与对话模型选择器只能显示长模型 ID，无法为模型起可读名称；模型级设置缺少「推理档位 → API 参数值」映射，用户无法表达同一供应商下不同推理模型各自的思考档位；对话输入框也没有会话级思考强度入口，只能改全局配置。三张票共用同一套配置与表单，按批次一次实现并在同一版本发布。
+
+**实现要点**
+
+- **配置模型**：`ModelInfo` 新增 `DisplayName`（留空回落 ID，见 `Label()`）、`MaxOutputTokens`、`Reasoning *ReasoningConfig`；`ReasoningConfig` 保存开关、默认档与档位表，`Resolve(level)` 按档解析参数名/参数值，未知档返回 false（运行期回落模型默认，不发送过期覆盖）。`Clone()` 深拷贝档位表，修复模型切片拷贝时 range 到新空切片导致模型丢失的问题。
+- **内置预设**：`internal/config/modelpresets.go` 按模型家族（deepseek / kimi / glm / claude / gpt / qwen）给出档位表与默认值，`SuggestModelInfo` 同时把显示名初始化为 ID；预设只作为编辑器默认值，用户可改档位名、参数名、参数值，增删档位。Gemini 协议由 genai SDK 接管请求体，档位配置会保存但运行期不注入（界面已注明适用 OpenAI 兼容 / Anthropic）。
+- **请求注入**：`agentkit.reasoningExtraBody` 把解析结果转成请求字段——`Param` 为空时按 JSON 对象合并到顶层（支持 Claude 自适应思考 + `output_config.effort` 多字段、Qwen 多字段），非空时按字段名写入并支持点号路径（如 `thinking.budget_tokens`）。OpenAI 兼容与 Anthropic 请求结构各加 `ExtraBody`，`MarshalJSON` 在类型字段之后合并；`NewModelFromProviderWithReasoning` 在构建 LLM 时解析档位。模型级 `MaxOutputTokens` 在 Agent 未显式设置 `MaxTokens` 时作为兜底（含团队自动协调员）。
+- **会话级档位**：`ChatSession` 新增 `ReasoningLevel`；`ChatService.SetSessionReasoningLevel` 走 `mutateSession` 持久化并写 `session_reasoning_set` 审计，不触碰供应商配置；`SetSessionModel` 在切换模型时清空旧档位。`runTurn` 把会话档位传给 Agent / 团队根节点的构建，直聊、Agent、团队三条路径共用同一解析。
+- **前端**：新增 `ModelRowEditor`，每行按「模型 ID + 显示名称 → 上下文 + 最大输出 → 图片输入 + 价格 → 推理等级开关 + 档位表」布局；档位行支持档位名（内置常见档位 datalist，可自定义）、参数名、参数值、删除与新增，默认档下拉；「自动补全」按模型家族重新带出预设。`ConfigService.SuggestModels` 暴露内置预设（离线），拉取模型时批量自动带出，手动输入在失焦时补齐；保存前用 `validateModelReasoning` 校验空档位、重复档位、JSON 对象格式与悬空默认档。
+- **显示名贯通**：`modelLabel(m) = displayName || id` 用于模型列表徽章、对话模型选择器、输入框模型 chip、Agents / Teams 的模型下拉与卡片摘要；请求仍使用模型 ID，会话绑定与计费归属不变。对话输入区在有效模型具备启用档位表时显示「思考强度」chip，选项为「模型默认（档位）」+ 档位表，按会话记忆；没有档位表的模型不显示入口。
+- **绑定与桩**：重新生成 Wails 绑定（`ReasoningConfig` / `ReasoningLevel` / `ChatSession.reasoningLevel` / `ConfigService.SuggestModels` / `ChatService.SetSessionReasoningLevel`）；`frontend/stub` 补齐新方法 ID、种子模型的显示名与档位表，供浏览器视觉回归。
+
+**测试证据**
+
+- 新增 `internal/config/modelpresets_test.go`：家族识别、请求形态、`ActiveReasoning` / `Resolve` 回落、`Clone` 深拷贝、`ModelInfo` JSON 往返。
+- 新增 `internal/agentkit/reasoning_test.go`：OpenAI `reasoning_effort` / `thinking` 注入与未知档不注入、Anthropic 自适应 JSON 合并、空 `Param` 非对象报错、点号路径、`MaxOutputTokens` 兜底。
+- 新增 `internal/services/chatservice_reasoning_test.go`：会话档位持久化并改变请求体、切换模型清空旧档位、未知会话报错。
+- 新增 `frontend/src/lib/modelLabel.test.ts`：显示名回落、档位表启用判定、档位中文标签、档位表保存校验。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/... .`、`go test -race -count=1 ./internal/... .` 全绿；`cd frontend && npx tsc --noEmit && npm test && npm run build` 全绿（10 个测试文件、55 个用例）。
+- 浏览器桩实机验证：供应商编辑面板展示模型 ID / 显示名 / 上下文 / 最大输出 / 图片输入 / 价格 / 推理档位表；对话输入区出现「思考强度」chip，选择「高」后桩会话写入 `reasoningLevel: "high"`；模型选择器显示「GPT-5 Mini / GPT-5 Max」而非长 ID。
+
+### 第一百九十四轮迭代：供应商编辑面板可滚动、底部操作栏常驻（已实施）
+
+依据：issue #32（Windows x64 桌面，v0.5.12）。供应商编辑面板在模型列表达到 8～9 条后一路撑长，`DialogContent` 没有高度上限也没有滚动容器，底部「保存」「取消」被推到窗口外，既点不到也滚不到，只能 Esc 关闭并丢弃已填内容。期望内容区可纵向滚动、操作栏固定可见、最后一条模型与操作栏不重叠，且窄窗口与键盘 Tab 同样可用。
+
+**实现要点**
+
+- **根因**：`ModelsPage` 的供应商对话框直接使用 shadcn `DialogContent` 默认布局——`grid` + 无 `max-height` 的 `fixed` 居中弹层。表单是普通流式内容，高度只由内容决定，模型行越多弹层越高；超出视口的部分（含 `DialogFooter`）没有任何滚动入口。窗口高度只是决定何时「中招」的阈值，不是根因。
+- `frontend/src/lib/providerEditorLayout.ts`（含测试）：新增两个布局 class 常量，锁定「对话框限高 + 只有表单主体滚动」的契约——`PROVIDER_EDITOR_DIALOG_CLASS` 给 `DialogContent` 加 `flex max-h-[85vh] flex-col`（`flex` 经 `cn` 的 tailwind-merge 覆盖默认 `grid`），`PROVIDER_EDITOR_BODY_CLASS` 给表单主体加 `min-h-0 flex-1 overflow-y-auto`。`min-h-0` 是 flex 收缩的关键：缺省 `min-height:auto` 会让主体拒绝缩到内容高度以下，限高后只会裁切而不是滚动。`overflow-y-auto` 刻意放在主体而非对话框上，保证「取消」「保存」始终留在滚动区之外。
+- `frontend/src/pages/ModelsPage.tsx`：`DialogContent` 改用对话框常量；名称/协议/Base URL/API Key/模型列表/默认供应商开关所在的表单容器改用主体常量（保留 `grid gap-4 py-2`）；`DialogFooter` 仍是 `DialogContent` 的直接子节点，维持在内容区下方常驻。滚动条只在内容溢出时出现，`py-2` 在最后一条模型与操作栏之间留出间距；Tab 聚焦模型行时浏览器自动把输入滚入可视区，底部按钮不受裁切。
+- 该布局与仓库既有可滚动脉冲一致（`ToolCallCard` 的 `flex max-h-[85vh] flex-col` + `min-h-0 flex-1 overflow-auto`），未引入新的 WebView 版本要求。
+
+**测试证据**
+
+- 新增 `frontend/src/lib/providerEditorLayout.test.ts`：#32 回归守卫，断言对话框限高且为纵向 flex、主体独占滚动（对话框本身不得出现 `overflow-y-auto`）、主体具备 `min-h-0 flex-1` 以便在 flex 列内收缩。
+- `cd frontend && npx tsc --noEmit && npm test && npm run build`：9 个测试文件、47 个用例全绿，生产构建通过；构建产物 `dist/assets/index-*.css` 确认生成 `max-h-[85vh]`、`min-h-0`、`flex-1`、`overflow-y-auto`、`flex-col` 工具类。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/... .` 全绿（后端未改动）。
+- 本机预览服务未获授权启动，未做浏览器实机点击验证；布局依据为 flex 收缩语义与构建产物，待测试机安装新版本后按 issue 的期望结果逐条确认（9 条模型滚到底、操作栏常驻、末行不重叠、Tab 可达保存按钮）。
+
+### 第一百九十三轮迭代：新聊天仅在首条消息发送后才创建会话（已实施）
+
+依据：issue #30（Windows x64 桌面，v0.5.12）。点击「新聊天」会立刻调用 `NewSessionWithWorkspace`，左侧会话列表立即多出一条「新对话」，连点几次就堆满空会话且标题被挤成省略号；期望空白对话只存在于主区域，发出首条消息后才落库并出现在列表。
+
+**实现要点**
+
+- **根因**：`ChatPage.createDirectSession` 把「打开一个空白对话」实现成了「立即创建后端会话」——按钮、⌘N 与 `/new` 共用该函数，每次点击都写入一条标题为「新对话」的会话记录并刷新列表。前端其实已具备 composer-first 的延迟创建路径（`send()` 在无 `activeID` 时按首条消息创建会话），但「新聊天」绕过了它。
+- `frontend/src/pages/ChatPage.tsx`：`createDirectSession` 改为只进入本地草稿态——清空 `activeID`、消息、草稿输入与编辑/用量状态，不再调用后端；新增 `newChatDraft` 标志，阻止「自动选中最新会话」的副作用把空白草稿顶掉。任一会话被激活（侧栏点击、⌘⇧[/]、首条消息创建、分叉、后台 toast「查看」等）即自动退出草稿态。首条消息仍由既有 `send()` 创建会话，因此「创建会话失败」的提示时机也从点击时顺延到发送时，失败时输入内容保留。
+- `frontend/src/lib/sessionDraft.ts`（含测试）：抽出 `shouldOpenLatestSession({ activeID, draft, sessionCount })`，把「首次加载自动打开最新会话」与「用户主动新建草稿」的判定从组件中分离，便于回归测试。
+- 项目行「在此项目中新建对话」保持原有的即时创建语义：该入口明确指定了项目归属，不属于本次「新聊天」范围。
+
+**测试证据**
+
+- 新增 `frontend/src/lib/sessionDraft.test.ts`：覆盖首次加载自动打开、草稿态不被顶掉（#30 回归守卫）、已打开会话不被替换、空列表不动作。
+- `cd frontend && npx tsc --noEmit && npm test && npm run build`：7 个测试文件、34 个用例全绿，生产构建通过。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/...` 全绿（后端未改动）。
+- 本机预览服务未获授权启动，未做浏览器实机点击验证；行为由组件状态流转、单测与构建覆盖，待测试机安装新版本后确认点击「新聊天」不再新增列表条目。
+
+### 第一百九十二轮迭代：下线会话迁居（「移动到项目」）功能（已实施）
+
+依据：issue #29（Windows x64 桌面，v0.5.12）。会话行「…」菜单第一项为「移动到项目（首轮前生效）」，悬停展开默认项目与全部注册项目；用户要求连同子菜单、后端迁居 RPC 一并移除，不留残项。会话在创建时已归属项目（项目内新建走 `NewSessionWithProject`），迁居入口只增加噪音与误操作。
+
+**实现要点**
+
+- **根因**：会话的项目归属在创建时确定，但 `ChatService.SetSessionProject` 允许首轮前把既有会话改绑到任意项目（清空任务目录、重置基线并写审计）；前端两个入口（会话行菜单、输入区「任务目录」下拉）都调用它，形成一套与创建路径重复的状态修改面。
+- `internal/services/chatservice_sessions.go`：删除 `SetSessionProject` 整个方法（含工作区锁、首轮校验、项目存在性校验、基线重建与 `session_project_set` 审计）。创建路径 `NewSessionWithProject`、项目删除回落、`ForkSession` 保留项目的既有行为不变。
+- `internal/services/chatservice_project_test.go`：原首轮锁用例随方法删除；新增 `TestChatServiceHasNoRebindProjectRPC` 以反射守卫断言服务面不再暴露 `SetSessionProject`，防止重新生成绑定后入口复活。
+- `frontend/src/pages/ChatPage.tsx`：删除会话行三点菜单的「移动到项目」子菜单及 `switchSessionProject` 调用；输入区「任务目录」下拉移除项目行，只保留「选择其他目录…」与「添加新项目…」（目录绑定与项目创建是独立能力）。移除随之无用的 `DropdownMenuSub*`、`Check` 导入。
+- `frontend/src/lib/workspace.ts`（含测试）：锁定文案由「请先移出项目再单独指定工作区」改为「不能单独指定工作区」——迁居下线后「移出项目」已无入口，不再给出死路提示。
+- `frontend/stub/main.tsx`：删除 `SetSessionProject` 方法 ID `3134520676` 的桩。`frontend/bindings` 用与 CI 相同的 `wails3 v3.0.0` 重新生成（`SetSessionProject` 绑定消失；`AppInfo` / `ApplyUpdate` 两处注释随源码同步）。
+
+**测试证据**
+
+- `go vet ./internal/... .`、`go test -count=1 ./internal/... .`、`go test -race -count=1 ./internal/... .` 全绿（含新反射守卫用例）。
+- `cd frontend && npx tsc --noEmit && npm test && npm run build`：6 个测试文件、30 个用例全绿，生产构建通过。
+- 本机预览服务未获授权启动，未做浏览器实机点击验证；菜单结构由源码删除与 `tsc`/构建产物覆盖，待测试机安装新版本后确认三点菜单不再出现「移动到项目」。
+
+### 第一百九十一轮迭代：修复会话行三点菜单弹到窗口左上角（已实施）
+
+依据：issue #28（Windows x64 桌面，v0.5.11）。展开项目分组后点击会话行右侧「…」，菜单固定出现在整个窗口左上角，压住标题栏与「搜索对话」，与按钮完全脱节；任何会话、项目、窗口尺寸均必现，且无日志输出。
+
+**实现要点**
+
+- **根因**：会话行右侧操作区用 `hidden group-hover:flex group-focus-within:flex` 收起，而「…」按钮正是 Radix 下拉菜单的 popper 锚点。菜单打开时 Radix 的模态层会把 `document.body` 设为 `pointer-events: none`，行不再命中 `:hover`；焦点同时移入 portal 里的菜单内容，`group-focus-within` 也随之失效。两个分支都消失后操作区回到 `display: none`，触发按钮没有任何布局盒，floating-ui 量到 0×0 的锚点矩形，于是把弹层放在视口 (0,0)——即窗口左上角。
+- `frontend/src/lib/sessionRowActions.ts`：新增 `SESSION_ROW_ACTIONS_CLASS` 常量，在原有 hover / focus-within 分支之外补 `group-has-data-[state=open]:flex`。Radix 给触发按钮写入 `data-state="open"`，`:has()` 是纯 DOM 结构匹配、不受 `display:none` 与 `pointer-events` 影响，因此菜单打开的整段时间操作区都保持 `display:flex`，锚点矩形可正常测量。
+- `frontend/src/pages/ChatPage.tsx`：会话行操作区改用该常量并加 `data-slot="session-row-actions"`；其余布局与交互不变（仍只在悬停/聚焦时露出，不长期占位）。
+- 该选择器依赖 `:has()`，与本仓库 shadcn 组件已在使用的 `has-data-*` / `group-has-*` 变体同一机制，未引入新的 WebView 版本要求。
+
+**测试证据**
+
+- 新增 `frontend/src/lib/sessionRowActions.test.ts`：断言 class 含 `group-has-data-[state=open]:flex`（#28 回归守卫），并保留 `hidden` / `group-hover:flex` / `group-focus-within:flex`。
+- `cd frontend && npx tsc --noEmit && npm test`：6 个文件、30 个用例全绿；`npm run build` 通过。
+- 构建产物 `dist/assets/index-*.css` 确认生成 `.group-has-data-\[state\=open\]\:flex:is(:where(.group):has([data-state=open]) *){display:flex}`，特异性 (0,2,0) 高于 `.hidden` 的 (0,1,0) 且出现顺序在后，菜单打开时必然覆盖 `display:none`。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/...` 全绿。
+- 本机预览服务未获授权启动，未做浏览器实机点击验证；修复依据为 Radix 模态层的 pointer-events / 焦点行为与构建产物选择器，待测试机安装新版本后确认菜单锚定位置。
+
+### 第一百九十轮迭代：修复 Windows 发版门禁的 macOS 路径断言（已实施）
+
+依据：v0.5.10 发版失败（Release run 41607432207）。`gate` 在 windows-latest 上执行 `go test -count=1 ./internal/... .` 时，`TestUpdateTargetForExe/darwin_bundle` 失败：`target = "\\Users\\u\\Applications\\WorkBuddy Agent.app"`，期望 `/Users/u/Applications/WorkBuddy Agent.app`；`publish` 因 gate 失败被跳过，没有产生 release。
+
+**实现要点**
+
+- **根因**：`updateTargetForExe` 的 darwin 分支用宿主机语义的 `filepath.Clean` / `os.PathSeparator` / `filepath.Join` 解析传入的 macOS 路径。macOS 上两者一致，但 Windows 上 `filepath.Clean("/Users/...")` 会把斜杠改写成反斜杠，拼回的目标变成 `\Users\u\...`。生产环境只有 macOS 会走到该分支，所以不影响运行；但该函数按 `goos` 参数设计为可跨平台测试，Windows runner 上的门禁必然红。
+- `internal/services/updateleftover.go`：darwin 分支改用斜杠语义的 `path` 包（`path.Clean` / `path.Join`），并保留绝对路径守卫；结果只由 `goos` 决定，与宿主平台无关。
+- `.github/workflows/ci.yml`：`windows-build` job 在构建后增加 `Test (windows)` 步骤，与 release gate 使用同一命令，让 Windows 专属失败在 push/PR 阶段暴露，而不是等打标签后才发现。
+- `scripts/check-ci-build-coverage.sh`：校验 Windows job 的测试步骤存在，防止以后被删掉。
+
+**测试证据**
+
+- `go test -count=1 -run 'TestUpdateTargetForExe|TestSweepUpdateLeftovers' -v ./internal/services`：全部 PASS。
+- `go test -count=1 ./internal/... .` 与 `go test -race -count=1 ./internal/services` 全绿；`go vet ./internal/... .` 通过。
+- `GOOS=windows GOARCH=amd64 go test -c ./internal/services` 交叉编译通过（本机没有 Windows 运行环境，Windows 上的执行验证由 v0.5.11 的 release gate 完成）。
+
+### 第一百八十九轮迭代：更新后自动清理桌面上的旧版本残留（已实施）
+
+依据：issue #27（Windows 桌面安装版；反馈者自述 v0.5.8）。更新并重启后，桌面上仍留着上一版本应用的备份副本，右键删除 / 拖入回收站提示「文件正在使用」，只能一直留在桌面；期望新版本启动后不再占用旧版本文件。issue 同时指出与 #26（多开）可能互为因果。
+
+**实现要点**
+
+- **根因（残留必然存在）**：Wails updater 在 Windows 上无法删除仍被映射的可执行文件，只能先把目标改名为 `<exe>.old.<unixnano>` 再放入新文件；执行删除和清扫时 helper 自己仍运行在这个已改名的文件上，删除必然失败。helper 的清扫又只在下一次更新时发生——于是**每次 Windows 更新都会把上一版本副本留在应用旁边**；应用放在桌面时，这个副本就出现在桌面上。
+- **根因（长期被占用）**：v0.5.8 及更早没有单实例锁，多开时只有发起更新的那个进程退出，其他旧实例仍映射着旧 exe（改名后即 `.old.*` 文件），Windows 因此持续拒绝删除，直到这些实例全部退出。#26 的单实例修复（v0.5.9）阻止再产生新的多实例，但已留下的残留文件仍需新版本主动清走。
+- `internal/services/updateleftover.go`：新增启动清扫。目标路径按 updater 的同一规则推导（Windows/Linux 为 exe 本身，macOS 为 `.app` 包），只匹配 `<target>.old.<unixnano>`（UnixNano 时间戳须晚于 2020，避免误删用户同前缀文件）与 `<target>.bak`。
+- 安全边界：**安装目标不存在时一律不清理**（此时备份可能是唯一可恢复的副本）；只删除常规残留文件，目录型 `.bak`（macOS bundle）在目标存在时才 `RemoveAll`；30 秒内的新文件不碰，避免与仍在进行的更新交接竞争。
+- `UpdateService.attach` 在单实例锁已获取后启动清扫协程（二次启动进程在 `application.New` 内退出，不会误清）；30 秒重试一次、最多持续 10 分钟——helper 通常在新进程启动后 1 秒内退出，第一次重试即可删除；仍被旧实例占用时留待其退出或下次启动继续。`StopUpdates` 同时停止清扫协程。
+
+**测试证据**
+
+- 新增 `TestUpdateTargetForExe`：Windows 桌面 exe、Linux AppImage、macOS `.app` 包、普通二进制四种目标推导。
+- 新增 `TestSweepUpdateLeftovers`：陈旧的 `.old.*` 删除、新鲜残留保留、`.bak` 文件删除、bundle `.bak` 目录删除、目标缺失时全部保留、`old.123` / 非数字后缀 / 其他应用的同名文件不误删、含 glob 元字符的目录名按字面匹配。
+- 新增 `TestSweepUpdateLeftoversLoopRetriesUntilUnlocked`（首次因「过新」跳过、第二次重试删除）与 `TestSweepUpdateLeftoversLoopExitsWhenClean`（无残留立即退出）。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/... .`、`go test -race -count=1 ./internal/... .` 全绿。
+- 本机为 macOS，Windows 的「文件被占用」无法实机复现；修复针对 updater 的平台无关残留命名与清理时机，待测试机再走一次更新并重启后确认桌面残留副本是否自动消失。
+
+### 第一百八十八轮迭代：桌面端单实例限制，二次启动唤回已有窗口（已实施）
+
+依据：issue #26（Windows 桌面安装版；版本字段为空，按 `createdAt`（11-03 08:14 UTC）推断为 v0.5.8）。保持应用运行，再次双击桌面图标或从开始菜单启动，会新开一个独立窗口/进程，重复启动可无限多开；期望第二次启动只激活并聚焦已在运行的窗口。
+
+**实现要点**
+
+- **根因**：`application.New` 没有配置 `SingleInstance`，Wails 不会获取任何单实例锁；每次启动都是完整的新进程，自行创建窗口、托盘、全局快捷键并启动后台服务。
+- `main.go`：为应用配置 `application.SingleInstance`，`UniqueID` 使用 `build/config.yml` 的 `productIdentifier`（`com.workbuddy.agent`）且保持跨版本稳定——它同时是运行中实例与二次启动互相发现的锁名，改动会让新旧版本互不可见。第二实例由 Wails 平台内建机制识别（Windows 命名互斥量 + `WM_COPYDATA`，macOS 锁文件 + 分布式通知，Linux D-Bus），把启动信息转发给首个实例后以 `ExitCode` 退出，不再创建窗口或启动服务。
+- 回调 `activateMainWindow`：`UnMinimise()` 还原最小化窗口（不用 `Restore()`，避免把用户的最大化/全屏窗口改回普通状态）→ `Show()` 覆盖关闭到托盘的隐藏态 → `Focus()` 置前。窗口句柄保存在 `atomic.Pointer`，二次启动早于窗口创建时安全跳过，不会触发数据竞争。
+- 与自动更新兼容：Wails updater helper 先等待旧进程退出、再启动新二进制，更新重启仍能正常拿到单实例锁；若 helper 超时后重启旧二进制，新进程会检测到尚未退出的旧实例并转发激活，而不是并排开出两个窗口。
+
+**测试证据**
+
+- 新增 `TestSingleInstanceOptions`：`SingleInstance` 配置必须存在且 `UniqueID` 固定为产品标识（防止将来改锁名重新引入多开）、第二次启动只触发一次窗口激活、nil 激活器与 nil 窗口不 panic。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/... .`、`go test -race -count=1 ./internal/... .` 全绿。
+- 本机为 macOS，Windows 无法实机复现；单实例检测与窗口激活使用 Wails 跨平台内建能力，待测试机更新后双击图标确认第二次启动唤回已有窗口。
+
+### 第一百八十七轮迭代：项目展开后侧栏操作按钮不再被横向溢出裁掉（已实施）
+
+依据：issue #25（Windows 11，v0.5.7）。所有项目折叠时，项目行右侧的「+ / 编辑 / ⋯」正常可见；只要展开任意一个项目，所有项目行右侧的按钮都消失，只剩空白。
+
+**实现要点**
+
+- **根因**：侧栏项目/最近列表包在 Radix `ScrollArea` 里，它的内容容器固定为 `display: table; min-width: 100%`；同时列表网格没有显式列宽（`grid` 的自动列按 min-content 取宽）。会话标题与 80 字摘要都是 `truncate`（`white-space: nowrap`），其 min/max-content 等于整行文本宽度。项目折叠时，会话行不渲染，侧栏宽度正常；展开后这些长文本把表格/网格撑到 500+ px，`overflow-hidden` 又把超出侧栏的部分裁掉——所有行等宽，于是所有项目行右对齐的三个按钮一起被裁到可视区之外。
+- `frontend/src/pages/ChatPage.tsx`：侧栏列表改为普通块级滚动容器（`min-h-0 flex-1 overflow-x-hidden overflow-y-auto`），不再生成表格包装层；原生滚动条已由 `index.css` 统一为细深色样式，视觉不受影响。
+- 列表网格与展开后的会话网格都补上 `grid-cols-1`（`repeat(1, minmax(0, 1fr))`），让列宽受容器约束，`truncate` 正常出现省略号，长标题/摘要不会再撑宽整行。
+
+**测试证据**
+
+- 用 stub 视觉回归夹具（`npm run stub`）注入一条带长摘要的项目会话，以 headless Chromium 量测：修复前侧栏滚动容器 `clientWidth=223`、`scrollWidth=576`，项目行宽 576px，三个按钮位于 522–574px（全部在可视区外）；修复后 `clientWidth=scrollWidth=239`，行宽 223px，按钮位于 169–221px，展开态与折叠态截图均可见「+ / 编辑 / ⋯」。
+- `cd frontend && npx tsc --noEmit && npm test && npm run build` 通过。
+- 本机为 macOS，Windows 11 无法实机复现；问题为浏览器布局计算，与平台无关，待测试机更新后确认。
+
 ### 第一百八十六轮迭代：项目行新建对话恢复与展开态按钮配色（已实施）
 
 依据：issue #24（Windows 11；版本字段为空，按 `createdAt`（11-03 06:20 UTC）推断为 v0.5.6，晚于 v0.5.6 发布）。展开某个项目分组后点击行内「+」显示异常且无法新建项目会话；收起时同一组按钮显示正常、可以新建。

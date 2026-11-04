@@ -22,6 +22,10 @@ import * as $models from "./models.js";
 /**
  * ApplyUpdate hands the staged payload to the updater helper and quits; the
  * helper swaps the binary/bundle and relaunches the new version.
+ * 
+ * Restart blocks on this process's graceful shutdown, so it runs on its own
+ * goroutine under a watchdog: see the applyWatchdog comment for why a wedged
+ * quit must become a hard exit rather than a second copy of the old app.
  */
 export function ApplyUpdate(): $CancellablePromise<void> {
     return $Call.ByID(2882833721);

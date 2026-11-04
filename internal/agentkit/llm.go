@@ -338,6 +338,9 @@ type OpenAICompatConfig struct {
 	BaseURL string // e.g. https://api.deepseek.com/v1
 	APIKey  string
 	Model   string
+	// ExtraBody carries the resolved model-level thinking fields
+	// (reasoning_effort, thinking, ...). They are merged into every request.
+	ExtraBody map[string]any
 }
 
 type openaiCompatLLM struct {
@@ -396,6 +399,15 @@ type oaRequest struct {
 	MaxTokens   int64    `json:"max_tokens,omitempty"`
 	Temperature *float32 `json:"temperature,omitempty"`
 	Stop        []string `json:"stop,omitempty"`
+	// ExtraBody is merged into the JSON object after the typed fields.
+	ExtraBody map[string]any `json:"-"`
+}
+
+// MarshalJSON keeps the typed request shape and merges ExtraBody (thinking
+// levels) at the top level.
+func (r oaRequest) MarshalJSON() ([]byte, error) {
+	type alias oaRequest
+	return marshalWithExtra(alias(r), r.ExtraBody)
 }
 
 type oaUsage struct {
@@ -524,7 +536,8 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 		}
 
 		body := oaRequest{Model: o.cfg.Model, Messages: o.buildMessages(req), Stream: stream,
-			MaxTokens: maxTokensOf(req), Temperature: temperatureOf(req), Stop: stopSequencesOf(req)}
+			MaxTokens: maxTokensOf(req), Temperature: temperatureOf(req), Stop: stopSequencesOf(req),
+			ExtraBody: o.cfg.ExtraBody}
 		if stream {
 			body.StreamOptions = &struct {
 				IncludeUsage bool `json:"include_usage"`
@@ -769,6 +782,9 @@ type AnthropicConfig struct {
 	BaseURL string
 	APIKey  string
 	Model   string
+	// ExtraBody carries the resolved model-level thinking fields (thinking,
+	// output_config, ...). They are merged into every request.
+	ExtraBody map[string]any
 }
 
 type anthropicLLM struct {
@@ -826,6 +842,15 @@ type anRequest struct {
 	Temp      *float32    `json:"temperature,omitempty"`
 	// StopSequences maps the genai config onto Anthropic's stop_sequences.
 	StopSequences []string `json:"stop_sequences,omitempty"`
+	// ExtraBody is merged into the JSON object after the typed fields.
+	ExtraBody map[string]any `json:"-"`
+}
+
+// MarshalJSON keeps the typed request shape and merges ExtraBody (thinking
+// levels) at the top level.
+func (r anRequest) MarshalJSON() ([]byte, error) {
+	type alias anRequest
+	return marshalWithExtra(alias(r), r.ExtraBody)
 }
 
 type anTool struct {
@@ -910,7 +935,8 @@ func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 			maxTok = 8192
 		}
 		body := anRequest{Model: a.cfg.Model, Messages: a.buildMessages(req), System: systemText(req),
-			MaxTokens: maxTok, Stream: stream, Temp: temperatureOf(req), StopSequences: stopSequencesOf(req)}
+			MaxTokens: maxTok, Stream: stream, Temp: temperatureOf(req), StopSequences: stopSequencesOf(req),
+			ExtraBody: a.cfg.ExtraBody}
 		for _, fd := range configTools(req) {
 			body.Tools = append(body.Tools, anTool{
 				Name: fd.name, Description: fd.description, InputSchema: fd.parameters,

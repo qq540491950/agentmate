@@ -15,6 +15,8 @@ export type {
     ModelInfo,
     ModelProvider,
     Project,
+    ReasoningConfig,
+    ReasoningLevel,
     RemoteAgentConfig,
     Settings,
     SkillConfig,

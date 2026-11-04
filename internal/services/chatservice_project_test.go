@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -126,34 +127,12 @@ func TestNewSessionWithProjectSharesRootWithLegacyTask(t *testing.T) {
 	}
 }
 
-func TestSetSessionProjectBeforeFirstTurnOnly(t *testing.T) {
-	chat, store, _ := newProjectTestChat(t)
-	p, err := chat.SaveProject("", "", t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := chat.NewSessionWithWorkspace("", "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := chat.SetSessionProject(sess.ID, p.ID); err != nil {
-		t.Fatal(err)
-	}
-	if stored := findStoredSession(t, store, sess.ID); stored.ProjectID != p.ID || stored.WorkspaceDir != "" {
-		t.Fatalf("join project must take over the workspace: %+v", stored)
-	}
-	ws, err := chat.SessionWorkspace(sess.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ws != p.RootDir {
-		t.Fatalf("SessionWorkspace = %q, want %q", ws, p.RootDir)
-	}
-	if err := chat.Send(sess.ID, "hello", nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := chat.SetSessionProject(sess.ID, ""); err == nil || !strings.Contains(err.Error(), "首轮") {
-		t.Fatalf("expected post-first-turn lock, got %v", err)
+// TestChatServiceHasNoRebindProjectRPC pins issue #29: moving an existing
+// chat to another project is retired, so the service surface must not expose
+// the old rehoming RPC again. Chats take their project at creation time.
+func TestChatServiceHasNoRebindProjectRPC(t *testing.T) {
+	if _, ok := reflect.TypeOf(&ChatService{}).MethodByName("SetSessionProject"); ok {
+		t.Fatal("SetSessionProject must stay removed: chats are bound to their project at creation")
 	}
 }
 

@@ -241,19 +241,20 @@ export function SessionWorkspace(sessionID: string): $CancellablePromise<string>
 
 /**
  * SetSessionModel pins a chat to a specific model of its target agent's
- * provider (per-session model override); empty clears the override.
+ * provider (per-session model override); empty clears the override. The
+ * previous thinking level is cleared too: the new model may not offer it.
  */
 export function SetSessionModel(sessionID: string, modelID: string): $CancellablePromise<void> {
     return $Call.ByID(359717012, sessionID, modelID);
 }
 
 /**
- * SetSessionProject moves a chat into (empty id = out of) a project before
- * its first turn. Joining hands the workspace to the project root: the task
- * dir binding is cleared and the baseline restarts from the project.
+ * SetSessionReasoningLevel remembers this chat's thinking level (a level name
+ * from the effective model's table; empty restores the model default). It is
+ * a per-chat choice and never writes back to provider configuration.
  */
-export function SetSessionProject(sessionID: string, projectID: string): $CancellablePromise<void> {
-    return $Call.ByID(3134520676, sessionID, projectID);
+export function SetSessionReasoningLevel(sessionID: string, level: string): $CancellablePromise<void> {
+    return $Call.ByID(3185250285, sessionID, level);
 }
 
 /**

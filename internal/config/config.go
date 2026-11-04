@@ -21,18 +21,94 @@ const (
 	ProtocolGemini    Protocol = "gemini"    // Google Gemini API
 )
 
+// ReasoningLevel maps one selectable thinking level to the request field it
+// sends. Param may be dotted ("thinking.budget_tokens") for nested fields.
+// When Param is empty, Value must be a JSON object whose members are merged
+// into the request body top level — that is how models needing several
+// fields at once (e.g. Anthropic adaptive thinking plus output effort) are
+// expressed.
+type ReasoningLevel struct {
+	Level string `json:"level"` // off / low / medium / high / max or a custom label
+	Param string `json:"param,omitempty"`
+	Value string `json:"value"`
+}
+
+// ReasoningConfig is a model's thinking-level table. DefaultLevel picks the
+// level used when a chat does not override it; empty falls back to the first
+// level. Enabled=false disables the whole table.
+type ReasoningConfig struct {
+	Enabled      bool             `json:"enabled"`
+	DefaultLevel string           `json:"defaultLevel,omitempty"`
+	Levels       []ReasoningLevel `json:"levels,omitempty"`
+}
+
 // ModelInfo describes a model exposed by a provider.
 type ModelInfo struct {
 	ID string `json:"id"`
+	// DisplayName is the human-friendly label for pickers; empty means use ID.
+	DisplayName string `json:"displayName,omitempty"`
 	// Multimodal marks models that accept image input; the chat UI uses it
 	// to enable the image attachment button.
 	Multimodal bool `json:"multimodal,omitempty"`
 	// ContextWindow is the model's input context size in tokens (0 = unknown).
 	ContextWindow int `json:"contextWindow,omitempty"`
+	// MaxOutputTokens is the model's output limit in tokens (0 = unknown).
+	// It is the fallback when a run does not specify max output tokens.
+	MaxOutputTokens int `json:"maxOutputTokens,omitempty"`
 	// PriceIn/PriceOut are optional prices per 1M tokens (input/output),
 	// used for cost estimation in the chat UI.
 	PriceIn  float64 `json:"priceIn,omitempty"`
 	PriceOut float64 `json:"priceOut,omitempty"`
+	// Reasoning is the per-model thinking-level table. Nil keeps the
+	// provider's default behavior.
+	Reasoning *ReasoningConfig `json:"reasoning,omitempty"`
+}
+
+// Label is the human-readable name shown in pickers; it falls back to the
+// model ID so a blank display name never produces an empty row.
+func (m ModelInfo) Label() string {
+	if s := strings.TrimSpace(m.DisplayName); s != "" {
+		return s
+	}
+	return m.ID
+}
+
+// ActiveReasoning resolves the level a run uses when it has no per-session
+// selection: the configured default, else the first level. ok is false when
+// the model has no enabled reasoning table or the chosen level has neither a
+// parameter nor a value.
+func (r *ReasoningConfig) ActiveReasoning() (param, value string, ok bool) {
+	return r.Resolve("")
+}
+
+// Resolve returns the request field and value for one level. An empty level
+// means the configured default, then the first level. An unknown level reports
+// false so callers can fall back to the model default instead of sending a
+// stale session override.
+func (r *ReasoningConfig) Resolve(level string) (param, value string, ok bool) {
+	if r == nil || !r.Enabled || len(r.Levels) == 0 {
+		return "", "", false
+	}
+	wanted := strings.TrimSpace(level)
+	if wanted == "" {
+		wanted = strings.TrimSpace(r.DefaultLevel)
+	}
+	chosen, found := r.Levels[0], wanted == ""
+	if wanted != "" {
+		for _, l := range r.Levels {
+			if l.Level == wanted {
+				chosen, found = l, true
+				break
+			}
+		}
+	}
+	if !found {
+		return "", "", false
+	}
+	if strings.TrimSpace(chosen.Param) == "" && strings.TrimSpace(chosen.Value) == "" {
+		return "", "", false
+	}
+	return chosen.Param, chosen.Value, true
 }
 
 // UnmarshalJSON accepts both the legacy entries ("model-id") and the current
@@ -68,6 +144,16 @@ type ModelProvider struct {
 	PriceOut float64 `json:"priceOut,omitempty"`
 }
 
+// FindModel returns the provider's entry for a model ID (exact match).
+func (p ModelProvider) FindModel(id string) (ModelInfo, bool) {
+	for _, m := range p.Models {
+		if m.ID == id {
+			return m, true
+		}
+	}
+	return ModelInfo{}, false
+}
+
 // AgentConfig describes a user-defined agent.
 type AgentConfig struct {
 	ID           string    `json:"id"`
@@ -80,15 +166,15 @@ type AgentConfig struct {
 	MaxTokens    int       `json:"maxTokens"`
 	SkillIDs     []string  `json:"skillIds"`     // skills attached to this agent
 	MCPServerIDs []string  `json:"mcpServerIds"` // MCP servers whose tools are available
-	BuiltinTools []string  `json:"builtinTools"` // subset of builtin tool names: time, files, knowledge
+	BuiltinTools []string  `json:"builtinTools"` // subset of builtin tool names: time, files, knowledge, memory, todos, shell
 	CreatedAt    time.Time `json:"createdAt"`
 	// EnableGuardrails masks secrets in user input/model output (default on
 	// when unset). Pointers distinguish "unset" from explicit false.
 	EnableGuardrails *bool `json:"enableGuardrails,omitempty"`
 	// ConfirmTools lists builtin tool categories whose side-effectful calls
-	// need human approval before execution (ADK HITL). Only "files" is
-	// meaningful today: write_workspace_file asks for confirmation while
-	// list/read stay automatic. Empty = never ask.
+	// need human approval before execution (ADK HITL). "files" gates
+	// write_workspace_file; "shell" gates every run_command call. Empty =
+	// never ask.
 	ConfirmTools []string `json:"confirmTools,omitempty"`
 	// Run guardrails against runaway loops/cost. 0 = unlimited.
 	MaxTurnSeconds int `json:"maxTurnSeconds,omitempty"`
@@ -302,6 +388,10 @@ type ChatSession struct {
 	// provider (empty = the agent's configured model). Mirrors the per-chat
 	// model picker of the desktop AI clients.
 	ModelOverride string `json:"modelOverride,omitempty"`
+	// ReasoningLevel is this chat's thinking level (a level name from the
+	// effective model's Reasoning table; empty = the model's default level).
+	// It is a per-chat UI choice and never writes back to provider config.
+	ReasoningLevel string `json:"reasoningLevel,omitempty"`
 	// WorkspaceDir is the task-level directory used by file tools, prompt
 	// variables and artifact previews. Empty keeps legacy sessions on the
 	// global workspace.
@@ -354,7 +444,16 @@ func (c Config) Clone() Config {
 	out := c
 	out.Providers = make([]ModelProvider, len(c.Providers))
 	for i, p := range c.Providers {
-		p.Models = append([]ModelInfo(nil), p.Models...)
+		src := p.Models
+		p.Models = make([]ModelInfo, len(src))
+		for j, m := range src {
+			if m.Reasoning != nil {
+				r := *m.Reasoning
+				r.Levels = append([]ReasoningLevel(nil), m.Reasoning.Levels...)
+				m.Reasoning = &r
+			}
+			p.Models[j] = m
+		}
 		out.Providers[i] = p
 	}
 	if c.Agents != nil {

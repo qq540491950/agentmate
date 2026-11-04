@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -120,6 +121,11 @@ func main() {
 	// configured by Bind below.
 	updSvc := services.NewUpdateService(svc)
 
+	// The main window only exists after application.New, while a second launch
+	// can arrive at any moment after the lock is taken; the atomic handle keeps
+	// that callback race-free (and nil means "still starting").
+	var mainWindow atomic.Pointer[application.WebviewWindow]
+
 	app := application.New(application.Options{
 		Name:        "WorkBuddy Agent",
 		Description: "ADK-powered agent desktop app",
@@ -132,6 +138,16 @@ func main() {
 			application.NewService(a2aRPC),
 			application.NewService(updSvc),
 		},
+		// Launching the app again (desktop icon, Start menu, `open`) must
+		// surface the running window instead of opening another full copy.
+		// Wails takes a cross-platform single-instance lock (named mutex +
+		// WM_COPYDATA on Windows, lock file + distributed notification on
+		// macOS/Linux), hands this launch to the callback and exits the new
+		// process with ExitCode before it builds a window or starts services.
+		SingleInstance: singleInstanceOptions(func() {
+			activateMainWindow(mainWindow.Load())
+			log.Printf("检测到二次启动：已唤回正在运行的窗口，新进程退出")
+		}),
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
@@ -175,6 +191,7 @@ func main() {
 		BackgroundColour: application.NewRGB(18, 18, 20),
 		URL:              "/",
 	})
+	mainWindow.Store(window)
 
 	// A2A server auto-start (publish a local agent for remote A2A clients).
 	if svcSettings := store.Get().Settings; svcSettings.A2AAutoStart && svcSettings.A2AAgentID != "" {
@@ -270,6 +287,39 @@ func setupSystemTray(app *application.App, window *application.WebviewWindow) {
 	})
 	menu.Add("退出").OnClick(func(*application.Context) { app.Quit() })
 	tray.SetMenu(menu)
+}
+
+// singleInstanceOptions builds the Wails single-instance configuration.
+//
+// UniqueID is the lock name the running copy and a newly launched copy use to
+// find each other, so it must stay stable across releases: changing it lets a
+// new build run side by side with an older one (the exact bug this prevents).
+// It matches productIdentifier in build/config.yml.
+func singleInstanceOptions(activate func()) *application.SingleInstanceOptions {
+	return &application.SingleInstanceOptions{
+		UniqueID: "com.workbuddy.agent",
+		OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+			if activate != nil {
+				activate()
+			}
+		},
+	}
+}
+
+// activateMainWindow brings the already-running window back to the front.
+//
+// The callback runs on the first instance when a second launch is detected.
+// A nil window only happens when the second launch beats window creation and
+// the app is about to show it anyway. UnMinimise (rather than Restore) keeps
+// a maximised or fullscreen window exactly as the user left it; Show covers
+// the close-to-tray state.
+func activateMainWindow(window *application.WebviewWindow) {
+	if window == nil {
+		return
+	}
+	window.UnMinimise()
+	window.Show()
+	window.Focus()
 }
 
 // setupLogging writes the standard logger to a size-capped rotating file in
