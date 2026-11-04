@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Trash2, Bot, Network, Loader2, FolderDown, Upload } from "lucide-react";
+import { Plus, Trash2, Bot, Network, Loader2, FolderDown, Upload, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
@@ -20,6 +20,7 @@ import {
   Config, type AgentConfig, type ModelProvider, type SkillConfig, type MCPServerConfig,
   type RemoteAgentConfig, type RemoteAgentInfo, App, errText } from "@/lib/api";
 import { modelLabel } from "@/lib/modelLabel";
+import { resolveAgentModel } from "@/lib/agentModel";
 
 const agentTemplates: { label: string; make: () => AgentConfig }[] = [
   {
@@ -96,6 +97,11 @@ function blankAgent(): AgentConfig {
 // whose builtinTools list is empty inherits every category.
 const ALL_BUILTIN_TOOLS = ["time", "files", "knowledge", "memory", "todos", "shell"];
 
+// MODEL_INHERIT is the select value for "follow the global default". It is
+// never persisted; choosing it clears providerId/model so the agent keeps
+// inheriting whatever the default is at run time.
+const MODEL_INHERIT = "__inherit";
+
 function effectiveBuiltinTools(a: Pick<AgentConfig, "builtinTools">): string[] {
   return a.builtinTools?.length ? a.builtinTools : ALL_BUILTIN_TOOLS;
 }
@@ -110,6 +116,7 @@ export function AgentsPage() {
   const [skills, setSkills] = useState<SkillConfig[]>([]);
   const [servers, setServers] = useState<MCPServerConfig[]>([]);
   const [editing, setEditing] = useState<AgentConfig | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [remotes, setRemotes] = useState<RemoteAgentConfig[]>([]);
   const [remoteEditing, setRemoteEditing] = useState<RemoteAgentConfig | null>(null);
   const [remoteCheck, setRemoteCheck] = useState<RemoteAgentInfo | null>(null);
@@ -131,6 +138,18 @@ export function AgentsPage() {
   useEffect(reload, [reload]);
 
   const providerOf = (id: string) => providers.find((p) => p.id === id);
+  const defaultProvider = providers.find((p) => p.isDefault) ?? providers[0] ?? null;
+  const defaultModel = defaultProvider?.models?.[0] ?? null;
+  const defaultModelHint = defaultProvider
+    ? `${defaultProvider.name} / ${modelLabel(defaultModel) || "未配置模型"}`
+    : "尚未配置供应商";
+
+  /** openEditor always starts on the simple first screen: only the three
+   * required fields are visible, advanced settings stay collapsed. */
+  const openEditor = (a: AgentConfig) => {
+    setAdvancedOpen(false);
+    setEditing(a);
+  };
 
   const save = async () => {
     if (!editing) return;
@@ -138,14 +157,20 @@ export function AgentsPage() {
       toast.error("请填写 Agent 名称");
       return;
     }
+    if (!editing.description.trim()) {
+      toast.error("请填写 Agent 描述");
+      return;
+    }
+    if (!editing.systemPrompt.trim()) {
+      toast.error("请填写系统提示词");
+      return;
+    }
     // Hand-typed numbers bypass the input min/max; clamp so providers never
     // receive out-of-range values (OpenAI rejects temperature > 2).
     const temperature = Math.min(2, Math.max(0, editing.temperature || 0));
     const maxTokens = editing.maxTokens > 0 ? Math.floor(editing.maxTokens) : 0;
-    if (!editing.providerId || !editing.model) {
-      toast.error("请选择供应商与模型");
-      return;
-    }
+    // Model and tools are optional: blank values inherit the global default
+    // provider/model and the full built-in tool set at run time.
     try {
       await Config.SaveAgent({ ...editing, temperature, maxTokens });
       toast.success("已保存");
@@ -232,7 +257,7 @@ export function AgentsPage() {
             value=""
             onChange={(e) => {
               const t = agentTemplates.find((x) => x.label === e.target.value);
-              if (t) setEditing(t.make());
+              if (t) openEditor(t.make());
             }}
           >
             <option value="" disabled>
@@ -264,14 +289,15 @@ export function AgentsPage() {
                 toast.warning(res.warnings.join("；"));
               }
                 reload();
-                // Open the editor so the user picks a provider/model right away.
-                setEditing({ ...imported, skillIds: imported.skillIds ?? [], mcpServerIds: imported.mcpServerIds ?? [], builtinTools: imported.builtinTools ?? [] });
+                // Open the editor for review; imported definitions are valid
+                // as-is when they rely on the default model and tools.
+                openEditor({ ...imported, skillIds: imported.skillIds ?? [], mcpServerIds: imported.mcpServerIds ?? [], builtinTools: imported.builtinTools ?? [] });
               } catch (err) {
                 toast.error(`导入失败: ${errText(err)}`);
               }
             }}
           />
-          <Button onClick={() => setEditing(blankAgent())}>
+          <Button onClick={() => openEditor(blankAgent())}>
             <Plus className="mr-1 h-4 w-4" /> 新增 Agent
           </Button>
         </div>
@@ -284,7 +310,10 @@ export function AgentsPage() {
           </Card>
         )}
         {agents.map((a) => {
-          const p = providerOf(a.providerId);
+          const p = resolveAgentModel(a, providers);
+          const modelText = a.model
+            ? modelLabel(p.model) || a.model
+            : p.model ? `默认 · ${modelLabel(p.model)}` : "默认模型";
           return (
             <Card key={a.id}>
               <CardContent className="p-4">
@@ -296,7 +325,7 @@ export function AgentsPage() {
                     <div>
                       <div className="font-medium">{a.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {modelLabel(p?.models?.find((m) => m.id === a.model)) || a.model} · {p?.name ?? "未知供应商"}
+                        {modelText} · {p.provider?.name ?? "未配置供应商"}
                       </div>
                     </div>
                   </div>
@@ -315,7 +344,7 @@ export function AgentsPage() {
                     >
                       <Upload className="h-4 w-4 text-muted-foreground" />
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => setEditing({ ...a, skillIds: a.skillIds ?? [], mcpServerIds: a.mcpServerIds ?? [], builtinTools: a.builtinTools ?? [] })}>
+                    <Button variant="outline" size="sm" onClick={() => openEditor({ ...a, skillIds: a.skillIds ?? [], mcpServerIds: a.mcpServerIds ?? [], builtinTools: a.builtinTools ?? [] })}>
                       编辑
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => remove(a)}>
@@ -492,56 +521,78 @@ export function AgentsPage() {
           </DialogHeader>
           {editing && (
             <div className="grid gap-4 py-2">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="grid gap-1.5">
-                  <Label>名称</Label>
-                  <Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="例如 周报助手" />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>描述</Label>
-                  <Input value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="一句话说明能力" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="grid gap-1.5">
-                  <Label>供应商</Label>
-                  <Select
-                    value={editing.providerId || undefined}
-                    onValueChange={(v) => setEditing({ ...editing, providerId: v, model: "" })}
-                  >
-                    <SelectTrigger><SelectValue placeholder="选择供应商" /></SelectTrigger>
-                    <SelectContent>
-                      {providers.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>模型</Label>
-                  <Select
-                    value={editing.model || undefined}
-                    onValueChange={(v) => setEditing({ ...editing, model: v })}
-                    disabled={!editing.providerId}
-                  >
-                    <SelectTrigger><SelectValue placeholder="选择模型" /></SelectTrigger>
-                    <SelectContent>
-                      {(providerOf(editing.providerId)?.models ?? []).map((m) => (
-                        <SelectItem key={m.id} value={m.id} title={m.id}>{modelLabel(m)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="grid gap-1.5">
+                <Label>名称 <span className="text-destructive">*</span></Label>
+                <Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="例如 周报助手" />
+                <p className="text-xs text-muted-foreground">必填。在会话、团队与 Agent 列表中显示的名字。</p>
               </div>
               <div className="grid gap-1.5">
-                <Label>系统提示词</Label>
+                <Label>描述 <span className="text-destructive">*</span></Label>
+                <Input value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="一句话说明它擅长什么" />
+                <p className="text-xs text-muted-foreground">必填。一句话说明能力，会展示给用户与团队协调员。</p>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>系统提示词 <span className="text-destructive">*</span></Label>
                 <Textarea
                   rows={5}
                   value={editing.systemPrompt}
                   onChange={(e) => setEditing({ ...editing, systemPrompt: e.target.value })}
                   placeholder="你是一个……的助手，擅长……"
                 />
+                <p className="text-xs text-muted-foreground">必填。定义角色、语气与工作方式；支持 {"{{workspace}}"} 变量。</p>
               </div>
+              <button
+                type="button"
+                aria-expanded={advancedOpen}
+                onClick={() => setAdvancedOpen((v) => !v)}
+                className="flex w-full items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3 text-left"
+              >
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  {advancedOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  高级设置
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  模型、工具、Skills / MCP、参数与安全选项（均可留空使用默认值）
+                </span>
+              </button>
+              {advancedOpen && (
+                <div className="grid gap-4 border-l-2 border-muted pl-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="grid gap-1.5">
+                      <Label>供应商</Label>
+                      <Select
+                        value={editing.providerId || MODEL_INHERIT}
+                        onValueChange={(v) => setEditing({ ...editing, providerId: v === MODEL_INHERIT ? "" : v, model: "" })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={MODEL_INHERIT}>跟随全局默认</SelectItem>
+                          {providers.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label>模型</Label>
+                      <Select
+                        value={editing.model || MODEL_INHERIT}
+                        onValueChange={(v) => setEditing({ ...editing, model: v === MODEL_INHERIT ? "" : v })}
+                        disabled={!editing.providerId}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={MODEL_INHERIT}>默认（供应商第一个模型）</SelectItem>
+                          {(providerOf(editing.providerId)?.models ?? []).map((m) => (
+                            <SelectItem key={m.id} value={m.id} title={m.id}>{modelLabel(m)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    可选。留空跟随全局默认模型（{defaultModelHint}）；会话中仍可临时切换模型。
+                  </p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="grid gap-1.5">
                   <Label>Temperature</Label>
@@ -550,6 +601,7 @@ export function AgentsPage() {
                     value={editing.temperature}
                     onChange={(e) => setEditing({ ...editing, temperature: Number(e.target.value) })}
                   />
+                  <p className="text-xs text-muted-foreground">可选。越低越稳定，越高越发散。</p>
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Max Tokens</Label>
@@ -558,6 +610,7 @@ export function AgentsPage() {
                     value={editing.maxTokens}
                     onChange={(e) => setEditing({ ...editing, maxTokens: Number(e.target.value) })}
                   />
+                  <p className="text-xs text-muted-foreground">可选。0 表示使用模型默认上限。</p>
                 </div>
               </div>
               <div className="grid gap-1.5">
@@ -578,6 +631,7 @@ export function AgentsPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label>内置工具</Label>
+                <p className="text-xs text-muted-foreground">可选。默认启用全部内置工具；取消勾选才会限制范围。</p>
                 <div className="flex flex-wrap gap-4 rounded-lg border p-3">
                   <label className="flex items-center gap-2 text-sm">
                     <Checkbox
@@ -724,6 +778,7 @@ export function AgentsPage() {
               {skills.length > 0 && (
                 <div className="grid gap-1.5">
                   <Label>附加 Skills</Label>
+                  <p className="text-xs text-muted-foreground">可选。勾选后 Agent 可按需加载对应技能。</p>
                   <div className="grid gap-2 rounded-lg border p-3">
                     {skills.map((s) => (
                       <label key={s.id} className="flex items-center gap-2 text-sm">
@@ -741,6 +796,7 @@ export function AgentsPage() {
               {servers.length > 0 && (
                 <div className="grid gap-1.5">
                   <Label>MCP 工具服务</Label>
+                  <p className="text-xs text-muted-foreground">可选。已启用的服务默认对所有 Agent 可用，这里可额外挂载。</p>
                   <div className="grid gap-2 rounded-lg border p-3">
                     {servers.map((s) => (
                       <label key={s.id} className="flex items-center gap-2 text-sm">
@@ -752,6 +808,8 @@ export function AgentsPage() {
                       </label>
                     ))}
                   </div>
+                </div>
+              )}
                 </div>
               )}
             </div>

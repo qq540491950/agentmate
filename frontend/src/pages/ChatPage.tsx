@@ -36,6 +36,7 @@ import {
 import { shouldOpenLatestSession } from "@/lib/sessionDraft";
 import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
 import { levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
+import { resolveAgentModel } from "@/lib/agentModel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
@@ -1211,13 +1212,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         modelId = team.model;
       } else {
         const lead = agents.find((a) => a.id === team?.leadAgentId);
-        providerId = lead?.providerId ?? "";
-        modelId = lead?.model ?? "";
+        const resolved = resolveAgentModel(lead, providerList);
+        return { provider: resolved.provider, model: withOverride(resolved.provider, resolved.model) };
       }
     } else {
       const agent = agents.find((a) => a.id === active.targetId);
-      providerId = agent?.providerId ?? "";
-      modelId = agent?.model ?? "";
+      const resolved = resolveAgentModel(agent, providerList);
+      return { provider: resolved.provider, model: withOverride(resolved.provider, resolved.model) };
     }
     const provider = providerList.find((p) => p.id === providerId) ?? null;
     const model = withOverride(provider, provider?.models?.find((m) => m.id === modelId) ?? null);
@@ -1270,7 +1271,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     }
     if (active.targetType !== "agent") return [];
     const agent = agents.find((a) => a.id === active.targetId);
-    return providerList.find((p) => p.id === agent?.providerId)?.models ?? [];
+    return resolveAgentModel(agent, providerList).provider?.models ?? [];
   }, [active, agents, providerList]);
 
   // The composer chip shows the effective choice: the resolved model's display

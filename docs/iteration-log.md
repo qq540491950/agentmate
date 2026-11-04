@@ -3,6 +3,26 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百九十七轮迭代：Agent 定义精简为语义化三项 + 高级设置（已实施）
+
+依据：issue #39（Agents 页，enhancement）。新建 Agent 的表单字段多且语义不清，「可用工具」看起来像必须先收敛范围才能用工具；期望「少量必要项 + 自然语言描述」即可定义 Agent，工具默认全量、模型继承全局默认，限制范围是显式动作。与 #38（自建 Agent 默认装配全部内置工具）同源但独立：本票只覆盖 Agents 页定义表单与模型默认继承。
+
+**实现要点**
+
+- **表单分层**：新增/编辑对话框首屏只保留 3 个必填项（名称、描述、系统提示词），每项带一句用途说明与必填标识；模型、内置工具、Temperature/MaxTokens、停止序列、Skills / MCP、安全护栏、Token 预算、超时与工具调用上限、HITL 确认统一收进「高级设置」，默认折叠、可展开，不展开也能直接保存。
+- **必填校验**：保存只校验名称/描述/系统提示词非空，不再要求先选供应商与模型；模型留空即继承全局默认，工具留空即全量。
+- **默认模型继承**：`config.ResolveAgentModel` 统一解析——空供应商回落「模型配置」中标记默认（否则第一个）的供应商，空模型回落该供应商第一个模型；`kit.buildLLMAgentWithSubAgents` 在装配前解析，`BuildAgentWithModelWorkspaceAndReasoning` 先解析再做会话级覆盖钳制，autoTitle 与统计计费共用同一解析。历史空值配置按继承解释，不静默改写；供应商 ID 显式但已失效时仍报错提示重选。
+- **前端一致性**：新增 `lib/agentModel.ts` 的 `resolveAgentModel`，Agents 卡片显示「默认 · 模型名」、ChatPage 的目标模型与模型选择器、图片输入能力判断都按同一规则解析默认供应商/模型。
+- **交互文案**：Agent 卡片对空 `builtinTools` 继续显示「内置:全量」；高级区工具说明写明「默认启用全部内置工具；取消勾选才会限制范围」。
+
+**测试证据**
+
+- 新增 `internal/config` 的 `TestResolveAgentModelInheritsDefault`：默认供应商、无默认时取第一个、显式值不改写、显式供应商空模型、失效供应商保持原值、无供应商保持空。
+- 新增 `internal/agentkit` 的 `TestBuildAgentInheritsDefaultModel`：仅名称/描述/提示词的 Agent 可构建，会话级模型覆盖按默认供应商钳制，无供应商时给出可操作错误。
+- 新增 `internal/services` 的 `TestAgentWithoutExplicitModelRunsOnDefault`：空 provider/model 的 Agent 发送消息使用默认供应商第一个模型。
+- 新增 `frontend/src/lib/agentModel.test.ts`（6 例）覆盖默认继承与失效供应商；`npm test` 61 例通过。
+- `./scripts/verify.sh` 全绿（前端构建、vitest、go vet、全量测试、race、`wails3 build`）。
+
 ### 第一百九十六轮迭代：本地 Agent 终端命令工具 run_command（已实施）
 
 依据：issue #36（Windows x64，v0.5.17，本地自建 Agent + glm-5.3-flash）。用户让 Agent「拉取最新代码」，模型明确回答没有终端 / Shell 执行工具，无法运行 `git pull`、`go build`、`npm install` 等命令；期望本地 Agent 至少能完成拉取代码这类操作。核查确认这不是模型误判：内置工具装配只有时间、工作区文件读写、知识库、长期记忆与任务计划，整个仓库不存在命令执行工具，界面上也没有可开启的入口。

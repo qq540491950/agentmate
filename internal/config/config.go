@@ -206,6 +206,48 @@ func (a AgentConfig) EffectiveBuiltinTools() []string {
 	return AllBuiltinTools
 }
 
+// DefaultProvider returns the provider marked default, falling back to the
+// first configured provider. nil means no provider is configured yet.
+func (c Config) DefaultProvider() *ModelProvider {
+	for i := range c.Providers {
+		if c.Providers[i].IsDefault {
+			return &c.Providers[i]
+		}
+	}
+	if len(c.Providers) > 0 {
+		return &c.Providers[0]
+	}
+	return nil
+}
+
+// FindProvider returns the provider with the given ID, or nil when absent.
+func (c Config) FindProvider(id string) *ModelProvider {
+	for i := range c.Providers {
+		if c.Providers[i].ID == id {
+			return &c.Providers[i]
+		}
+	}
+	return nil
+}
+
+// ResolveAgentModel fills an agent's unset provider/model from the global
+// defaults: a blank provider follows the default provider, and a blank model
+// that provider's first model. Explicit values are preserved. This is what
+// lets an Agent be defined by name + description + system prompt alone (#39).
+func (c Config) ResolveAgentModel(a AgentConfig) (providerID, modelID string) {
+	providerID, modelID = a.ProviderID, a.Model
+	p := c.FindProvider(providerID)
+	if p == nil && strings.TrimSpace(providerID) == "" {
+		if p = c.DefaultProvider(); p != nil {
+			providerID = p.ID
+		}
+	}
+	if p != nil && strings.TrimSpace(modelID) == "" && len(p.Models) > 0 {
+		modelID = p.Models[0].ID
+	}
+	return providerID, modelID
+}
+
 // RemoteAgentConfig describes a remote agent reached over the A2A protocol
 // (Agent-To-Agent, a2aproject/a2a-go). The agent card is discovered from
 // CardURL's well-known location.

@@ -148,6 +148,9 @@ func (k *Kit) BuildAgentWithModelAndWorkspace(ac config.AgentConfig, modelID, wo
 // disagree about the run.
 func (k *Kit) BuildAgentWithModelWorkspaceAndReasoning(ac config.AgentConfig, modelID, workspace, reasoningLevel string) (agent.Agent, error) {
 	cfg := k.store.Get()
+	// A blank provider/model inherits the global default before any override
+	// is clamped, so the per-session picker works on inherited models too.
+	ac.ProviderID, ac.Model = cfg.ResolveAgentModel(ac)
 	if strings.TrimSpace(modelID) != "" {
 		ac.Model = EffectiveModel(cfg, ac.ProviderID, ac.Model, modelID)
 	}
@@ -200,6 +203,10 @@ func applyModelOutputLimit(ac *config.AgentConfig, p config.ModelProvider) {
 }
 
 func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Config, subAgents []agent.Agent, workspace, reasoningLevel string) (agent.Agent, error) {
+	// Agents defined without an explicit model follow the global default
+	// (form: provider/model left blank). Historical configs with empty values
+	// are interpreted the same way instead of failing to run (#39).
+	ac.ProviderID, ac.Model = cfg.ResolveAgentModel(ac)
 	var provider *config.ModelProvider
 	for i := range cfg.Providers {
 		if cfg.Providers[i].ID == ac.ProviderID {
@@ -208,6 +215,9 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 		}
 	}
 	if provider == nil {
+		if strings.TrimSpace(ac.ProviderID) == "" {
+			return nil, fmt.Errorf("尚未配置模型供应商，请先在「模型配置」页添加并填入 API Key")
+		}
 		return nil, fmt.Errorf("Agent「%s」找不到模型供应商，请重新选择", ac.Name)
 	}
 	m, err := NewModelFromProviderWithReasoning(*provider, ac.Model, reasoningLevel)

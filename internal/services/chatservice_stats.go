@@ -101,18 +101,15 @@ func (c *ChatService) SessionStats(sessionID string) (*SessionStats, error) {
 	if ac := priceAc; ac != nil {
 		// Pricing follows the model the session actually runs (same clamp as
 		// runTurn: an override whose model was deleted falls back to the
-		// agent's configured model).
-		effectiveModel := agentkit.EffectiveModel(cfgNow, ac.ProviderID, ac.Model, target.ModelOverride)
-		for i := range cfgNow.Providers {
-			if cfgNow.Providers[i].ID != ac.ProviderID {
-				continue
-			}
-			for _, mi := range cfgNow.Providers[i].Models {
+		// agent's configured model; a blank model inherits the global default).
+		providerID, resolvedModel := cfgNow.ResolveAgentModel(*ac)
+		effectiveModel := agentkit.EffectiveModel(cfgNow, providerID, resolvedModel, target.ModelOverride)
+		if p := cfgNow.FindProvider(providerID); p != nil {
+			for _, mi := range p.Models {
 				if mi.ID == effectiveModel {
 					priceIn, priceOut = mi.PriceIn, mi.PriceOut
 				}
 			}
-			break
 		}
 	}
 	days := map[string]*StatDay{}

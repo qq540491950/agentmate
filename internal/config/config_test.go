@@ -338,3 +338,53 @@ func TestUpdateAutoCheckDefaultsOn(t *testing.T) {
 		t.Fatal("auto-check must stay off after a reload")
 	}
 }
+
+// TestResolveAgentModelInheritsDefault pins the #39 contract: an agent defined
+// by name + description + prompt alone follows the global default provider and
+// its first model, while explicit choices are never silently rewritten.
+func TestResolveAgentModelInheritsDefault(t *testing.T) {
+	cfg := Config{Providers: []ModelProvider{
+		{ID: "p1", Name: "First", Models: []ModelInfo{{ID: "m1"}, {ID: "m2"}}},
+		{ID: "p2", Name: "Default", IsDefault: true, Models: []ModelInfo{{ID: "d1"}}},
+	}}
+
+	providerID, modelID := cfg.ResolveAgentModel(AgentConfig{Name: "仅语义"})
+	if providerID != "p2" || modelID != "d1" {
+		t.Fatalf("blank agent should inherit default provider/model, got %q/%q", providerID, modelID)
+	}
+
+	// No provider is marked default: the first configured one is the default.
+	noDefault := Config{Providers: []ModelProvider{
+		{ID: "p1", Models: []ModelInfo{{ID: "m1"}}},
+	}}
+	providerID, modelID = noDefault.ResolveAgentModel(AgentConfig{})
+	if providerID != "p1" || modelID != "m1" {
+		t.Fatalf("first provider should act as default, got %q/%q", providerID, modelID)
+	}
+
+	// Explicit values win and are not rebound.
+	providerID, modelID = cfg.ResolveAgentModel(AgentConfig{ProviderID: "p1", Model: "m2"})
+	if providerID != "p1" || modelID != "m2" {
+		t.Fatalf("explicit provider/model changed: %q/%q", providerID, modelID)
+	}
+
+	// An explicit provider with a blank model uses that provider's first model.
+	providerID, modelID = cfg.ResolveAgentModel(AgentConfig{ProviderID: "p2"})
+	if providerID != "p2" || modelID != "d1" {
+		t.Fatalf("blank model should use the chosen provider's first model, got %q/%q", providerID, modelID)
+	}
+
+	// A dangling provider stays explicit; the build layer reports it instead
+	// of silently moving the agent to another provider.
+	providerID, modelID = cfg.ResolveAgentModel(AgentConfig{ProviderID: "gone"})
+	if providerID != "gone" || modelID != "" {
+		t.Fatalf("dangling provider must stay untouched, got %q/%q", providerID, modelID)
+	}
+
+	// Nothing configured: values stay blank so callers can show an actionable
+	// "add a provider first" error.
+	providerID, modelID = (Config{}).ResolveAgentModel(AgentConfig{})
+	if providerID != "" || modelID != "" {
+		t.Fatalf("empty config should resolve to empty, got %q/%q", providerID, modelID)
+	}
+}

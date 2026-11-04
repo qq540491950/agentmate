@@ -590,20 +590,17 @@ func (c *ChatService) autoTitle(sessionID string, cfg config.Config, fallback, u
 	if ac == nil {
 		return
 	}
-	var provider *config.ModelProvider
-	for i := range cfg.Providers {
-		if cfg.Providers[i].ID == ac.ProviderID {
-			provider = &cfg.Providers[i]
-			break
-		}
-	}
+	// An agent with a blank provider/model follows the global default, the
+	// same resolution the run itself uses (#39).
+	providerID, resolvedModel := cfg.ResolveAgentModel(*ac)
+	provider := cfg.FindProvider(providerID)
 	if provider == nil {
 		return
 	}
 	// The side call must respect the per-session model override — the same
 	// clamp as BuildAgentWithModel. The custom adapters build the client from
 	// the constructor's model, so the override has to happen here.
-	modelID := agentkit.EffectiveModel(cfg, ac.ProviderID, ac.Model, target.ModelOverride)
+	modelID := agentkit.EffectiveModel(cfg, providerID, resolvedModel, target.ModelOverride)
 	m, err := agentkit.NewModelFromProvider(*provider, modelID)
 	if err != nil {
 		return

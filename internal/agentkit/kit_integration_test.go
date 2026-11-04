@@ -357,3 +357,40 @@ func TestBuildTeamLeadPeersIncludeRemoteMembers(t *testing.T) {
 		t.Fatalf("peers missing expected members: %v", names)
 	}
 }
+
+// TestBuildAgentInheritsDefaultModel: an Agent saved with only the three
+// semantic fields (name/description/system prompt) must build on the global
+// default provider and model, and the per-session picker must still work (#39).
+func TestBuildAgentInheritsDefaultModel(t *testing.T) {
+	kit, store := newTestKit(t)
+	if err := store.Update(func(cfg *config.Config) {
+		cfg.Providers = append(cfg.Providers, config.ModelProvider{
+			ID: "p1", Name: "Fake", Protocol: config.ProtocolOpenAI,
+			Models: []config.ModelInfo{{ID: "m1"}, {ID: "m2"}}, IsDefault: true,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ac := config.AgentConfig{Name: "语义 Agent", Description: "一句话说明", SystemPrompt: "用中文回答"}
+	a, err := kit.BuildAgent(ac)
+	if err != nil {
+		t.Fatalf("agent without provider/model should inherit defaults: %v", err)
+	}
+	if a.Name() == "" {
+		t.Fatal("agent name empty")
+	}
+
+	// The header model picker clamps against the resolved default provider,
+	// not against the blank configured provider.
+	if _, err := kit.BuildAgentWithModel(ac, "m2"); err != nil {
+		t.Fatalf("per-session override should resolve against the default provider: %v", err)
+	}
+
+	// No provider configured: the error must tell the user what to do.
+	emptyKit, _ := newTestKit(t)
+	_, err = emptyKit.BuildAgent(ac)
+	if err == nil || !strings.Contains(err.Error(), "尚未配置模型供应商") {
+		t.Fatalf("expected actionable missing-provider error, got %v", err)
+	}
+}
