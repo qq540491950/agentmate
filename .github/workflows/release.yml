@@ -27,9 +27,11 @@ permissions:
 
 # Never let two tag pushes race on `releases/latest`: a half-published release
 # is exactly the state the updater cannot recover from (it would fetch a
-# manifest that points at assets that do not exist yet).
+# manifest that points at assets that do not exist yet). The group is fixed, not
+# per-tag: different tags must serialize too, or a slower older release can
+# re-point `latest` after a newer one has finished.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-publish
   cancel-in-progress: false
 
 env:
