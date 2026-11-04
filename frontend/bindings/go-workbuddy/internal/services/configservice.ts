@@ -189,6 +189,15 @@ export function SaveTeam(t: config$0.TeamConfig): $CancellablePromise<void> {
 }
 
 /**
+ * SuggestModels returns the built-in defaults (display name and reasoning
+ * level table) for model IDs the editor just fetched or the user typed. It is
+ * offline and does not touch the saved config.
+ */
+export function SuggestModels(ids: string[] | null): $CancellablePromise<config$0.ModelInfo[] | null> {
+    return $Call.ByID(1306580425, ids);
+}
+
+/**
  * TestKnowledgeSearch runs a one-off knowledge search with current settings
  * so the user can verify semantic retrieval quality from the settings page.
  */

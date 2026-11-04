@@ -328,11 +328,26 @@ func (c *ChatService) SearchSessions(query string) []config.ChatSession {
 }
 
 // SetSessionModel pins a chat to a specific model of its target agent's
-// provider (per-session model override); empty clears the override.
+// provider (per-session model override); empty clears the override. The
+// previous thinking level is cleared too: the new model may not offer it.
 func (c *ChatService) SetSessionModel(sessionID, modelID string) error {
-	err := c.mutateSession(sessionID, func(s *config.ChatSession) { s.ModelOverride = strings.TrimSpace(modelID) })
+	err := c.mutateSession(sessionID, func(s *config.ChatSession) {
+		s.ModelOverride = strings.TrimSpace(modelID)
+		s.ReasoningLevel = ""
+	})
 	if err == nil {
 		c.audit(sessionID, "session_model_set", "system", "session", mustJSON(map[string]string{"model": modelID}), "")
+	}
+	return err
+}
+
+// SetSessionReasoningLevel remembers this chat's thinking level (a level name
+// from the effective model's table; empty restores the model default). It is
+// a per-chat choice and never writes back to provider configuration.
+func (c *ChatService) SetSessionReasoningLevel(sessionID, level string) error {
+	err := c.mutateSession(sessionID, func(s *config.ChatSession) { s.ReasoningLevel = strings.TrimSpace(level) })
+	if err == nil {
+		c.audit(sessionID, "session_reasoning_set", "system", "session", mustJSON(map[string]string{"level": level}), "")
 	}
 	return err
 }

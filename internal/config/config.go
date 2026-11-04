@@ -64,6 +64,15 @@ type ModelInfo struct {
 	Reasoning *ReasoningConfig `json:"reasoning,omitempty"`
 }
 
+// Label is the human-readable name shown in pickers; it falls back to the
+// model ID so a blank display name never produces an empty row.
+func (m ModelInfo) Label() string {
+	if s := strings.TrimSpace(m.DisplayName); s != "" {
+		return s
+	}
+	return m.ID
+}
+
 // ActiveReasoning resolves the level a run uses when it has no per-session
 // selection: the configured default, else the first level. ok is false when
 // the model has no enabled reasoning table or the chosen level has neither a
@@ -133,6 +142,16 @@ type ModelProvider struct {
 	// old config files migrate instead of losing data.
 	PriceIn  float64 `json:"priceIn,omitempty"`
 	PriceOut float64 `json:"priceOut,omitempty"`
+}
+
+// FindModel returns the provider's entry for a model ID (exact match).
+func (p ModelProvider) FindModel(id string) (ModelInfo, bool) {
+	for _, m := range p.Models {
+		if m.ID == id {
+			return m, true
+		}
+	}
+	return ModelInfo{}, false
 }
 
 // AgentConfig describes a user-defined agent.
@@ -369,6 +388,10 @@ type ChatSession struct {
 	// provider (empty = the agent's configured model). Mirrors the per-chat
 	// model picker of the desktop AI clients.
 	ModelOverride string `json:"modelOverride,omitempty"`
+	// ReasoningLevel is this chat's thinking level (a level name from the
+	// effective model's Reasoning table; empty = the model's default level).
+	// It is a per-chat UI choice and never writes back to provider config.
+	ReasoningLevel string `json:"reasoningLevel,omitempty"`
 	// WorkspaceDir is the task-level directory used by file tools, prompt
 	// variables and artifact previews. Empty keeps legacy sessions on the
 	// global workspace.

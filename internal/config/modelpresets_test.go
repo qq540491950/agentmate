@@ -30,6 +30,9 @@ func TestSuggestModelInfoFamilies(t *testing.T) {
 		if info.ID != tc.id {
 			t.Fatalf("%q: id not copied: %+v", tc.id, info)
 		}
+		if tc.id != "" && info.DisplayName != tc.id {
+			t.Fatalf("%q: display name should start as the id: %+v", tc.id, info)
+		}
 		if tc.wantNil {
 			if info.Reasoning != nil {
 				t.Fatalf("%q: expected no reasoning table, got %+v", tc.id, info.Reasoning)

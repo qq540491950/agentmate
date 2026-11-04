@@ -104,6 +104,13 @@ func (c *ConfigService) ListProviderModels(p config.ModelProvider) ([]string, er
 	return agentkit.ListProviderModels(ctx, p)
 }
 
+// SuggestModels returns the built-in defaults (display name and reasoning
+// level table) for model IDs the editor just fetched or the user typed. It is
+// offline and does not touch the saved config.
+func (c *ConfigService) SuggestModels(ids []string) []config.ModelInfo {
+	return config.SuggestModelInfos(ids)
+}
+
 // TestProvider performs a minimal round-trip against the provider with the
 // chosen model to verify reachability and credentials. Returns the elapsed
 // latency in milliseconds for display.

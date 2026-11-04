@@ -30,13 +30,35 @@ import (
 
 // ModelFactory builds the model.LLM for a provider/model pair.
 func NewModelFromProvider(p config.ModelProvider, modelID string) (model.LLM, error) {
+	return newModelFromProvider(p, modelID, nil)
+}
+
+// NewModelFromProviderWithReasoning builds a model whose requests carry the
+// thinking fields resolved from the model's level table. level selects a level
+// by name; empty means the model's configured default. Side calls that should
+// not think (auto-title) keep using NewModelFromProvider.
+func NewModelFromProviderWithReasoning(p config.ModelProvider, modelID, level string) (model.LLM, error) {
+	var extra map[string]any
+	if mi, ok := p.FindModel(modelID); ok {
+		var err error
+		if extra, err = reasoningExtraBody(mi, level); err != nil {
+			return nil, err
+		}
+	}
+	return newModelFromProvider(p, modelID, extra)
+}
+
+func newModelFromProvider(p config.ModelProvider, modelID string, extra map[string]any) (model.LLM, error) {
 	if modelID == "" {
 		return nil, fmt.Errorf("缺少模型 ID")
 	}
 	switch p.Protocol {
 	case config.ProtocolAnthropic:
-		return NewAnthropic(AnthropicConfig{BaseURL: p.BaseURL, APIKey: p.APIKey, Model: modelID})
+		return NewAnthropic(AnthropicConfig{BaseURL: p.BaseURL, APIKey: p.APIKey, Model: modelID, ExtraBody: extra})
 	case config.ProtocolGemini:
+		// The genai SDK owns the request shape; arbitrary extra fields are not
+		// merged here. Gemini models therefore ignore the level table at run
+		// time (the configuration is still stored and editable).
 		return gemini.NewModel(context.Background(), modelID, &genai.ClientConfig{
 			APIKey: p.APIKey,
 			HTTPOptions: genai.HTTPOptions{
@@ -44,7 +66,7 @@ func NewModelFromProvider(p config.ModelProvider, modelID string) (model.LLM, er
 			},
 		})
 	default: // OpenAI-compatible Chat Completions
-		return NewOpenAICompat(OpenAICompatConfig{BaseURL: p.BaseURL, APIKey: p.APIKey, Model: modelID})
+		return NewOpenAICompat(OpenAICompatConfig{BaseURL: p.BaseURL, APIKey: p.APIKey, Model: modelID, ExtraBody: extra})
 	}
 }
 
@@ -102,8 +124,8 @@ func (k *Kit) BuildAgent(ac config.AgentConfig) (agent.Agent, error) {
 	return k.BuildAgentWithModelAndWorkspace(ac, "", "")
 }
 
-func (k *Kit) buildLLMAgent(ac config.AgentConfig, cfg config.Config, workspace string) (agent.Agent, error) {
-	return k.buildLLMAgentWithSubAgents(ac, cfg, nil, workspace)
+func (k *Kit) buildLLMAgent(ac config.AgentConfig, cfg config.Config, workspace, reasoningLevel string) (agent.Agent, error) {
+	return k.buildLLMAgentWithSubAgents(ac, cfg, nil, workspace, reasoningLevel)
 }
 
 // BuildAgentWithModel builds an agent pinned to a specific model of its
@@ -117,6 +139,14 @@ func (k *Kit) BuildAgentWithModel(ac config.AgentConfig, modelID string) (agent.
 // override and effective task workspace are resolved together so file tools
 // and prompt variables cannot disagree about the directory.
 func (k *Kit) BuildAgentWithModelAndWorkspace(ac config.AgentConfig, modelID, workspace string) (agent.Agent, error) {
+	return k.BuildAgentWithModelWorkspaceAndReasoning(ac, modelID, workspace, "")
+}
+
+// BuildAgentWithModelWorkspaceAndReasoning is the session-aware build entry:
+// model override, effective task workspace and the chat's thinking level are
+// resolved together so the tools, prompt variables and request body cannot
+// disagree about the run.
+func (k *Kit) BuildAgentWithModelWorkspaceAndReasoning(ac config.AgentConfig, modelID, workspace, reasoningLevel string) (agent.Agent, error) {
 	cfg := k.store.Get()
 	if strings.TrimSpace(modelID) != "" {
 		ac.Model = EffectiveModel(cfg, ac.ProviderID, ac.Model, modelID)
@@ -124,7 +154,7 @@ func (k *Kit) BuildAgentWithModelAndWorkspace(ac config.AgentConfig, modelID, wo
 	if strings.TrimSpace(workspace) == "" {
 		workspace = cfg.Settings.WorkspaceDir
 	}
-	return k.buildLLMAgent(ac, cfg, workspace)
+	return k.buildLLMAgent(ac, cfg, workspace, reasoningLevel)
 }
 
 // EffectiveModel resolves the model a session actually runs: the per-session
@@ -158,7 +188,18 @@ func modelSupported(cfg config.Config, providerID, modelID string) bool {
 	return false
 }
 
-func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Config, subAgents []agent.Agent, workspace string) (agent.Agent, error) {
+// applyModelOutputLimit fills an unset agent output limit from the model's
+// configured MaxOutputTokens; an explicit agent value always wins.
+func applyModelOutputLimit(ac *config.AgentConfig, p config.ModelProvider) {
+	if ac.MaxTokens > 0 {
+		return
+	}
+	if mi, ok := p.FindModel(ac.Model); ok && mi.MaxOutputTokens > 0 {
+		ac.MaxTokens = mi.MaxOutputTokens
+	}
+}
+
+func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Config, subAgents []agent.Agent, workspace, reasoningLevel string) (agent.Agent, error) {
 	var provider *config.ModelProvider
 	for i := range cfg.Providers {
 		if cfg.Providers[i].ID == ac.ProviderID {
@@ -169,10 +210,13 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 	if provider == nil {
 		return nil, fmt.Errorf("Agent「%s」找不到模型供应商，请重新选择", ac.Name)
 	}
-	m, err := NewModelFromProvider(*provider, ac.Model)
+	m, err := NewModelFromProviderWithReasoning(*provider, ac.Model, reasoningLevel)
 	if err != nil {
 		return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 	}
+	// The model's output ceiling is the fallback when the agent does not set
+	// one explicitly; the agent-level MaxTokens still wins.
+	applyModelOutputLimit(&ac, *provider)
 
 	var tools []tool.Tool
 	var toolsets []tool.Toolset
@@ -302,6 +346,13 @@ func (k *Kit) BuildTeam(tc config.TeamConfig) (agent.Agent, string, error) {
 // BuildTeamWithWorkspace builds a team whose local members use the session's
 // task workspace.
 func (k *Kit) BuildTeamWithWorkspace(tc config.TeamConfig, workspace string) (agent.Agent, string, error) {
+	return k.BuildTeamWithWorkspaceAndReasoning(tc, workspace, "")
+}
+
+// BuildTeamWithWorkspaceAndReasoning applies the chat's thinking level to the
+// team's root agent (explicit lead or synthesized coordinator). Member agents
+// keep their own configured models and levels.
+func (k *Kit) BuildTeamWithWorkspaceAndReasoning(tc config.TeamConfig, workspace, reasoningLevel string) (agent.Agent, string, error) {
 	cfg := k.store.Get()
 	if strings.TrimSpace(workspace) == "" {
 		workspace = cfg.Settings.WorkspaceDir
@@ -323,7 +374,7 @@ func (k *Kit) BuildTeamWithWorkspace(tc config.TeamConfig, workspace string) (ag
 		if !ok {
 			continue
 		}
-		a, err := k.buildLLMAgent(ac, cfg, workspace)
+		a, err := k.buildLLMAgent(ac, cfg, workspace, "")
 		if err != nil {
 			return nil, "", err
 		}
@@ -368,7 +419,7 @@ func (k *Kit) BuildTeamWithWorkspace(tc config.TeamConfig, workspace string) (ag
 				}
 			}
 			leadAc := memberByID[tc.LeadAgentID]
-			leadAgent, err := k.buildLLMAgentWithSubAgents(leadAc, cfg, peers, workspace)
+			leadAgent, err := k.buildLLMAgentWithSubAgents(leadAc, cfg, peers, workspace, reasoningLevel)
 			if err != nil {
 				return nil, "", err
 			}
@@ -387,9 +438,13 @@ func (k *Kit) BuildTeamWithWorkspace(tc config.TeamConfig, workspace string) (ag
 	if provider == nil {
 		return nil, "", fmt.Errorf("团队「%s」的协调员缺少模型供应商", tc.Name)
 	}
-	m, err := NewModelFromProvider(*provider, tc.Model)
+	m, err := NewModelFromProviderWithReasoning(*provider, tc.Model, reasoningLevel)
 	if err != nil {
 		return nil, "", err
+	}
+	maxOutput := 0
+	if mi, ok := provider.FindModel(tc.Model); ok {
+		maxOutput = mi.MaxOutputTokens
 	}
 	coordInstruction := firstNonEmpty(tc.SystemPrompt,
 		"You are the coordinator of an agent team. Analyze the user's request, "+
@@ -404,6 +459,12 @@ func (k *Kit) BuildTeamWithWorkspace(tc config.TeamConfig, workspace string) (ag
 		Description:         firstNonEmpty(tc.Description, tc.Name),
 		InstructionProvider: func(agent.ReadonlyContext) (string, error) { return instruction, nil },
 		SubAgents:           members,
+		GenerateContentConfig: func() *genai.GenerateContentConfig {
+			if maxOutput <= 0 {
+				return nil
+			}
+			return &genai.GenerateContentConfig{MaxOutputTokens: int32(maxOutput)}
+		}(),
 	})
 	if err != nil {
 		return nil, "", err

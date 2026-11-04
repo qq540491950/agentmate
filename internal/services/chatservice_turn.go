@@ -331,11 +331,11 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		if derr != nil {
 			return derr
 		}
-		root, err = c.S.Kit.BuildAgentWithModelAndWorkspace(ac, target.ModelOverride, workspace)
+		root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(ac, target.ModelOverride, workspace, target.ReasoningLevel)
 	case "team":
 		for _, t := range cfg.Teams {
 			if t.ID == target.TargetID {
-				root, _, err = c.S.Kit.BuildTeamWithWorkspace(t, workspace)
+				root, _, err = c.S.Kit.BuildTeamWithWorkspaceAndReasoning(t, workspace, target.ReasoningLevel)
 				break
 			}
 		}
@@ -357,7 +357,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			if a.ID == target.TargetID {
 				// Per-session model override (chat-header picker): empty keeps
 				// the agent's configured model.
-				root, err = c.S.Kit.BuildAgentWithModelAndWorkspace(a, target.ModelOverride, workspace)
+				root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(a, target.ModelOverride, workspace, target.ReasoningLevel)
 				break
 			}
 		}

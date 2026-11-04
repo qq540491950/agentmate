@@ -108,6 +108,13 @@ export interface ChatSession {
     "modelOverride"?: string;
 
     /**
+     * ReasoningLevel is this chat's thinking level (a level name from the
+     * effective model's Reasoning table; empty = the model's default level).
+     * It is a per-chat UI choice and never writes back to provider config.
+     */
+    "reasoningLevel"?: string;
+
+    /**
      * WorkspaceDir is the task-level directory used by file tools, prompt
      * variables and artifact previews. Empty keeps legacy sessions on the
      * global workspace.
@@ -247,6 +254,11 @@ export interface ModelInfo {
     "id": string;
 
     /**
+     * DisplayName is the human-friendly label for pickers; empty means use ID.
+     */
+    "displayName"?: string;
+
+    /**
      * Multimodal marks models that accept image input; the chat UI uses it
      * to enable the image attachment button.
      */
@@ -258,11 +270,23 @@ export interface ModelInfo {
     "contextWindow"?: number;
 
     /**
+     * MaxOutputTokens is the model's output limit in tokens (0 = unknown).
+     * It is the fallback when a run does not specify max output tokens.
+     */
+    "maxOutputTokens"?: number;
+
+    /**
      * PriceIn/PriceOut are optional prices per 1M tokens (input/output),
      * used for cost estimation in the chat UI.
      */
     "priceIn"?: number;
     "priceOut"?: number;
+
+    /**
+     * Reasoning is the per-model thinking-level table. Nil keeps the
+     * provider's default behavior.
+     */
+    "reasoning"?: ReasoningConfig | null;
 }
 
 /**
@@ -324,6 +348,34 @@ export enum Protocol {
      */
     ProtocolGemini = "gemini",
 };
+
+/**
+ * ReasoningConfig is a model's thinking-level table. DefaultLevel picks the
+ * level used when a chat does not override it; empty falls back to the first
+ * level. Enabled=false disables the whole table.
+ */
+export interface ReasoningConfig {
+    "enabled": boolean;
+    "defaultLevel"?: string;
+    "levels"?: ReasoningLevel[] | null;
+}
+
+/**
+ * ReasoningLevel maps one selectable thinking level to the request field it
+ * sends. Param may be dotted ("thinking.budget_tokens") for nested fields.
+ * When Param is empty, Value must be a JSON object whose members are merged
+ * into the request body top level — that is how models needing several
+ * fields at once (e.g. Anthropic adaptive thinking plus output effort) are
+ * expressed.
+ */
+export interface ReasoningLevel {
+    /**
+     * off / low / medium / high / max or a custom label
+     */
+    "level": string;
+    "param"?: string;
+    "value": string;
+}
 
 /**
  * RemoteAgentConfig describes a remote agent reached over the A2A protocol

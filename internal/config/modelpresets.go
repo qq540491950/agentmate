@@ -21,9 +21,11 @@ import "strings"
 // JSON object value, which is merged into the request body top level.
 
 // SuggestModelInfo returns the built-in defaults for one model ID. Unknown
-// families get no reasoning table (nil), leaving the provider default.
+// families get no reasoning table (nil), leaving the provider default. The
+// display name starts as the ID so a freshly fetched row is never blank; the
+// editor lets the user replace it.
 func SuggestModelInfo(id string) ModelInfo {
-	return ModelInfo{ID: id, Reasoning: suggestReasoning(id)}
+	return ModelInfo{ID: id, DisplayName: strings.TrimSpace(id), Reasoning: suggestReasoning(id)}
 }
 
 // SuggestModelInfos applies SuggestModelInfo to a batch of IDs.
