@@ -47,12 +47,23 @@ gh issue list --repo qq540491950/go-workbuddy --state open \
 - **过期认领**：列出带 `agent:processing` 的 open issue。若 `updatedAt` 距今超过
   2 小时，视为上一轮中断遗留：移除 `agent:processing`，评论“清理中断运行遗留的
   认领标签，重新入队”。不要清理本次运行自己刚加的标签。
-- **过期阻塞回访**：列出带 `agent:blocked` 的 open issue。若最近一条评论提到
-  CI / Release 失败，用 `git tag --contains <修复提交>` 和 `gh release list`
-  核对后续版本是否已包含该修复：
-  - 已包含：评论补发版本号，`gh issue close <N> --reason completed`，加
-    `agent:fixed`、移除 `agent:blocked`；
-  - 仍未包含：保持 blocked，不要重复尝试或删除 tag。
+- **过期阻塞回访**：列出带 `agent:blocked` 的 open issue，读最近一条评论，
+  按失败类型分流：
+  - **评论提到 CI 失败**：阻塞可能已被后续提交解除（例如 CI 自身限流、安装器
+    或 runner 故障）。先 `git fetch origin main`，取 `origin/main` HEAD 对应的
+    CI run（`headSha == HEAD`）：
+    - run 结论为 success，且评论中给出的修复提交（7~40 位十六进制；识别不到
+      就保持 blocked）是 `origin/main` 的祖先：阻塞已解除。评论
+      「CI 已恢复（附 run 链接），重新进入待发版队列」，移除 `agent:blocked`、
+      加 `agent:pending-release`；
+    - run 仍在进行或失败，或该提交不在 `origin/main` 历史中：保持 blocked，
+      不要重复尝试。
+  - **评论提到 Release 失败**：用 `git tag --contains <修复提交>` 和
+    `gh release list` 核对后续版本是否已包含该修复（只认已出现在
+    `gh release list` 中的版本，仅 tag 存在但 Release 失败不算）：
+    - 已包含：评论补发版本号，`gh issue close <N> --reason completed`，加
+      `agent:fixed`、移除 `agent:blocked`；
+    - 仍未包含：保持 blocked，不要重复尝试或删除 tag。
 - 自愈只在本轮开始时做一次，完成后继续正常选取流程。
 
 ## 1.2 批量发版检查（选取 issue 前）
@@ -212,6 +223,9 @@ CI 失败时：
 
 - 评论失败摘要和 run 链接（注明是哪个 job 失败，尤其是 `windows-build`）；
 - 加 `agent:blocked`，移除 `agent:processing`；
+- 若确认失败原因是 CI 基础设施（限流、安装器、runner 故障）而非代码：本次仍按
+  上述流程结束；之后（任意一轮或人工）修好 CI 并推送到 main，待新 HEAD 的 CI
+  全绿，下一轮 1.1 的「CI 失败」回访会自动重新入队，不需要人工改标签。
 - 不 tag、不关闭 issue，结束。
 
 ## 7. 批量发版（默认，每 60 分钟最多一次）
