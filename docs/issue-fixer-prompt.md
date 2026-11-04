@@ -51,7 +51,9 @@ gh issue list --repo qq540491950/go-workbuddy --state open \
   按失败类型分流：
   - **评论提到 CI 失败**：阻塞可能已被后续提交解除（例如 CI 自身限流、安装器
     或 runner 故障）。先 `git fetch origin main`，取 `origin/main` HEAD 对应的
-    CI run（`headSha == HEAD`）：
+    CI run（`headSha == HEAD`）；若 HEAD 没有对应 run（例如只有文档提交，
+    `ci.yml` 的 `paths-ignore` 不触发），取最近一个 `headSha` 是 HEAD 祖先的
+    main run 代替：
     - run 结论为 success，且评论中给出的修复提交（7~40 位十六进制；识别不到
       就保持 blocked）是 `origin/main` 的祖先：阻塞已解除。评论
       「CI 已恢复（附 run 链接），重新进入待发版队列」，移除 `agent:blocked`、
@@ -248,7 +250,9 @@ issue 立即打 tag。
     --json databaseId,headSha,status,conclusion,url
   ```
 
-  选择 `headSha == HEAD` 的 run；若没有对应 run，或结论不是 success，不要发版：
+  选择 `headSha == HEAD` 的 run；若 HEAD 没有对应 run（例如只有文档提交，
+  `ci.yml` 的 `paths-ignore` 不触发），取最近一个 `headSha` 是 HEAD 祖先的
+  main run 代替。结论不是 success（或完全找不到 run）时不要发版：
   给所有 pending issue 评论「批量发版前 CI 未通过」，加 `agent:blocked`，移除
   `agent:pending-release`，结束。
 
