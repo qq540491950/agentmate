@@ -32,6 +32,22 @@ gh issue list --repo qq540491950/go-workbuddy --state open \
 如果选中的 issue 带 `enhancement` 标签：评论说明“自动流程当前只修复 bug，
 功能建议需要人工评估”，加 `needs-info`，不要改代码，结束。
 
+## 1.1 队列自愈（每轮开始先做）
+
+自动修复可能被中断（会话结束、进程退出、机器休眠），留下过期的认领标签或
+脏工作区。每次运行先做一次自愈，避免一个残留卡死整条队列：
+
+- **过期认领**：列出带 `agent:processing` 的 open issue。若 `updatedAt` 距今超过
+  2 小时，视为上一轮中断遗留：移除 `agent:processing`，评论“清理中断运行遗留的
+  认领标签，重新入队”。不要清理本次运行自己刚加的标签。
+- **过期阻塞回访**：列出带 `agent:blocked` 的 open issue。若最近一条评论提到
+  CI / Release 失败，用 `git tag --contains <修复提交>` 和 `gh release list`
+  核对后续版本是否已包含该修复：
+  - 已包含：评论补发版本号，`gh issue close <N> --reason completed`，加
+    `agent:fixed`、移除 `agent:blocked`；
+  - 仍未包含：保持 blocked，不要重复尝试或删除 tag。
+- 自愈只在本轮开始时做一次，完成后继续正常选取流程。
+
 ## 2. 认领 issue
 
 ```bash
@@ -56,8 +72,13 @@ git branch --show-current
 git fetch origin main
 ```
 
-- 工作区必须干净；当前分支必须是 `main`。否则评论说明原因，加
-  `agent:blocked`，移除 `agent:processing`，结束。
+- 工作区必须干净；当前分支必须是 `main`。若工作区脏：
+  - 脏文件是上一次自动修复中断留下的（通常与某个 `agent:processing` issue 的改动范围
+    一致，且没有用户说明）时，执行
+    `git stash push -u -m "auto-fix-leftover-$(date +%Y%m%d%H%M%S)"`，在 issue 评论中
+    记录 stash 名称，然后继续；
+  - 无法判断来源、或确认是用户手工改动时，不要 stash：评论说明文件列表，加
+    `agent:blocked`，移除 `agent:processing`，结束。
 - 比较 `origin/main...HEAD`：
   - 只有本地领先：允许继续，push 时会一并推送本地已有提交。
   - 只有本地落后：`git pull --ff-only origin main`；失败则标记 `agent:blocked`。
@@ -150,6 +171,18 @@ git push origin "$TAG"
 `v0.5.0 -> v0.5.1`。如果 tag 已存在或 push 失败，不要改用其他版本号重试；
 评论失败原因并标记 `agent:blocked`。
 
+### 批量发版模式
+
+issue 正文或批次备注要求「队列清空后统一打一个 patch tag」时，不要每个 issue 都发版：
+
+1. 修复推送并等 CI 绿后，评论「已修复并合入 main，等待同批 issue 清空后统一发版」，
+   加 `agent:fixed`、移除 `agent:processing`，保持 open（`agent:fixed` 已被选取规则
+   排除，不会被重复处理）。
+2. 检查同批 open issue（作者 `qq540491950`）：若还有未带 `agent:fixed` 且不属于
+   `agent:blocked` / `needs-info` / `wontfix` 的 issue，本轮到此结束，不 tag。
+3. 若只剩 `agent:fixed` 的待发版 issue：按上面的命令打**一个** tag，等待 Release
+   成功后，逐个评论版本号并关闭这些 issue（保留 `agent:fixed`）。
+
 等待 Release workflow：
 
 ```bash
@@ -182,6 +215,9 @@ gh issue close <N> --repo qq540491950/go-workbuddy --reason completed
 gh issue edit <N> --repo qq540491950/go-workbuddy \
   --add-label agent:fixed --remove-label agent:processing
 ```
+
+批量发版模式下，Release 成功后要关闭**本批所有** `agent:fixed` 的 open issue，
+而不只是当前这一张；每张都补发版本号评论。
 
 ## 9. 异常处理
 

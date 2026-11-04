@@ -3,6 +3,29 @@
 本文件按轮次记录每次功能迭代的依据、实现要点与测试证据。最新记录在最上方。
 
 ## 视觉测试与体验设计
+### 第一百九十五轮迭代：模型显示名、思考强度配置与会话级档位（已实施）
+
+依据：issue #33 / #34 / #35（Windows x64 桌面，v0.5.12，同批模型设置改造）。模型列表与对话模型选择器只能显示长模型 ID，无法为模型起可读名称；模型级设置缺少「推理档位 → API 参数值」映射，用户无法表达同一供应商下不同推理模型各自的思考档位；对话输入框也没有会话级思考强度入口，只能改全局配置。三张票共用同一套配置与表单，按批次一次实现并在同一版本发布。
+
+**实现要点**
+
+- **配置模型**：`ModelInfo` 新增 `DisplayName`（留空回落 ID，见 `Label()`）、`MaxOutputTokens`、`Reasoning *ReasoningConfig`；`ReasoningConfig` 保存开关、默认档与档位表，`Resolve(level)` 按档解析参数名/参数值，未知档返回 false（运行期回落模型默认，不发送过期覆盖）。`Clone()` 深拷贝档位表，修复模型切片拷贝时 range 到新空切片导致模型丢失的问题。
+- **内置预设**：`internal/config/modelpresets.go` 按模型家族（deepseek / kimi / glm / claude / gpt / qwen）给出档位表与默认值，`SuggestModelInfo` 同时把显示名初始化为 ID；预设只作为编辑器默认值，用户可改档位名、参数名、参数值，增删档位。Gemini 协议由 genai SDK 接管请求体，档位配置会保存但运行期不注入（界面已注明适用 OpenAI 兼容 / Anthropic）。
+- **请求注入**：`agentkit.reasoningExtraBody` 把解析结果转成请求字段——`Param` 为空时按 JSON 对象合并到顶层（支持 Claude 自适应思考 + `output_config.effort` 多字段、Qwen 多字段），非空时按字段名写入并支持点号路径（如 `thinking.budget_tokens`）。OpenAI 兼容与 Anthropic 请求结构各加 `ExtraBody`，`MarshalJSON` 在类型字段之后合并；`NewModelFromProviderWithReasoning` 在构建 LLM 时解析档位。模型级 `MaxOutputTokens` 在 Agent 未显式设置 `MaxTokens` 时作为兜底（含团队自动协调员）。
+- **会话级档位**：`ChatSession` 新增 `ReasoningLevel`；`ChatService.SetSessionReasoningLevel` 走 `mutateSession` 持久化并写 `session_reasoning_set` 审计，不触碰供应商配置；`SetSessionModel` 在切换模型时清空旧档位。`runTurn` 把会话档位传给 Agent / 团队根节点的构建，直聊、Agent、团队三条路径共用同一解析。
+- **前端**：新增 `ModelRowEditor`，每行按「模型 ID + 显示名称 → 上下文 + 最大输出 → 图片输入 + 价格 → 推理等级开关 + 档位表」布局；档位行支持档位名（内置常见档位 datalist，可自定义）、参数名、参数值、删除与新增，默认档下拉；「自动补全」按模型家族重新带出预设。`ConfigService.SuggestModels` 暴露内置预设（离线），拉取模型时批量自动带出，手动输入在失焦时补齐；保存前用 `validateModelReasoning` 校验空档位、重复档位、JSON 对象格式与悬空默认档。
+- **显示名贯通**：`modelLabel(m) = displayName || id` 用于模型列表徽章、对话模型选择器、输入框模型 chip、Agents / Teams 的模型下拉与卡片摘要；请求仍使用模型 ID，会话绑定与计费归属不变。对话输入区在有效模型具备启用档位表时显示「思考强度」chip，选项为「模型默认（档位）」+ 档位表，按会话记忆；没有档位表的模型不显示入口。
+- **绑定与桩**：重新生成 Wails 绑定（`ReasoningConfig` / `ReasoningLevel` / `ChatSession.reasoningLevel` / `ConfigService.SuggestModels` / `ChatService.SetSessionReasoningLevel`）；`frontend/stub` 补齐新方法 ID、种子模型的显示名与档位表，供浏览器视觉回归。
+
+**测试证据**
+
+- 新增 `internal/config/modelpresets_test.go`：家族识别、请求形态、`ActiveReasoning` / `Resolve` 回落、`Clone` 深拷贝、`ModelInfo` JSON 往返。
+- 新增 `internal/agentkit/reasoning_test.go`：OpenAI `reasoning_effort` / `thinking` 注入与未知档不注入、Anthropic 自适应 JSON 合并、空 `Param` 非对象报错、点号路径、`MaxOutputTokens` 兜底。
+- 新增 `internal/services/chatservice_reasoning_test.go`：会话档位持久化并改变请求体、切换模型清空旧档位、未知会话报错。
+- 新增 `frontend/src/lib/modelLabel.test.ts`：显示名回落、档位表启用判定、档位中文标签、档位表保存校验。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/... .`、`go test -race -count=1 ./internal/... .` 全绿；`cd frontend && npx tsc --noEmit && npm test && npm run build` 全绿（10 个测试文件、55 个用例）。
+- 浏览器桩实机验证：供应商编辑面板展示模型 ID / 显示名 / 上下文 / 最大输出 / 图片输入 / 价格 / 推理档位表；对话输入区出现「思考强度」chip，选择「高」后桩会话写入 `reasoningLevel: "high"`；模型选择器显示「GPT-5 Mini / GPT-5 Max」而非长 ID。
+
 ### 第一百九十四轮迭代：供应商编辑面板可滚动、底部操作栏常驻（已实施）
 
 依据：issue #32（Windows x64 桌面，v0.5.12）。供应商编辑面板在模型列表达到 8～9 条后一路撑长，`DialogContent` 没有高度上限也没有滚动容器，底部「保存」「取消」被推到窗口外，既点不到也滚不到，只能 Esc 关闭并丢弃已填内容。期望内容区可纵向滚动、操作栏固定可见、最后一条模型与操作栏不重叠，且窄窗口与键盘 Tab 同样可用。
