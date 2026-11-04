@@ -81,10 +81,23 @@ function blankAgent(): AgentConfig {
     maxTokens: 4096,
     skillIds: [],
     mcpServerIds: [],
-    builtinTools: ["time"],
+    // Empty means the full built-in set (see ALL_BUILTIN_TOOLS); removing a
+    // capability is the explicit action.
+    builtinTools: [],
+    // The terminal stays behind human approval by default, matching the
+    // behavior of ticking its checkbox manually.
+    confirmTools: ["shell"],
     createdAt: "",
     enableGuardrails: true,
   };
+}
+
+// ALL_BUILTIN_TOOLS mirrors config.AllBuiltinTools on the Go side. An agent
+// whose builtinTools list is empty inherits every category.
+const ALL_BUILTIN_TOOLS = ["time", "files", "knowledge", "memory", "todos", "shell"];
+
+function effectiveBuiltinTools(a: Pick<AgentConfig, "builtinTools">): string[] {
+  return a.builtinTools?.length ? a.builtinTools : ALL_BUILTIN_TOOLS;
 }
 
 function toggle(list: string[], v: string): string[] {
@@ -314,9 +327,13 @@ export function AgentsPage() {
                   <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{a.description}</p>
                 )}
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {(a.builtinTools ?? []).map((t) => (
-                    <Badge key={t} variant="outline" className="font-normal">内置:{t}</Badge>
-                  ))}
+                  {(a.builtinTools ?? []).length === 0 ? (
+                    <Badge variant="outline" className="font-normal">内置:全量</Badge>
+                  ) : (
+                    (a.builtinTools ?? []).map((t) => (
+                      <Badge key={t} variant="outline" className="font-normal">内置:{t}</Badge>
+                    ))
+                  )}
                   {(a.skillIds ?? []).map((id) => {
                     const s = skills.find((x) => x.id === id);
                     return s ? <Badge key={id} variant="secondary" className="font-normal">Skill:{s.name}</Badge> : null;
@@ -564,44 +581,45 @@ export function AgentsPage() {
                 <div className="flex flex-wrap gap-4 rounded-lg border p-3">
                   <label className="flex items-center gap-2 text-sm">
                     <Checkbox
-                      checked={(editing.builtinTools ?? []).includes("time")}
-                      onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(editing.builtinTools ?? [], "time") })}
+                      checked={effectiveBuiltinTools(editing).includes("time")}
+                      onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(effectiveBuiltinTools(editing), "time") })}
                     />
                     时间查询
                   </label>
                   <label className="flex items-center gap-2 text-sm">
                     <Checkbox
-                      checked={(editing.builtinTools ?? []).includes("files")}
-                      onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(editing.builtinTools ?? [], "files") })}
+                      checked={effectiveBuiltinTools(editing).includes("files")}
+                      onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(effectiveBuiltinTools(editing), "files") })}
                     />
                     工作区文件读写
                   </label>
                   <label className="flex items-center gap-2 text-sm">
                     <Checkbox
-                      checked={(editing.builtinTools ?? []).includes("knowledge")}
-                      onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(editing.builtinTools ?? [], "knowledge") })}
+                      checked={effectiveBuiltinTools(editing).includes("knowledge")}
+                      onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(effectiveBuiltinTools(editing), "knowledge") })}
                     />
                     知识库检索（workspace/knowledge/）
                   </label>
                   <label className="flex items-center gap-2 text-sm">
                     <Checkbox
-                      checked={(editing.builtinTools ?? []).includes("memory")}
-                      onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(editing.builtinTools ?? [], "memory") })}
+                      checked={effectiveBuiltinTools(editing).includes("memory")}
+                      onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(effectiveBuiltinTools(editing), "memory") })}
                     />
                     长期记忆检索（可跨会话召回用户历史）
                   </label>
                   <label className="flex items-center gap-2 text-sm">
                     <Checkbox
-                      checked={(editing.builtinTools ?? []).includes("todos")}
-                      onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(editing.builtinTools ?? [], "todos") })}
+                      checked={effectiveBuiltinTools(editing).includes("todos")}
+                      onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(effectiveBuiltinTools(editing), "todos") })}
                     />
                     任务计划（plan_todos）
                   </label>
                   <label className="flex items-center gap-2 text-sm">
                     <Checkbox
-                      checked={(editing.builtinTools ?? []).includes("shell")}
+                      checked={effectiveBuiltinTools(editing).includes("shell")}
                       onCheckedChange={() => {
-                        const enabled = !(editing.builtinTools ?? []).includes("shell");
+                        const current = effectiveBuiltinTools(editing);
+                        const enabled = !current.includes("shell");
                         const nextConfirm = new Set(editing.confirmTools ?? []);
                         // Enabling the terminal defaults to HITL approval;
                         // the switch below can turn it off deliberately.
@@ -609,7 +627,7 @@ export function AgentsPage() {
                         else nextConfirm.delete("shell");
                         setEditing({
                           ...editing,
-                          builtinTools: toggle(editing.builtinTools ?? [], "shell"),
+                          builtinTools: toggle(current, "shell"),
                           confirmTools: [...nextConfirm],
                         });
                       }}
@@ -665,7 +683,7 @@ export function AgentsPage() {
                   <p className="text-xs text-muted-foreground">超出后本轮停止，防止死循环消耗</p>
                 </div>
               </div>
-              {(editing.builtinTools ?? []).includes("files") && (
+              {effectiveBuiltinTools(editing).includes("files") && (
                 <div className="flex items-center justify-between rounded-lg border p-3">
                   <div>
                     <div className="text-sm font-medium">写入文件需人工确认</div>
@@ -684,7 +702,7 @@ export function AgentsPage() {
                   />
                 </div>
               )}
-              {(editing.builtinTools ?? []).includes("shell") && (
+              {effectiveBuiltinTools(editing).includes("shell") && (
                 <div className="flex items-center justify-between rounded-lg border p-3">
                   <div>
                     <div className="text-sm font-medium">执行终端命令需人工确认</div>

@@ -221,45 +221,14 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 	var tools []tool.Tool
 	var toolsets []tool.Toolset
 
-	// Built-in tools.
-	for _, name := range ac.BuiltinTools {
-		switch name {
-		case "time":
-			t, err := TimeTool()
-			if err != nil {
-				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
-			}
-			tools = append(tools, t)
-		case "files":
-			builtin, err := workspaceFileTools(workspace, confirmsTool(ac, "files"))
-			if err != nil {
-				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
-			}
-			tools = append(tools, builtin...)
-		case "knowledge":
-			t, err := SearchKnowledgeTool(k.searchOptions(cfg))
-			if err != nil {
-				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
-			}
-			tools = append(tools, t)
-		case "memory":
-			if k.memory != nil {
-				tools = append(tools, k.memory)
-			}
-		case "todos":
-			t, err := TodosTool()
-			if err != nil {
-				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
-			}
-			tools = append(tools, t)
-		case "shell":
-			t, err := ShellTool(workspace, confirmsTool(ac, "shell"))
-			if err != nil {
-				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
-			}
-			tools = append(tools, t)
-		}
+	// Built-in tools. An agent without an explicit narrowing list gets the
+	// complete built-in set: full capability is the default, and removing a
+	// category is the explicit action (#38).
+	builtin, err := k.builtinToolsFor(ac, cfg, workspace)
+	if err != nil {
+		return nil, err
 	}
+	tools = append(tools, builtin...)
 
 	// Skills (progressive disclosure via ADK skill toolset).
 	if len(ac.SkillIDs) > 0 {
@@ -706,6 +675,52 @@ func confirmsTool(ac config.AgentConfig, category string) bool {
 		}
 	}
 	return false
+}
+
+// builtinToolsFor assembles the built-in tools an agent runs with. An empty
+// narrowing list means the complete built-in set (config.AllBuiltinTools):
+// agents are full-featured unless the user explicitly removed categories.
+func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspace string) ([]tool.Tool, error) {
+	var tools []tool.Tool
+	for _, name := range ac.EffectiveBuiltinTools() {
+		switch name {
+		case "time":
+			t, err := TimeTool()
+			if err != nil {
+				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
+			}
+			tools = append(tools, t)
+		case "files":
+			builtin, err := workspaceFileTools(workspace, confirmsTool(ac, "files"))
+			if err != nil {
+				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
+			}
+			tools = append(tools, builtin...)
+		case "knowledge":
+			t, err := SearchKnowledgeTool(k.searchOptions(cfg))
+			if err != nil {
+				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
+			}
+			tools = append(tools, t)
+		case "memory":
+			if k.memory != nil {
+				tools = append(tools, k.memory)
+			}
+		case "todos":
+			t, err := TodosTool()
+			if err != nil {
+				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
+			}
+			tools = append(tools, t)
+		case "shell":
+			t, err := ShellTool(workspace, confirmsTool(ac, "shell"))
+			if err != nil {
+				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
+			}
+			tools = append(tools, t)
+		}
+	}
+	return tools, nil
 }
 
 func firstNonEmpty(vals ...string) string {

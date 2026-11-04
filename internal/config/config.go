@@ -156,17 +156,20 @@ func (p ModelProvider) FindModel(id string) (ModelInfo, bool) {
 
 // AgentConfig describes a user-defined agent.
 type AgentConfig struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	ProviderID   string    `json:"providerId"`
-	Model        string    `json:"model"`
-	SystemPrompt string    `json:"systemPrompt"`
-	Temperature  float64   `json:"temperature"`
-	MaxTokens    int       `json:"maxTokens"`
-	SkillIDs     []string  `json:"skillIds"`     // skills attached to this agent
-	MCPServerIDs []string  `json:"mcpServerIds"` // MCP servers whose tools are available
-	BuiltinTools []string  `json:"builtinTools"` // subset of builtin tool names: time, files, knowledge, memory, todos, shell
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	ProviderID   string   `json:"providerId"`
+	Model        string   `json:"model"`
+	SystemPrompt string   `json:"systemPrompt"`
+	Temperature  float64  `json:"temperature"`
+	MaxTokens    int      `json:"maxTokens"`
+	SkillIDs     []string `json:"skillIds"`     // skills attached to this agent
+	MCPServerIDs []string `json:"mcpServerIds"` // MCP servers whose tools are available
+	// BuiltinTools is an explicit narrowing of the built-in tool categories
+	// (time, files, knowledge, memory, todos, shell). Empty means the full
+	// set — see AllBuiltinTools — so narrowing is always a deliberate act.
+	BuiltinTools []string  `json:"builtinTools"`
 	CreatedAt    time.Time `json:"createdAt"`
 	// EnableGuardrails masks secrets in user input/model output (default on
 	// when unset). Pointers distinguish "unset" from explicit false.
@@ -186,6 +189,21 @@ type AgentConfig struct {
 	// StopSequences halts generation when the model emits one of them
 	// (OpenAI "stop" / Anthropic "stop_sequences"). Empty = provider default.
 	StopSequences []string `json:"stopSequences,omitempty"`
+}
+
+// AllBuiltinTools is the complete built-in tool set an agent gets when its
+// BuiltinTools narrowing list is empty. Agents are full-featured by default;
+// removing a capability is the explicit action. Keep the frontend
+// ALL_BUILTIN_TOOLS list in AgentsPage.tsx in sync.
+var AllBuiltinTools = []string{"time", "files", "knowledge", "memory", "todos", "shell"}
+
+// EffectiveBuiltinTools resolves the tool categories an agent mounts: an
+// explicit narrowing list wins, an empty one inherits the full set.
+func (a AgentConfig) EffectiveBuiltinTools() []string {
+	if len(a.BuiltinTools) > 0 {
+		return a.BuiltinTools
+	}
+	return AllBuiltinTools
 }
 
 // RemoteAgentConfig describes a remote agent reached over the A2A protocol

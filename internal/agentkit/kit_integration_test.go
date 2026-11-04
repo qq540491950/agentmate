@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/skilltoolset/skill"
 
 	"go-workbuddy/internal/config"
@@ -47,6 +48,55 @@ func TestBuildAgentWithBuiltinTools(t *testing.T) {
 	}
 	if a.Description() != "助手 A" {
 		t.Fatalf("unexpected description: %q", a.Description())
+	}
+}
+
+func TestBuiltinToolsDefaultToFullSet(t *testing.T) {
+	kit, store := newTestKit(t)
+	cfg := store.Get()
+	workspace := t.TempDir()
+
+	names := func(tools []tool.Tool) map[string]bool {
+		out := make(map[string]bool, len(tools))
+		for _, tl := range tools {
+			out[tl.Name()] = true
+		}
+		return out
+	}
+
+	// A custom agent that never picked tools inherits every built-in
+	// category: file access, command execution, knowledge, todos and time.
+	// (The long-term memory tool only exists when a memory service is wired
+	// in, so it is absent here.)
+	all, err := kit.builtinToolsFor(config.AgentConfig{Name: "默认全量"}, cfg, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := names(all)
+	for _, want := range []string{
+		"get_current_time",
+		"list_workspace_files",
+		"read_workspace_file",
+		"write_workspace_file",
+		"search_knowledge",
+		"plan_todos",
+		"run_command",
+	} {
+		if !got[want] {
+			t.Fatalf("empty builtinTools should mount %q, got %v", want, got)
+		}
+	}
+
+	// A non-empty list is an explicit narrowing: only the chosen category.
+	narrowed, err := kit.builtinToolsFor(config.AgentConfig{
+		Name: "仅时间", BuiltinTools: []string{"time"},
+	}, cfg, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = names(narrowed)
+	if len(got) != 1 || !got["get_current_time"] {
+		t.Fatalf("explicit time-only agent should mount just get_current_time, got %v", got)
 	}
 }
 
