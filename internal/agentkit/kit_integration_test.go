@@ -20,7 +20,10 @@ func newTestKit(t *testing.T) (*Kit, *config.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewKit(store, mcpmgr.New()), store
+	kit := NewKit(store, mcpmgr.New())
+	// Keep discovery hermetic: never read the developer's real ~/.agents/skills.
+	kit.globalSkillRoot = t.TempDir()
+	return kit, store
 }
 
 func TestBuildAgentWithBuiltinTools(t *testing.T) {
@@ -161,15 +164,18 @@ func TestBuildTeamMissingProvider(t *testing.T) {
 func TestSkillMaterialization(t *testing.T) {
 	kit, store := newTestKit(t)
 	err := store.Update(func(cfg *config.Config) {
-		cfg.Skills = append(cfg.Skills, config.SkillConfig{
-			ID: "s1", Name: "Weekly Report", Description: "写周报", Content: "# 步骤\n1. 收集",
-		})
+		// Replace the seeded defaults: "Weekly Report" normalizes to the same
+		// materialized name as the seeded weekly-report skill, and save paths
+		// never allow two same-named skills in one config.
+		cfg.Skills = []config.SkillConfig{
+			{ID: "s1", Name: "Weekly Report", Description: "写周报", Content: "# 步骤\n1. 收集"},
+		}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ac := config.AgentConfig{ID: "agent_x", Name: "Tester", SkillIDs: []string{"s1"}}
-	ts, err := kit.skillToolset(ac, store.Get())
+	ts, err := kit.skillToolset(ac, store.Get(), t.TempDir())
 	if err != nil {
 		t.Fatalf("skillToolset: %v", err)
 	}
@@ -211,10 +217,10 @@ func TestSkillToolsetPrunesUnmountedSkills(t *testing.T) {
 	}
 	mountAll := config.AgentConfig{ID: "agent_a", Name: "A", SkillIDs: []string{"s1", "s2"}}
 	mountOne := config.AgentConfig{ID: "agent_b", Name: "B", SkillIDs: []string{"s1"}}
-	if _, err := kit.skillToolset(mountAll, store.Get()); err != nil {
+	if _, err := kit.skillToolset(mountAll, store.Get(), t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := kit.skillToolset(mountOne, store.Get()); err != nil {
+	if _, err := kit.skillToolset(mountOne, store.Get(), t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	// Agent B's staging dir must only contain the mounted skill.
@@ -231,7 +237,7 @@ func TestSkillToolsetPrunesUnmountedSkills(t *testing.T) {
 	}
 	// Detaching s2 from agent A prunes it on the next build.
 	mountAll.SkillIDs = []string{"s1"}
-	if _, err := kit.skillToolset(mountAll, store.Get()); err != nil {
+	if _, err := kit.skillToolset(mountAll, store.Get(), t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	entries, err = os.ReadDir(filepath.Join(store.SkillsDir(), "agents", "agent_a"))

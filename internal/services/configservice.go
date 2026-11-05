@@ -48,7 +48,14 @@ type ConfigService struct{ S *Services }
 func NewConfigService(s *Services) *ConfigService { return &ConfigService{S: s} }
 
 // GetConfig returns the full configuration (API keys included; local app).
-func (c *ConfigService) GetConfig() config.Config { return c.S.Store.Get() }
+// Project/global skills discovered from <root>/.agents/skills are merged into
+// the returned copy only: they are external read-only files, so they must
+// never be written back to config.json (other agentskills.io tools own them).
+func (c *ConfigService) GetConfig() config.Config {
+	cfg := c.S.Store.Get()
+	cfg.Skills = config.EffectiveSkills(cfg, cfg.Settings.WorkspaceDir, config.GlobalSkillRoot())
+	return cfg
+}
 
 // SaveProvider inserts or updates a model provider.
 func (c *ConfigService) SaveProvider(p config.ModelProvider) error {
@@ -256,6 +263,9 @@ func (c *ConfigService) SaveSkill(s config.SkillConfig) error {
 	if s.Name == "" {
 		return fmt.Errorf("请填写技能名称")
 	}
+	if source, ok := config.DiscoveredSkillSource(s.ID); ok {
+		return fmt.Errorf("该 Skill 发现自%s目录（只读），请直接修改对应的 SKILL.md", skillSourceLabel(source))
+	}
 	if s.ID == "" {
 		s.ID = newID("skill_")
 		s.CreatedAt = nowUTC()
@@ -311,7 +321,7 @@ func (c *ConfigService) ImportSkillsFromWorkspace() (int, error) {
 		if err != nil {
 			continue
 		}
-		name, desc, body := parseSKILLMarkdown(string(data))
+		name, desc, body := config.ParseSkillMarkdown(string(data))
 		if name == "" {
 			continue
 		}
@@ -345,38 +355,15 @@ func (c *ConfigService) addSkillIfNew(name, desc, body string) bool {
 	return added
 }
 
-// parseSKILLMarkdown extracts name/description from YAML frontmatter and
-// returns the markdown body. Tolerates missing frontmatter (name falls back
-// to empty -> caller skips).
-func parseSKILLMarkdown(content string) (name, desc, body string) {
-	content = strings.TrimPrefix(content, "\uFEFF")
-	if strings.HasPrefix(content, "---") {
-		if end := strings.Index(content[3:], "\n---"); end >= 0 {
-			front := content[3 : 3+end]
-			body = strings.TrimSpace(content[3+end+4:])
-			for _, line := range strings.Split(front, "\n") {
-				k, v, ok := strings.Cut(line, ":")
-				if !ok {
-					continue
-				}
-				v = strings.Trim(strings.TrimSpace(v), `"'`)
-				switch strings.TrimSpace(strings.ToLower(k)) {
-				case "name":
-					name = v
-				case "description":
-					desc = v
-				}
-			}
-			return name, desc, body
-		}
+// skillSourceLabel renders a discovered source for user-facing errors.
+func skillSourceLabel(source string) string {
+	switch source {
+	case config.SkillSourceProject:
+		return "\u9879\u76EE"
+	case config.SkillSourceGlobal:
+		return "\u5168\u5C40"
 	}
-	// No frontmatter: use the first heading or the filename-derived first line.
-	for _, ln := range strings.Split(content, "\n") {
-		if strings.HasPrefix(ln, "# ") {
-			return strings.TrimSpace(ln[2:]), "", content
-		}
-	}
-	return "", "", content
+	return "\u5916\u90E8"
 }
 
 // DeleteSkill removes a skill by id and best-effort deletes its materialized
@@ -384,6 +371,9 @@ func parseSKILLMarkdown(content string) (name, desc, body string) {
 // The next agent build prunes stale entries anyway; this keeps the disk clean
 // immediately.
 func (c *ConfigService) DeleteSkill(id string) error {
+	if _, ok := config.DiscoveredSkillSource(id); ok {
+		return fmt.Errorf("\u53D1\u73B0\u7684 Skill \u4E3A\u53EA\u8BFB\uFF08\u6765\u81EA .agents/skills\uFF09\uFF0C\u8BF7\u76F4\u63A5\u4FEE\u6539\u5BF9\u5E94\u76EE\u5F55\u4E0B\u7684 SKILL.md")
+	}
 	var removed config.SkillConfig
 	err := c.S.Store.Update(func(cfg *config.Config) {
 		out := cfg.Skills[:0]
