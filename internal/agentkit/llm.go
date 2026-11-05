@@ -220,12 +220,24 @@ func appendBrokenArgsNote(text string, skipped []string) string {
 // finalLLMResponse assembles the single non-partial event that the ADK
 // Runner processes: complete text plus every function call.
 func finalLLMResponse(modelName, text string, parts []*genai.Part) *model.LLMResponse {
-	if text != "" || len(parts) == 0 {
-		parts = append([]*genai.Part{{Text: text}}, parts...)
+	return finalLLMResponseWithThought(modelName, "", text, parts)
+}
+
+// finalLLMResponseWithThought assembles the single non-partial event that the
+// ADK Runner processes. The reasoning part goes first so history renders the
+// thinking block above the answer and its tool calls.
+func finalLLMResponseWithThought(modelName, thought, text string, parts []*genai.Part) *model.LLMResponse {
+	all := make([]*genai.Part, 0, len(parts)+2)
+	if thought != "" {
+		all = append(all, &genai.Part{Text: thought, Thought: true})
 	}
+	if text != "" || len(all) == 0 {
+		all = append(all, &genai.Part{Text: text})
+	}
+	all = append(all, parts...)
 	return &model.LLMResponse{
 		ModelVersion: modelName,
-		Content:      &genai.Content{Role: genai.RoleModel, Parts: parts},
+		Content:      &genai.Content{Role: genai.RoleModel, Parts: all},
 		TurnComplete: true,
 	}
 }
@@ -234,6 +246,16 @@ func textDelta(modelName, delta string) *model.LLMResponse {
 	return &model.LLMResponse{
 		ModelVersion: modelName,
 		Content:      &genai.Content{Role: genai.RoleModel, Parts: []*genai.Part{{Text: delta}}},
+		Partial:      true,
+	}
+}
+
+// thoughtDelta streams a reasoning fragment as a Thought part. The UI renders
+// these in a collapsible "思考过程" block instead of the answer bubble.
+func thoughtDelta(modelName, delta string) *model.LLMResponse {
+	return &model.LLMResponse{
+		ModelVersion: modelName,
+		Content:      &genai.Content{Role: genai.RoleModel, Parts: []*genai.Part{{Text: delta, Thought: true}}},
 		Partial:      true,
 	}
 }
@@ -426,11 +448,31 @@ type oaToolDef struct {
 	Parameters  map[string]any `json:"parameters,omitempty"`
 }
 
+// oaReasoningText accepts the shapes providers use for reasoning text:
+// DeepSeek streams reasoning_content as a plain string, some gateways use
+// reasoning instead. An object-valued field is ignored instead of failing the
+// whole chunk and dropping the answer that rides in the same delta.
+type oaReasoningText string
+
+func (r *oaReasoningText) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 || string(b) == "null" || b[0] != '"' {
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	*r = oaReasoningText(s)
+	return nil
+}
+
 type oaChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content   string       `json:"content"`
-			ToolCalls []oaToolCall `json:"tool_calls"`
+			Content          string          `json:"content"`
+			ReasoningContent oaReasoningText `json:"reasoning_content"`
+			Reasoning        oaReasoningText `json:"reasoning"`
+			ToolCalls        []oaToolCall    `json:"tool_calls"`
 		} `json:"delta"`
 	} `json:"choices"`
 	Usage *oaUsage `json:"usage,omitempty"`
@@ -471,7 +513,10 @@ func (o *openaiCompatLLM) buildMessages(req *model.LLMRequest) []oaMessage {
 				calls = append(calls, tc)
 			case p.FunctionResponse != nil:
 				responses = append(responses, p.FunctionResponse)
-			case p.Text != "":
+			case p.Text != "" && !p.Thought:
+				// Reasoning is display-only: DeepSeek rejects its own
+				// reasoning_content in the next request, and replaying it would
+				// also inflate the prompt.
 				textParts = append(textParts, p.Text)
 			}
 		}
@@ -590,6 +635,7 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 
 		var usage *oaUsage
 		var sb strings.Builder
+		var tb strings.Builder
 		calls := map[int]*oaAccumCall{}
 		var order []int
 		// Leading non-SSE lines are skipped as noise (some gateways prepend
@@ -640,6 +686,16 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 				continue
 			}
 			d := chunk.Choices[0].Delta
+			reasoning := string(d.ReasoningContent)
+			if reasoning == "" {
+				reasoning = string(d.Reasoning)
+			}
+			if reasoning != "" {
+				tb.WriteString(reasoning)
+				if !yield(thoughtDelta(o.cfg.Model, reasoning), nil) {
+					return
+				}
+			}
 			if d.Content != "" {
 				sb.WriteString(d.Content)
 				if !yield(textDelta(o.cfg.Model, d.Content), nil) {
@@ -663,7 +719,7 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 			yield(nil, fmt.Errorf("模型供应商 %s 返回空响应", o.cfg.Model))
 			return
 		}
-		yield(withUsage(o.final(sb.String(), calls, order), usage), nil)
+		yield(withUsage(o.final(tb.String(), sb.String(), calls, order), usage), nil)
 	}
 }
 
@@ -671,8 +727,10 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 type oaFullResponse struct {
 	Choices []struct {
 		Message struct {
-			Content   string       `json:"content"`
-			ToolCalls []oaToolCall `json:"tool_calls"`
+			Content          string          `json:"content"`
+			ReasoningContent oaReasoningText `json:"reasoning_content"`
+			Reasoning        oaReasoningText `json:"reasoning"`
+			ToolCalls        []oaToolCall    `json:"tool_calls"`
 		} `json:"message"`
 	} `json:"choices"`
 	Usage *oaUsage `json:"usage"`
@@ -696,15 +754,21 @@ func (o *openaiCompatLLM) fullResponse(r io.Reader) (*model.LLMResponse, error) 
 		return nil, fmt.Errorf("模型供应商 %s 返回空响应", o.cfg.Model)
 	}
 	var sb strings.Builder
+	var tb strings.Builder
 	calls := map[int]*oaAccumCall{}
 	var order []int
 	sb.WriteString(full.Choices[0].Message.Content)
+	thought := string(full.Choices[0].Message.ReasoningContent)
+	if thought == "" {
+		thought = string(full.Choices[0].Message.Reasoning)
+	}
+	tb.WriteString(thought)
 	for i, tc := range full.Choices[0].Message.ToolCalls {
 		// Complete responses carry no per-call index; the slice position is
 		// the only ordering. Using tc.Index merged every call into index 0.
 		oaAccumulate(calls, &order, i, tc.ID, tc.Function.Name, tc.Function.Arguments)
 	}
-	return withUsage(o.final(sb.String(), calls, order), full.Usage), nil
+	return withUsage(o.final(tb.String(), sb.String(), calls, order), full.Usage), nil
 }
 
 // oaAccumulate groups streamed tool-call fragments by index.
@@ -728,7 +792,7 @@ func oaAccumulate(calls map[int]*oaAccumCall, order *[]int, idx int, id, name, a
 	return a
 }
 
-func (o *openaiCompatLLM) final(text string, calls map[int]*oaAccumCall, order []int) *model.LLMResponse {
+func (o *openaiCompatLLM) final(thought, text string, calls map[int]*oaAccumCall, order []int) *model.LLMResponse {
 	var parts []*genai.Part
 	var skipped []string
 	for _, idx := range order {
@@ -742,7 +806,7 @@ func (o *openaiCompatLLM) final(text string, calls map[int]*oaAccumCall, order [
 		}
 		parts = append(parts, &genai.Part{FunctionCall: &genai.FunctionCall{ID: c.id, Name: c.name, Args: args}})
 	}
-	return finalLLMResponse(o.cfg.Model, appendBrokenArgsNote(text, skipped), parts)
+	return finalLLMResponseWithThought(o.cfg.Model, thought, appendBrokenArgsNote(text, skipped), parts)
 }
 
 type oaAccumCall struct {
@@ -908,7 +972,7 @@ func (a *anthropicLLM) buildMessages(req *model.LLMRequest) []anMessage {
 					payload = []byte(`{"ok":true}`)
 				}
 				appendBlock(genai.RoleUser, anBlock{Type: "tool_result", ToolUseID: id, Content: string(payload)})
-			case p.Text != "":
+			case p.Text != "" && !p.Thought:
 				appendBlock(role, anBlock{Type: "text", Text: p.Text})
 			}
 		}

@@ -490,7 +490,11 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 					if guardOn {
 						text = agentkit.ApplyOutputGuardrail(text)
 					}
-					emit(ChatStreamEvent{Kind: "delta", Author: author, Text: text})
+					kind := "delta"
+					if p.Thought {
+						kind = "thinking_delta"
+					}
+					emit(ChatStreamEvent{Kind: kind, Author: author, Text: text})
 				}
 			}
 			continue
@@ -507,11 +511,45 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			budgetExceeded = true
 		}
 		var textBuf strings.Builder
+		var thoughtBuf strings.Builder
 		toolCallsThisTurn := 0
+		// flushThought/flushText keep the event order of the aggregated parts:
+		// reasoning arrives before the answer, so its block must close before
+		// the assistant bubble starts.
+		flushThought := func() {
+			if thoughtBuf.Len() == 0 {
+				return
+			}
+			text := thoughtBuf.String()
+			thoughtBuf.Reset()
+			if guardOn {
+				text = agentkit.ApplyOutputGuardrail(text)
+			}
+			emit(ChatStreamEvent{Kind: "thinking", Author: author, Text: text})
+		}
+		flushText := func() {
+			if textBuf.Len() == 0 {
+				return
+			}
+			outText := textBuf.String()
+			textBuf.Reset()
+			if guardOn {
+				outText = agentkit.ApplyOutputGuardrail(outText)
+			}
+			lastReply = outText
+			emit(ChatStreamEvent{Kind: "message", Author: author, Text: outText, Usage: turnUsage})
+			turnUsage = nil
+		}
 		for _, p := range ev.Content.Parts {
 			if p == nil {
 				continue
 			}
+			if p.Text != "" && p.Thought {
+				flushText()
+				thoughtBuf.WriteString(p.Text)
+				continue
+			}
+			flushThought()
 			switch {
 			case p.FunctionCall != nil && isConfirmationInterrupt(ev, p.FunctionCall):
 				// HITL pause point: surface an actionable confirmation
@@ -538,15 +576,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				textBuf.WriteString(p.Text)
 			}
 		}
-		if textBuf.Len() > 0 {
-			outText := textBuf.String()
-			if guardOn {
-				outText = agentkit.ApplyOutputGuardrail(outText)
-			}
-			lastReply = outText
-			emit(ChatStreamEvent{Kind: "message", Author: author, Text: outText, Usage: turnUsage})
-			turnUsage = nil
-		}
+		flushThought()
+		flushText()
 		if maxToolCalls > 0 && toolCallsThisTurn > 0 {
 			toolCallsSeen += toolCallsThisTurn
 			if toolCallsSeen > maxToolCalls {

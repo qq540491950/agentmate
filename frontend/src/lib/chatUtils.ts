@@ -3,7 +3,7 @@ import type { AttachmentOut, ChatSession, Project, ReasoningLevel, UsageInfo } f
 
 export type UIMessage = {
   id: string;
-  kind: "user" | "assistant" | "tool_call" | "tool_result" | "confirm" | "error";
+  kind: "user" | "assistant" | "thinking" | "tool_call" | "tool_result" | "confirm" | "error";
   author: string;
   text: string;
   toolName?: string;

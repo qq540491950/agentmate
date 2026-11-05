@@ -321,6 +321,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     buf.author = null;
     buf.text = "";
     buf.timer = null;
+    const tbuf = thinkingBufRef.current;
+    if (tbuf.timer != null) clearTimeout(tbuf.timer);
+    tbuf.author = null;
+    tbuf.text = "";
+    tbuf.timer = null;
+    thinkingStreamedRef.current = null;
+    thinkingOpenRef.current = null;
     // Clear immediately: showing the previous session's messages while the
     // next history loads is a correctness-level wrongness (stale flash).
     setMessages([]);
@@ -342,7 +349,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             .filter((m) => m.kind !== "confirm_result")
             .map((m) => ({
               id: m.id,
-              kind: (m.kind === "user" ? "user" : m.kind === "tool_call" ? "tool_call" : m.kind === "tool_result" ? "tool_result" : m.kind === "confirm_request" ? "confirm" : "assistant") as UIMessage["kind"],
+              kind: (m.kind === "user" ? "user" : m.kind === "thinking" ? "thinking" : m.kind === "tool_call" ? "tool_call" : m.kind === "tool_result" ? "tool_result" : m.kind === "confirm_request" ? "confirm" : "assistant") as UIMessage["kind"],
               author: m.author,
               text: m.text,
               toolName: m.toolName,
@@ -417,12 +424,59 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     });
   }, []);
 
+  // Reasoning streams on its own channel and lives in a separate collapsible
+  // bubble, so the model's scratchpad never mixes into the answer text.
+  const thinkingBufRef = useRef<{ author: string | null; text: string; timer: number | null }>({
+    author: null, text: "", timer: null,
+  });
+  // Tracks the author whose thinking_delta stream is live: the final thinking
+  // event uses it to decide whether to replace that block or append a new one.
+  const thinkingStreamedRef = useRef<string | null>(null);
+  // Tracks whether the block is still open; finishThinking runs on every
+  // answer token, so it must not rescan the list after the first close.
+  const thinkingOpenRef = useRef<string | null>(null);
+  const flushThinkingBuf = useCallback(() => {
+    const buf = thinkingBufRef.current;
+    if (buf.timer != null) {
+      clearTimeout(buf.timer);
+      buf.timer = null;
+    }
+    const { author, text } = buf;
+    if (!author || !text) return;
+    buf.author = null;
+    buf.text = "";
+    setMessages((prev) => {
+      let idx = prev.length - 1;
+      while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].streaming && prev[idx].author === author)) idx--;
+      if (idx < 0) {
+        return [...prev, { id: nextId(), kind: "thinking", author, text, streaming: true, timestamp: new Date().toISOString() }];
+      }
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], text: copy[idx].text + text };
+      return copy;
+    });
+  }, []);
+  const finishThinking = useCallback((author: string) => {
+    if (thinkingOpenRef.current !== author) return;
+    flushThinkingBuf();
+    thinkingOpenRef.current = null;
+    setMessages((prev) => {
+      let idx = prev.length - 1;
+      while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].streaming && prev[idx].author === author)) idx--;
+      if (idx < 0) return prev;
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], streaming: false };
+      return copy;
+    });
+  }, [flushThinkingBuf]);
+
   // Stream events.
   useEffect(() => {
     const off = Events.On("chat:stream", (e: any) => {
       const ev = Array.isArray(e?.data) ? e.data[0] : e?.data;
       if (!ev) return;
       if (ev.kind !== "delta") flushStreamBuf();
+      if (ev.kind !== "thinking_delta") flushThinkingBuf();
       // Completion bookkeeping runs for EVERY session: background runs must
       // clear their spinner and toast even while the user is in another chat.
       // (This block used to sit after the active-session filter below, which
@@ -449,7 +503,31 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       if (ev.sessionId !== activeID) return;
       if (ev.kind === "user") turnStartedRef.current = true;
       if (ev.kind === "tool_result") setWorkspaceRefresh((n) => n + 1);
+      if (ev.kind !== "thinking_delta" && ev.kind !== "thinking") finishThinking(ev.author);
+      if (ev.kind === "thinking_delta") {
+        const buf = thinkingBufRef.current;
+        if (buf.author && buf.author !== ev.author) flushThinkingBuf();
+        thinkingStreamedRef.current = ev.author;
+        thinkingOpenRef.current = ev.author;
+        buf.author = ev.author;
+        buf.text += ev.text ?? "";
+        if (buf.timer == null) {
+          buf.timer = setTimeout(flushThinkingBuf, STREAM_FLUSH_MS) as unknown as number;
+        }
+        // Show the block (with its spinner) as soon as the first fragment
+        // arrives; the flush tick fills in the text.
+        setMessages((prev) => {
+          let idx = prev.length - 1;
+          while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].streaming && prev[idx].author === ev.author)) idx--;
+          if (idx >= 0) return prev;
+          return [...prev, { id: nextId(), kind: "thinking", author: ev.author, text: "", streaming: true, timestamp: new Date().toISOString() }];
+        });
+        return;
+      }
       if (ev.kind === "delta") {
+        // The answer starting means the reasoning phase is over: collapse the
+        // thinking block before the first token lands in the reply bubble.
+        finishThinking(ev.author);
         // Coalesce: buffer the text and make sure a streaming bubble exists
         // for this author; the buffered text lands on the flush tick.
         const buf = streamBufRef.current;
@@ -470,6 +548,24 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         switch (ev.kind) {
           case "user":
             return [...prev, { id: nextId(), kind: "user", author: "user", text: ev.text, timestamp: new Date().toISOString(), attachments: ev.attachments ?? null, reasoning: ev.reasoning }];
+          case "thinking": {
+            // The backend aggregates every thought part of this model call
+            // into one event: replace the block the deltas opened (or append
+            // one when the provider only returned reasoning in the final
+            // response).
+            const fromStream = thinkingStreamedRef.current === ev.author;
+            thinkingStreamedRef.current = null;
+            thinkingOpenRef.current = null;
+            let idx = prev.length - 1;
+            while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].author === ev.author)) idx--;
+            if (fromStream && idx >= 0) {
+              const copy = [...prev];
+              copy[idx] = { ...copy[idx], text: ev.text || copy[idx].text, streaming: false };
+              return copy;
+            }
+            if (!ev.text) return prev;
+            return [...prev, { id: nextId(), kind: "thinking", author: ev.author, text: ev.text, streaming: false, timestamp: new Date().toISOString() }];
+          }
           case "message": {
             const idx = [...prev].reverse().findIndex((m) => m.streaming && m.author === ev.author);
             if (idx >= 0) {
@@ -494,6 +590,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
           case "error":
             return [...prev, { id: nextId(), kind: "error", author: "system", text: ev.text }];
           case "done":
+            thinkingStreamedRef.current = null;
+            thinkingOpenRef.current = null;
             return prev.map((m) => (m.streaming ? { ...m, streaming: false } : m));
           default:
             return prev;
@@ -722,7 +820,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     if (wasEditing) {
       setMessages((prev) => {
         const out = [...prev];
-        while (out.length > 0 && (out[out.length - 1].kind === "assistant" || out[out.length - 1].kind === "tool_call" || out[out.length - 1].kind === "tool_result")) {
+        while (out.length > 0 && (out[out.length - 1].kind === "assistant" || out[out.length - 1].kind === "thinking" || out[out.length - 1].kind === "tool_call" || out[out.length - 1].kind === "tool_result")) {
           out.pop();
         }
         return out;
@@ -831,7 +929,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     setSessionUsage(null);
     setMessages((prev) => {
       const out = [...prev];
-      while (out.length > 0 && (out[out.length - 1].kind === "assistant" || out[out.length - 1].kind === "tool_call" || out[out.length - 1].kind === "tool_result")) {
+      while (out.length > 0 && (out[out.length - 1].kind === "assistant" || out[out.length - 1].kind === "thinking" || out[out.length - 1].kind === "tool_call" || out[out.length - 1].kind === "tool_result")) {
         out.pop();
       }
       return out;
