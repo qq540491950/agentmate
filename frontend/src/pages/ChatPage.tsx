@@ -27,7 +27,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupSessionsByProject, groupSessionsByTime, isDayChange, mdToSpeech, type UIMessage } from "@/lib/chatUtils";
+import { computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupSessionsByProject, groupSessionsByTime, isDayChange, mdToSpeech, sessionTargetBadgeLabel, type UIMessage } from "@/lib/chatUtils";
 import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
 import {
   SIDEBAR_KEYBOARD_STEP, SIDEBAR_MIN_WIDTH,
@@ -1925,9 +1925,11 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             <span className="max-w-[320px] truncate font-medium">{active ? active.title : "WorkBuddy"}</span>
             {active && (
               (() => {
-                const label = active.targetType === "team" ? "团队" : active.targetType === "remote" ? "远程" : active.targetType === "agent" ? "Agent" : "直聊";
-                // Configurable targets deep-link into the settings hub; direct
-                // chats ride the default provider, so their badge stays plain.
+                const label = sessionTargetBadgeLabel(active.targetType);
+                // Direct chats carry no target, so they get no badge: a "直聊"
+                // chip read like a selectable mode next to Agent/team targets.
+                if (!label) return null;
+                // Configurable targets deep-link into the settings hub.
                 const tab: SettingsTab | undefined = active.targetType === "agent" ? "agents" : active.targetType === "team" ? "teams" : undefined;
                 return (
                   <Badge
@@ -1936,8 +1938,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                     title={tab ? "管理此配置" : undefined}
                     onClick={tab ? () => onOpenSettings(tab) : undefined}
                   >
-                    {label}
-                    {active.targetType ? `: ${targetLabel}` : ""}
+                    {label}: {targetLabel}
                   </Badge>
                 );
               })()

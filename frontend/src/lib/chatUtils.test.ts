@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeEditFlags, computeRunningTools, computeToolDurations, dayLabel, effectiveReasoningLevel,
-  fmtTime, isDayChange, mdToSpeech, type UIMessage,
+  fmtTime, isDayChange, mdToSpeech, sessionTargetBadgeLabel, type UIMessage,
   groupSessionsByTime,
   groupSessionsByProject,
 } from "./chatUtils";
@@ -225,6 +225,19 @@ describe('groupSessionsByProject', () => {
       WS,
     );
     expect(groups.map((g) => g.label)).toEqual(['b', 'a', '已归档']);
+  });
+});
+
+describe('sessionTargetBadgeLabel', () => {
+  it('hides the badge for direct chats', () => {
+    expect(sessionTargetBadgeLabel('')).toBeNull();
+    expect(sessionTargetBadgeLabel(undefined)).toBeNull();
+  });
+
+  it('labels bound agent, team and remote targets', () => {
+    expect(sessionTargetBadgeLabel('agent')).toBe('Agent');
+    expect(sessionTargetBadgeLabel('team')).toBe('团队');
+    expect(sessionTargetBadgeLabel('remote')).toBe('远程');
   });
 });
 
