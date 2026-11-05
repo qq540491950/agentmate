@@ -139,6 +139,143 @@ export function computeRunningTools(messages: UIMessage[]): Set<string> {
   return running;
 }
 
+/** toolResultFailed reports whether a tool result payload signals an error.
+ * Envelope-level fields only: matching substrings used to flag successful
+ * results that merely carried an `"error": null` field, and missed MCP's
+ * camelCase `isError`. */
+export function toolResultFailed(resp?: { [k: string]: any } | null): boolean {
+  if (!resp) return false;
+  if (resp.error !== undefined && resp.error !== null && resp.error !== "") return true;
+  return resp.isError === true || resp.is_error === true;
+}
+
+/** ToolGroup is one collapsible "execution" block: a run of consecutive tool
+ *  events (calls, results, HITL confirmations) from the same author. */
+export type ToolGroup = {
+  kind: "tool_group";
+  /** id is the first message's id, stable while the run keeps streaming. */
+  id: string;
+  author: string;
+  messages: UIMessage[];
+};
+
+/** ChatItem is one entry in the message list: a standalone message or a
+ *  grouped execution block. */
+export type ChatItem =
+  | { kind: "message"; id: string; message: UIMessage }
+  | ToolGroup;
+
+/** isToolEvent reports messages that belong to an execution run. plan_todos
+ *  results are pinned UI (the todo list card), so they stay outside groups. */
+function isToolEvent(m: UIMessage): boolean {
+  if (m.kind !== "tool_call" && m.kind !== "tool_result" && m.kind !== "confirm") return false;
+  return m.toolName !== "plan_todos";
+}
+
+/**
+ * groupToolMessages merges runs of consecutive tool events from the same
+ * author into one collapsible execution block, so a round with six tool calls
+ * renders as one summary line instead of six stacked cards. A run becomes a
+ * group only when it holds at least two invocations: the common single-tool
+ * round keeps its existing standalone cards. User/assistant/error messages and
+ * plan_todos cards break runs, preserving the visible reading order.
+ */
+export function groupToolMessages(messages: UIMessage[]): ChatItem[] {
+  const out: ChatItem[] = [];
+  let run: UIMessage[] = [];
+  let runAuthor: string | null = null;
+  const flush = () => {
+    if (run.length === 0) return;
+    const calls = run.filter((m) => m.kind === "tool_call").length;
+    const results = run.filter((m) => m.kind === "tool_result").length;
+    if (Math.max(calls, results) >= 2) {
+      out.push({ kind: "tool_group", id: run[0].id, author: run[0].author, messages: run });
+    } else {
+      for (const m of run) out.push({ kind: "message", id: m.id, message: m });
+    }
+    run = [];
+    runAuthor = null;
+  };
+  for (const m of messages) {
+    if (!isToolEvent(m)) {
+      flush();
+      out.push({ kind: "message", id: m.id, message: m });
+      continue;
+    }
+    if (run.length > 0 && runAuthor !== m.author) flush();
+    run.push(m);
+    runAuthor = m.author;
+  }
+  flush();
+  return out;
+}
+
+export type ToolGroupStatus = "confirm" | "running" | "failed" | "done";
+
+/** toolGroupStatus derives the execution block's header state. A pending HITL
+ *  confirmation outranks everything: the backend ends the turn when it pauses
+ *  for approval, so without this the block would collapse and hide the
+ *  actionable card. */
+export function toolGroupStatus(messages: UIMessage[], runningTools: Set<string>): ToolGroupStatus {
+  let running = false;
+  let failed = false;
+  let pendingConfirm = false;
+  for (const m of messages) {
+    if (m.kind === "confirm") {
+      if ((m.confirmStatus ?? "pending") === "pending") pendingConfirm = true;
+    } else if (m.kind === "tool_call") {
+      if (runningTools.has(m.id)) running = true;
+    } else if (m.kind === "tool_result" && toolResultFailed(m.toolResp)) {
+      failed = true;
+    }
+  }
+  if (pendingConfirm) return "confirm";
+  if (running) return "running";
+  if (failed) return "failed";
+  return "done";
+}
+
+/** toolGroupInvocationCount counts tool invocations in a run: call and result
+ *  messages pair up, so the larger count is the round's tool count (a running
+ *  parallel round has calls before results). */
+export function toolGroupInvocationCount(messages: UIMessage[]): number {
+  let calls = 0;
+  let results = 0;
+  for (const m of messages) {
+    if (m.kind === "tool_call") calls++;
+    else if (m.kind === "tool_result") results++;
+  }
+  return Math.max(calls, results);
+}
+
+/** toolGroupDurationMs sums the completed tools' runtimes. Per-tool durations
+ *  (instead of wall clock) keep HITL waits out of the header total: the pause
+ *  between a confirmation card and its result is human time, not tool time. */
+export function toolGroupDurationMs(messages: UIMessage[], durations: Map<string, number>): number | null {
+  let total = 0;
+  let found = false;
+  for (const m of messages) {
+    const d = m.kind === "tool_result" ? durations.get(m.id) : undefined;
+    if (d == null) continue;
+    total += d;
+    found = true;
+  }
+  return found ? total : null;
+}
+
+/** chatItemStartTs / chatItemEndTs expose an item's visible time span so day
+ *  separators compare against the real previous entry (a group spans from its
+ *  first event to its last). */
+export function chatItemStartTs(item: ChatItem): string | undefined {
+  return item.kind === "tool_group" ? item.messages[0]?.timestamp : item.message.timestamp;
+}
+
+export function chatItemEndTs(item: ChatItem): string | undefined {
+  return item.kind === "tool_group"
+    ? item.messages[item.messages.length - 1]?.timestamp
+    : item.message.timestamp;
+}
+
 /**
  * computeEditFlags marks the user messages that may be edited: only the last
  * one, because editing replaces that turn and everything after it. Doing this

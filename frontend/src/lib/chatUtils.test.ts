@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  computeEditFlags, computeRunningTools, computeToolDurations, dayLabel, effectiveReasoningLevel,
-  fmtTime, isDayChange, mdToSpeech, sessionTargetBadgeLabel, type UIMessage,
-  groupSessionsByTime,
-  groupSessionsByProject,
+  chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations,
+  dayLabel, effectiveReasoningLevel, fmtTime, groupSessionsByProject, groupSessionsByTime,
+  groupToolMessages, isDayChange, mdToSpeech, sessionTargetBadgeLabel,
+  toolGroupDurationMs, toolGroupInvocationCount, toolGroupStatus, toolResultFailed,
+  type UIMessage,
 } from "./chatUtils";
 import type { ChatSession, Project } from "@/lib/api";
 
@@ -52,6 +53,134 @@ describe("computeRunningTools", () => {
     const running = computeRunningTools(msgs);
     expect(running.has("a")).toBe(true); // A still running
     expect(running.has("b")).toBe(false); // B finished
+  });
+});
+
+describe("groupToolMessages", () => {
+  it("merges consecutive tool events of one author into one block", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", text: "hi" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "c2", kind: "tool_call", toolName: "write" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "write", toolResp: { ok: true } }),
+      msg({ id: "a", kind: "assistant", text: "done" }),
+    ];
+    const items = groupToolMessages(msgs);
+    expect(items.map((i) => i.kind)).toEqual(["message", "tool_group", "message"]);
+    const group = items[1];
+    if (group.kind !== "tool_group") throw new Error("expected a tool group");
+    // The group key is the first event's id: it must survive streamed appends
+    // or React would reset the user's expanded/collapsed choice every token.
+    expect(group.id).toBe("c1");
+    expect(group.messages.map((m) => m.id)).toEqual(["c1", "r1", "c2", "r2"]);
+    expect(toolGroupInvocationCount(group.messages)).toBe(2);
+  });
+
+  it("groups a running parallel round before any result arrives", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "grep" }),
+    ];
+    const items = groupToolMessages(msgs);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: "tool_group", id: "c1" });
+  });
+
+  it("keeps a single invocation's call/result cards standalone", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read" }),
+    ];
+    expect(groupToolMessages(msgs).map((i) => i.kind)).toEqual(["message", "message"]);
+  });
+
+  it("splits runs at assistant text, plan_todos cards and author changes", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read" }),
+      msg({ id: "mid", kind: "assistant", text: "next" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "write" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "write" }),
+      msg({ id: "c3", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r3", kind: "tool_result", toolName: "read" }),
+      msg({ id: "todos", kind: "tool_result", toolName: "plan_todos", toolResp: { todos: [] } }),
+      msg({ id: "c4", kind: "tool_call", toolName: "read", author: "sub-agent" }),
+      msg({ id: "r4", kind: "tool_result", toolName: "read", author: "sub-agent" }),
+      msg({ id: "c5", kind: "tool_call", toolName: "grep", author: "sub-agent" }),
+      msg({ id: "r5", kind: "tool_result", toolName: "grep", author: "sub-agent" }),
+    ];
+    const items = groupToolMessages(msgs);
+    expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "c1", "r1", "mid", "group:c2", "todos", "group:c4",
+    ]);
+    const second = items[3];
+    if (second.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(second.messages.map((m) => m.id)).toEqual(["c2", "r2", "c3", "r3"]);
+    const third = items[5];
+    if (third.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(third.author).toBe("sub-agent");
+  });
+});
+
+describe("toolGroupStatus", () => {
+  const call = msg({ id: "c1", kind: "tool_call", toolName: "write" });
+  const result = (resp: { [k: string]: any }) =>
+    msg({ id: "r1", kind: "tool_result", toolName: "write", toolResp: resp });
+
+  it("reports a pending HITL confirmation before anything else", () => {
+    const confirm = msg({ id: "cf", kind: "confirm", toolName: "write", confirmStatus: "pending" });
+    expect(toolGroupStatus([call, confirm], new Set(["c1"]))).toBe("confirm");
+  });
+
+  it("ignores confirmations that were already answered", () => {
+    const approved = msg({ id: "cf", kind: "confirm", toolName: "write", confirmStatus: "approved" });
+    expect(toolGroupStatus([call, approved, result({ ok: true })], new Set())).toBe("done");
+  });
+
+  it("reports running calls and failed results", () => {
+    expect(toolGroupStatus([call], new Set(["c1"]))).toBe("running");
+    expect(toolGroupStatus([call, result({ error: "boom" })], new Set())).toBe("failed");
+    expect(toolGroupStatus([call, result({ isError: true })], new Set())).toBe("failed");
+    expect(toolGroupStatus([call, result({ is_error: true })], new Set())).toBe("failed");
+    expect(toolGroupStatus([call, result({ ok: true })], new Set())).toBe("done");
+  });
+});
+
+describe("toolResultFailed", () => {
+  it("flags error envelopes without false positives", () => {
+    expect(toolResultFailed(null)).toBe(false);
+    expect(toolResultFailed({ error: null })).toBe(false);
+    expect(toolResultFailed({ error: "" })).toBe(false);
+    expect(toolResultFailed({ error: "denied" })).toBe(true);
+    expect(toolResultFailed({ isError: true })).toBe(true);
+    expect(toolResultFailed({ is_error: true })).toBe(true);
+  });
+});
+
+describe("toolGroupDurationMs", () => {
+  it("sums completed tool runtimes and ignores pending calls", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "c1", kind: "tool_call", toolName: "A" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "A" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "B" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "B" }),
+    ];
+    const durations = new Map([["r1", 1200], ["r2", 800]]);
+    expect(toolGroupDurationMs(msgs, durations)).toBe(2000);
+    expect(toolGroupDurationMs([msgs[0], msgs[2]], durations)).toBeNull();
+  });
+});
+
+describe("chatItem timestamps", () => {
+  it("spans a group from its first to its last event", () => {
+    const items = groupToolMessages([
+      msg({ id: "c1", kind: "tool_call", toolName: "A", timestamp: "2026-10-30T01:00:00Z" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "B", timestamp: "2026-10-30T01:00:05Z" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "A", timestamp: "2026-10-30T01:00:09Z" }),
+    ]);
+    expect(chatItemStartTs(items[0])).toBe("2026-10-30T01:00:00Z");
+    expect(chatItemEndTs(items[0])).toBe("2026-10-30T01:00:09Z");
   });
 });
 

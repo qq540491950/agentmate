@@ -27,7 +27,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupSessionsByProject, groupSessionsByTime, isDayChange, mdToSpeech, sessionTargetBadgeLabel, type UIMessage } from "@/lib/chatUtils";
+import { chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupSessionsByProject, groupSessionsByTime, groupToolMessages, isDayChange, mdToSpeech, sessionTargetBadgeLabel, type UIMessage } from "@/lib/chatUtils";
 import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
 import {
   SIDEBAR_KEYBOARD_STEP, SIDEBAR_MIN_WIDTH,
@@ -38,6 +38,7 @@ import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
 import { levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
 import { resolveAgentModel } from "@/lib/agentModel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
+import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
 import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
@@ -581,8 +582,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // Unread flags: a background session that finished (or errored) while the
   // user was elsewhere gets a sidebar dot until they open it.
   const [unread, setUnread] = useState<Record<string, boolean>>({});
-  // How many trailing messages render; the omitted banner can raise it in
-  // RENDER_LIMIT steps to page backwards through very long sessions.
+  // How many trailing entries render (tool groups count once); the omitted
+  // banner can raise it in RENDER_LIMIT steps to page backwards through very
+  // long sessions.
   const [renderLimit, setRenderLimit] = useState(RENDER_LIMIT);
   // Reader position: off-bottom state drives the「回到底部」floater.
   const [atBottom, setAtBottom] = useState(true);
@@ -1419,15 +1421,25 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     if (!filterQ) return messages;
     return messages.filter((m) => (searchIndex.get(m.id) ?? "").includes(filterQ));
   }, [messages, filterQ, searchIndex]);
-  const visibleMessages = useMemo(
-    () => (filterQ ? filteredMessages.slice(-renderLimit) : messages.slice(-renderLimit)),
-    [filterQ, filteredMessages, messages, renderLimit],
-  );
   // The slice source and how many entries sit above the render window: the
-  // day separator of the first visible message must compare against the REAL
-  // previous message, or a truncation window would paint a fake day header.
+  // day separator of the first visible item must compare against the REAL
+  // previous entry, or a truncation window would paint a fake day header.
   const renderSource = filterQ ? filteredMessages : messages;
-  const omitted = Math.max(0, renderSource.length - visibleMessages.length);
+  // Collapse consecutive tool events into execution blocks before slicing:
+  // the render limit then caps rendered entries (blocks included), and a run
+  // is never split across the truncation boundary.
+  const renderItems = useMemo(() => groupToolMessages(renderSource), [renderSource]);
+  const visibleItems = useMemo(() => renderItems.slice(-renderLimit), [renderItems, renderLimit]);
+  const omittedItems = Math.max(0, renderItems.length - visibleItems.length);
+  // The banner counts hidden MESSAGES (a collapsed block covers many), while
+  // the paging button reveals whole entries in RENDER_LIMIT steps.
+  const omittedMessages = useMemo(() => {
+    let n = 0;
+    for (const it of renderItems.slice(0, omittedItems)) {
+      n += it.kind === "tool_group" ? it.messages.length : 1;
+    }
+    return n;
+  }, [renderItems, omittedItems]);
 
   const filterOpenRef = useRef(false);
   const toggleFilter = useCallback(() => {
@@ -2077,12 +2089,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         <ScrollArea className="flex-1" viewportRef={scrollRef} aria-label="会话消息">
           <div className="mx-auto max-w-3xl space-y-3 p-4">
             {(() => {
-              if (omitted <= 0) return null;
+              if (omittedItems <= 0) return null;
               return (
                 <div className="rounded-lg border bg-muted/40 px-3 py-2 text-center text-xs text-muted-foreground">
                   <div className="flex items-center justify-center gap-2">
                     <span>
-                      已省略较早的 {omitted} 条{filterQ ? "匹配" : ""}消息（完整历史已保存，可导出查看）
+                      已省略较早的 {omittedMessages} 条{filterQ ? "匹配" : ""}消息（完整历史已保存，可导出查看）
                     </span>
                     <Button
                       size="sm"
@@ -2090,7 +2102,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                       className="h-6 px-2 text-[11px]"
                       onClick={() => setRenderLimit((l) => l + RENDER_LIMIT)}
                     >
-                      显示更早 {Math.min(RENDER_LIMIT, omitted)} 条
+                      显示更早 {Math.min(RENDER_LIMIT, omittedItems)} 条
                     </Button>
                   </div>
                 </div>
@@ -2122,31 +2134,43 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   : <>直接输入开始对话；输入 <span className="font-medium text-foreground">@</span> 可指定助手</>}
               </div>
             )}
-            {visibleMessages.map((m, i, arr) => {
-              // The first visible message compares against the real previous
+            {visibleItems.map((item, i, arr) => {
+              // The first visible item compares against the real previous
               // entry when the window is truncated (else no separator).
+              const ts = chatItemStartTs(item);
               const prevTs = i === 0
-                ? (omitted > 0 ? renderSource[renderSource.length - visibleMessages.length - 1]?.timestamp : undefined)
-                : arr[i - 1].timestamp;
-              const dayChanged = isDayChange(prevTs, m.timestamp);
+                ? (omittedItems > 0 ? chatItemEndTs(renderItems[renderItems.length - visibleItems.length - 1]) : undefined)
+                : chatItemEndTs(arr[i - 1]);
+              const dayChanged = isDayChange(prevTs, ts);
               return (
-                <Fragment key={m.id}>
-                  {dayChanged && <DaySeparator ts={m.timestamp} />}
-                  <MessageBubble
-                  m={m}
-                  isLastAssistant={m.kind === "assistant" && i === arr.length - 1}
-                  onRegenerate={regenerate}
-                  canRegenerate={!running && !!activeID}
-                  toolRunning={m.kind === "tool_call" ? runningToolsSet.has(m.id) : false}
-                  durationMs={toolDurations.get(m.id)}
-                  onSpeak={speakMessage}
-                  costOf={costOf}
-                  onEdit={startEdit}
-                  canEdit={editFlags.get(m.id) === true && !running && !!activeID}
-                  onConfirm={answerConfirm}
-                  sessionID={activeID}
-                  filterQ={filterQ}
-                  />
+                <Fragment key={item.id}>
+                  {dayChanged && <DaySeparator ts={ts} />}
+                  {item.kind === "tool_group" ? (
+                    <ToolCallGroup
+                      messages={item.messages}
+                      runningTools={runningToolsSet}
+                      durations={toolDurations}
+                      sessionID={activeID}
+                      filterQ={filterQ}
+                      onConfirm={answerConfirm}
+                    />
+                  ) : (
+                    <MessageBubble
+                      m={item.message}
+                      isLastAssistant={item.message.kind === "assistant" && i === arr.length - 1}
+                      onRegenerate={regenerate}
+                      canRegenerate={!running && !!activeID}
+                      toolRunning={item.message.kind === "tool_call" ? runningToolsSet.has(item.message.id) : false}
+                      durationMs={toolDurations.get(item.message.id)}
+                      onSpeak={speakMessage}
+                      costOf={costOf}
+                      onEdit={startEdit}
+                      canEdit={editFlags.get(item.message.id) === true && !running && !!activeID}
+                      onConfirm={answerConfirm}
+                      sessionID={activeID}
+                      filterQ={filterQ}
+                    />
+                  )}
                 </Fragment>
               );
             })}

@@ -10,6 +10,7 @@ import {
 import { CopyButton, MessageMarkdown } from "@/components/MessageMarkdown";
 import { DiffView } from "@/components/TaskWorkspacePanel";
 import { highlightText } from "@/components/chat/highlightText";
+import { toolResultFailed } from "@/lib/chatUtils";
 import { Artifact, errText, type Artifact as ArtifactData } from "@/lib/api";
 
 /** extractArtifactPaths finds workspace-relative file references in tool
@@ -54,15 +55,10 @@ export function formatDuration(ms: number): string {
  *  would otherwise run for every visible tool on each streamed token. */
 export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, resp, running, durationMs, filterQ }: ToolCallProps) {
   const [open, setOpen] = useState(false);
-  const failed = useMemo(() => {
-    if (!resp) return false;
-    // Inspect the parsed payload: substring matching used to flag successful
-    // envelopes that merely carry an "error": null field, and missed MCP's
-    // camelCase isError.
-    if (resp.error !== undefined && resp.error !== null && resp.error !== "") return true;
-    if (resp.isError === true || resp.is_error === true) return true;
-    return false;
-  }, [resp]);
+  // Inspect the parsed payload: substring matching used to flag successful
+  // envelopes that merely carry an "error": null field, and missed MCP's
+  // camelCase isError.
+  const failed = useMemo(() => toolResultFailed(resp), [resp]);
 
   const argChips = useMemo(() => {
     if (!args) return [];
