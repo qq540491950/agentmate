@@ -149,8 +149,9 @@ export function toolResultFailed(resp?: { [k: string]: any } | null): boolean {
   return resp.isError === true || resp.is_error === true;
 }
 
-/** ToolGroup is one collapsible "execution" block: a run of consecutive tool
- *  events (calls, results, HITL confirmations) from the same author. */
+/** ToolGroup is one collapsible "execution" block: a run of consecutive
+ *  process events (thinking entries, tool calls, results, HITL confirmations)
+ *  from the same author. */
 export type ToolGroup = {
   kind: "tool_group";
   /** id is the first message's id, stable while the run keeps streaming. */
@@ -165,20 +166,25 @@ export type ChatItem =
   | { kind: "message"; id: string; message: UIMessage }
   | ToolGroup;
 
-/** isToolEvent reports messages that belong to an execution run. plan_todos
+/** isProcessEvent reports messages that belong to one turn's execution run:
+ *  thinking entries plus tool calls/results and HITL confirmations. plan_todos
  *  results are pinned UI (the todo list card), so they stay outside groups. */
-function isToolEvent(m: UIMessage): boolean {
+function isProcessEvent(m: UIMessage): boolean {
+  if (m.kind === "thinking") return true;
   if (m.kind !== "tool_call" && m.kind !== "tool_result" && m.kind !== "confirm") return false;
   return m.toolName !== "plan_todos";
 }
 
 /**
- * groupToolMessages merges runs of consecutive tool events from the same
- * author into one collapsible execution block, so a round with six tool calls
- * renders as one summary line instead of six stacked cards. A run becomes a
- * group only when it holds at least two invocations: the common single-tool
- * round keeps its existing standalone cards. User/assistant/error messages and
- * plan_todos cards break runs, preserving the visible reading order.
+ * groupToolMessages merges runs of consecutive process events from the same
+ * author into one collapsible execution block, so a round with thinking plus
+ * six tool calls renders as one summary line instead of stacked cards. A run
+ * becomes a group when it holds at least two invocations, or when at least one
+ * thinking entry accompanies a single invocation — the common single-tool
+ * round without thinking keeps its existing standalone cards. User/assistant/
+ * error messages, plan_todos cards and author changes break runs, preserving
+ * the visible reading order; a final assistant reply therefore stays outside
+ * the process block.
  */
 export function groupToolMessages(messages: UIMessage[]): ChatItem[] {
   const out: ChatItem[] = [];
@@ -188,7 +194,9 @@ export function groupToolMessages(messages: UIMessage[]): ChatItem[] {
     if (run.length === 0) return;
     const calls = run.filter((m) => m.kind === "tool_call").length;
     const results = run.filter((m) => m.kind === "tool_result").length;
-    if (Math.max(calls, results) >= 2) {
+    const invocations = Math.max(calls, results);
+    const hasThinking = run.some((m) => m.kind === "thinking");
+    if (invocations >= 2 || (invocations >= 1 && hasThinking)) {
       out.push({ kind: "tool_group", id: run[0].id, author: run[0].author, messages: run });
     } else {
       for (const m of run) out.push({ kind: "message", id: m.id, message: m });
@@ -197,7 +205,7 @@ export function groupToolMessages(messages: UIMessage[]): ChatItem[] {
     runAuthor = null;
   };
   for (const m of messages) {
-    if (!isToolEvent(m)) {
+    if (!isProcessEvent(m)) {
       flush();
       out.push({ kind: "message", id: m.id, message: m });
       continue;
@@ -215,7 +223,9 @@ export type ToolGroupStatus = "confirm" | "running" | "failed" | "done";
 /** toolGroupStatus derives the execution block's header state. A pending HITL
  *  confirmation outranks everything: the backend ends the turn when it pauses
  *  for approval, so without this the block would collapse and hide the
- *  actionable card. */
+ *  actionable card. A still-streaming thinking entry also counts as running:
+ *  the model may reason between tool batches while the turn continues, and the
+ *  block must stay open so the live text is visible. */
 export function toolGroupStatus(messages: UIMessage[], runningTools: Set<string>): ToolGroupStatus {
   let running = false;
   let failed = false;
@@ -225,6 +235,8 @@ export function toolGroupStatus(messages: UIMessage[], runningTools: Set<string>
       if ((m.confirmStatus ?? "pending") === "pending") pendingConfirm = true;
     } else if (m.kind === "tool_call") {
       if (runningTools.has(m.id)) running = true;
+    } else if (m.kind === "thinking") {
+      if (m.streaming) running = true;
     } else if (m.kind === "tool_result" && toolResultFailed(m.toolResp)) {
       failed = true;
     }

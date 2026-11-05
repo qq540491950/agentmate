@@ -121,6 +121,65 @@ describe("groupToolMessages", () => {
     if (third.kind !== "tool_group") throw new Error("expected a tool group");
     expect(third.author).toBe("sub-agent");
   });
+
+  it("merges thinking entries with the turn's tool run and keeps the reply separate", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", text: "分析" }),
+      msg({ id: "t1", kind: "thinking", text: "先读文件" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "t2", kind: "thinking", text: "再读一次" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "t3", kind: "thinking", text: "整理结论" }),
+      msg({ id: "a", kind: "assistant", text: "结论如下" }),
+    ];
+    const items = groupToolMessages(msgs);
+    expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "u", "group:t1", "a",
+    ]);
+    const group = items[1];
+    if (group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(group.messages.map((m) => m.id)).toEqual([
+      "t1", "c1", "r1", "t2", "c2", "r2", "t3",
+    ]);
+    // Thinking entries are process detail, not tool invocations.
+    expect(toolGroupInvocationCount(group.messages)).toBe(2);
+  });
+
+  it("groups thinking with a single tool invocation", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "t1", kind: "thinking", text: "先确认" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read" }),
+    ];
+    const items = groupToolMessages(msgs);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: "tool_group", id: "t1" });
+  });
+
+  it("keeps thinking-only rounds standalone", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", text: "hi" }),
+      msg({ id: "t1", kind: "thinking", text: "想了想" }),
+      msg({ id: "a", kind: "assistant", text: "hello" }),
+    ];
+    expect(groupToolMessages(msgs).map((i) => i.kind)).toEqual([
+      "message", "message", "message",
+    ]);
+  });
+
+  it("splits thinking runs at an author change", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "t1", kind: "thinking", text: "main" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "t2", kind: "thinking", text: "sub", author: "sub-agent" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "read", author: "sub-agent" }),
+    ];
+    expect(groupToolMessages(msgs).map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "group:t1", "group:t2",
+    ]);
+  });
 });
 
 describe("toolGroupStatus", () => {
@@ -144,6 +203,14 @@ describe("toolGroupStatus", () => {
     expect(toolGroupStatus([call, result({ isError: true })], new Set())).toBe("failed");
     expect(toolGroupStatus([call, result({ is_error: true })], new Set())).toBe("failed");
     expect(toolGroupStatus([call, result({ ok: true })], new Set())).toBe("done");
+  });
+
+  it("keeps the block running while a thinking entry still streams", () => {
+    const streaming = msg({ id: "t1", kind: "thinking", text: "", streaming: true });
+    const settled = msg({ id: "t2", kind: "thinking", text: "done" });
+    expect(toolGroupStatus([result({ ok: true }), streaming], new Set())).toBe("running");
+    // A finished thinking entry is process detail, not a reason to auto-expand.
+    expect(toolGroupStatus([result({ ok: true }), settled], new Set())).toBe("done");
   });
 });
 

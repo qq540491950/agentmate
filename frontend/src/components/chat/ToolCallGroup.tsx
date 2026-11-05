@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ToolCallCard, formatDuration } from "@/components/ToolCallCard";
-import { ConfirmCard } from "@/components/chat/MessageBubble";
+import { ConfirmCard, ThinkingBlock } from "@/components/chat/MessageBubble";
 import {
   toolGroupDurationMs, toolGroupInvocationCount, toolGroupStatus,
   type ToolGroupStatus, type UIMessage,
@@ -20,11 +20,12 @@ const STATUS_META: Record<ToolGroupStatus, { label: string; icon: ReactNode; cls
 };
 
 /**
- * ToolCallGroup collapses a run of consecutive tool events from one assistant
- * turn into a single summary row. It opens automatically while the run is
- * executing (or waiting for a HITL confirmation) and closes when the turn
- * settles, unless the user toggled it — their choice then persists across
- * streamed appends. Expanding shows the original per-call cards, so each
+ * ToolCallGroup collapses one turn's consecutive process events — thinking
+ * entries plus tool calls, results and HITL confirmations — into a single
+ * summary row. It opens automatically while the run is executing (or waiting
+ * for a HITL confirmation) and closes when the turn settles, unless the user
+ * toggled it — their choice then persists across streamed appends. Expanding
+ * shows the thinking text inline and the original per-call cards, so each
  * invocation keeps its own detail arrow and artifact previews.
  */
 export function ToolCallGroup({ messages, runningTools, durations, sessionID, filterQ, onConfirm, onAllowAll, allowAllBusy }: {
@@ -68,6 +69,8 @@ export function ToolCallGroup({ messages, runningTools, durations, sessionID, fi
         <div className="space-y-1.5 border-t p-2">
           {messages.map((m) => m.kind === "confirm" ? (
             <ConfirmCard key={m.id} m={m} onConfirm={onConfirm} onAllowAll={onAllowAll} allowAllBusy={allowAllBusy} />
+          ) : m.kind === "thinking" ? (
+            <ThinkingBlock key={m.id} m={m} inline />
           ) : (
             <ToolCallCard
               key={m.id}
