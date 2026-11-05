@@ -3,7 +3,7 @@ import {
   Dialog, DialogContent, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Brain, Check, ChevronDown, ChevronUp, Copy, Loader2, Pencil, RefreshCw, ShieldAlert, Volume2, X,
+  Brain, Check, ChevronDown, ChevronUp, Copy, Loader2, Pencil, RefreshCw, ShieldAlert, ShieldCheck, Volume2, X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,15 +11,21 @@ import { MessageMarkdown, CopyButton } from "@/components/MessageMarkdown";
 import { ToolCallCard } from "@/components/ToolCallCard";
 import { TodoListCard } from "@/components/chat/TodoCards";
 import { dayLabel, fmtTime, type UIMessage } from "@/lib/chatUtils";
+import { allowAllToggleHint, allowAllToggleLabel } from "@/lib/allowAll";
 import { highlightText } from "@/components/chat/highlightText";
 import { levelLabel } from "@/lib/modelLabel";
 import type { UsageInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 /** ConfirmCard renders a HITL tool-confirmation request with approve/reject. */
-export function ConfirmCard({ m, onConfirm }: {
+export function ConfirmCard({ m, onConfirm, onAllowAll, allowAllBusy }: {
   m: UIMessage;
   onConfirm: (msgId: string, callId: string | undefined, approved: boolean) => void;
+  // onAllowAll grants the whole session (issue #48): it approves this call and
+  // stops asking for the rest of the chat. allowAllBusy disables the button
+  // while that grant is in flight.
+  onAllowAll: (msgId: string, callId: string | undefined) => void;
+  allowAllBusy?: boolean;
   durationMs?: number;
 }) {
   const status = m.confirmStatus ?? "pending";
@@ -49,9 +55,19 @@ export function ConfirmCard({ m, onConfirm }: {
         </pre>
       )}
       {status === "pending" ? (
-        <div className="mt-2.5 flex gap-2">
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
           <Button size="sm" className="h-7 px-3 text-xs" onClick={() => onConfirm(m.id, m.callId, true)}>
             <Check className="mr-1 h-3 w-3" /> 允许执行
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-3 text-xs"
+            disabled={allowAllBusy}
+            title={allowAllToggleHint(false)}
+            onClick={() => onAllowAll(m.id, m.callId)}
+          >
+            <ShieldCheck className="mr-1 h-3 w-3" /> {allowAllToggleLabel(false)}
           </Button>
           <Button size="sm" variant="outline" className="h-7 px-3 text-xs" onClick={() => onConfirm(m.id, m.callId, false)}>
             <X className="mr-1 h-3 w-3" /> 拒绝
@@ -121,7 +137,7 @@ export function DaySeparator({ ts }: { ts: string | undefined }) {
 // last bubble each token, and every other bubble must keep the same props to
 // skip re-rendering. Callers therefore pass stable callbacks and precomputed
 // flags instead of per-row closures.
-export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, onRegenerate, canRegenerate, toolRunning, onSpeak, costOf, onEdit, canEdit, onConfirm, durationMs, sessionID, filterQ }: {
+export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, onRegenerate, canRegenerate, toolRunning, onSpeak, costOf, onEdit, canEdit, onConfirm, onAllowAll, allowAllBusy, durationMs, sessionID, filterQ }: {
   m: UIMessage;
   isLastAssistant: boolean;
   filterQ: string;
@@ -133,6 +149,8 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   onEdit: (text: string) => void;
   canEdit: boolean;
   onConfirm: (msgId: string, callId: string | undefined, approved: boolean) => void;
+  onAllowAll: (msgId: string, callId: string | undefined) => void;
+  allowAllBusy: boolean;
   durationMs?: number;
   sessionID: string;
 }) {
@@ -225,7 +243,7 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
     );
   }
   if (m.kind === "confirm") {
-    return <ConfirmCard m={m} onConfirm={onConfirm} />;
+    return <ConfirmCard m={m} onConfirm={onConfirm} onAllowAll={onAllowAll} allowAllBusy={allowAllBusy} />;
   }
   if (m.kind === "tool_result" && m.toolName === "plan_todos") {
     return <TodoListCard resp={m.toolResp ?? null} />;

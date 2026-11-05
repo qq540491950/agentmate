@@ -347,7 +347,11 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		}
 	}
 
-	// Build the agent tree from the current configuration.
+	// Build the agent tree from the current configuration. A session that
+	// granted「允许完全访问」runs its side-effectful builtin tools without the
+	// HITL prompt; the grant is applied here so direct chats, @-routed turns
+	// and every local team member share one source of truth.
+	allowAll := target.AllowAllTools
 	var root agent.Agent
 	switch target.TargetType {
 	case "":
@@ -358,11 +362,14 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		if derr != nil {
 			return derr
 		}
+		if allowAll {
+			ac.ConfirmTools = nil
+		}
 		root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(ac, target.ModelOverride, workspace, applyLevel)
 	case "team":
 		for _, t := range cfg.Teams {
 			if t.ID == target.TargetID {
-				root, _, err = c.S.Kit.BuildTeamWithWorkspaceAndReasoning(t, workspace, applyLevel)
+				root, _, err = c.S.Kit.BuildTeamWithWorkspaceReasoningAndAllowAll(t, workspace, applyLevel, allowAll)
 				break
 			}
 		}
@@ -384,6 +391,9 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			if a.ID == target.TargetID {
 				// Per-session model override (chat-header picker): empty keeps
 				// the agent's configured model.
+				if allowAll {
+					a.ConfirmTools = nil
+				}
 				root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(a, target.ModelOverride, workspace, applyLevel)
 				break
 			}

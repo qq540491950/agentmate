@@ -489,6 +489,14 @@ type ChatSession struct {
 	// effective model's Reasoning table; empty = the model's default level).
 	// It is a per-chat UI choice and never writes back to provider config.
 	ReasoningLevel string `json:"reasoningLevel,omitempty"`
+	// AllowAllTools is this chat's「允许完全访问」permission: while true,
+	// side-effectful builtin tools (workspace writes, run_command) run without
+	// the per-call HITL confirmation prompt. It is session-scoped and
+	// persisted, so switching chats or restarting keeps the grant; new chats
+	// default to off and the composer switch can revoke it. Pending
+	// confirmations answered before the grant still honour an explicit
+	// rejection.
+	AllowAllTools bool `json:"allowAllTools,omitempty"`
 	// WorkspaceDir is the task-level directory used by file tools, prompt
 	// variables and artifact previews. Empty keeps legacy sessions on the
 	// global workspace.

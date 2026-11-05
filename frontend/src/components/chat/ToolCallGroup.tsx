@@ -27,13 +27,15 @@ const STATUS_META: Record<ToolGroupStatus, { label: string; icon: ReactNode; cls
  * streamed appends. Expanding shows the original per-call cards, so each
  * invocation keeps its own detail arrow and artifact previews.
  */
-export function ToolCallGroup({ messages, runningTools, durations, sessionID, filterQ, onConfirm }: {
+export function ToolCallGroup({ messages, runningTools, durations, sessionID, filterQ, onConfirm, onAllowAll, allowAllBusy }: {
   messages: UIMessage[];
   runningTools: Set<string>;
   durations: Map<string, number>;
   sessionID: string;
   filterQ: string;
   onConfirm: (msgId: string, callId: string | undefined, approved: boolean) => void;
+  onAllowAll: (msgId: string, callId: string | undefined) => void;
+  allowAllBusy: boolean;
 }) {
   // null means "follow the run state": expanded while running/awaiting a
   // confirmation, collapsed once settled. An explicit click wins from then on.
@@ -65,7 +67,7 @@ export function ToolCallGroup({ messages, runningTools, durations, sessionID, fi
       {expanded && (
         <div className="space-y-1.5 border-t p-2">
           {messages.map((m) => m.kind === "confirm" ? (
-            <ConfirmCard key={m.id} m={m} onConfirm={onConfirm} />
+            <ConfirmCard key={m.id} m={m} onConfirm={onConfirm} onAllowAll={onAllowAll} allowAllBusy={allowAllBusy} />
           ) : (
             <ToolCallCard
               key={m.id}
