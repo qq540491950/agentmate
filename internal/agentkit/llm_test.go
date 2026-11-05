@@ -68,6 +68,86 @@ func TestOpenAICompatStreamingText(t *testing.T) {
 	}
 }
 
+// TestOpenAICompatStreamsReasoningContent pins DeepSeek's reasoning_content
+// handling: deltas must surface as Thought parts (the UI's thinking block)
+// and the aggregated final response must keep the full reasoning.
+func TestOpenAICompatStreamsReasoningContent(t *testing.T) {
+	srv := sseServer(t, []string{
+		`{"choices":[{"delta":{"reasoning_content":"先确认天气"}}]}`,
+		`{"choices":[{"delta":{"reasoning_content":"，再回答。"}}]}`,
+		`{"choices":[{"delta":{"content":"北京 25 度。"}}]}`,
+	}, nil)
+	defer srv.Close()
+
+	llm, err := NewOpenAICompat(OpenAICompatConfig{BaseURL: srv.URL, Model: "deepseek-reasoner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText("北京天气", genai.RoleUser)},
+	}
+	var thoughts, texts strings.Builder
+	var final *model.LLMResponse
+	for resp, err := range llm.GenerateContent(context.Background(), req, true) {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Partial {
+			for _, p := range resp.Content.Parts {
+				if p.Thought {
+					thoughts.WriteString(p.Text)
+				} else {
+					texts.WriteString(p.Text)
+				}
+			}
+			continue
+		}
+		final = resp
+	}
+	if got := thoughts.String(); got != "先确认天气，再回答。" {
+		t.Fatalf("streamed reasoning = %q", got)
+	}
+	if got := texts.String(); got != "北京 25 度。" {
+		t.Fatalf("streamed answer = %q", got)
+	}
+	if final == nil {
+		t.Fatal("missing final response")
+	}
+	var finalThought, finalText string
+	for _, p := range final.Content.Parts {
+		if p.Thought {
+			finalThought = p.Text
+		} else {
+			finalText += p.Text
+		}
+	}
+	if finalThought != "先确认天气，再回答。" || finalText != "北京 25 度。" {
+		t.Fatalf("final response thought=%q text=%q", finalThought, finalText)
+	}
+}
+
+// TestOpenAICompatDoesNotReplayReasoning guards the other half of the fix:
+// reasoning captured for display must never be sent back as assistant text.
+// DeepSeek rejects its own reasoning_content on the next request.
+func TestOpenAICompatDoesNotReplayReasoning(t *testing.T) {
+	llm, err := NewOpenAICompat(OpenAICompatConfig{BaseURL: "http://127.0.0.1:1", Model: "deepseek-reasoner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &model.LLMRequest{Contents: []*genai.Content{{
+		Role:  genai.RoleModel,
+		Parts: []*genai.Part{{Text: "内部推理", Thought: true}, {Text: "回答"}},
+	}}}
+	msgs := llm.(*openaiCompatLLM).buildMessages(req)
+	if len(msgs) != 1 {
+		t.Fatalf("expected one message, got %d", len(msgs))
+	}
+	content, _ := msgs[0].Content.(string)
+	if content != "回答" {
+		t.Fatalf("assistant replay content = %q", content)
+	}
+}
+
 func TestOpenAICompatToolCallRoundTrip(t *testing.T) {
 	var captured map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

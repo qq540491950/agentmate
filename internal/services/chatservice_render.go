@@ -30,6 +30,7 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 		Timestamp: ev.Timestamp,
 	}
 	var textBuf strings.Builder
+	var thoughtBuf strings.Builder
 	flushText := func() {
 		if textBuf.Len() > 0 {
 			m := base
@@ -44,10 +45,25 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 			textBuf.Reset()
 		}
 	}
+	flushThought := func() {
+		if thoughtBuf.Len() > 0 {
+			m := base
+			m.Kind = "thinking"
+			m.Text = thoughtBuf.String()
+			out = append(out, m)
+			thoughtBuf.Reset()
+		}
+	}
 	for _, p := range ev.Content.Parts {
 		if p == nil {
 			continue
 		}
+		if p.Text != "" && p.Thought {
+			flushText()
+			thoughtBuf.WriteString(p.Text)
+			continue
+		}
+		flushThought()
 		switch {
 		case p.FunctionCall != nil && p.FunctionCall.Name == toolconfirmation.FunctionCallName:
 			flushText()
@@ -105,6 +121,7 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 			textBuf.WriteString(p.Text)
 		}
 	}
+	flushThought()
 	flushText()
 	return out
 }

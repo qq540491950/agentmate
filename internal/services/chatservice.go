@@ -51,7 +51,7 @@ type UsageInfo struct {
 // ChatStreamEvent is streamed to the frontend while a run progresses.
 type ChatStreamEvent struct {
 	SessionID string         `json:"sessionId"`
-	Kind      string         `json:"kind"` // user|delta|message|tool_call|tool_result|confirm_request|done|error
+	Kind      string         `json:"kind"` // user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|done|error
 	Author    string         `json:"author"`
 	Text      string         `json:"text"`
 	ToolName  string         `json:"toolName,omitempty"`
@@ -92,7 +92,7 @@ func usageOf(ev *session.Event) *UsageInfo {
 // ChatMessage is a rendered historical message.
 type ChatMessage struct {
 	ID          string          `json:"id"`
-	Kind        string          `json:"kind"` // user|assistant|tool_call|tool_result|confirm_request|confirm_result
+	Kind        string          `json:"kind"` // user|assistant|thinking|tool_call|tool_result|confirm_request|confirm_result
 	Author      string          `json:"author"`
 	Text        string          `json:"text"`
 	ToolName    string          `json:"toolName,omitempty"`

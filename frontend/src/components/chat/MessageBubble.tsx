@@ -1,9 +1,9 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import {
   Dialog, DialogContent, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Check, Copy, Loader2, Pencil, RefreshCw, ShieldAlert, Volume2, X,
+  Brain, Check, ChevronDown, ChevronUp, Copy, Loader2, Pencil, RefreshCw, ShieldAlert, Volume2, X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,6 +68,43 @@ export function ConfirmCard({ m, onConfirm }: {
     </div>
   );
 }
+
+/**
+ * ThinkingBlock shows a model's reasoning. It streams expanded while the
+ * model is still thinking, then collapses to a one-line summary — the answer
+ * is what the reader came for, but nothing is discarded.
+ */
+const ThinkingBlock = memo(function ThinkingBlock({ m }: { m: UIMessage }) {
+  const [open, setOpen] = useState(!!m.streaming);
+  useEffect(() => {
+    if (!m.streaming) setOpen(false);
+  }, [m.streaming]);
+  return (
+    <div className="rounded-xl border border-dashed bg-muted/30">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Brain className="h-3.5 w-3.5 shrink-0" />
+        <span className="font-medium">思考过程</span>
+        {m.streaming ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : open ? (
+          <ChevronUp className="ml-auto h-3.5 w-3.5" />
+        ) : (
+          <ChevronDown className="ml-auto h-3.5 w-3.5" />
+        )}
+      </button>
+      {open && (
+        <div className="max-h-64 overflow-auto whitespace-pre-wrap break-words border-t border-dashed px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          {m.text || (m.streaming ? "思考中…" : "")}
+        </div>
+      )}
+    </div>
+  );
+});
 
 /** DaySeparator marks calendar-day boundaries in long conversations. */
 export function DaySeparator({ ts }: { ts: string | undefined }) {
@@ -205,6 +242,15 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
         // never populated, so reading it silently hid every timing chip.
         durationMs={durationMs}
       />
+    );
+  }
+  if (m.kind === "thinking") {
+    return (
+      <div className="flex justify-start">
+        <div className="w-full max-w-[85%]">
+          <ThinkingBlock m={m} />
+        </div>
+      </div>
     );
   }
   return (

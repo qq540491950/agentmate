@@ -81,6 +81,8 @@ func (c *ChatService) ExportSession(sessionID string) (string, error) {
 			fmt.Fprintf(&sb, "## 🧑 用户\n\n%s\n\n", m.Text)
 		case "assistant":
 			fmt.Fprintf(&sb, "## 🤖 %s\n\n%s\n\n", m.Author, m.Text)
+		case "thinking":
+			fmt.Fprintf(&sb, "<details><summary>🧠 思考过程</summary>\n\n%s\n\n</details>\n\n", m.Text)
 		case "tool_call":
 			args, _ := json.Marshal(m.ToolArgs)
 			fmt.Fprintf(&sb, "> 🔧 工具调用 **%s** `%s`\n\n", m.ToolName, string(args))
@@ -187,6 +189,9 @@ func (c *ChatService) ExportSessionHTML(sessionID string) (string, error) {
 			fmt.Fprintf(&body, "## 🧑 用户\n\n%s\n\n", m.Text)
 		case "assistant":
 			fmt.Fprintf(&body, "## 🤖 %s\n\n%s\n\n", m.Author, m.Text)
+		case "thinking":
+			fmt.Fprintf(&body, "<details><summary>🧠 思考过程</summary>\n<pre>%s</pre>\n</details>\n\n",
+				htmlEscapeString(m.Text))
 		case "tool_call":
 			args, _ := json.Marshal(m.ToolArgs)
 			fmt.Fprintf(&body, "<details><summary>🔧 工具调用 <b>%s</b></summary>\n<pre>%s</pre>\n</details>\n\n",
