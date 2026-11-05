@@ -193,6 +193,9 @@ const histories: Record<string, any[]> = {
 };
 
 let pendingAnswer = 0;
+// Session-level「允许完全访问」grants (issue #48), merged into ListSessions
+// so switching chats in the stub restores each chat's own switch.
+const allowAllSessions = new Set<string>();
 type TaskSnapshotMode = "success" | "empty" | "error" | "truncated" | "slow";
 // Browser walks can request empty/error/truncated/slow states with ?taskMode=.
 const stubParams = new URLSearchParams(window.location.search);
@@ -514,6 +517,16 @@ const handlers: Record<string, (args: any[]) => any> = {
     });
     return null;
   },
+  // ChatService.SessionAllowAllTools(sessionID) — issue #48. These RPCs are
+  // newer than the committed bindings snapshot, so the app calls them by
+  // method name (`Call.ByName`) and the stub routes on methodName as well.
+  "go-workbuddy/internal/services.ChatService.SessionAllowAllTools": (args) => allowAllSessions.has(args[0]),
+  // ChatService.SetSessionAllowAllTools(sessionID, allowAll, source)
+  "go-workbuddy/internal/services.ChatService.SetSessionAllowAllTools": (args) => {
+    if (args[1] === true) allowAllSessions.add(args[0]);
+    else allowAllSessions.delete(args[0]);
+    return null;
+  },
   // ListProviderModels
   "729587208": () => ["gpt-5-mini", "gpt-5"],
   // SuggestModels(ids)
@@ -561,8 +574,10 @@ setTransport({
     // The descriptor {call-id, methodID, args} arrives as the args slot.
     const opt = (descriptor && typeof descriptor === "object"
       ? descriptor
-      : { methodID: descriptor, args: [] }) as { methodID: number | string; args?: any[] };
-    const h = handlers[String(opt.methodID)];
+      : { methodID: descriptor, args: [] }) as { methodID?: number | string; methodName?: string; args?: any[] };
+    // ByName calls carry methodName; ByID calls (every generated binding) carry
+    // methodID. Route on whichever the runtime sent.
+    const h = handlers[opt.methodName ?? String(opt.methodID)];
     if (!h) return null;
     const list = Array.isArray(opt.args) ? opt.args : opt.args == null ? [] : [opt.args];
     // Deep-copy results like real IPC serialization does: returning shared

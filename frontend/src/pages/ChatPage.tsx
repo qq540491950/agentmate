@@ -8,7 +8,7 @@ import {
   PanelRightOpen,
   ChevronRight, ChevronDown,
   Settings as SettingsIcon, CircleHelp, Sun, Moon,
-  Boxes,
+  Boxes, LockOpen,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, FolderInput, MoreHorizontal, SquarePen,
 } from "lucide-react";
@@ -44,11 +44,16 @@ import { Onboarding } from "@/components/chat/Onboarding";
 import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
 import type { SettingsTab } from "@/pages/SettingsPage";
 import {
-  Chat, Config, errText,
+  Chat, Config, errText, sessionAllowAllTools, setSessionAllowAllTools,
   type AgentConfig, type AttachmentIn, type ChatSession, type TeamConfig,
   type RemoteAgentConfig, type UsageInfo, type ModelProvider, type ModelInfo, type SessionStats,
   type Project,
 } from "@/lib/api";
+import {
+  ALLOW_ALL_RISK_DESCRIPTION, ALLOW_ALL_RISK_TITLE,
+  allowAllRiskAlreadyAcknowledged, allowAllToggleHint, allowAllToggleLabel,
+  rememberAllowAllRiskAcknowledged, type AllowAllSource,
+} from "@/lib/allowAll";
 
 let mid = 0;
 const nextId = () => `m${++mid}`;
@@ -147,6 +152,16 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(false);
   const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
   const [editing, setEditing] = useState(false);
+  // Session-level「允许完全访问」: the composer chip and the confirmation card
+  // share this one state, whose source of truth is the backend session field.
+  // allowAllBusy covers the two-step card action (grant, then approve).
+  const [allowAll, setAllowAll] = useState(false);
+  const [allowAllBusy, setAllowAllBusy] = useState(false);
+  const allowAllIntentRef = useRef<{ sessionId: string; source: AllowAllSource; msgId?: string; callId?: string } | null>(null);
+  // The risk dialog can stay open across a session switch; callbacks compare
+  // against the live ID before touching the visible chat.
+  const activeIDRef = useRef(activeID);
+  useEffect(() => { activeIDRef.current = activeID; }, [activeID]);
   const [ctxBannerDismissed, setCtxBannerDismissed] = useState(false);
   const [pendingAtts, setPendingAtts] = useState<AttachmentIn[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -279,6 +294,27 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       cancelled = true;
     };
   }, [activeID, active?.workspaceDir, active?.projectId]);
+
+  // Each chat carries its own「允许完全访问」grant. Reading it from the
+  // backend on every switch keeps the composer chip, the confirmation card
+  // and a restart in agreement (the field is persisted on the session).
+  useEffect(() => {
+    setAllowAll(false);
+    setAllowAllBusy(false);
+    if (!activeID) return;
+    let cancelled = false;
+    sessionAllowAllTools(activeID)
+      .then((granted) => {
+        if (!cancelled) setAllowAll(granted);
+      })
+      .catch(() => {
+        // A session that cannot be read stays on the safe side (ask).
+        if (!cancelled) setAllowAll(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeID]);
 
   // Open the newest session on first load — unless「新聊天」deliberately left
   // the page on an unsaved draft (issue #30). Any session becoming active
@@ -882,6 +918,107 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       markRunning(activeID, false);
     }
   }, [activeID, running, markRunning]);
+
+  // applyAllowAll is the single place that turns the session grant on. The
+  // card action must persist the grant BEFORE approving the pending call:
+  // the resumed run is rebuilt from the session and would otherwise ask
+  // again. Both entry points funnel through here so they cannot disagree.
+  const applyAllowAll = useCallback(async (intent: { sessionId: string; source: AllowAllSource; msgId?: string; callId?: string }) => {
+    const sid = intent.sessionId;
+    const visible = () => sid === activeIDRef.current;
+    rememberAllowAllRiskAcknowledged((k, v) => localStorage.setItem(k, v));
+    if (visible()) setAllowAll(true);
+    if (intent.source === "composer") {
+      try {
+        await setSessionAllowAllTools(sid, true, "composer");
+        toast.success("已开启完全访问：本会话不再逐次确认写文件与执行命令");
+      } catch (e) {
+        if (visible()) setAllowAll(false);
+        toast.error(`开启完全访问失败: ${errText(e)}`);
+      }
+      return;
+    }
+    if (!intent.callId) return;
+    setAllowAllBusy(true);
+    markRunning(sid, true);
+    if (visible()) {
+      setMessages((prev) => prev.map((m) => (m.id === intent.msgId ? { ...m, confirmStatus: "approved" } : m)));
+    }
+    let granted = false;
+    try {
+      await setSessionAllowAllTools(sid, true, "confirm_card");
+      granted = true;
+      await Chat.ConfirmToolCall(sid, intent.callId, true);
+    } catch (e) {
+      if (!streamedErrorRef.current) toast.error(`确认失败: ${errText(e)}`);
+      streamedErrorRef.current = false;
+      if (visible()) {
+        setAllowAll(false);
+        setMessages((prev) => prev.map((m) => (m.id === intent.msgId && m.kind === "confirm" ? { ...m, confirmStatus: "pending" } : m)));
+      }
+      markRunning(sid, false);
+      // Best-effort rollback so a half-applied card action cannot leave the
+      // backend granting access while the UI shows it off.
+      if (granted) {
+        try {
+          await setSessionAllowAllTools(sid, false, "confirm_card");
+        } catch { /* the toggle can still revoke it later */ }
+      }
+    } finally {
+      setAllowAllBusy(false);
+    }
+  }, [markRunning]);
+
+  // requestAllowAll shows the one-time risk notice before the grant takes
+  // effect; an already acknowledged device goes straight through. The session
+  // is captured now, so switching chats while the dialog is open still acts on
+  // the chat whose card/switch was used.
+  const requestAllowAll = useCallback((intent: { source: AllowAllSource; msgId?: string; callId?: string }) => {
+    if (!activeID) return;
+    const full = { ...intent, sessionId: activeID };
+    if (allowAllRiskAlreadyAcknowledged((k) => localStorage.getItem(k))) {
+      void applyAllowAll(full);
+      return;
+    }
+    allowAllIntentRef.current = full;
+    setConfirmRequest({
+      title: ALLOW_ALL_RISK_TITLE,
+      description: ALLOW_ALL_RISK_DESCRIPTION,
+      confirmText: "确认开启",
+      cancelText: "取消",
+      destructive: false,
+      action: () => {
+        const pending = allowAllIntentRef.current;
+        allowAllIntentRef.current = null;
+        if (pending) void applyAllowAll(pending);
+      },
+    });
+  }, [activeID, applyAllowAll]);
+
+  // allowAllFromCard answers the current confirmation and grants the session
+  // in one click (issue #48): approve once, then stop asking.
+  const allowAllFromCard = useCallback((msgId: string, callId: string | undefined) => {
+    if (!activeID || !callId || running) return;
+    requestAllowAll({ source: "confirm_card", msgId, callId });
+  }, [activeID, running, requestAllowAll]);
+
+  // toggleAllowAll is the composer switch: turning the grant off restores
+  // per-call approval for the following turns.
+  const toggleAllowAll = useCallback(() => {
+    if (!activeID || allowAllBusy) return;
+    if (!allowAll) {
+      requestAllowAll({ source: "composer" });
+      return;
+    }
+    const sid = activeID;
+    setAllowAll(false);
+    setSessionAllowAllTools(sid, false, "composer")
+      .then(() => toast.success("已关闭完全访问：写文件与执行命令恢复逐次确认"))
+      .catch((e) => {
+        setAllowAll(true);
+        toast.error(`关闭完全访问失败: ${errText(e)}`);
+      });
+  }, [activeID, allowAll, allowAllBusy, requestAllowAll]);
 
   const MAX_ATT_BYTES = 6 * 1024 * 1024;
   const allowedMIME = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -2251,6 +2388,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                       sessionID={activeID}
                       filterQ={filterQ}
                       onConfirm={answerConfirm}
+                      onAllowAll={allowAllFromCard}
+                      allowAllBusy={allowAllBusy}
                     />
                   ) : (
                     <MessageBubble
@@ -2265,6 +2404,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                       onEdit={startEdit}
                       canEdit={editFlags.get(item.message.id) === true && !running && !!activeID}
                       onConfirm={answerConfirm}
+                      onAllowAll={allowAllFromCard}
+                      allowAllBusy={allowAllBusy}
                       sessionID={activeID}
                       filterQ={filterQ}
                     />
@@ -2558,6 +2699,25 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
+                  <button
+                    type="button"
+                    onClick={toggleAllowAll}
+                    disabled={!active || allowAllBusy}
+                    aria-pressed={allowAll}
+                    aria-label={allowAllToggleLabel(allowAll)}
+                    title={allowAllToggleHint(allowAll)}
+                    className={cn(
+                      "flex h-7 max-w-[168px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
+                      allowAll
+                        ? "bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 dark:text-amber-400"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                      (!active || allowAllBusy) && "cursor-not-allowed opacity-50",
+                    )}
+                  >
+                    <LockOpen className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{allowAllToggleLabel(allowAll)}</span>
+                    {allowAll && <X className="h-3 w-3 shrink-0 opacity-70" />}
+                  </button>
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
                   {active && availableLevels.length > 0 && (
@@ -2745,7 +2905,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       )}
 
       {/* Session stats dialog */}
-      <ConfirmDialog request={confirmRequest} onClose={() => setConfirmRequest(null)} />
+      <ConfirmDialog request={confirmRequest} onClose={() => {
+        setConfirmRequest(null);
+        // Cancelling the risk notice must also drop the pending grant, or a
+        // later unrelated dialog could silently enable full access.
+        allowAllIntentRef.current = null;
+      }} />
       <Dialog open={statsOpen} onOpenChange={setStatsOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>

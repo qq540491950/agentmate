@@ -352,6 +352,45 @@ func (c *ChatService) SetSessionReasoningLevel(sessionID, level string) error {
 	return err
 }
 
+// SetSessionAllowAllTools grants or revokes this chat's「允许完全访问」
+// permission. While granted, side-effectful builtin tools run without the
+// per-call HITL prompt; the switch is persisted on the session (so switching
+// chats or restarting keeps it) and never affects other sessions. source
+// records where it was flipped — the confirmation card or the composer
+// switch — in the audit trail.
+func (c *ChatService) SetSessionAllowAllTools(sessionID string, allowAll bool, source string) error {
+	err := c.mutateSession(sessionID, func(s *config.ChatSession) { s.AllowAllTools = allowAll })
+	if err == nil {
+		c.audit(sessionID, "session_allow_all_tools_set", "user", "session",
+			mustJSON(map[string]any{"allowAll": allowAll, "source": normalizeAllowAllSource(source)}), "")
+	}
+	return err
+}
+
+// SessionAllowAllTools reports whether the chat currently runs side-effectful
+// builtin tools without per-call confirmation. Unknown IDs are an error, like
+// the other session-setting RPCs.
+func (c *ChatService) SessionAllowAllTools(sessionID string) (bool, error) {
+	for _, s := range c.S.Store.Get().Sessions {
+		if s.ID == sessionID {
+			return s.AllowAllTools, nil
+		}
+	}
+	return false, fmt.Errorf("会话 %q 不存在", sessionID)
+}
+
+// normalizeAllowAllSource keeps audit payloads to the two switch locations;
+// anything else (older client, future caller) is recorded as unknown rather
+// than echoing arbitrary input into the log.
+func normalizeAllowAllSource(source string) string {
+	switch strings.TrimSpace(source) {
+	case "confirm_card", "composer":
+		return strings.TrimSpace(source)
+	default:
+		return "unknown"
+	}
+}
+
 // ArchiveSession toggles the archived flag of a session (archived sessions
 // are hidden from the default sidebar list but never deleted).
 func (c *ChatService) ArchiveSession(id string, archived bool) error {

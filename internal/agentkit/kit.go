@@ -340,6 +340,19 @@ func (k *Kit) BuildTeamWithWorkspace(tc config.TeamConfig, workspace string) (ag
 // team's root agent (explicit lead or synthesized coordinator). Member agents
 // keep their own configured models and levels.
 func (k *Kit) BuildTeamWithWorkspaceAndReasoning(tc config.TeamConfig, workspace, reasoningLevel string) (agent.Agent, string, error) {
+	return k.buildTeam(tc, workspace, reasoningLevel, false)
+}
+
+// BuildTeamWithWorkspaceReasoningAndAllowAll builds a team for a chat that
+// granted「允许完全访问」: every local member runs its side-effectful builtin
+// tools without the per-call HITL prompt. Pending confirmations answered
+// before the grant still honour an explicit rejection. Without allowAll it is
+// identical to BuildTeamWithWorkspaceAndReasoning.
+func (k *Kit) BuildTeamWithWorkspaceReasoningAndAllowAll(tc config.TeamConfig, workspace, reasoningLevel string, allowAll bool) (agent.Agent, string, error) {
+	return k.buildTeam(tc, workspace, reasoningLevel, allowAll)
+}
+
+func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string, allowAll bool) (agent.Agent, string, error) {
 	cfg := k.store.Get()
 	if strings.TrimSpace(workspace) == "" {
 		workspace = cfg.Settings.WorkspaceDir
@@ -348,6 +361,15 @@ func (k *Kit) BuildTeamWithWorkspaceAndReasoning(tc config.TeamConfig, workspace
 	memberByID := map[string]config.AgentConfig{}
 	for _, a := range cfg.Agents {
 		memberByID[a.ID] = a
+	}
+	// A session-level「允许完全访问」grant drops the per-call confirmation for
+	// every local member — the coordinator (explicit lead or synthesized) and
+	// the sub-agents all share the chat's permission.
+	if allowAll {
+		for id, ac := range memberByID {
+			ac.ConfirmTools = nil
+			memberByID[id] = ac
+		}
 	}
 
 	var members []agent.Agent
