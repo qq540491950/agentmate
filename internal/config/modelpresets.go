@@ -37,6 +37,30 @@ func SuggestModelInfos(ids []string) []ModelInfo {
 	return out
 }
 
+// ReasoningTable returns the thinking-level table a model offers: its
+// configured table when enabled, else the built-in suggestion for a known
+// reasoning family. An explicitly disabled table stays disabled — turning the
+// picker off is deliberate — while a nil table means "not configured", which
+// is exactly the case the built-in fallback covers (#42).
+func (m ModelInfo) ReasoningTable() *ReasoningConfig {
+	if m.Reasoning != nil {
+		if !m.Reasoning.Enabled || len(m.Reasoning.Levels) == 0 {
+			return nil
+		}
+		return m.Reasoning
+	}
+	return suggestReasoning(m.ID)
+}
+
+// ReasoningConfigured reports whether ReasoningTable comes from the saved
+// configuration rather than the built-in family fallback. Only a configured
+// table applies an implicit default level: a fallback table powers the picker
+// but sends nothing until the user actually picks a level, so upgrading an
+// existing install never silently rewrites request bodies.
+func (m ModelInfo) ReasoningConfigured() bool {
+	return m.Reasoning != nil && m.Reasoning.Enabled && len(m.Reasoning.Levels) > 0
+}
+
 func suggestReasoning(modelID string) *ReasoningConfig {
 	id := strings.ToLower(strings.TrimSpace(modelID))
 	if id == "" {

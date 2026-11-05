@@ -40,26 +40,36 @@ func addUsage(total, u *UsageInfo) *UsageInfo {
 // Send runs one user turn against the session's target agent/team. It blocks
 // until the run completes and streams progress via chat:stream events.
 func (c *ChatService) Send(sessionID, text string, attachments []AttachmentIn) error {
-	return c.sendTurn(sessionID, text, attachments)
+	return c.sendTurn(sessionID, text, attachments, "")
+}
+
+// SendWithReasoning runs one user turn with a per-turn thinking level (empty
+// keeps the session default, then the model's own default). It is what the
+// composer's per-message picker calls: the level applies to this turn only and
+// is never written back to the session or provider configuration.
+func (c *ChatService) SendWithReasoning(sessionID, text string, attachments []AttachmentIn, reasoningLevel string) error {
+	return c.sendTurn(sessionID, text, attachments, reasoningLevel)
 }
 
 // trimLastTurn removes all stored events from the last user message onward
-// (inclusive) and returns that message's text and image attachments, so
-// Regenerate/EditAndResend re-run the turn faithfully. HITL resume events
-// (a FunctionResponse stored under the user author by ConfirmToolCall) are
-// not user messages and never start a turn boundary — treating them as one
-// made every regenerate after a tool confirmation fail.
-func (c *ChatService) trimLastTurn(sessionID string) (string, []AttachmentIn, error) {
+// (inclusive) and returns that message's text, image attachments and thinking
+// level, so Regenerate/EditAndResend re-run the turn faithfully — including
+// the level it originally used. HITL resume events (a FunctionResponse stored
+// under the user author by ConfirmToolCall) are not user messages and never
+// start a turn boundary — treating them as one made every regenerate after a
+// tool confirmation fail.
+func (c *ChatService) trimLastTurn(sessionID string) (string, []AttachmentIn, string, error) {
 	resp, err := c.sessions.Get(context.Background(), &session.GetRequest{
 		AppName: c.appName, UserID: c.userID, SessionID: sessionID,
 	})
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
 	if resp.Session == nil {
-		return "", nil, fmt.Errorf("会话 %q 不存在", sessionID)
+		return "", nil, "", fmt.Errorf("会话 %q 不存在", sessionID)
 	}
 	text := ""
+	reasoning := ""
 	var atts []AttachmentIn
 	var evIDs []string
 	for ev := range resp.Session.Events().All() {
@@ -70,6 +80,7 @@ func (c *ChatService) trimLastTurn(sessionID string) (string, []AttachmentIn, er
 			evIDs = []string{ev.ID}
 			var sb strings.Builder
 			atts = nil
+			reasoning = eventReasoning(ev)
 			for _, p := range ev.Content.Parts {
 				if p == nil {
 					continue
@@ -93,14 +104,14 @@ func (c *ChatService) trimLastTurn(sessionID string) (string, []AttachmentIn, er
 		}
 	}
 	if text == "" && len(atts) == 0 {
-		return "", nil, fmt.Errorf("没有可重新生成的用户消息")
+		return "", nil, "", fmt.Errorf("没有可重新生成的用户消息")
 	}
 	if c.db != nil && len(evIDs) > 0 {
 		if err := c.deleteEvents(sessionID, evIDs); err != nil {
-			return "", nil, fmt.Errorf("裁剪历史失败: %w", err)
+			return "", nil, "", fmt.Errorf("裁剪历史失败: %w", err)
 		}
 	}
-	return text, atts, nil
+	return text, atts, reasoning, nil
 }
 
 // hasFunctionResponse reports whether the event carries a FunctionResponse
@@ -123,11 +134,11 @@ func (c *ChatService) Regenerate(sessionID string) error {
 	// Same contract as DeleteSession: stop the in-flight run BEFORE touching
 	// stored events, or the old run keeps appending to the trimmed timeline.
 	c.cancelAndWaitBounded(sessionID)
-	text, atts, err := c.trimLastTurn(sessionID)
+	text, atts, reasoning, err := c.trimLastTurn(sessionID)
 	if err != nil {
 		return err
 	}
-	return c.sendTurn(sessionID, text, atts)
+	return c.sendTurn(sessionID, text, atts, reasoning)
 }
 
 // EditAndResend replaces the text of the last user turn and re-runs it,
@@ -137,11 +148,11 @@ func (c *ChatService) EditAndResend(sessionID, newText string) error {
 		return fmt.Errorf("消息内容不能为空")
 	}
 	c.cancelAndWaitBounded(sessionID) // see Regenerate: trim only after the old run stopped
-	_, atts, err := c.trimLastTurn(sessionID)
+	_, atts, reasoning, err := c.trimLastTurn(sessionID)
 	if err != nil {
 		return err
 	}
-	return c.sendTurn(sessionID, newText, atts)
+	return c.sendTurn(sessionID, newText, atts, reasoning)
 }
 
 // deleteEvents removes stored events by ID (used by Regenerate).
@@ -175,8 +186,9 @@ func (c *ChatService) emitChat(sessionID string, ev ChatStreamEvent) {
 }
 
 // sendTurn sanitizes the user input (guardrails), builds the message content
-// and hands the turn to runTurn.
-func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentIn) error {
+// and hands the turn to runTurn. turnReasoning is a per-turn thinking level
+// override (empty keeps the session default).
+func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentIn, turnReasoning string) error {
 	lock := c.sessionWorkspaceLock(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -210,7 +222,7 @@ func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentI
 	if err != nil {
 		return err
 	}
-	return c.runTurn(turnTarget, guardOn, msg, text)
+	return c.runTurn(turnTarget, guardOn, msg, text, turnReasoning)
 }
 
 // ConfirmToolCall answers a pending ADK tool-confirmation interrupt (HITL):
@@ -231,11 +243,15 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 	}
 	pending := false
 	lastUserText := ""
+	lastUserReasoning := ""
 	for ev := range resp.Session.Events().All() {
 		if ev == nil || ev.Content == nil || ev.Partial {
 			continue
 		}
 		if ev.Content.Role == genai.RoleUser {
+			if !hasFunctionResponse(ev) {
+				lastUserReasoning = eventReasoning(ev)
+			}
 			for _, p := range ev.Content.Parts {
 				if p != nil && p.Text != "" {
 					lastUserText = p.Text
@@ -282,23 +298,34 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 	turnTarget := turnTargetFor(cfg, target, lastUserText)
 	agentCfg := c.targetAgentConfig(cfg, turnTarget)
 	guardOn := agentCfg == nil || agentkit.GuardrailsEnabled(*agentCfg)
-	return c.runTurn(turnTarget, guardOn, msg, "")
+	// Resume on the level the interrupted turn used: a HITL round-trip is one
+	// logical turn, so the continuation must not switch thinking budgets
+	// halfway through.
+	return c.runTurn(turnTarget, guardOn, msg, "", lastUserReasoning)
 }
 
 // runTurn builds the agent tree for the session target, runs one turn with
 // the given message content and streams progress. It is the shared engine
 // behind Send (user text) and ConfirmToolCall (HITL FunctionResponse resume);
 // titleFromText is non-empty only for genuine user messages (drives the
-// user-bubble event and auto-title).
+// user-bubble event and auto-title). turnReasoning is a per-turn level
+// override (empty keeps the session default), resolved once here so the
+// request body and the recorded badge cannot disagree.
 //
 // A panic anywhere in the agent/tool stack is converted into an error event:
 // one misbehaving MCP server or tool must not take the whole desktop process
 // down with the user's unsaved work in it.
-func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *genai.Content, titleFromText string) (err error) {
+func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *genai.Content, titleFromText, turnReasoning string) (err error) {
 	sessionID := target.ID
 	defer c.recoverRun(sessionID, &err)
 	cfg := c.S.Store.Get()
 	workspace := target.EffectiveWorkspaceFor(cfg)
+	// Per-turn pick > session default > model default. With no resolvable
+	// model (remote targets) there is nothing to inject or record.
+	applyLevel, recordedLevel := "", ""
+	if mi, ok := c.effectiveTurnModel(cfg, target); ok {
+		applyLevel, recordedLevel = resolveTurnReasoning(mi, turnReasoning, target.ReasoningLevel)
+	}
 	// Per-agent run guardrails (0 = unlimited); teams fall back to unlimited.
 	maxTurnSeconds, maxToolCalls := 0, 0
 	var maxSessionTokens int64
@@ -331,11 +358,11 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		if derr != nil {
 			return derr
 		}
-		root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(ac, target.ModelOverride, workspace, target.ReasoningLevel)
+		root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(ac, target.ModelOverride, workspace, applyLevel)
 	case "team":
 		for _, t := range cfg.Teams {
 			if t.ID == target.TargetID {
-				root, _, err = c.S.Kit.BuildTeamWithWorkspaceAndReasoning(t, workspace, target.ReasoningLevel)
+				root, _, err = c.S.Kit.BuildTeamWithWorkspaceAndReasoning(t, workspace, applyLevel)
 				break
 			}
 		}
@@ -357,7 +384,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			if a.ID == target.TargetID {
 				// Per-session model override (chat-header picker): empty keeps
 				// the agent's configured model.
-				root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(a, target.ModelOverride, workspace, target.ReasoningLevel)
+				root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(a, target.ModelOverride, workspace, applyLevel)
 				break
 			}
 		}
@@ -405,7 +432,16 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		return nil
 	}
 	if titleFromText != "" {
-		emit(ChatStreamEvent{Kind: "user", Text: titleFromText, Attachments: attachmentsOut(msg)})
+		emit(ChatStreamEvent{Kind: "user", Text: titleFromText, Attachments: attachmentsOut(msg), Reasoning: recordedLevel})
+	}
+
+	// Record the level on the user message event itself so history rendering,
+	// exports and Regenerate/confirm resume see the level this turn actually
+	// used. A HITL resume appends a FunctionResponse event, not a new user
+	// message, so it records nothing.
+	var runOpts []runner.RunOption
+	if titleFromText != "" && recordedLevel != "" {
+		runOpts = append(runOpts, runner.WithStateDelta(map[string]any{turnReasoningStateKey: recordedLevel}))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -424,7 +460,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	lastReply := ""
 	for ev, err := range rn.Run(ctx, c.userID, sessionID, msg, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
-	}) {
+	}, runOpts...) {
 		if ctx.Err() != nil {
 			if ctx.Err() == context.DeadlineExceeded {
 				msg := fmt.Sprintf("本轮已达最长运行时间（%d 秒），已停止。", maxTurnSeconds)
@@ -570,6 +606,117 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		}()
 	}
 	return nil
+}
+
+// effectiveTurnModel resolves the ModelInfo of the model this session's root
+// agent will run, mirroring the build path: the direct chat's default model
+// (with the per-chat override), an agent's model (override included), or the
+// team's explicit lead / auto coordinator (teams ignore the chat override,
+// exactly like BuildTeamWithWorkspaceAndReasoning). Remote targets have no
+// local model, so they report false.
+func (c *ChatService) effectiveTurnModel(cfg config.Config, target *config.ChatSession) (config.ModelInfo, bool) {
+	providerID, modelID := "", ""
+	applyOverride := true
+	switch target.TargetType {
+	case "":
+		ac, err := directAgentConfig(cfg)
+		if err != nil {
+			return config.ModelInfo{}, false
+		}
+		providerID, modelID = cfg.ResolveAgentModel(ac)
+	case "team":
+		applyOverride = false
+		var team *config.TeamConfig
+		for i := range cfg.Teams {
+			if cfg.Teams[i].ID == target.TargetID {
+				team = &cfg.Teams[i]
+				break
+			}
+		}
+		if team == nil {
+			return config.ModelInfo{}, false
+		}
+		lead := findAgentConfig(cfg, team.LeadAgentID)
+		if !team.AutoCoordinate && lead != nil {
+			providerID, modelID = cfg.ResolveAgentModel(*lead)
+		}
+		if providerID == "" {
+			providerID, modelID = team.ProviderID, team.Model
+		}
+	case "remote":
+		return config.ModelInfo{}, false
+	default:
+		ac := findAgentConfig(cfg, target.TargetID)
+		if ac == nil {
+			return config.ModelInfo{}, false
+		}
+		providerID, modelID = cfg.ResolveAgentModel(*ac)
+	}
+	provider := cfg.FindProvider(providerID)
+	if provider == nil {
+		return config.ModelInfo{}, false
+	}
+	override := ""
+	if applyOverride {
+		override = target.ModelOverride
+	}
+	modelID = agentkit.EffectiveModel(cfg, providerID, modelID, override)
+	mi, ok := provider.FindModel(modelID)
+	if !ok {
+		// The build path resolves level fields through FindModel too: a model
+		// the provider no longer lists gets no table, so report no table here.
+		return config.ModelInfo{}, false
+	}
+	return mi, true
+}
+
+// findAgentConfig returns the configured agent with the given ID.
+func findAgentConfig(cfg config.Config, id string) *config.AgentConfig {
+	if id == "" {
+		return nil
+	}
+	for i := range cfg.Agents {
+		if cfg.Agents[i].ID == id {
+			return &cfg.Agents[i]
+		}
+	}
+	return nil
+}
+
+// resolveTurnReasoning picks a turn's thinking level from the model's table:
+// the per-turn pick first, then the session default, then the table's own
+// default. apply is what the request builder receives ("" lets a configured
+// table resolve its default); recorded is the level shown on the message.
+// A built-in fallback table records nothing unless someone picked a level,
+// because nothing is sent in that case.
+func resolveTurnReasoning(mi config.ModelInfo, explicit, session string) (apply, recorded string) {
+	table := mi.ReasoningTable()
+	if table == nil {
+		return "", ""
+	}
+	for _, want := range []string{explicit, session} {
+		if name, ok := table.MatchLevel(want); ok {
+			return name, name
+		}
+	}
+	if mi.ReasoningConfigured() {
+		if name := table.DefaultLevelName(); name != "" {
+			return "", name
+		}
+	}
+	return "", ""
+}
+
+// eventReasoning reads the thinking level recorded on a stored user message
+// event (see turnReasoningStateKey).
+func eventReasoning(ev *session.Event) string {
+	if ev == nil || ev.Actions.StateDelta == nil {
+		return ""
+	}
+	if v, ok := ev.Actions.StateDelta[turnReasoningStateKey].(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
 }
 
 // autoTitle asks the session's model for a short conversation title and

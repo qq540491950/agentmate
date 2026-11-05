@@ -68,6 +68,10 @@ type ChatStreamEvent struct {
 	// regenerated one) renders its images without waiting for a history
 	// reload.
 	Attachments []AttachmentOut `json:"attachments,omitempty"`
+	// Reasoning is the thinking level applied to this turn (empty when the
+	// model offers no table or the level was left to the provider default).
+	// Set on user events so the bubble can show the level it was sent with.
+	Reasoning string `json:"reasoning,omitempty"`
 	// SessionUsage is the cumulative usage of the session, set on done events.
 	SessionUsage *UsageInfo `json:"sessionUsage,omitempty"`
 }
@@ -97,8 +101,17 @@ type ChatMessage struct {
 	CallID      string          `json:"callId,omitempty"`
 	Hint        string          `json:"hint,omitempty"`
 	Attachments []AttachmentOut `json:"attachments,omitempty"`
-	Timestamp   time.Time       `json:"timestamp"`
+	// Reasoning is the thinking level this turn was sent with; recorded on the
+	// user message's state delta so history and exports can show it.
+	Reasoning string    `json:"reasoning,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
 }
+
+// turnReasoningStateKey records a turn's thinking level on the user message
+// event. The key deliberately has no "temp:" prefix: the database session
+// service strips temp keys from stored events, and history rendering needs
+// the value after a reload.
+const turnReasoningStateKey = "workbuddy.reasoning_level"
 
 const (
 	maxAttachmentBytes = 6 << 20 // 6 MB decoded per file

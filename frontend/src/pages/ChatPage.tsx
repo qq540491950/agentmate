@@ -27,7 +27,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { computeEditFlags, computeRunningTools, computeToolDurations, groupSessionsByProject, groupSessionsByTime, isDayChange, mdToSpeech, type UIMessage } from "@/lib/chatUtils";
+import { computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupSessionsByProject, groupSessionsByTime, isDayChange, mdToSpeech, type UIMessage } from "@/lib/chatUtils";
 import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
 import {
   SIDEBAR_KEYBOARD_STEP, SIDEBAR_MIN_WIDTH,
@@ -51,6 +51,10 @@ import {
 
 let mid = 0;
 const nextId = () => `m${++mid}`;
+
+/** A send parked while the previous turn streams; it keeps the per-message
+ * thinking level the user picked when queueing, not whatever is picked later. */
+type QueuedMessage = { text: string; reasoning: string };
 
 // RENDER_LIMIT caps how many messages render at once for smooth long sessions.
 const RENDER_LIMIT = 200;
@@ -194,7 +198,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     if (runningMapRef.current[sessionID]) return;
     const [first, ...rest] = list;
     setQueued((prev) => ({ ...prev, [sessionID]: rest }));
-    setTimeout(() => sendRef.current(first, sessionID), 80);
+    setTimeout(() => sendRef.current(first.text, sessionID, first.reasoning), 80);
   }, []);
 
   const reloadSessions = useCallback(() => {
@@ -348,6 +352,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               confirmStatus: m.kind === "confirm_request" ? (answered.has(m.callId!) ? (answered.get(m.callId!) ? "approved" : "rejected") : "pending") as UIMessage["confirmStatus"] : undefined,
               timestamp: m.timestamp,
               attachments: m.attachments ?? null,
+              reasoning: m.reasoning,
             })),
         );
         // Entering a session always lands on its newest message — the shared
@@ -463,7 +468,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       setMessages((prev) => {
         switch (ev.kind) {
           case "user":
-            return [...prev, { id: nextId(), kind: "user", author: "user", text: ev.text, timestamp: new Date().toISOString(), attachments: ev.attachments ?? null }];
+            return [...prev, { id: nextId(), kind: "user", author: "user", text: ev.text, timestamp: new Date().toISOString(), attachments: ev.attachments ?? null, reasoning: ev.reasoning }];
           case "message": {
             const idx = [...prev].reverse().findIndex((m) => m.streaming && m.author === ev.author);
             if (idx >= 0) {
@@ -600,13 +605,17 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // and auto-sends it when the turn settles (Codex-style queueing). A queue
   // holds MULTIPLE messages — queueing twice must not silently drop the
   // first; deliveries bounce to the front, user sends append to the back.
-  const [queued, setQueued] = useState<Record<string, string[]>>({});
+  const [queued, setQueued] = useState<Record<string, QueuedMessage[]>>({});
   const queuedRef = useRef(queued);
   useEffect(() => { queuedRef.current = queued; }, [queued]);
+  // Per-turn thinking level: a composer-local choice that applies ONLY to the
+  // next message. Empty follows the session default; it is never persisted
+  // (that is what the session-level default is for).
+  const [turnReasoning, setTurnReasoning] = useState("");
   const runningMapRef = useRef(runningMap);
   useEffect(() => { runningMapRef.current = runningMap; }, [runningMap]);
 
-  const send = async (override?: string, targetID?: string) => {
+  const send = async (override?: string, targetID?: string, reasoningOverride?: string) => {
     // targetID lets fireQueued deliver to the session the message was queued
     // for, not whichever chat happens to be active 80ms later.
     let sid = targetID ?? activeID;
@@ -615,6 +624,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     // Whether this send originates from the active composer (or a chat yet to
     // be created): only then do the pending image attachments belong to it.
     const fromComposer = !sid || sid === activeID;
+    // A queued delivery carries the level picked when it was queued; a
+    // composer send reads the per-turn pick at the moment Send is pressed.
+    const reasoning = reasoningOverride !== undefined ? reasoningOverride : fromComposer ? turnReasoning : "";
     // Composer-first flow: with no session yet, the first message creates a
     // direct chat on the fly. Only a provider is required — never an Agent.
     if (!sid) {
@@ -635,8 +647,11 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       }
     }
     if (runningMap[sid] && !override) {
-      setQueued((prev) => ({ ...prev, [sid]: [...(prev[sid] ?? []), text] }));
-      if (sid === activeID) setInput("");
+      setQueued((prev) => ({ ...prev, [sid]: [...(prev[sid] ?? []), { text, reasoning }] }));
+      if (sid === activeID) {
+        setInput("");
+        setTurnReasoning("");
+      }
       toast("已排队：当前回复完成后自动发送");
       return;
     }
@@ -645,7 +660,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       // the queue (fired again when the next turn settles) — never dropped.
       // They re-enter at the FRONT to preserve the user's ordering.
       if (override !== undefined) {
-        setQueued((prev) => ({ ...prev, [sid]: [text, ...(prev[sid] ?? [])] }));
+        setQueued((prev) => ({ ...prev, [sid]: [{ text, reasoning }, ...(prev[sid] ?? [])] }));
       }
       return;
     }
@@ -696,6 +711,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     markRunning(sid, true);
     const wasEditing = editing && sid === activeID;
     setEditing(false);
+    // The per-turn choice is consumed by a normal send. Editing re-runs the
+    // original turn with its recorded level, so a pending pick stays pending.
+    if (fromComposer && !wasEditing) setTurnReasoning("");
     const atts = fromComposer ? pendingAtts : [];
     if (fromComposer) setPendingAtts([]);
     turnStartedRef.current = false;
@@ -712,7 +730,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       if (wasEditing) {
         await Chat.EditAndResend(sid, text);
       } else {
-        await Chat.Send(sid, text, atts.length > 0 ? atts : null);
+        await Chat.SendWithReasoning(sid, text, atts.length > 0 ? atts : null, reasoning);
       }
       // A resolved promise without a started turn means the backend refused
       // the round (e.g. token budget exhausted): restore what the user typed
@@ -721,6 +739,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       if (fromComposer && !turnStartedRef.current) {
         setInput((cur) => (cur === "" ? text : cur));
         setPendingAtts((prev) => [...atts, ...prev]);
+        if (!wasEditing) setTurnReasoning((cur) => (cur === "" ? reasoning : cur));
       }
     } catch (e) {
       // The stream already emitted an inline error bubble for run failures;
@@ -1282,14 +1301,49 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       ? active.modelOverride || (active.targetType === "agent" ? "Agent 默认模型" : "默认模型")
       : "";
 
-  // Chat-level thinking picker: only models with an enabled level table get
-  // one. An empty value means "use the model's configured default".
-  const availableLevels = useMemo(() => reasoningLevels(target.model), [target.model]);
+  // Thinking picker. A saved table wins; a model saved before level tables
+  // existed still gets the built-in family fallback (fetched from the backend
+  // so the mapping lives in one place) instead of hiding the control — an
+  // explicitly disabled table stays off (#42). The per-turn pick lives only
+  // in this composer: it is never persisted and never mutates the session
+  // default.
+  const modelHasReasoningTable = !!target.model?.reasoning;
+  const targetModelID = target.model?.id ?? "";
+  const [suggestedReasoning, setSuggestedReasoning] = useState<{ id: string; info: ModelInfo } | null>(null);
+  useEffect(() => {
+    if (!targetModelID || modelHasReasoningTable) {
+      setSuggestedReasoning(null);
+      return;
+    }
+    let cancelled = false;
+    Config.SuggestModels([targetModelID])
+      .then((list) => {
+        if (cancelled || !list?.[0]) return;
+        setSuggestedReasoning({ id: targetModelID, info: list[0] });
+      })
+      .catch(() => { /* offline: the picker simply stays hidden */ });
+    return () => { cancelled = true; };
+  }, [targetModelID, modelHasReasoningTable]);
+  // Only a suggestion fetched FOR this model may feed the picker: a fetch
+  // resolving after a model switch must not render another model's levels.
+  const reasoningModel = modelHasReasoningTable
+    ? target.model
+    : suggestedReasoning?.id === targetModelID ? suggestedReasoning.info : null;
+  const availableLevels = useMemo(() => reasoningLevels(reasoningModel), [reasoningModel]);
   const sessionReasoning = active?.reasoningLevel && availableLevels.some((l) => l.level === active.reasoningLevel)
     ? active.reasoningLevel
     : "";
-  const sessionReasoningLabel = sessionReasoning ? levelLabel(sessionReasoning) : "默认";
-  const defaultReasoningLevel = target.model?.reasoning?.defaultLevel || availableLevels[0]?.level || "";
+  const defaultReasoningLevel = reasoningModel?.reasoning?.defaultLevel || availableLevels[0]?.level || "";
+  // The pending pick applies to the next send only; unknown names (e.g. a
+  // stale pick after a model switch) are ignored and fall through.
+  const pendingReasoning = availableLevels.some((l) => l.level === turnReasoning) ? turnReasoning : "";
+  const nextReasoningLevel = effectiveReasoningLevel(availableLevels, pendingReasoning, sessionReasoning, defaultReasoningLevel);
+  const nextReasoningLabel = pendingReasoning
+    ? `本轮 ${levelLabel(pendingReasoning)}`
+    : sessionReasoning ? `会话 ${levelLabel(sessionReasoning)}` : "默认";
+  // A pick belongs to one chat+model; switching either starts from the
+  // session default again (a level valid for the old table may not exist).
+  useEffect(() => { setTurnReasoning(""); }, [activeID, targetModelID]);
 
   const setSessionModel = async (modelID: string) => {
     if (!activeID) return;
@@ -1307,11 +1361,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   const setSessionReasoning = async (level: string) => {
     if (!activeID) return;
     try {
-      await Chat.SetSessionReasoningLevel(activeID, level === "__default" ? "" : level);
+      await Chat.SetSessionReasoningLevel(activeID, level);
+      setTurnReasoning("");
       reloadSessions();
-      toast.success(level === "__default" ? "已恢复模型默认思考强度" : `本会话思考强度：${levelLabel(level)}`);
+      toast.success(level === "" ? "已清除会话默认思考强度" : `会话默认思考强度：${levelLabel(level)}`);
     } catch (e) {
-      toast.error(`切换思考强度失败: ${errText(e)}`);
+      toast.error(`设置会话思考强度失败: ${errText(e)}`);
     }
   };
 
@@ -2127,7 +2182,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
           {(queued[activeID] ?? []).map((q, qi) => (
             <div key={qi} className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs">
               <span className="shrink-0 text-muted-foreground">{qi === 0 ? "已排队" : `排队 #${qi + 1}`}</span>
-              <span className="min-w-0 flex-1 truncate">{q}</span>
+              <span className="min-w-0 flex-1 truncate">{q.text}</span>
+              {q.reasoning && (
+                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  思考：{levelLabel(q.reasoning)}
+                </span>
+              )}
               <button
                 className="shrink-0 underline underline-offset-2 hover:text-foreground"
                 onClick={() => setQueued((prev) => {
@@ -2382,22 +2442,22 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                       <DropdownMenuTrigger asChild>
                         <button
                           className="flex h-7 min-w-0 max-w-[136px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                          title={`本会话思考强度：${sessionReasoningLabel}（仅影响当前对话）`}
-                          aria-label="选择思考强度"
+                          title={`本条消息思考强度：${levelLabel(nextReasoningLevel)}（仅下一条消息，不影响正在进行的回复）`}
+                          aria-label="选择本条消息的思考强度"
                         >
                           <Brain className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{sessionReasoningLabel}</span>
+                          <span className="truncate">{nextReasoningLabel}</span>
                           <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-56">
-                        <DropdownMenuLabel>本会话思考强度</DropdownMenuLabel>
+                      <DropdownMenuContent align="end" className="w-60">
+                        <DropdownMenuLabel>本条消息思考强度</DropdownMenuLabel>
                         <DropdownMenuRadioGroup
-                          value={sessionReasoning || "__default"}
-                          onValueChange={(v) => setSessionReasoning(v)}
+                          value={pendingReasoning || "__default"}
+                          onValueChange={(v) => setTurnReasoning(v === "__default" ? "" : v)}
                         >
                           <DropdownMenuRadioItem value="__default" className="text-xs">
-                            模型默认{defaultReasoningLevel ? `（${levelLabel(defaultReasoningLevel)}）` : ""}
+                            跟随会话默认（{sessionReasoning ? levelLabel(sessionReasoning) : `模型默认${defaultReasoningLevel ? ` · ${levelLabel(defaultReasoningLevel)}` : ""}`}）
                           </DropdownMenuRadioItem>
                           {availableLevels.map((l) => (
                             <DropdownMenuRadioItem key={l.level} value={l.level} className="text-xs">
@@ -2406,6 +2466,22 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                             </DropdownMenuRadioItem>
                           ))}
                         </DropdownMenuRadioGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+                          会话默认（影响后续所有轮次）
+                        </DropdownMenuLabel>
+                        <DropdownMenuItem
+                          className="text-xs"
+                          disabled={!nextReasoningLevel || nextReasoningLevel === sessionReasoning}
+                          onSelect={() => setSessionReasoning(nextReasoningLevel)}
+                        >
+                          将「{levelLabel(nextReasoningLevel || defaultReasoningLevel)}」设为会话默认
+                        </DropdownMenuItem>
+                        {sessionReasoning && (
+                          <DropdownMenuItem className="text-xs" onSelect={() => setSessionReasoning("")}>
+                            清除会话默认，回到模型默认
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}

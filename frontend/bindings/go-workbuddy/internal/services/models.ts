@@ -106,6 +106,12 @@ export interface ChatMessage {
     "callId"?: string;
     "hint"?: string;
     "attachments"?: AttachmentOut[] | null;
+
+    /**
+     * Reasoning is the thinking level this turn was sent with; recorded on the
+     * user message's state delta so history and exports can show it.
+     */
+    "reasoning"?: string;
     "timestamp": string;
 }
 
@@ -147,6 +153,13 @@ export interface ChatStreamEvent {
      * reload.
      */
     "attachments"?: AttachmentOut[] | null;
+
+    /**
+     * Reasoning is the thinking level applied to this turn (empty when the
+     * model offers no table or the level was left to the provider default).
+     * Set on user events so the bubble can show the level it was sent with.
+     */
+    "reasoning"?: string;
 
     /**
      * SessionUsage is the cumulative usage of the session, set on done events.

@@ -157,3 +157,69 @@ func TestModelInfoReasoningJSONRoundTrip(t *testing.T) {
 		t.Fatalf("round trip lost fields: %+v", back)
 	}
 }
+
+func TestModelInfoReasoningTableFallback(t *testing.T) {
+	// A model saved before level tables existed gets the built-in family table
+	// for the picker, but is not "configured": nothing is sent implicitly.
+	bare := ModelInfo{ID: "codearts/glm-5.3-flash"}
+	table := bare.ReasoningTable()
+	if table == nil || len(table.Levels) != 3 {
+		t.Fatalf("fallback table = %+v, want glm-5.3 levels", table)
+	}
+	if bare.ReasoningConfigured() {
+		t.Fatal("a fallback table must not count as configured")
+	}
+
+	// A saved table wins over the fallback and is configured.
+	saved := &ReasoningConfig{
+		Enabled:      true,
+		DefaultLevel: "low",
+		Levels:       []ReasoningLevel{{Level: "low", Param: "reasoning_effort", Value: "low"}},
+	}
+	explicit := ModelInfo{ID: "codearts/glm-5.3-flash", Reasoning: saved}
+	if explicit.ReasoningTable() != saved || !explicit.ReasoningConfigured() {
+		t.Fatalf("saved table not preferred: %+v", explicit.ReasoningTable())
+	}
+
+	// Explicitly disabled stays disabled — no fallback resurrects it.
+	disabled := ModelInfo{ID: "glm-5.3", Reasoning: &ReasoningConfig{Enabled: false}}
+	if disabled.ReasoningTable() != nil || disabled.ReasoningConfigured() {
+		t.Fatal("disabled table must stay off")
+	}
+
+	// Unknown families have no table at all.
+	if (ModelInfo{ID: "llama-3.3-70b"}).ReasoningTable() != nil {
+		t.Fatal("unknown family must not get a table")
+	}
+}
+
+func TestReasoningMatchLevelAndDefaultName(t *testing.T) {
+	cfg := &ReasoningConfig{
+		Enabled:      true,
+		DefaultLevel: "HIGH",
+		Levels: []ReasoningLevel{
+			{Level: "low", Param: "reasoning_effort", Value: "low"},
+			{Level: "High", Param: "reasoning_effort", Value: "high"},
+		},
+	}
+	if name, ok := cfg.MatchLevel(" high "); !ok || name != "High" {
+		t.Fatalf("match = (%q,%v), want canonical High", name, ok)
+	}
+	if name, ok := cfg.MatchLevel("turbo"); ok || name != "" {
+		t.Fatalf("unknown level matched: %q", name)
+	}
+	if name := cfg.DefaultLevelName(); name != "High" {
+		t.Fatalf("default name = %q, want High (case-insensitive)", name)
+	}
+
+	// Blank default falls back to the first level; a stale default is an
+	// error rather than a silent switch (same contract as Resolve).
+	first := &ReasoningConfig{Enabled: true, Levels: cfg.Levels}
+	if name := first.DefaultLevelName(); name != "low" {
+		t.Fatalf("first-level default = %q, want low", name)
+	}
+	stale := &ReasoningConfig{Enabled: true, DefaultLevel: "max", Levels: cfg.Levels}
+	if name := stale.DefaultLevelName(); name != "" {
+		t.Fatalf("stale default = %q, want empty", name)
+	}
+}
