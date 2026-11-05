@@ -197,3 +197,37 @@ func TestApplyModelOutputLimit(t *testing.T) {
 		t.Fatalf("unknown model got a limit: %d", ac.MaxTokens)
 	}
 }
+
+// TestReasoningFallbackOnlyExplicit pins the upgrade contract: a reasoning
+// family saved without a level table (the state of configs written before
+// level tables, and the reporter's `codearts/glm-5.3-flash`) provides levels
+// for the picker, but sends nothing until a level is actually chosen.
+func TestReasoningFallbackOnlyExplicit(t *testing.T) {
+	srv, captured := captureOpenAI(t)
+	provider := config.ModelProvider{
+		ID: "p1", Name: "Fake", Protocol: config.ProtocolOpenAI, BaseURL: srv.URL,
+		Models: []config.ModelInfo{{ID: "codearts/glm-5.3-flash"}},
+	}
+	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)}}
+	send := func(level string) {
+		t.Helper()
+		llm, err := NewModelFromProviderWithReasoning(provider, "codearts/glm-5.3-flash", level)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, err := range llm.GenerateContent(context.Background(), req, false) {
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	send("")
+	if _, ok := (*captured)["reasoning_effort"]; ok {
+		t.Fatalf("fallback sent an implicit default: %v", *captured)
+	}
+	send("max")
+	if got := (*captured)["reasoning_effort"]; got != "max" {
+		t.Fatalf("explicit fallback level not sent: %v", *captured)
+	}
+}

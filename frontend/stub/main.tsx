@@ -256,6 +256,26 @@ const handlers: Record<string, (args: any[]) => any> = {
     }
     return null;
   },
+  // SendWithReasoning(sessionID, text, attachments, reasoningLevel)
+  "1733058623": (args) => {
+    const [sid, text, , reasoning] = args;
+    const stamp = new Date().toISOString();
+    pendingAnswer += 1;
+    const answer = `收到：${text}`;
+    const userMsg = { id: `m-user-${pendingAnswer}`, kind: "user", author: "user", text, timestamp: stamp, ...(reasoning ? { reasoning } : {}) };
+    histories[sid] = [
+      ...(histories[sid] ?? []),
+      userMsg,
+      { id: `m-ans-${pendingAnswer}`, kind: "assistant", author: "助手", text: answer, timestamp: stamp },
+    ];
+    // Mirror the backend stream: user bubble (with the turn's level), reply, done.
+    queueMicrotask(() => {
+      window.__emit("chat:stream", { sessionId: sid, kind: "user", text, ...(reasoning ? { reasoning } : {}) });
+      window.__emit("chat:stream", { sessionId: sid, kind: "message", author: "助手", text: answer });
+      window.__emit("chat:stream", { sessionId: sid, kind: "done" });
+    });
+    return null;
+  },
   // NewSessionWithWorkspace(targetType, targetID, title, workspaceDir)
   "1384618270": (args) => {
     if (workspaceMockMode === "conflict") throw new Error("工作区已被任务「需要确认的写入」使用：归档或删除该任务即可释放目录，也可以选择其他目录");
@@ -499,7 +519,23 @@ const handlers: Record<string, (args: any[]) => any> = {
   // SuggestModels(ids)
   "1306580425": (args) => (args[0] ?? []).map((id: string) => {
     const hit = seedConfig.providers[0].models.find((m) => m.id === id);
-    return hit ? { ...hit } : { id, displayName: id };
+    const base: any = hit ? { ...hit } : { id, displayName: id };
+    // Mirror config.suggestReasoning's family fallback: a model saved without
+    // a table still gets levels, so the per-turn picker stays visible (#42).
+    if (!base.reasoning && /gpt-5|gpt-6|o3|deepseek|glm|claude|qwen|kimi/.test(id.toLowerCase())) {
+      base.reasoning = {
+        enabled: true,
+        defaultLevel: "high",
+        levels: [
+          { level: "off", param: "reasoning_effort", value: "none" },
+          { level: "low", param: "reasoning_effort", value: "low" },
+          { level: "medium", param: "reasoning_effort", value: "medium" },
+          { level: "high", param: "reasoning_effort", value: "high" },
+          { level: "max", param: "reasoning_effort", value: "max" },
+        ],
+      };
+    }
+    return base;
   }),
   // ConfigService.KnowledgeIndexStats
   "2250008310": () => ({ files: 3, chunks: 12, model: "text-embedding-3-small" }),

@@ -13,6 +13,24 @@ import (
 	"go-workbuddy/internal/config"
 )
 
+// reasoningLabel renders the common level names in Chinese for exports; a
+// custom level keeps its configured label.
+func reasoningLabel(level string) string {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "off":
+		return "关闭"
+	case "low":
+		return "低"
+	case "medium":
+		return "中"
+	case "high":
+		return "高"
+	case "max":
+		return "最高"
+	}
+	return level
+}
+
 // ExportSession writes the conversation as Markdown into the workspace export
 // directory and returns the file path.
 func (c *ChatService) ExportSession(sessionID string) (string, error) {
@@ -56,6 +74,10 @@ func (c *ChatService) ExportSession(sessionID string) (string, error) {
 	for _, m := range msgs {
 		switch m.Kind {
 		case "user":
+			if m.Reasoning != "" {
+				fmt.Fprintf(&sb, "## 🧑 用户 · 思考强度：%s\n\n%s\n\n", reasoningLabel(m.Reasoning), m.Text)
+				continue
+			}
 			fmt.Fprintf(&sb, "## 🧑 用户\n\n%s\n\n", m.Text)
 		case "assistant":
 			fmt.Fprintf(&sb, "## 🤖 %s\n\n%s\n\n", m.Author, m.Text)
@@ -158,6 +180,10 @@ func (c *ChatService) ExportSessionHTML(sessionID string) (string, error) {
 	for _, m := range msgs {
 		switch m.Kind {
 		case "user":
+			if m.Reasoning != "" {
+				fmt.Fprintf(&body, "## 🧑 用户 · 思考强度：%s\n\n%s\n\n", htmlEscapeString(reasoningLabel(m.Reasoning)), m.Text)
+				continue
+			}
 			fmt.Fprintf(&body, "## 🧑 用户\n\n%s\n\n", m.Text)
 		case "assistant":
 			fmt.Fprintf(&body, "## 🤖 %s\n\n%s\n\n", m.Author, m.Text)

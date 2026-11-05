@@ -224,6 +224,16 @@ export function Send(sessionID: string, text: string, attachments: $models.Attac
 }
 
 /**
+ * SendWithReasoning runs one user turn with a per-turn thinking level (empty
+ * keeps the session default, then the model's own default). It is what the
+ * composer's per-message picker calls: the level applies to this turn only and
+ * is never written back to the session or provider configuration.
+ */
+export function SendWithReasoning(sessionID: string, text: string, attachments: $models.AttachmentIn[] | null, reasoningLevel: string): $CancellablePromise<void> {
+    return $Call.ByID(1733058623, sessionID, text, attachments, reasoningLevel);
+}
+
+/**
  * SessionStats computes aggregate metrics from the stored ADK events.
  */
 export function SessionStats(sessionID: string): $CancellablePromise<$models.SessionStats | null> {

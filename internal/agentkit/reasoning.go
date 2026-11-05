@@ -21,17 +21,27 @@ import (
 // "high" becomes the string high while "4096" becomes a number. A malformed
 // object in an empty-Param level is a configuration error the run should
 // surface rather than silently sending the model default.
+//
+// A built-in fallback table (a known reasoning family the user never
+// configured) only speaks when a level was explicitly chosen: it exists so
+// the picker never hides on models saved before level tables, not to rewrite
+// the provider default behind the user's back.
 func reasoningExtraBody(mi config.ModelInfo, level string) (map[string]any, error) {
-	if mi.Reasoning == nil {
+	table := mi.ReasoningTable()
+	if table == nil {
 		return nil, nil
 	}
-	param, value, ok := mi.Reasoning.Resolve(level)
+	level = strings.TrimSpace(level)
+	if level == "" && !mi.ReasoningConfigured() {
+		return nil, nil
+	}
+	param, value, ok := table.Resolve(level)
 	if !ok {
 		return nil, nil
 	}
-	label := strings.TrimSpace(level)
+	label := level
 	if label == "" {
-		label = strings.TrimSpace(mi.Reasoning.DefaultLevel)
+		label = table.DefaultLevelName()
 	}
 	if label == "" {
 		label = "默认档"

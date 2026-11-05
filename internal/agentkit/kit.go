@@ -35,8 +35,10 @@ func NewModelFromProvider(p config.ModelProvider, modelID string) (model.LLM, er
 
 // NewModelFromProviderWithReasoning builds a model whose requests carry the
 // thinking fields resolved from the model's level table. level selects a level
-// by name; empty means the model's configured default. Side calls that should
-// not think (auto-title) keep using NewModelFromProvider.
+// by name; empty means the model's configured default. Models without a saved
+// table fall back to the built-in family table, but only when level is
+// non-empty — an unconfigured model keeps the provider default. Side calls
+// that should not think (auto-title) keep using NewModelFromProvider.
 func NewModelFromProviderWithReasoning(p config.ModelProvider, modelID, level string) (model.LLM, error) {
 	var extra map[string]any
 	if mi, ok := p.FindModel(modelID); ok {

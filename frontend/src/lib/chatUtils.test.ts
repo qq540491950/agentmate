@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  computeEditFlags, computeRunningTools, computeToolDurations, dayLabel, fmtTime, isDayChange,
-  mdToSpeech, type UIMessage,
+  computeEditFlags, computeRunningTools, computeToolDurations, dayLabel, effectiveReasoningLevel,
+  fmtTime, isDayChange, mdToSpeech, type UIMessage,
   groupSessionsByTime,
   groupSessionsByProject,
 } from "./chatUtils";
@@ -225,5 +225,24 @@ describe('groupSessionsByProject', () => {
       WS,
     );
     expect(groups.map((g) => g.label)).toEqual(['b', 'a', '已归档']);
+  });
+});
+
+describe('effectiveReasoningLevel', () => {
+  const levels = [
+    { level: 'off', value: '{}' },
+    { level: 'low', value: '{}' },
+    { level: 'high', value: '{}' },
+  ];
+
+  it('prefers the per-turn pick, then the session default, then the model default', () => {
+    expect(effectiveReasoningLevel(levels, 'low', 'high', 'off')).toBe('low');
+    expect(effectiveReasoningLevel(levels, '', 'high', 'off')).toBe('high');
+    expect(effectiveReasoningLevel(levels, '', '', 'off')).toBe('off');
+  });
+
+  it('ignores names the table does not offer and falls back to its first level', () => {
+    expect(effectiveReasoningLevel(levels, 'turbo', '', '')).toBe('off');
+    expect(effectiveReasoningLevel([], 'high', 'low', 'off')).toBe('');
   });
 });

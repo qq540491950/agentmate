@@ -1,5 +1,5 @@
 // Pure helpers shared by the chat page and its unit tests (vitest).
-import type { AttachmentOut, ChatSession, Project, UsageInfo } from "@/lib/api";
+import type { AttachmentOut, ChatSession, Project, ReasoningLevel, UsageInfo } from "@/lib/api";
 
 export type UIMessage = {
   id: string;
@@ -17,7 +17,25 @@ export type UIMessage = {
   streaming?: boolean;
   usage?: UsageInfo | null;
   attachments?: AttachmentOut[] | null;
+  /** reasoning is the thinking level this turn was sent with. */
+  reasoning?: string;
 };
+
+/**
+ * effectiveReasoningLevel picks the level a turn will use: explicit choices in
+ * order (per-turn pick, then session default), then the model default. Names
+ * the model's table does not offer are ignored so a stale choice from another
+ * model cannot leak into a request. Returns "" when the model has no table.
+ */
+export function effectiveReasoningLevel(
+  levels: ReasoningLevel[],
+  ...choices: (string | null | undefined)[]
+): string {
+  for (const choice of choices) {
+    if (choice && levels.some((l) => l.level === choice)) return choice;
+  }
+  return levels[0]?.level ?? "";
+}
 
 /** mdToSpeech converts markdown to a speakable plain string. */
 export function mdToSpeech(md: string): string {

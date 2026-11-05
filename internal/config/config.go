@@ -111,6 +111,43 @@ func (r *ReasoningConfig) Resolve(level string) (param, value string, ok bool) {
 	return chosen.Param, chosen.Value, true
 }
 
+// MatchLevel returns the table's stored spelling of one level name, matched
+// case-insensitively. ok is false for a blank or unknown name so callers can
+// fall through to the next choice (per-turn → session → model default)
+// instead of sending a stale preference.
+func (r *ReasoningConfig) MatchLevel(level string) (string, bool) {
+	if r == nil || !r.Enabled {
+		return "", false
+	}
+	wanted := strings.ToLower(strings.TrimSpace(level))
+	if wanted == "" {
+		return "", false
+	}
+	for _, l := range r.Levels {
+		if strings.ToLower(strings.TrimSpace(l.Level)) == wanted {
+			return strings.TrimSpace(l.Level), true
+		}
+	}
+	return "", false
+}
+
+// DefaultLevelName is the level a run with no explicit choice uses: the
+// configured default when it names a real level, else the first level. It
+// returns "" when the table is disabled, empty, or its default name is stale.
+func (r *ReasoningConfig) DefaultLevelName() string {
+	if r == nil || !r.Enabled || len(r.Levels) == 0 {
+		return ""
+	}
+	wanted := strings.TrimSpace(r.DefaultLevel)
+	if wanted == "" {
+		return strings.TrimSpace(r.Levels[0].Level)
+	}
+	if name, ok := r.MatchLevel(wanted); ok {
+		return name
+	}
+	return ""
+}
+
 // UnmarshalJSON accepts both the legacy entries ("model-id") and the current
 // object form, so old config files load unchanged.
 func (m *ModelInfo) UnmarshalJSON(data []byte) error {

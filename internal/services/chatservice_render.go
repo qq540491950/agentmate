@@ -35,6 +35,11 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 			m := base
 			m.Kind = role
 			m.Text = textBuf.String()
+			if role == "user" {
+				// The level rides on the user message's state delta; older
+				// turns recorded none and simply show none.
+				m.Reasoning = eventReasoning(ev)
+			}
 			out = append(out, m)
 			textBuf.Reset()
 		}
