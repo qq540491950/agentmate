@@ -37,6 +37,25 @@ export function effectiveReasoningLevel(
   return levels[0]?.level ?? "";
 }
 
+/**
+ * sessionTargetBadgeLabel returns the header badge text for a session target.
+ * Direct chats (empty target) have no badge: showing "直聊" made it look like a
+ * selectable mode next to Agent/team targets. Returns null when no badge
+ * should render.
+ */
+export function sessionTargetBadgeLabel(targetType?: string): string | null {
+  switch (targetType) {
+    case "agent":
+      return "Agent";
+    case "team":
+      return "团队";
+    case "remote":
+      return "远程";
+    default:
+      return null;
+  }
+}
+
 /** mdToSpeech converts markdown to a speakable plain string. */
 export function mdToSpeech(md: string): string {
   return md
