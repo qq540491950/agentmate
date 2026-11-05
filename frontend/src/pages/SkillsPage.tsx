@@ -10,7 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Config, type SkillConfig, errText } from "@/lib/api";
+import { isReadOnlySkill, skillSource, skillSourceLabel } from "@/lib/skills";
 
 function blankSkill(): SkillConfig {
   return { id: "", name: "", description: "", content: "", createdAt: "" };
@@ -86,7 +88,10 @@ export function SkillsPage() {
             <EmptyState icon={ListTodo} title="还没有 Skill" desc="点击「新增 Skill」创建，或从工作区 knowledge 目录导入。" />
           </div>
         )}
-        {skills.map((s) => (
+        {skills.map((s) => {
+          const source = skillSource(s.id);
+          const readOnly = isReadOnlySkill(s.id);
+          return (
           <Card key={s.id}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
@@ -95,23 +100,31 @@ export function SkillsPage() {
                     <Sparkles className="h-4 w-4 text-primary" />
                   </div>
                   <div>
-                    <div className="font-medium">{s.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{s.name}</span>
+                      <Badge variant="secondary" className="font-normal">{skillSourceLabel(source)}</Badge>
+                    </div>
                     <div className="text-xs text-muted-foreground">{s.description}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" size="sm" onClick={() => setEditing({ ...s })}>编辑</Button>
-                  <Button variant="ghost" size="icon" onClick={() => remove(s)}>
-                    <Trash2 className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                </div>
+                {readOnly ? (
+                  <span className="text-xs text-muted-foreground" title="来自 .agents/skills，修改请编辑对应目录的 SKILL.md">只读</span>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="sm" onClick={() => setEditing({ ...s })}>编辑</Button>
+                    <Button variant="ghost" size="icon" onClick={() => remove(s)}>
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                )}
               </div>
               <pre className="mt-2 max-h-24 overflow-hidden whitespace-pre-wrap text-xs text-muted-foreground">
                 {s.content.length > 200 ? s.content.slice(0, 200) + "…" : s.content}
               </pre>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>

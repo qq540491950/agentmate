@@ -82,11 +82,15 @@ type Kit struct {
 	// agent (parallel sessions rebuild per turn) must not interleave the
 	// write/prune/preload sequence over the shared staging directory.
 	skillMu sync.Mutex
+	// globalSkillRoot is the user-level agentskills.io discovery root
+	// (~/.agents/skills). Captured at construction; tests override it so agent
+	// builds never depend on the developer's real home directory.
+	globalSkillRoot string
 }
 
 // NewKit creates a Kit.
 func NewKit(store *config.Store, mcp *mcpmgr.Manager) *Kit {
-	return &Kit{store: store, mcp: mcp}
+	return &Kit{store: store, mcp: mcp, globalSkillRoot: config.GlobalSkillRoot()}
 }
 
 // SetMemoryTool attaches the long-term memory search tool.
@@ -244,7 +248,7 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 
 	// Skills (progressive disclosure via ADK skill toolset).
 	if len(ac.SkillIDs) > 0 {
-		ts, err := k.skillToolset(ac, cfg)
+		ts, err := k.skillToolset(ac, cfg, workspace)
 		if err != nil {
 			return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 		}
@@ -509,58 +513,86 @@ func (k *Kit) searchOptions(cfg config.Config) SearchOptions {
 // to write a skill is reported instead of silently running an agent that is
 // missing a capability the user attached.
 //
+// Mounted IDs resolve against the effective skill set: project/global skills
+// discovered under <workspace>/.agents/skills and ~/.agents/skills take
+// precedence over same-named app skills (issue #52), so an app skill that got
+// shadowed still materializes the winning definition instead of breaking the
+// build. A discovered skill whose directory vanished (workspace switch) is
+// skipped silently: external roots are transient by nature. A missing app
+// skill keeps the old hard error.
+//
 // The staging directory is scoped per agent (skills/agents/<key>): the ADK
 // filesystem source exposes every skill in the tree it is pointed at, so a
 // shared directory would leak skills between agents and keep unmounted or
 // deleted skills loadable. Directories not in the wanted set are pruned before
 // loading, so detaching or deleting a skill takes effect on the next build.
-func (k *Kit) skillToolset(ac config.AgentConfig, cfg config.Config) (tool.Toolset, error) {
+func (k *Kit) skillToolset(ac config.AgentConfig, cfg config.Config, workspace string) (tool.Toolset, error) {
 	k.skillMu.Lock()
 	defer k.skillMu.Unlock()
 	ids := ac.SkillIDs
-	want := map[string]bool{}
-	wantNames := map[string]bool{}
-	for _, id := range ids {
-		want[id] = true
+
+	effective := config.EffectiveSkills(cfg, workspace, k.globalSkillRoot)
+	byID := make(map[string]config.SkillConfig, len(effective))
+	byName := make(map[string]config.SkillConfig, len(effective))
+	for _, s := range effective {
+		byID[s.ID] = s
+		byName[config.NormalizeSkillName(s.Name)] = s
 	}
+	cfgByID := make(map[string]config.SkillConfig, len(cfg.Skills))
 	for _, s := range cfg.Skills {
-		if want[s.ID] {
-			wantNames[sanitizeSkillName(s.Name)] = true
-		}
+		cfgByID[s.ID] = s
 	}
-	// Same no-silent-degradation contract as MCP: a mounted skill that no
+
+	wantNames := map[string]bool{}
+	var selected []config.SkillConfig
+	seen := map[string]bool{}
+	// Same no-silent-degradation contract as MCP: a mounted app skill that no
 	// longer exists (imported share files are the usual source) is reported,
 	// not quietly dropped — the agent would otherwise claim capabilities it
 	// never had.
 	var missing []string
 	for _, id := range ids {
-		exists := false
-		for _, s := range cfg.Skills {
-			if s.ID == id {
-				exists = true
-				break
+		s, ok := byID[id]
+		if !ok {
+			if _, discovered := config.DiscoveredSkillSource(id); discovered {
+				// The root may have moved with the workspace; fall back to a
+				// same-named skill if one is still visible.
+				s, ok = byName[config.DiscoveredSkillName(id)]
+			} else if old, exists := cfgByID[id]; exists {
+				// App skill shadowed by a same-named discovered skill: mount
+				// the winning definition (project > global > app).
+				s, ok = byName[config.NormalizeSkillName(old.Name)]
+			}
+			if !ok {
+				if _, discovered := config.DiscoveredSkillSource(id); !discovered {
+					missing = append(missing, id)
+				}
+				continue
 			}
 		}
-		if !exists {
-			missing = append(missing, id)
+		key := config.NormalizeSkillName(s.Name)
+		if seen[key] {
+			continue
 		}
+		seen[key] = true
+		wantNames[key] = true
+		selected = append(selected, s)
 	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("agent %q: 挂载的技能不存在（请重新选择或导入）: %s", ac.Name, strings.Join(missing, ", "))
 	}
+
 	dir := filepath.Join(k.store.SkillsDir(), "agents", agentSkillKey(ac))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create skills dir: %w", err)
 	}
-	for _, s := range cfg.Skills {
-		if !want[s.ID] {
-			continue
-		}
-		dirSkill := filepath.Join(dir, sanitizeSkillName(s.Name))
+	for _, s := range selected {
+		name := config.NormalizeSkillName(s.Name)
+		dirSkill := filepath.Join(dir, name)
 		if err := os.MkdirAll(dirSkill, 0o755); err != nil {
 			return nil, fmt.Errorf("create skill dir %q: %w", s.Name, err)
 		}
-		body, err := skill.Build(&skill.Frontmatter{Name: sanitizeSkillName(s.Name), Description: s.Description}, s.Content)
+		body, err := skill.Build(&skill.Frontmatter{Name: name, Description: s.Description}, s.Content)
 		if err != nil {
 			return nil, fmt.Errorf("build skill %q: %w", s.Name, err)
 		}
@@ -673,27 +705,11 @@ func sanitizeAgentName(name string) string {
 	return out
 }
 
-// sanitizeSkillName makes a valid agentskills.io skill name:
-// lowercase alphanumerics and hyphens only, no leading/trailing hyphen.
-func sanitizeSkillName(name string) string {
-	var sb strings.Builder
-	prevHyphen := true // suppress leading hyphens
-	for _, r := range strings.ToLower(name) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			sb.WriteRune(r)
-			prevHyphen = false
-		case (r == '-' || r == '_' || r == ' ') && !prevHyphen:
-			sb.WriteRune('-')
-			prevHyphen = true
-		}
-	}
-	out := strings.TrimSuffix(sb.String(), "-")
-	if out == "" {
-		out = "skill"
-	}
-	return out
-}
+// sanitizeSkillName makes a valid agentskills.io skill name: lowercase
+// alphanumerics and hyphens only, no leading/trailing hyphen. The shared
+// implementation lives in config so discovery and materialization agree on
+// which names collide.
+func sanitizeSkillName(name string) string { return config.NormalizeSkillName(name) }
 
 // GuardrailsEnabled reports whether guardrails are on for an agent (default on).
 func GuardrailsEnabled(ac config.AgentConfig) bool {
