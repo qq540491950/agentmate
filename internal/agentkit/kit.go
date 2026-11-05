@@ -18,6 +18,7 @@ import (
 	"google.golang.org/adk/v2/agent/llmagent"
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/adk/v2/model/gemini"
+	"google.golang.org/adk/v2/session"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
 	"google.golang.org/adk/v2/tool/skilltoolset"
@@ -315,7 +316,7 @@ func (k *Kit) llmConfig(ac config.AgentConfig, m model.LLM, tools []tool.Tool, t
 		Name:                     sanitizeAgentName(ac.Name),
 		Model:                    m,
 		Description:              firstNonEmpty(ac.Description, ac.Name),
-		InstructionProvider:      func(agent.ReadonlyContext) (string, error) { return instruction, nil },
+		InstructionProvider:      skillAwareInstruction(instruction),
 		GenerateContentConfig:    gcc,
 		Tools:                    tools,
 		Toolsets:                 toolsets,
@@ -611,6 +612,48 @@ func agentSkillKey(ac config.AgentConfig) string {
 // Exported so config validation can reject names that would collide with an
 // existing skill's materialized directory.
 func MaterializedSkillName(name string) string { return sanitizeSkillName(name) }
+
+// SkillContextStateKey carries the SKILL.md body of a slash-invoked skill into
+// one run. The "temp:" prefix is ADK's temporary-state convention: the value
+// reaches the running invocation (so the instruction provider can append it)
+// but is trimmed before it is written back to the session, so the next turn
+// never inherits a previous skill.
+const SkillContextStateKey = session.KeyPrefixTemp + "workbuddy.skill_context"
+
+// skillAwareInstruction wraps a base system instruction so a turn that was
+// started with a "/<skill-name>" command gets that skill's SKILL.md appended
+// for the duration of the run. This is the per-turn counterpart of mounting a
+// skill on an agent: the model sees the full instructions without the skill
+// body being stored as part of the user's chat history.
+func skillAwareInstruction(base string) func(agent.ReadonlyContext) (string, error) {
+	return func(ctx agent.ReadonlyContext) (string, error) {
+		out := base
+		if ctx != nil {
+			if st := ctx.ReadonlyState(); st != nil {
+				if v, err := st.Get(SkillContextStateKey); err == nil {
+					if extra, ok := v.(string); ok && strings.TrimSpace(extra) != "" {
+						out = base + "\n\n" + extra
+					}
+				}
+			}
+		}
+		return out, nil
+	}
+}
+
+// RenderSkillMD renders a configured skill exactly as it is materialized on
+// disk (frontmatter + body), so a slash-invoked skill and an agent-mounted
+// skill receive identical instructions.
+func RenderSkillMD(name, description, content string) (string, error) {
+	body, err := skill.Build(&skill.Frontmatter{
+		Name:        sanitizeSkillName(name),
+		Description: description,
+	}, content)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
 
 // RemoveMaterializedSkill deletes the materialized SKILL.md directories of a
 // skill: the per-agent staging dirs and the legacy shared layout. Best effort

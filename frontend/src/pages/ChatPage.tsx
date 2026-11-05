@@ -34,6 +34,7 @@ import {
   clampSidebarWidth, parseStoredSidebarWidth, sidebarMaxWidth,
 } from "@/lib/sidebarWidth";
 import { shouldOpenLatestSession } from "@/lib/sessionDraft";
+import { filterSlashCommands, isSkillCommand, slashCandidates, type SlashCommand } from "@/lib/slashSkills";
 import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
 import { levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
 import { resolveAgentModel } from "@/lib/agentModel";
@@ -47,7 +48,7 @@ import {
   Chat, Config, errText, sessionAllowAllTools, setSessionAllowAllTools,
   type AgentConfig, type AttachmentIn, type ChatSession, type TeamConfig,
   type RemoteAgentConfig, type UsageInfo, type ModelProvider, type ModelInfo, type SessionStats,
-  type Project,
+  type Project, type SkillConfig,
 } from "@/lib/api";
 import {
   ALLOW_ALL_RISK_DESCRIPTION, ALLOW_ALL_RISK_TITLE,
@@ -70,7 +71,9 @@ const RENDER_LIMIT = 200;
 // bindings that do not need to grow for a splitter drag.
 const SIDEBAR_WIDTH_STORAGE_KEY = "wb-chat-sidebar-width";
 
-const SLASH_COMMANDS = [
+// Built-in commands run locally, without a model round-trip. Configured
+// skills are appended by slashCandidates (issue #53).
+const SLASH_COMMANDS: SlashCommand[] = [
   { cmd: "/export", desc: "导出会话为 Markdown" },
   { cmd: "/exporthtml", desc: "导出会话为 HTML" },
   { cmd: "/stats", desc: "查看会话统计" },
@@ -127,6 +130,10 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [teams, setTeams] = useState<TeamConfig[]>([]);
   const [remotes, setRemotes] = useState<RemoteAgentConfig[]>([]);
+  // Configured skills furnish the extra "/" commands (issue #53). They ride on
+  // the same config load as agents/teams, so returning from the Skills page
+  // (a remount) picks up edits.
+  const [skills, setSkills] = useState<SkillConfig[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [renamingProject, setRenamingProject] = useState<Project | null>(null);
   const [renameProjectText, setRenameProjectText] = useState("");
@@ -262,6 +269,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         setAgents(c.agents ?? []);
         setTeams(c.teams ?? []);
         setRemotes(c.remoteAgents ?? []);
+        setSkills(c.skills ?? []);
         setProviderCount((c.providers ?? []).length);
         setProviderList(c.providers ?? []);
         setAutoSpeak(!!c.settings?.autoSpeak);
@@ -839,7 +847,14 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
           createDirectSession();
           return;
         default:
-          toast.error(`未知命令 ${cmd}。可用：/export /exporthtml /stats /todos /new`);
+          // A "/<skill-name>" command is sent as a normal message: the
+          // backend injects that skill's SKILL.md into this turn only
+          // (issue #53). Unknown tokens keep the old contract — hint, no send.
+          if (isSkillCommand(text, skills)) break;
+          toast.error(
+            `未知命令 ${cmd}。可用：${SLASH_COMMANDS.map((c) => c.cmd).join(" ")}` +
+              (skills.length > 0 ? `；或输入 / 选择 ${skills.length} 个 Skill` : ""),
+          );
           return;
       }
     }
@@ -1684,11 +1699,11 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     if (next) setTimeout(() => filterInputRef.current?.focus(), 50);
     else setMsgFilter("");
   }, []);
-  const slashSuggestions = useMemo(() => {
-    if (!input.startsWith("/")) return [];
-    const q = input.toLowerCase();
-    return SLASH_COMMANDS.filter((c) => c.cmd.startsWith(q));
-  }, [input]);
+  const slashCommands = useMemo(() => slashCandidates(SLASH_COMMANDS, skills), [skills]);
+  const slashSuggestions = useMemo(
+    () => filterSlashCommands(slashCommands, input),
+    [slashCommands, input],
+  );
   // Slash suggestions match the mention popup's interaction: full keyboard
   // navigation, Enter/Tab to pick, Esc to dismiss until the text changes.
   const [slashIdx, setSlashIdx] = useState(0);
