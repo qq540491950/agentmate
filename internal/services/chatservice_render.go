@@ -10,6 +10,7 @@ import (
 	"google.golang.org/adk/v2/tool/toolconfirmation"
 	"google.golang.org/genai"
 
+	"go-workbuddy/internal/agentkit"
 	"go-workbuddy/internal/config"
 )
 
@@ -266,6 +267,60 @@ func turnTargetFor(cfg config.Config, target *config.ChatSession, userText strin
 		}
 	}
 	return &turn
+}
+
+// resolveSkillCommand parses a leading "/<skill-name>" command against the
+// configured skills. Matching uses the materialized name ADK would expose
+// (lowercase, hyphenated) and is case-insensitive, so "/Weekly_Report" finds a
+// skill named "Weekly Report". The remainder of the line is returned as the
+// turn's user input. Only the first token is considered: the text doubles as
+// chat history, so Regenerate and HITL resume can re-parse it verbatim.
+func resolveSkillCommand(cfg config.Config, text string) (*config.SkillConfig, string) {
+	t := strings.TrimLeft(text, " \t\r\n")
+	if !strings.HasPrefix(t, "/") {
+		return nil, ""
+	}
+	rest := t[1:]
+	cut := strings.IndexAny(rest, " \t\r\n")
+	token, args := rest, ""
+	if cut >= 0 {
+		token, args = rest[:cut], strings.TrimSpace(rest[cut:])
+	}
+	if token == "" {
+		return nil, ""
+	}
+	cmd := agentkit.MaterializedSkillName(token)
+	for i := range cfg.Skills {
+		s := &cfg.Skills[i]
+		if agentkit.MaterializedSkillName(s.Name) == cmd {
+			return s, args
+		}
+	}
+	return nil, ""
+}
+
+// buildSkillTurnContext renders the instruction block injected into a turn
+// started by a "/<skill-name>" command. args is the text after the command, so
+// the model gets the task spelled out even though the stored user message
+// keeps the full command line. The block is appended to the system
+// instruction by agentkit.skillAwareInstruction — never to the stored user
+// message — so history and exports keep showing what the user actually typed.
+func buildSkillTurnContext(s *config.SkillConfig, args string) string {
+	if s == nil {
+		return ""
+	}
+	md, err := agentkit.RenderSkillMD(s.Name, s.Description, s.Content)
+	if err != nil {
+		// Fall back to the raw body: a frontmatter rendering hiccup must not
+		// silently turn the invocation into a no-op.
+		md = s.Content
+	}
+	out := "本轮用户消息以 /" + agentkit.MaterializedSkillName(s.Name) + " 命令开头；" +
+		"请严格按以下技能「" + s.Name + "」的 SKILL.md 执行：\n\n" + md
+	if args != "" {
+		out += "\n\n本轮实际任务（命令后的用户输入）：\n" + args
+	}
+	return out
 }
 
 // renderTodoList renders a plan_todos tool result as a compact checklist line
