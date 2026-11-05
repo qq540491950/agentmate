@@ -307,6 +307,90 @@ func TestDirectChatWriteAsksConfirmation(t *testing.T) {
 	}
 }
 
+// TestDirectChatAdvertisesShellTool pins the issue #40 regression: the
+// implicit default agent behind a target-less chat must mount run_command and
+// tell the model it has terminal capability, not only workspace file tools.
+func TestDirectChatAdvertisesShellTool(t *testing.T) {
+	chat, _, bodies := newDirectChat(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(sseText("好的") + sseDone))
+	})
+	sess, err := chat.newLegacySession("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := chat.Send(sess.ID, "拉取最新代码", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(*bodies) != 1 {
+		t.Fatalf("expected 1 model call, got %d", len(*bodies))
+	}
+	first := (*bodies)[0]
+	if !strings.Contains(first, `"name":"run_command"`) {
+		t.Fatalf("direct chat request is missing run_command: %s", first)
+	}
+	if !strings.Contains(first, "run_command") || !strings.Contains(first, "终端") {
+		t.Fatalf("system prompt does not advertise terminal capability: %s", first)
+	}
+}
+
+// TestDirectChatShellAsksConfirmation: a direct chat gets the terminal tool
+// behind the same HITL gate as a new agent — nothing runs before the user
+// approves, and the command executes in the session workspace afterwards.
+func TestDirectChatShellAsksConfirmation(t *testing.T) {
+	root := t.TempDir()
+	turn := 0
+	chat, _, bodies := newDirectChat(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		turn++
+		switch turn {
+		case 1:
+			_, _ = w.Write([]byte(sseToolCall("call_1", "run_command",
+				`"{\"command\":\"echo hi > shell-marker.txt\"}"`) + sseDone))
+		case 2:
+			_, _ = w.Write([]byte(sseText("代码已拉取。") + sseDone))
+		default:
+			t.Errorf("unexpected model turn %d", turn)
+			_, _ = w.Write([]byte(sseDone))
+		}
+	})
+	events := hookEvents(t)
+
+	sess, err := chat.NewSessionWithWorkspace("", "", "", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := chat.Send(sess.ID, "拉取最新代码", nil); err != nil {
+		t.Fatal(err)
+	}
+	var req *ChatStreamEvent
+	for i := range *events {
+		if (*events)[i].Kind == "confirm_request" {
+			req = &(*events)[i]
+		}
+	}
+	if req == nil || req.ToolName != "run_command" || req.CallID == "" {
+		t.Fatalf("expected a shell confirmation request, got: %+v", *events)
+	}
+	if req.ToolArgs["command"] != "echo hi > shell-marker.txt" {
+		t.Fatalf("confirm_request should surface the command: %+v", req)
+	}
+	if _, err := os.Stat(filepath.Join(root, "shell-marker.txt")); !os.IsNotExist(err) {
+		t.Fatal("command must not run before the user approves")
+	}
+	if err := chat.ConfirmToolCall(sess.ID, req.CallID, true); err != nil {
+		t.Fatal(err)
+	}
+	// The resumed model call must carry the executed result (exitCode 0), not
+	// the bare confirmation roundtrip ADK hides from the model.
+	if len(*bodies) < 2 || !strings.Contains((*bodies)[1], `\"exitCode\":0`) {
+		t.Fatalf("resume request missing successful shell result: %v", *bodies)
+	}
+	if data, err := os.ReadFile(filepath.Join(root, "shell-marker.txt")); err != nil || strings.TrimSpace(string(data)) != "hi" {
+		t.Fatalf("expected approved command output, err=%v data=%q", err, data)
+	}
+}
+
 // TestDirectChatWithoutProviderFails: with no provider configured the turn
 // is refused with an actionable message instead of a generic error.
 func TestDirectChatWithoutProviderFails(t *testing.T) {

@@ -144,11 +144,15 @@ func (c *ChatService) targetAgentConfig(cfg config.Config, target *config.ChatSe
 }
 
 // directAgentConfig builds the implicit target behind a direct chat: the
-// default provider's first model, a workspace-aware prompt and the workspace
-// file tools. Nothing is persisted — direct sessions only materialize an
-// agent per turn. Without the file tools a project chat could only promise
-// "我来查看项目" and stop: the model had no way to read the directory it was
-// asked about (issue #21). Writes stay behind HITL confirmation.
+// default provider's first model, a workspace-aware prompt, the workspace
+// file tools and the terminal tool. Nothing is persisted — direct sessions
+// only materialize an agent per turn. Without the file tools a project chat
+// could only promise "我来查看项目" and stop: the model had no way to read the
+// directory it was asked about (issue #21). Without the shell tool the default
+// agent denied having any terminal capability and refused "git pull" (issue
+// #40) — the configured agents had run_command since #36, but this hardcoded
+// path still narrowed itself to files. Writes and commands stay behind HITL
+// confirmation, matching a new agent's defaults.
 func directAgentConfig(cfg config.Config) (config.AgentConfig, error) {
 	var provider *config.ModelProvider
 	for i := range cfg.Providers {
@@ -178,11 +182,15 @@ func directAgentConfig(cfg config.Config) (config.AgentConfig, error) {
 		SystemPrompt: "你是 WorkBuddy 桌面助手。用中文简洁、准确地回答用户问题。\n" +
 			"当前任务工作区：{{workspace}}。当问题涉及项目或文件内容时，先调用 " +
 			"list_workspace_files 查看目录结构，再按需调用 read_workspace_file 读取文件，" +
-			"基于实际内容回答，不要凭空猜测。",
-		BuiltinTools: []string{"files"},
-		// Reads are automatic; writes pause for human approval, the same
-		// contract configured agents get.
-		ConfirmTools: []string{"files"},
+			"基于实际内容回答，不要凭空猜测。\n" +
+			"你具备终端命令工具 run_command，可在工作区内执行 git、构建、测试、安装依赖等命令；" +
+			"需要拉取代码、运行命令时直接调用 run_command，不要声称没有终端或 Shell 能力。" +
+			"写入文件和执行命令会先请用户确认。",
+		BuiltinTools: []string{"files", "shell"},
+		// Reads are automatic; writes and commands pause for human approval,
+		// the same contract configured agents get (new agents default to
+		// asking before run_command).
+		ConfirmTools: []string{"files", "shell"},
 	}, nil
 }
 
