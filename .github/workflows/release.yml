@@ -279,8 +279,12 @@ jobs:
         with:
           go-version-file: go.mod
       # `go install .../cmd/wails3` links the linux backend (cgo), so the CLI we
-      # need for manifest signing cannot be built without the GTK4 headers.
-      # Both the headers and the compiled CLI are skipped when the cache hits.
+      # need for manifest signing cannot be built without the GTK4 headers — and
+      # the cached binary is dynamically linked, so it cannot *run* without the
+      # matching shared libraries either. The cache only stores the binary, not
+      # the system libraries, hence the apt step must run even on a cache hit
+      # (v0.5.33 failed at `wails3 updater manifest` with
+      # "libwebkitgtk-6.0.so.4: cannot open shared object file" otherwise).
       - name: Cache Wails CLI (manifest signing)
         id: wails-cache
         uses: actions/cache@v4
@@ -288,7 +292,6 @@ jobs:
           path: ~/go/bin/wails3
           key: ${{ runner.os }}-wails3-${{ env.WAILS_VERSION }}
       - name: Install linux cgo headers (wails3 CLI)
-        if: steps.wails-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
