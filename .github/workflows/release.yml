@@ -229,6 +229,12 @@ jobs:
         with:
           ref: ${{ needs.plan.outputs.sha }}
           fetch-depth: 0
+      # Annotated tags require a committer identity; the runner has none by
+      # default, which made `git tag -a` fail with "empty ident name".
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - uses: actions/download-artifact@v7
         with:
           name: artifacts-windows
