@@ -33,7 +33,7 @@ import {
   SIDEBAR_KEYBOARD_STEP, SIDEBAR_MIN_WIDTH,
   clampSidebarWidth, parseStoredSidebarWidth, sidebarMaxWidth,
 } from "@/lib/sidebarWidth";
-import { shouldOpenLatestSession } from "@/lib/sessionDraft";
+import { draftUsesProject, shouldOpenLatestSession } from "@/lib/sessionDraft";
 import { filterSlashCommands, isSkillCommand, slashCandidates, type SlashCommand } from "@/lib/slashSkills";
 import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
 import { levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
@@ -110,6 +110,10 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // first message is sent, so no empty row lands in the sidebar/database and
   // the auto-open-newest effect must not replace it (issue #30).
   const [newChatDraft, setNewChatDraft] = useState(false);
+  // Project bound to that pending draft ("" = a direct chat). Only the first
+  // send creates the row, so a project's「+」no longer persists an empty
+  // conversation per click (issue #60).
+  const [draftProjectID, setDraftProjectID] = useState("");
   const input = activeID ? (drafts[activeID] ?? "") : freshInput;
   const setInput = useCallback(
     (v: string | ((prev: string) => string)) => {
@@ -240,27 +244,24 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // New chats are ALWAYS direct (no target): turns run on the default
   // provider's model, and leading @助手 mentions route individual turns to
   // agents, teams or remote A2A agents. No dialog, no pre-configuration.
-  // 「新聊天」only opens a local draft; the session is created by send() when
-  // the first message actually goes out (issue #30).
-  const createDirectSession = useCallback(() => {
+  // 「新聊天」and a project's「+」only open a local draft; the session is
+  // created by send() when the first message actually goes out (issue #30,
+  // issue #60 — the project path used to persist a row per click).
+  const openNewChatDraft = useCallback((projectID: string) => {
     setActiveID("");
     setNewChatDraft(true);
+    setDraftProjectID(projectID);
     setMessages([]);
     setFreshInput("");
     setEditing(false);
     setSessionUsage(null);
   }, []);
+  const createDirectSession = useCallback(() => openNewChatDraft(""), [openNewChatDraft]);
   createDirectSessionRef.current = createDirectSession;
-  const createProjectSession = useCallback(async (projectID: string) => {
-    try {
-      const s = await Chat.NewSessionWithProject("", "", "", projectID);
-      setMessages([]);
-      reloadSessions();
-      setActiveID(s.id);
-    } catch (e) {
-      toast.error(`创建会话失败: ${errText(e)}`);
-    }
-  }, [reloadSessions]);
+  const createProjectSession = useCallback(
+    (projectID: string) => openNewChatDraft(projectID),
+    [openNewChatDraft],
+  );
   useEffect(() => {
     reloadSessions();
     reloadProjects();
@@ -334,7 +335,10 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   }, [sessions, activeID, newChatDraft]);
 
   useEffect(() => {
-    if (activeID) setNewChatDraft(false);
+    if (activeID) {
+      setNewChatDraft(false);
+      setDraftProjectID("");
+    }
   }, [activeID]);
 
   // The filter is session-scoped: a query left over from another chat would
@@ -779,9 +783,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         return;
       }
       try {
-        const s = await Chat.NewSessionWithWorkspace("", "", "", "");
+        const s = draftUsesProject(draftProjectID)
+          ? await Chat.NewSessionWithProject("", "", "", draftProjectID)
+          : await Chat.NewSessionWithWorkspace("", "", "", "");
         sid = s.id;
         setFreshInput("");
+        setDraftProjectID("");
         setActiveID(s.id);
         setMessages([]);
         reloadSessions();

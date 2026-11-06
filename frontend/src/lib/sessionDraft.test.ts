@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldOpenLatestSession } from "./sessionDraft";
+import { draftUsesProject, shouldOpenLatestSession } from "./sessionDraft";
 
 describe("shouldOpenLatestSession", () => {
   it("opens the newest session on first load", () => {
@@ -20,5 +20,18 @@ describe("shouldOpenLatestSession", () => {
 
   it("does nothing while the session list is empty", () => {
     expect(shouldOpenLatestSession({ activeID: "", draft: false, sessionCount: 0 })).toBe(false);
+  });
+});
+
+describe("draftUsesProject", () => {
+  it("binds a draft opened under a project to that project", () => {
+    // The project's「+」only records the binding; the first send creates the
+    // session through NewSessionWithProject (issue #60).
+    expect(draftUsesProject("proj_1")).toBe(true);
+  });
+
+  it("creates standalone task sessions for a global draft", () => {
+    expect(draftUsesProject("")).toBe(false);
+    expect(draftUsesProject("   ")).toBe(false);
   });
 });
