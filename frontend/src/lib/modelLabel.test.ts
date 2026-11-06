@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { levelLabel, modelLabel, reasoningLevels, validateModelReasoning } from "./modelLabel";
+import { composerReasoningModel, levelLabel, modelLabel, reasoningLevels, validateModelReasoning } from "./modelLabel";
 import type { ModelInfo } from "@/lib/api";
 
 describe("modelLabel", () => {
@@ -32,6 +32,31 @@ describe("levelLabel", () => {
     expect(levelLabel("off")).toBe("关闭");
     expect(levelLabel("HIGH")).toBe("高");
     expect(levelLabel("turbo")).toBe("turbo");
+  });
+});
+
+describe("composerReasoningModel", () => {
+  const tabled = { id: "m1", reasoning: { enabled: true, levels: [{ level: "high", value: "high" }] } } as unknown as ModelInfo;
+  const legacy = { id: "legacy" } as unknown as ModelInfo;
+  const suggestion = { id: "legacy", info: tabled };
+
+  it("draft: feeds the picker with the model the first send will run", () => {
+    expect(composerReasoningModel({ isDraft: true, activeModel: null, draftModel: tabled, suggestion: null })).toBe(tabled);
+  });
+
+  it("draft: falls back to a suggestion fetched for the exact draft model", () => {
+    expect(composerReasoningModel({ isDraft: true, activeModel: null, draftModel: legacy, suggestion })).toBe(tabled);
+    expect(composerReasoningModel({ isDraft: true, activeModel: null, draftModel: legacy, suggestion: { id: "other", info: tabled } })).toBeNull();
+  });
+
+  it("saved chat: uses the target model and ignores stale suggestions", () => {
+    expect(composerReasoningModel({ isDraft: false, activeModel: tabled, draftModel: legacy, suggestion })).toBe(tabled);
+    expect(composerReasoningModel({ isDraft: false, activeModel: legacy, draftModel: tabled, suggestion: { id: "other", info: tabled } })).toBeNull();
+  });
+
+  it("no model on either side yields nothing", () => {
+    expect(composerReasoningModel({ isDraft: true, activeModel: null, draftModel: null, suggestion: null })).toBeNull();
+    expect(composerReasoningModel({ isDraft: false, activeModel: null, draftModel: null, suggestion: null })).toBeNull();
   });
 });
 

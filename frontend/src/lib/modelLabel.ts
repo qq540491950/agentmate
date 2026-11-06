@@ -20,6 +20,26 @@ export function reasoningLevels(model: ModelInfo | null | undefined): ReasoningL
   return r.levels;
 }
 
+/**
+ * composerReasoningModel resolves the ModelInfo that feeds the composer's
+ * thinking picker. A saved table on the target model wins; a model saved
+ * before level tables existed still gets a suggestion fetched for its exact
+ * ID. Draft chats read the model the first send will run (draftModelFor),
+ * so the picker stays selectable before the session row exists — the send
+ * path already applies the per-turn level to the freshly created session.
+ */
+export function composerReasoningModel(input: {
+  isDraft: boolean;
+  activeModel: ModelInfo | null | undefined;
+  draftModel: ModelInfo | null | undefined;
+  suggestion: { id: string; info: ModelInfo } | null | undefined;
+}): ModelInfo | null {
+  const model = input.isDraft ? input.draftModel : input.activeModel;
+  if (model?.reasoning) return model;
+  if (model?.id && input.suggestion?.id === model.id) return input.suggestion.info;
+  return null;
+}
+
 /** levelLabel renders the common level names in Chinese, custom ones as-is. */
 export function levelLabel(level: string): string {
   const labels: Record<string, string> = {

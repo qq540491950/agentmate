@@ -4,6 +4,35 @@
 
 ## 视觉测试与体验设计
 
+### 第二百零六轮迭代：新对话草稿态可选思考强度（已实施）
+
+依据：用户反馈。在项目内新建对话与顶部「新聊天」出现的草稿输入框中，无法选择
+模型的思考强度。根因：思考强度选择器的档位来源只解析**活动会话**的模型
+（`target` memo 对草稿态恒返回 `model: null`），档位列表为空；渲染门控
+`active && availableLevels.length > 0` 又把整个选择器隐藏。发送路径本身无问题
+（`send()` 会把本轮档位传给新建会话的 `SendWithReasoning`，后端
+`resolveTurnReasoning` 首轮即生效），纯前端显示层缺陷。
+
+**实现要点**
+
+- 提取 `composerReasoningModel`（`frontend/src/lib/modelLabel.ts`）：统一解析
+  「思考档位来源模型」——已保存聊天读目标模型，草稿读 `draftModelFor` 的结果
+  （与首条消息发送时后端解析同一模型）；保存过档位表的模型直接命中，旧模型
+  （无表）沿用 `SuggestModels` 建议，且仅接受「为该模型 ID 发起的」建议。
+- `ChatPage`：`SuggestModels` 兜底跟随草稿模型 ID；渲染门控改为仅
+  `availableLevels.length > 0`；草稿态把「跟随会话默认」标签改为「跟随模型默认」
+  并隐藏「设为会话默认」菜单项（尚无会话可设）；本轮选择的重置 effect 键改为
+  `activeID + composerModelID`，草稿态切换模型同样重置。
+
+**测试证据**
+
+- 前端：`modelLabel.test.ts` 新增 `composerReasoningModel` 4 个用例；先以忠实
+  移植旧行为的版本跑出草稿态红色（返回 `null`），修复后转绿——即本次缺陷的
+  回归测试缝。`npx tsc --noEmit`、`npm test`（15 个文件 131 例）、
+  `npm run build` 全绿。
+- 后端未改动；`ChatPage` 组件级测试缝不存在（无 jsdom，package-lock 属共享
+  文件不可动），接线部分由类型检查与生产构建覆盖，桩页面可手动走查草稿态。
+
 ### 第二百零五轮迭代：`@` 文件上下文与项目级 `/` 技能（已实施）
 
 依据：用户反馈（对话页输入区）。输入框占位文案承诺「输入 @ 添加上下文」，但实际 `@`

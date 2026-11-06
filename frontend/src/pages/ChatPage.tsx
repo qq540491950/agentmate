@@ -44,7 +44,7 @@ import {
   type MentionCandidate,
 } from "@/lib/mentions";
 import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
-import { levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
+import { composerReasoningModel, levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
 import { resolveAgentModel } from "@/lib/agentModel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
@@ -1676,28 +1676,35 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // explicitly disabled table stays off (#42). The per-turn pick lives only
   // in this composer: it is never persisted and never mutates the session
   // default.
-  const modelHasReasoningTable = !!target.model?.reasoning;
-  const targetModelID = target.model?.id ?? "";
+  // Composer model: a draft resolves exactly like the first send will
+  // (draftModelFor), so the thinking picker is selectable before the session
+  // row exists — same model, same level table, no drift at send time.
+  const composerModel = active ? target.model : draftModel;
+  const modelHasReasoningTable = !!composerModel?.reasoning;
+  const composerModelID = composerModel?.id ?? "";
   const [suggestedReasoning, setSuggestedReasoning] = useState<{ id: string; info: ModelInfo } | null>(null);
   useEffect(() => {
-    if (!targetModelID || modelHasReasoningTable) {
+    if (!composerModelID || modelHasReasoningTable) {
       setSuggestedReasoning(null);
       return;
     }
     let cancelled = false;
-    Config.SuggestModels([targetModelID])
+    Config.SuggestModels([composerModelID])
       .then((list) => {
         if (cancelled || !list?.[0]) return;
-        setSuggestedReasoning({ id: targetModelID, info: list[0] });
+        setSuggestedReasoning({ id: composerModelID, info: list[0] });
       })
       .catch(() => { /* offline: the picker simply stays hidden */ });
     return () => { cancelled = true; };
-  }, [targetModelID, modelHasReasoningTable]);
+  }, [composerModelID, modelHasReasoningTable]);
   // Only a suggestion fetched FOR this model may feed the picker: a fetch
   // resolving after a model switch must not render another model's levels.
-  const reasoningModel = modelHasReasoningTable
-    ? target.model
-    : suggestedReasoning?.id === targetModelID ? suggestedReasoning.info : null;
+  const reasoningModel = composerReasoningModel({
+    isDraft: !active,
+    activeModel: target.model,
+    draftModel,
+    suggestion: suggestedReasoning,
+  });
   const availableLevels = useMemo(() => reasoningLevels(reasoningModel), [reasoningModel]);
   const sessionReasoning = active?.reasoningLevel && availableLevels.some((l) => l.level === active.reasoningLevel)
     ? active.reasoningLevel
@@ -1712,7 +1719,10 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     : sessionReasoning ? `会话 ${levelLabel(sessionReasoning)}` : "默认";
   // A pick belongs to one chat+model; switching either starts from the
   // session default again (a level valid for the old table may not exist).
-  useEffect(() => { setTurnReasoning(""); }, [activeID, targetModelID]);
+  // A pick belongs to one chat+model; switching either (including a draft's
+  // model chip) starts from the session default again — a level valid for the
+  // old table may not exist on the new one.
+  useEffect(() => { setTurnReasoning(""); }, [activeID, composerModelID]);
 
   const setSessionModel = async (modelID: string) => {
     if (!activeID) return;
@@ -2943,7 +2953,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   </button>
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
-                  {active && availableLevels.length > 0 && (
+                  {availableLevels.length > 0 && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
@@ -2963,7 +2973,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                           onValueChange={(v) => setTurnReasoning(v === "__default" ? "" : v)}
                         >
                           <DropdownMenuRadioItem value="__default" className="text-xs">
-                            跟随会话默认（{sessionReasoning ? levelLabel(sessionReasoning) : `模型默认${defaultReasoningLevel ? ` · ${levelLabel(defaultReasoningLevel)}` : ""}`}）
+                            {active ? "跟随会话默认" : "跟随模型默认"}（{sessionReasoning ? levelLabel(sessionReasoning) : `模型默认${defaultReasoningLevel ? ` · ${levelLabel(defaultReasoningLevel)}` : ""}`}）
                           </DropdownMenuRadioItem>
                           {availableLevels.map((l) => (
                             <DropdownMenuRadioItem key={l.level} value={l.level} className="text-xs">
@@ -2976,13 +2986,15 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                         <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
                           会话默认（影响后续所有轮次）
                         </DropdownMenuLabel>
-                        <DropdownMenuItem
-                          className="text-xs"
-                          disabled={!nextReasoningLevel || nextReasoningLevel === sessionReasoning}
-                          onSelect={() => setSessionReasoning(nextReasoningLevel)}
-                        >
-                          将「{levelLabel(nextReasoningLevel || defaultReasoningLevel)}」设为会话默认
-                        </DropdownMenuItem>
+                        {active && (
+                          <DropdownMenuItem
+                            className="text-xs"
+                            disabled={!nextReasoningLevel || nextReasoningLevel === sessionReasoning}
+                            onSelect={() => setSessionReasoning(nextReasoningLevel)}
+                          >
+                            将「{levelLabel(nextReasoningLevel || defaultReasoningLevel)}」设为会话默认
+                          </DropdownMenuItem>
+                        )}
                         {sessionReasoning && (
                           <DropdownMenuItem className="text-xs" onSelect={() => setSessionReasoning("")}>
                             清除会话默认，回到模型默认
