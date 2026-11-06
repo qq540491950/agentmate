@@ -11,7 +11,7 @@ disable-model-invocation: true
 本仓库的缺陷闭环分两侧，你只做**提交侧**：
 
 - **提交侧（本 skill）**：把口述的问题变成一张远端能自动抓取的 issue。
-- **修复侧**：[`docs/issue-fixer-prompt.md`](../../../docs/issue-fixer-prompt.md) —— 流水线模式：Dispatcher 每轮只做一个短动作（认领 / 集成 / 修复 / 发版），Worker 在独立 worktree 修复并开 PR，Integrator 串行合入，Release 批量打 patch tag、评论关闭。设计与状态机见 [`docs/issue-pipeline.md`](../../../docs/issue-pipeline.md)。
+- **修复侧**：[`docs/issue-fixer-prompt.md`](../../../docs/issue-fixer-prompt.md) —— 流水线模式：Dispatcher 每轮只做一个短动作（认领 / 集成 / 修复 / 开新票），Worker 在独立 worktree 修复并开 PR，Integrator 串行合入；Release 是 GitHub Actions 的发布列车，main CI 绿后自动打 patch tag、发布并评论关闭。设计与状态机见 [`docs/issue-pipeline.md`](../../../docs/issue-pipeline.md)。
 
 ## 铁律
 
@@ -56,7 +56,7 @@ disable-model-invocation: true
 
 - 子票正文首行写 `parent #<母票号>`；母票正文列 `sub-issues: #a, #b`。
 - 优先级继承：母票带 `[P0]`，子票也带 `[P0]`，并加 `priority:p0` 标签。
-- 拆完默认**批量发版**，不再询问逐票还是批量；P0 由修复侧按最短窗口优先发版。
+- 拆完默认**批量发版**，不再询问逐票还是批量；P0 由发布列车按 15 分钟窗口优先发版。
 
 ## 1. 收料
 
@@ -195,5 +195,5 @@ gh issue view <N> --repo qq540491950/go-workbuddy --json state,labels,comments
 - 一次一张票；该不该拆看「拆票判据」，拆出来的票互相引用。不动 `agent:*` 标签，不自己关票（远端关）。
 - 不 force push、不删 tag、不改 release 资产。
 - 不在本机跑 `go test`、不构建、不启动应用验证——复现与质量门禁都是远端的事。
-- 多票默认批量发版：修复侧按 60 分钟窗口合并成一个 patch tag；P0 可走最短 15 分钟窗口。不再逐票询问发版方式。
+- 多票默认批量发版：发布列车按 30 分钟窗口合并成一个 patch tag，P0 走最短 15 分钟窗口；main CI 绿后自动发版。不再逐票询问发版方式。
 - 修复侧本地是 macOS、测试机是 Windows，Windows 特有问题远端只能靠日志 + 代码分析；票里把日志和复现步骤给足，它的修复结论才站得住。

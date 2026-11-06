@@ -89,9 +89,11 @@ frontend/stub/               # 浏览器视觉回归：setTransport 数据桩 + 
 [`docs/issue-pipeline.md`](docs/issue-pipeline.md)，可执行步骤见
 [`docs/issue-fixer-prompt.md`](docs/issue-fixer-prompt.md)。
 
-- **四角色**：Dispatcher（认领/调度）、Worker（worktree + 分支 + PR）、
-  Integrator（串行合入）、Release（批量发版）。单轮只做一个短动作，不在
-  进程内等 CI。
+- **角色**：Dispatcher（认领/调度）、Worker（worktree + 分支 + PR）、
+  Integrator（串行合入）在本地定时任务中运行；Release 是 GitHub Actions
+  的**发布列车**（`.github/workflows/release.yml`），由 main CI
+  `workflow_run` 与 15 分钟 `schedule` 触发，本地轮次不打 tag、不等
+  Release run。单轮只做一个短动作，不在进程内等 CI。
 - **隔离**：Worker 一律在 `git worktree` 中工作，主 checkout 不参与自动修复；
   `main` 只由 Integrator 推进。全局 WIP ≤ 3，同一 module 同时 ≤ 1。
 - **共享文件**由 Integrator 统一维护：`docs/iteration-log.md`、
@@ -101,7 +103,8 @@ frontend/stub/               # 浏览器视觉回归：setTransport 数据桩 + 
   同一轮「顺手」改流程。
 - 辅助命令：`scripts/issue-env.sh`（source 后提供流水线变量）、
   `scripts/issue-queue.sh`（队列快照）、`scripts/issue-lease.sh`
-  （认领租约）、`scripts/issue-release.sh`（发版快照与按祖先关系关票）、
+  （认领租约）、`scripts/release-train.sh`（发布列车决策）、
+  `scripts/issue-release.sh`（发版快照与按祖先关系关票）、
   `scripts/issue-labels.sh`（首次部署或新仓库创建路由标签）。
 
 ## 约定

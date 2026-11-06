@@ -11,6 +11,8 @@
 # 「fix-commit: <sha>」评论。发版期间新加入的 pending 不会进入本批。
 # close 只关闭 fix-commit 是 tag 祖先的 issue；找不到 fix-commit 的票保持
 # pending，等下一轮补标记或人工处理。
+# fail 只处理快照内的票：保留 agent:pending-release，加 agent:blocked 与
+# agent:retryable，让发布列车按冷却时间自动重试同一 tag。
 set -euo pipefail
 
 REPO="${ISSUE_REPO:-qq540491950/go-workbuddy}"
@@ -76,7 +78,11 @@ verify | close)
 		die "tag $tag 不存在"
 	ok=0
 	skip=0
-	while IFS=$'\t' read -r number sha title; do
+	while IFS= read -r line; do
+		number="${line%%$'\t'*}"
+		rest="${line#*$'\t'}"
+		sha="${rest%%$'\t'*}"
+		title="${rest#*$'\t'}"
 		[ -n "$number" ] || continue
 		if [ -z "$sha" ]; then
 			echo "skip issue=$number reason=no-fix-commit"
@@ -102,7 +108,10 @@ verify | close)
 		gh issue comment "$number" --repo "$REPO" --body "$body"
 		gh issue close "$number" --repo "$REPO" --reason completed || true
 		gh issue edit "$number" --repo "$REPO" \
-			--add-label agent:fixed --remove-label agent:pending-release || true
+			--add-label agent:fixed \
+			--remove-label agent:pending-release \
+			--remove-label agent:blocked \
+			--remove-label agent:retryable || true
 	done <"$SNAPSHOT"
 	echo "summary close=$ok skip=$skip tag=$tag dry-run=$dry_run"
 	;;
@@ -112,16 +121,23 @@ fail)
 	[ "${3:-}" = "--dry-run" ] && dry_run=yes
 	[ -f "$SNAPSHOT" ] || die "没有快照，先运行 snapshot"
 	count=0
-	while IFS=$'\t' read -r number sha title; do
+	while IFS= read -r line; do
+		number="${line%%$'\t'*}"
+		rest="${line#*$'\t'}"
+		sha="${rest%%$'\t'*}"
+		title="${rest#*$'\t'}"
 		[ -n "$number" ] || continue
-		echo "fail issue=$number fix-commit=${sha:-MISSING} title=$title"
+		if [ -z "$sha" ]; then
+			echo "skip issue=$number reason=no-fix-commit"
+			continue
+		fi
+		echo "fail issue=$number fix-commit=$sha title=$title"
 		count=$((count + 1))
 		[ "$dry_run" = "yes" ] && continue
-		body="$(printf '本批发版失败：%s。\n\n修复提交 `%s` 仍在 main，已标记为可重试，稍后自动回到待发版队列；不需要人工改标签。' "$reason" "${sha:-unknown}")"
+		body="$(printf '本批发版失败：%s。\n\n修复提交 `%s` 仍在 main，已标记为可重试并保留在待发版队列；发布列车稍后会自动重试同一 tag，不需要人工改标签。' "$reason" "${sha:-unknown}")"
 		gh issue comment "$number" --repo "$REPO" --body "$body"
 		gh issue edit "$number" --repo "$REPO" \
-			--add-label agent:blocked,agent:retryable \
-			--remove-label agent:pending-release || true
+			--add-label agent:blocked,agent:retryable || true
 	done <"$SNAPSHOT"
 	echo "summary failed=$count dry-run=$dry_run"
 	;;

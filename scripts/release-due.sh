@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Report whether the batch release window is ready:
+# Report whether the batch release window is ready (manual diagnostics):
 #   due            — interval elapsed and current main has new commits
 #   not-due        — too soon since the last release
 #   no-new-commits — the latest release already contains current main
 #   not-synced     — local main differs from origin/main; do not release
 #
-# The interval defaults to 60 minutes; override with RELEASE_INTERVAL_MINUTES.
+# 发布列车的决策（pending / P0 / 未发布 tag 重试）由 scripts/release-train.sh
+# 负责；本脚本只用于人工排查窗口是否到期。
+# The interval defaults to 30 minutes; override with RELEASE_INTERVAL_MINUTES.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-interval="${RELEASE_INTERVAL_MINUTES:-60}"
+interval="${RELEASE_INTERVAL_MINUTES:-30}"
 if ! printf '%s' "$interval" | grep -Eq '^[0-9]+$'; then
 	echo "release-due: invalid RELEASE_INTERVAL_MINUTES=$interval" >&2
 	exit 2
