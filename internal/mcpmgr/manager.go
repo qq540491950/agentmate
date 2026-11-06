@@ -152,6 +152,12 @@ func buildTransport(cfg config.MCPServerConfig, tokenStore *config.Store, onAuth
 			}
 		}
 		cmd := exec.Command(command, args...)
+		// The desktop app runs as a GUI process without a console; on Windows
+		// a stdio MCP child would otherwise allocate a visible console window
+		// that stays open for the whole session (issue #67).
+		if attrs := stdioProcessAttrs(); attrs != nil {
+			cmd.SysProcAttr = attrs
+		}
 		if len(cfg.Env) > 0 {
 			env := os.Environ()
 			for k, v := range cfg.Env {
