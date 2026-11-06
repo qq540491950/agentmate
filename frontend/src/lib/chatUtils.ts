@@ -162,6 +162,13 @@ export type ToolGroup = {
   /** endTs is the final reply's timestamp: the summary counts the whole turn,
    *  including the time spent writing the answer, not just the tool runtime. */
   endTs?: string;
+  /** answered records whether the turn produced its final reply. Until it
+   *  exists a live turn is still generating; a settled turn without one never
+   *  completed. */
+  answered: boolean;
+  /** errored records a turn that ended in an error bubble instead of a reply
+   *  (live streams only — history does not persist error events). */
+  errored: boolean;
 };
 
 /** ChatItem is one entry in the message list: a standalone message or a
@@ -243,6 +250,12 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
   }
 
   const endTs = resultIdx >= 0 ? turn[resultIdx].timestamp : undefined;
+  // Turn outcome, not step outcome: a failed tool the model worked around is
+  // process detail. Only a turn that ended in an error without ever writing
+  // its reply failed — guardrail warnings before a later user message and
+  // budget warnings after the reply both still have/leave an answer.
+  const answered = resultIdx >= 0;
+  const errored = !answered && turn.some((m) => m.kind === "error");
   let run: UIMessage[] = [];
   const flush = () => {
     if (run.length === 0) return;
@@ -254,7 +267,7 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
     const hasConfirm = run.some((m) => m.kind === "confirm");
     const hasNarration = run.some((m) => m.kind === "assistant" && !!m.text.trim());
     if (hasProcess && (invocations >= 2 || hasThinking || hasConfirm || hasNarration)) {
-      out.push({ kind: "tool_group", id: run[0].id, author: run[0].author, messages: run, endTs });
+      out.push({ kind: "tool_group", id: run[0].id, author: run[0].author, messages: run, endTs, answered, errored });
     } else {
       for (const m of run) out.push(messageItem(m));
     }
@@ -291,17 +304,22 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
 
 export type ToolGroupStatus = "confirm" | "running" | "failed" | "done";
 
-/** toolGroupStatus derives the execution block's header state. A pending HITL
- *  confirmation outranks everything: the backend ends the turn when it pauses
- *  for approval, so without this the block would collapse and hide the
- *  actionable card. A still-streaming thinking entry also counts as running:
- *  the model may reason between tool batches while the turn continues, and the
- *  block must stay open so the live text is visible. */
-export function toolGroupStatus(messages: UIMessage[], runningTools: Set<string>): ToolGroupStatus {
+/** toolGroupStatus derives the execution block's header state from the TURN's
+ *  outcome, not from its individual steps: a tool call that failed is usually
+ *  a step the model retried or worked around, and the turn still answered — it
+ *  must not turn the whole run red. A pending HITL confirmation outranks
+ *  everything: the backend ends the turn when it pauses for approval, so
+ *  without this the block would collapse and hide the actionable card. A
+ *  still-streaming thinking entry or narration also counts as running: the
+ *  model may reason between tool batches while the turn continues, and the
+ *  block must stay open so the live text is visible.
+ *  The run failed when it ended in an error without a final reply; a settled
+ *  turn with no reply never completed either (history does not keep error
+ *  bubbles, so the missing answer is the only durable failure signal left). */
+export function toolGroupStatus(group: ToolGroup, runningTools: Set<string>, live: boolean): ToolGroupStatus {
   let running = false;
-  let failed = false;
   let pendingConfirm = false;
-  for (const m of messages) {
+  for (const m of group.messages) {
     if (m.kind === "confirm") {
       if ((m.confirmStatus ?? "pending") === "pending") pendingConfirm = true;
     } else if (m.kind === "tool_call") {
@@ -310,13 +328,11 @@ export function toolGroupStatus(messages: UIMessage[], runningTools: Set<string>
       // Reasoning or inter-tool narration still streaming means the turn is
       // live; the block must stay open so the new text is visible.
       if (m.streaming) running = true;
-    } else if (m.kind === "tool_result" && toolResultFailed(m.toolResp)) {
-      failed = true;
     }
   }
   if (pendingConfirm) return "confirm";
   if (running) return "running";
-  if (failed) return "failed";
+  if (group.errored || (!live && !group.answered)) return "failed";
   return "done";
 }
 

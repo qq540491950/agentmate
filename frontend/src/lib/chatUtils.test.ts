@@ -4,7 +4,7 @@ import {
   dayLabel, effectiveReasoningLevel, fmtTime, formatWorkDuration, groupSessionsByProject,
   groupSessionsByTime, groupToolMessages, isDayChange, mdToSpeech, sessionTargetBadgeLabel,
   toolGroupDurationMs, toolGroupElapsedMs, toolGroupInvocationCount, toolGroupStatus,
-  toolResultFailed, type UIMessage,
+  toolResultFailed, type ToolGroup, type UIMessage,
 } from "./chatUtils";
 import type { ChatSession, Project } from "@/lib/api";
 
@@ -240,37 +240,116 @@ describe("toolGroupStatus", () => {
   const call = msg({ id: "c1", kind: "tool_call", toolName: "write" });
   const result = (resp: { [k: string]: any }) =>
     msg({ id: "r1", kind: "tool_result", toolName: "write", toolResp: resp });
+  // group wraps process messages in the turn-outcome metadata groupTurn
+  // attaches, so the tests feed exactly what the component feeds.
+  const group = (messages: UIMessage[], over: Partial<ToolGroup> = {}): ToolGroup => ({
+    kind: "tool_group",
+    id: messages[0]?.id ?? "g",
+    author: "bot",
+    messages,
+    answered: true,
+    errored: false,
+    ...over,
+  });
 
   it("reports a pending HITL confirmation before anything else", () => {
     const confirm = msg({ id: "cf", kind: "confirm", toolName: "write", confirmStatus: "pending" });
-    expect(toolGroupStatus([call, confirm], new Set(["c1"]))).toBe("confirm");
+    expect(toolGroupStatus(group([call, confirm], { answered: false }), new Set(["c1"]), true)).toBe("confirm");
   });
 
   it("ignores confirmations that were already answered", () => {
     const approved = msg({ id: "cf", kind: "confirm", toolName: "write", confirmStatus: "approved" });
-    expect(toolGroupStatus([call, approved, result({ ok: true })], new Set())).toBe("done");
+    expect(toolGroupStatus(group([call, approved, result({ ok: true })]), new Set(), false)).toBe("done");
   });
 
-  it("reports running calls and failed results", () => {
-    expect(toolGroupStatus([call], new Set(["c1"]))).toBe("running");
-    expect(toolGroupStatus([call, result({ error: "boom" })], new Set())).toBe("failed");
-    expect(toolGroupStatus([call, result({ isError: true })], new Set())).toBe("failed");
-    expect(toolGroupStatus([call, result({ is_error: true })], new Set())).toBe("failed");
-    expect(toolGroupStatus([call, result({ ok: true })], new Set())).toBe("done");
+  it("reports running calls, but a failed step no longer fails the run", () => {
+    expect(toolGroupStatus(group([call]), new Set(["c1"]), true)).toBe("running");
+    // A step that failed inside a turn that still answered is process detail:
+    // the per-card badge keeps the red X, the block header reports the run.
+    expect(toolGroupStatus(group([call, result({ error: "boom" })]), new Set(), false)).toBe("done");
+    expect(toolGroupStatus(group([call, result({ isError: true })]), new Set(), false)).toBe("done");
+    expect(toolGroupStatus(group([call, result({ is_error: true })]), new Set(), false)).toBe("done");
+    expect(toolGroupStatus(group([call, result({ ok: true })]), new Set(), false)).toBe("done");
+  });
+
+  it("fails the run when the turn errored without a reply", () => {
+    const failed = group([call, result({ ok: true })], { answered: false, errored: true });
+    expect(toolGroupStatus(failed, new Set(), true)).toBe("failed");
+    expect(toolGroupStatus(failed, new Set(), false)).toBe("failed");
+  });
+
+  it("fails a settled turn that never produced a reply (history keeps no errors)", () => {
+    const missing = group([call, result({ ok: true })], { answered: false });
+    expect(toolGroupStatus(missing, new Set(), false)).toBe("failed");
+    // While the turn is live the reply may simply not be written yet.
+    expect(toolGroupStatus(missing, new Set(), true)).toBe("done");
+  });
+
+  it("keeps the run successful when a step failed but the turn answered", () => {
+    // The reported render: one search step timed out, the model retried with
+    // another source and wrote the full answer — the header still said 失败.
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", text: "查一下西安明天的天气" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "web_search" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "web_search", toolResp: { error: "timeout" } }),
+      msg({ id: "c2", kind: "tool_call", toolName: "web_search" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "web_search", toolResp: { results: [] } }),
+      msg({ id: "a", kind: "assistant", text: "西安明天小雨转阴，8~12℃。" }),
+    ];
+    const group = groupToolMessages(msgs).find((i) => i.kind === "tool_group");
+    if (!group || group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(group.answered).toBe(true);
+    expect(group.errored).toBe(false);
+    expect(toolGroupStatus(group, new Set(), false)).toBe("done");
+  });
+
+  it("records a failed turn: no reply plus an error bubble", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", text: "hi" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "c2", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "e", kind: "error", text: "运行出错：模型超时" }),
+    ];
+    const group = groupToolMessages(msgs).find((i) => i.kind === "tool_group");
+    if (!group || group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(group.answered).toBe(false);
+    expect(group.errored).toBe(true);
+    expect(toolGroupStatus(group, new Set(), false)).toBe("failed");
+  });
+
+  it("does not fail a turn that answered before a trailing warning", () => {
+    // Budget warnings arrive as error events after a complete answer; the
+    // answer, not the warning, decides the run's state.
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", text: "hi" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "c2", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "a", kind: "assistant", text: "答案" }),
+      msg({ id: "e", kind: "error", text: "已达会话 token 预算" }),
+    ];
+    const group = groupToolMessages(msgs).find((i) => i.kind === "tool_group");
+    if (!group || group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(group.answered).toBe(true);
+    expect(group.errored).toBe(false);
+    expect(toolGroupStatus(group, new Set(), false)).toBe("done");
   });
 
   it("keeps the block running while a thinking entry still streams", () => {
     const streaming = msg({ id: "t1", kind: "thinking", text: "", streaming: true });
     const settled = msg({ id: "t2", kind: "thinking", text: "done" });
-    expect(toolGroupStatus([result({ ok: true }), streaming], new Set())).toBe("running");
+    expect(toolGroupStatus(group([result({ ok: true }), streaming]), new Set(), true)).toBe("running");
     // A finished thinking entry is process detail, not a reason to auto-expand.
-    expect(toolGroupStatus([result({ ok: true }), settled], new Set())).toBe("done");
+    expect(toolGroupStatus(group([result({ ok: true }), settled]), new Set(), false)).toBe("done");
   });
 
   it("stays running while inter-tool narration still streams", () => {
     const narration = msg({ id: "mid", kind: "assistant", text: "我来读取模板", streaming: true });
-    expect(toolGroupStatus([result({ ok: true }), narration], new Set())).toBe("running");
-    expect(toolGroupStatus([result({ ok: true }), { ...narration, streaming: false }], new Set())).toBe("done");
+    expect(toolGroupStatus(group([result({ ok: true }), narration]), new Set(), true)).toBe("running");
+    expect(toolGroupStatus(group([result({ ok: true }), { ...narration, streaming: false }]), new Set(), false)).toBe("done");
   });
 });
 

@@ -9,7 +9,7 @@ import { MessageMarkdown } from "@/components/MessageMarkdown";
 import {
   formatWorkDuration, toolGroupElapsedMs,
   toolGroupInvocationCount, toolGroupStatus,
-  type ToolGroupStatus, type UIMessage,
+  type ToolGroup, type ToolGroupStatus,
 } from "@/lib/chatUtils";
 import { cn } from "@/lib/utils";
 
@@ -32,10 +32,10 @@ const STATUS_META: Record<ToolGroupStatus, { label: string; icon: ReactNode; cls
  * per-call cards, so each invocation keeps its own detail arrow and artifact
  * previews.
  */
-export function ToolCallGroup({ messages, endTs, live, runningTools, durations, sessionID, filterQ, onConfirm, onAllowAll, allowAllBusy }: {
-  messages: UIMessage[];
-  /** endTs is the turn's final reply timestamp (whole-turn summary). */
-  endTs?: string;
+export function ToolCallGroup({ group, live, runningTools, durations, sessionID, filterQ, onConfirm, onAllowAll, allowAllBusy }: {
+  /** group carries the turn's messages, its final-reply timestamp and outcome
+   *  (answered/errored) so the header reports the run, not a single step. */
+  group: ToolGroup;
   /** live keeps the summary ticking while the current turn still streams. */
   live?: boolean;
   runningTools: Set<string>;
@@ -49,7 +49,8 @@ export function ToolCallGroup({ messages, endTs, live, runningTools, durations, 
   // null means "follow the run state": expanded while running/awaiting a
   // confirmation, collapsed once settled. An explicit click wins from then on.
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
-  const status = toolGroupStatus(messages, runningTools);
+  const messages = group.messages;
+  const status = toolGroupStatus(group, runningTools, !!live);
   const count = toolGroupInvocationCount(messages);
   const autoExpanded = status === "running" || status === "confirm";
   const expanded = userExpanded ?? autoExpanded;
@@ -64,7 +65,7 @@ export function ToolCallGroup({ messages, endTs, live, runningTools, durations, 
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [ticking]);
-  const computedMs = toolGroupElapsedMs(messages, endTs, now, !!live, durations);
+  const computedMs = toolGroupElapsedMs(messages, group.endTs, now, !!live, durations);
   // Live timestamps are "now", but a settled turn falls back to the final
   // reply's creation time; keep the peak so the summary never shrinks.
   const [peakMs, setPeakMs] = useState(0);

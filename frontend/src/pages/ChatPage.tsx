@@ -2487,8 +2487,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   {dayChanged && <DaySeparator ts={ts} />}
                   {item.kind === "tool_group" ? (
                     <ToolCallGroup
-                      messages={item.messages}
-                      endTs={item.endTs}
+                      group={item}
                       live={running && firstVisibleIdx + i > lastUserItemIdx}
                       runningTools={runningToolsSet}
                       durations={toolDurations}
