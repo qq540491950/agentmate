@@ -103,8 +103,13 @@ jobs:
           REPO: ${{ github.repository }}
           ISSUE_STATE_DIR: ${{ runner.temp }}/issue-fixer
         run: bash scripts/release-train.sh plan
+      # 手动 tag / workflow_dispatch 直接发版，不会生成批次快照；只有自动发布
+      # 路径（workflow_run / schedule）在 go 之前调用 snapshot()。这里限定事件，
+      # 避免手动发版因 if-no-files-found: error 卡住 plan。
       - name: Upload batch snapshot
-        if: steps.decide.outputs.should_release == 'true'
+        if: >-
+          steps.decide.outputs.should_release == 'true' &&
+          (github.event_name == 'workflow_run' || github.event_name == 'schedule')
         uses: actions/upload-artifact@v6
         with:
           name: release-batch
