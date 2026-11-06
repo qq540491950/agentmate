@@ -33,7 +33,7 @@ import {
   SIDEBAR_KEYBOARD_STEP, SIDEBAR_MIN_WIDTH,
   clampSidebarWidth, parseStoredSidebarWidth, sidebarMaxWidth,
 } from "@/lib/sidebarWidth";
-import { draftUsesProject, shouldOpenLatestSession } from "@/lib/sessionDraft";
+import { draftModelFor, draftUsesProject, shouldOpenLatestSession } from "@/lib/sessionDraft";
 import { filterSlashCommands, isSkillCommand, slashCandidates, type SlashCommand } from "@/lib/slashSkills";
 import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
 import { levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
@@ -114,6 +114,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // send creates the row, so a project's「+」no longer persists an empty
   // conversation per click (issue #60).
   const [draftProjectID, setDraftProjectID] = useState("");
+  // Composer picks made before that row exists (issue #64). They stay local
+  // until the first send creates the session, then send() applies them to the
+  // new chat BEFORE the first turn — so choosing a model or granting「完全访问」
+  // here is a real choice, not a discarded one.
+  const [draftModelOverride, setDraftModelOverride] = useState("");
+  const [draftAllowAll, setDraftAllowAll] = useState(false);
   const input = activeID ? (drafts[activeID] ?? "") : freshInput;
   const setInput = useCallback(
     (v: string | ((prev: string) => string)) => {
@@ -168,6 +174,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // allowAllBusy covers the two-step card action (grant, then approve).
   const [allowAll, setAllowAll] = useState(false);
   const [allowAllBusy, setAllowAllBusy] = useState(false);
+  // The composer chip reads the draft grant before the session exists; once a
+  // chat is active its persisted grant is the single source of truth.
+  const composerAllowAll = activeID ? allowAll : draftAllowAll;
   const allowAllIntentRef = useRef<{ sessionId: string; source: AllowAllSource; msgId?: string; callId?: string } | null>(null);
   // The risk dialog can stay open across a session switch; callbacks compare
   // against the live ID before touching the visible chat.
@@ -255,6 +264,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     setFreshInput("");
     setEditing(false);
     setSessionUsage(null);
+    setDraftModelOverride("");
+    setDraftAllowAll(false);
   }, []);
   const createDirectSession = useCallback(() => openNewChatDraft(""), [openNewChatDraft]);
   createDirectSessionRef.current = createDirectSession;
@@ -787,6 +798,24 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
           ? await Chat.NewSessionWithProject("", "", "", draftProjectID)
           : await Chat.NewSessionWithWorkspace("", "", "", "");
         sid = s.id;
+        // Apply the draft picks to the freshly created row BEFORE it becomes
+        // the active chat: the allow-all reader effect then sees the real
+        // grant instead of racing a read that predates the write (issue #64).
+        try {
+          if (draftModelOverride) await Chat.SetSessionModel(s.id, draftModelOverride);
+          if (draftAllowAll) {
+            await setSessionAllowAllTools(s.id, true, "composer");
+            // The write is done, so the reader effect that runs when the chat
+            // becomes active will confirm this instead of flashing it off.
+            setAllowAll(true);
+          }
+        } catch (e) {
+          // The row exists, so the first turn must still go out; surface the
+          // lost pick rather than silently pretending it was applied.
+          toast.error(`应用草稿设置失败: ${errText(e)}`);
+        }
+        setDraftModelOverride("");
+        setDraftAllowAll(false);
         setFreshInput("");
         setDraftProjectID("");
         setActiveID(s.id);
@@ -947,8 +976,15 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // again. Both entry points funnel through here so they cannot disagree.
   const applyAllowAll = useCallback(async (intent: { sessionId: string; source: AllowAllSource; msgId?: string; callId?: string }) => {
     const sid = intent.sessionId;
-    const visible = () => sid === activeIDRef.current;
     rememberAllowAllRiskAcknowledged((k, v) => localStorage.setItem(k, v));
+    if (!sid) {
+      // The draft has no session row yet (issue #64). Remember the grant on the
+      // composer; send() persists it when the first message creates the chat.
+      setDraftAllowAll(true);
+      toast.success("已开启完全访问：本会话不再逐次确认写文件与执行命令");
+      return;
+    }
+    const visible = () => sid === activeIDRef.current;
     if (visible()) setAllowAll(true);
     if (intent.source === "composer") {
       try {
@@ -996,7 +1032,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // is captured now, so switching chats while the dialog is open still acts on
   // the chat whose card/switch was used.
   const requestAllowAll = useCallback((intent: { source: AllowAllSource; msgId?: string; callId?: string }) => {
-    if (!activeID) return;
+    // An empty activeID is the draft composer: the risk gate runs now and the
+    // grant is carried into the session created by the first send (issue #64).
     const full = { ...intent, sessionId: activeID };
     if (allowAllRiskAlreadyAcknowledged((k) => localStorage.getItem(k))) {
       void applyAllowAll(full);
@@ -1027,9 +1064,16 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // toggleAllowAll is the composer switch: turning the grant off restores
   // per-call approval for the following turns.
   const toggleAllowAll = useCallback(() => {
-    if (!activeID || allowAllBusy) return;
-    if (!allowAll) {
+    if (allowAllBusy) return;
+    const granted = activeID ? allowAll : draftAllowAll;
+    if (!granted) {
       requestAllowAll({ source: "composer" });
+      return;
+    }
+    if (!activeID) {
+      // Draft grant: there is nothing to revoke on the backend yet.
+      setDraftAllowAll(false);
+      toast.success("已关闭完全访问：写文件与执行命令恢复逐次确认");
       return;
     }
     const sid = activeID;
@@ -1040,7 +1084,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         setAllowAll(true);
         toast.error(`关闭完全访问失败: ${errText(e)}`);
       });
-  }, [activeID, allowAll, allowAllBusy, requestAllowAll]);
+  }, [activeID, allowAll, draftAllowAll, allowAllBusy, requestAllowAll]);
 
   const MAX_ATT_BYTES = 6 * 1024 * 1024;
   const allowedMIME = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -1559,6 +1603,35 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     : active
       ? active.modelOverride || (active.targetType === "agent" ? "Agent 默认模型" : "默认模型")
       : "";
+
+  // Draft composer (issue #64): before the first send there is no session row
+  // to read, so the picker resolves against the default provider the new chat
+  // will use and the pick lives in component state until send() persists it.
+  // New chats are always direct (targetless), so this matches what the
+  // created session resolves to.
+  const draftProvider = useMemo(
+    () => providerList.find((p) => p.isDefault) ?? providerList[0] ?? null,
+    [providerList],
+  );
+  const draftModels = draftProvider?.models ?? [];
+  const draftModel = draftModelFor(draftModels, draftModelOverride);
+  const draftModelLabel = draftModel ? modelLabel(draftModel) : "默认模型";
+  // One set of values feeds the toolbar for both states, so the draft and the
+  // saved chat render exactly the same control.
+  const composerModels = active ? sessionModels : draftModels;
+  const composerModelValue = active
+    ? (active.modelOverride || "__default")
+    : (draftModelOverride || "__default");
+  const composerModelLabel = active ? currentModelLabel : draftModelLabel;
+  const composerProviderName = active ? (target.provider?.name ?? "") : (draftProvider?.name ?? "");
+  const composerDefaultLabel = active?.targetType === "agent" ? "Agent 默认模型" : "默认模型";
+  const chooseComposerModel = (value: string) => {
+    if (!active) {
+      setDraftModelOverride(value === "__default" ? "" : value);
+      return;
+    }
+    void setSessionModel(value);
+  };
 
   // Thinking picker. A saved table wins; a model saved before level tables
   // existed still gets the built-in family fallback (fetched from the backend
@@ -2736,21 +2809,21 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   <button
                     type="button"
                     onClick={toggleAllowAll}
-                    disabled={!active || allowAllBusy}
-                    aria-pressed={allowAll}
-                    aria-label={allowAllToggleLabel(allowAll)}
-                    title={allowAllToggleHint(allowAll)}
+                    disabled={(!active && providerCount === 0) || allowAllBusy}
+                    aria-pressed={composerAllowAll}
+                    aria-label={allowAllToggleLabel(composerAllowAll)}
+                    title={allowAllToggleHint(composerAllowAll)}
                     className={cn(
                       "flex h-7 max-w-[168px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
-                      allowAll
+                      composerAllowAll
                         ? "bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 dark:text-amber-400"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                      (!active || allowAllBusy) && "cursor-not-allowed opacity-50",
+                      ((!active && providerCount === 0) || allowAllBusy) && "cursor-not-allowed opacity-50",
                     )}
                   >
                     <LockOpen className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{allowAllToggleLabel(allowAll)}</span>
-                    {allowAll && <X className="h-3 w-3 shrink-0 opacity-70" />}
+                    <span className="truncate">{allowAllToggleLabel(composerAllowAll)}</span>
+                    {composerAllowAll && <X className="h-3 w-3 shrink-0 opacity-70" />}
                   </button>
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
@@ -2802,31 +2875,31 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}
-                  {active && sessionModels.length > 0 && (
+                  {composerModels.length > 0 && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
                           className="flex h-7 min-w-0 max-w-[200px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                          title={`本会话使用的模型：${currentModelLabel}（仅影响当前对话）`}
+                          title={`${active ? "本会话使用的模型" : "新会话使用的模型"}：${composerModelLabel}（首条消息发出后沿用，仅影响当前对话）`}
                           aria-label="选择模型"
                         >
                           <Boxes className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{currentModelLabel}</span>
+                          <span className="truncate">{composerModelLabel}</span>
                           <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-64">
                         <DropdownMenuLabel className="truncate">
-                          本会话模型{target.provider?.name ? ` · ${target.provider.name}` : ""}
+                          本会话模型{composerProviderName ? ` · ${composerProviderName}` : ""}
                         </DropdownMenuLabel>
                         <DropdownMenuRadioGroup
-                          value={active.modelOverride || "__default"}
-                          onValueChange={(v) => setSessionModel(v)}
+                          value={composerModelValue}
+                          onValueChange={chooseComposerModel}
                         >
                           <DropdownMenuRadioItem value="__default">
-                            {active.targetType === "agent" ? "Agent 默认模型" : "默认模型"}
+                            {composerDefaultLabel}
                           </DropdownMenuRadioItem>
-                          {sessionModels.map((m) => (
+                          {composerModels.map((m) => (
                             <DropdownMenuRadioItem key={m.id} value={m.id} className="text-xs">
                               <span className="truncate" title={`${modelLabel(m)} · ${m.id}`}>{modelLabel(m)}</span>
                             </DropdownMenuRadioItem>
