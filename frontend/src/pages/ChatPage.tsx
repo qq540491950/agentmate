@@ -1688,6 +1688,16 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   const renderItems = useMemo(() => groupToolMessages(renderSource), [renderSource]);
   const visibleItems = useMemo(() => renderItems.slice(-renderLimit), [renderItems, renderLimit]);
   const omittedItems = Math.max(0, renderItems.length - visibleItems.length);
+  // Execution groups after the last user message belong to the live turn:
+  // their whole-turn clock keeps ticking until that turn settles.
+  const firstVisibleIdx = renderItems.length - visibleItems.length;
+  const lastUserItemIdx = useMemo(() => {
+    for (let k = renderItems.length - 1; k >= 0; k--) {
+      const it = renderItems[k];
+      if (it.kind === "message" && it.message.kind === "user") return k;
+    }
+    return -1;
+  }, [renderItems]);
   // The banner counts hidden MESSAGES (a collapsed block covers many), while
   // the paging button reveals whole entries in RENDER_LIMIT steps.
   const omittedMessages = useMemo(() => {
@@ -2405,6 +2415,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   {item.kind === "tool_group" ? (
                     <ToolCallGroup
                       messages={item.messages}
+                      endTs={item.endTs}
+                      live={running && firstVisibleIdx + i > lastUserItemIdx}
                       runningTools={runningToolsSet}
                       durations={toolDurations}
                       sessionID={activeID}

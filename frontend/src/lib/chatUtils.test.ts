@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations,
-  dayLabel, effectiveReasoningLevel, fmtTime, groupSessionsByProject, groupSessionsByTime,
-  groupToolMessages, isDayChange, mdToSpeech, sessionTargetBadgeLabel,
-  toolGroupDurationMs, toolGroupInvocationCount, toolGroupStatus, toolResultFailed,
-  type UIMessage,
+  dayLabel, effectiveReasoningLevel, fmtTime, formatWorkDuration, groupSessionsByProject,
+  groupSessionsByTime, groupToolMessages, isDayChange, mdToSpeech, sessionTargetBadgeLabel,
+  toolGroupDurationMs, toolGroupElapsedMs, toolGroupInvocationCount, toolGroupStatus,
+  toolResultFailed, type UIMessage,
 } from "./chatUtils";
 import type { ChatSession, Project } from "@/lib/api";
 
@@ -95,7 +95,7 @@ describe("groupToolMessages", () => {
     expect(groupToolMessages(msgs).map((i) => i.kind)).toEqual(["message", "message"]);
   });
 
-  it("splits runs at assistant text, plan_todos cards and author changes", () => {
+  it("keeps narration inside the turn block and splits at plan_todos cards and author changes", () => {
     const msgs: UIMessage[] = [
       msg({ id: "c1", kind: "tool_call", toolName: "read" }),
       msg({ id: "r1", kind: "tool_result", toolName: "read" }),
@@ -111,15 +111,67 @@ describe("groupToolMessages", () => {
       msg({ id: "r5", kind: "tool_result", toolName: "grep", author: "sub-agent" }),
     ];
     const items = groupToolMessages(msgs);
+    // Narration between tool batches no longer breaks the run; plan_todos
+    // still renders pinned and an author change still starts a new block.
     expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "c1", "r1", "mid", "group:c2", "todos", "group:c4",
+      "group:c1", "todos", "group:c4",
     ]);
-    const second = items[3];
-    if (second.kind !== "tool_group") throw new Error("expected a tool group");
-    expect(second.messages.map((m) => m.id)).toEqual(["c2", "r2", "c3", "r3"]);
-    const third = items[5];
+    const first = items[0];
+    if (first.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(first.messages.map((m) => m.id)).toEqual(["c1", "r1", "mid", "c2", "r2", "c3", "r3"]);
+    const third = items[2];
     if (third.kind !== "tool_group") throw new Error("expected a tool group");
     expect(third.author).toBe("sub-agent");
+  });
+
+  it("folds an empty skeleton and inter-tool narration into one turn block", () => {
+    // The reported render: thinking card, empty "助手" skeleton, tool card,
+    // then the reply — four look-alike blocks for a single turn.
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", text: "处理缺陷" }),
+      msg({ id: "t1", kind: "thinking", text: "先跑 gh", timestamp: "2026-10-30T01:00:00Z" }),
+      msg({ id: "skel", kind: "assistant", text: "" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "terminal" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "terminal", toolResp: { ok: true } }),
+      msg({ id: "mid", kind: "assistant", text: "我来读取模板" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "a", kind: "assistant", text: "提票完成", timestamp: "2026-10-30T01:02:04Z" }),
+    ];
+    const items = groupToolMessages(msgs);
+    expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "u", "group:t1", "a",
+    ]);
+    const group = items[1];
+    if (group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(group.messages.map((m) => m.id)).toEqual(["t1", "c1", "r1", "mid", "c2", "r2"]);
+    // endTs feeds the whole-turn 「已工作」 summary.
+    expect(group.endTs).toBe("2026-10-30T01:02:04Z");
+  });
+
+  it("drops a settled empty assistant shell that ends a tool turn", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", text: "hi" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "c2", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "skel", kind: "assistant", text: "", streaming: false }),
+    ];
+    const items = groupToolMessages(msgs);
+    expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "u", "group:c1",
+    ]);
+  });
+
+  it("keeps the live placeholder while a turn has no process event yet", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", text: "hi" }),
+      msg({ id: "live", kind: "assistant", text: "", streaming: true }),
+    ];
+    expect(groupToolMessages(msgs).map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "u", "live",
+    ]);
   });
 
   it("merges thinking entries with the turn's tool run and keeps the reply separate", () => {
@@ -158,14 +210,16 @@ describe("groupToolMessages", () => {
     expect(items[0]).toMatchObject({ kind: "tool_group", id: "t1" });
   });
 
-  it("keeps thinking-only rounds standalone", () => {
+  it("folds thinking-only rounds into the process block too", () => {
+    // Reasoning is process, not answer: even without tools it belongs to the
+    // collapsed block so the reply is the only visible result.
     const msgs: UIMessage[] = [
       msg({ id: "u", kind: "user", text: "hi" }),
       msg({ id: "t1", kind: "thinking", text: "想了想" }),
       msg({ id: "a", kind: "assistant", text: "hello" }),
     ];
-    expect(groupToolMessages(msgs).map((i) => i.kind)).toEqual([
-      "message", "message", "message",
+    expect(groupToolMessages(msgs).map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "u", "group:t1", "a",
     ]);
   });
 
@@ -212,6 +266,12 @@ describe("toolGroupStatus", () => {
     // A finished thinking entry is process detail, not a reason to auto-expand.
     expect(toolGroupStatus([result({ ok: true }), settled], new Set())).toBe("done");
   });
+
+  it("stays running while inter-tool narration still streams", () => {
+    const narration = msg({ id: "mid", kind: "assistant", text: "我来读取模板", streaming: true });
+    expect(toolGroupStatus([result({ ok: true }), narration], new Set())).toBe("running");
+    expect(toolGroupStatus([result({ ok: true }), { ...narration, streaming: false }], new Set())).toBe("done");
+  });
 });
 
 describe("toolResultFailed", () => {
@@ -236,6 +296,32 @@ describe("toolGroupDurationMs", () => {
     const durations = new Map([["r1", 1200], ["r2", 800]]);
     expect(toolGroupDurationMs(msgs, durations)).toBe(2000);
     expect(toolGroupDurationMs([msgs[0], msgs[2]], durations)).toBeNull();
+  });
+});
+
+describe("toolGroupElapsedMs / formatWorkDuration", () => {
+  const msgs: UIMessage[] = [
+    msg({ id: "t1", kind: "thinking", text: "想", timestamp: "2026-10-30T01:00:00Z" }),
+    msg({ id: "r1", kind: "tool_result", toolName: "A", timestamp: "2026-10-30T01:00:20Z" }),
+  ];
+
+  it("counts the whole turn to the final reply or to now while live", () => {
+    const reply = "2026-10-30T01:02:04Z";
+    expect(toolGroupElapsedMs(msgs, reply, 0, false, new Map())).toBe(124_000);
+    expect(toolGroupElapsedMs(msgs, undefined, Date.parse("2026-10-30T01:00:30Z"), true, new Map()))
+      .toBe(30_000);
+    // Settled without a reply: stop at the last event.
+    expect(toolGroupElapsedMs(msgs, undefined, 0, false, new Map())).toBe(20_000);
+    // No timestamps at all: fall back to the summed tool runtimes.
+    const noTs = [msg({ id: "c1", kind: "tool_call", toolName: "A" }), msg({ id: "r1", kind: "tool_result", toolName: "A" })];
+    expect(toolGroupElapsedMs(noTs, undefined, 0, false, new Map([["r1", 3200]]))).toBe(3200);
+  });
+
+  it("renders the summary in Chinese units", () => {
+    expect(formatWorkDuration(19_000)).toBe("19 秒");
+    expect(formatWorkDuration(124_000)).toBe("2 分 4 秒");
+    expect(formatWorkDuration(3_660_000)).toBe("1 小时 1 分");
+    expect(formatWorkDuration(3_600_000)).toBe("1 小时");
   });
 });
 
