@@ -49,6 +49,7 @@ concurrency:
 
 env:
   WAILS_VERSION: v3.0.0
+  TASK_VERSION: v3.54.0
   NODE_VERSION: "20.19"
 
 jobs:
@@ -138,10 +139,19 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Toolchain fingerprint
         run: go version && node --version
+      - name: Cache frontend node_modules
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('frontend/package-lock.json') }}
+      - name: Install frontend dependencies
+        if: steps.node-modules.outputs.cache-hit != 'true'
+        working-directory: frontend
+        run: npm ci
       - name: Frontend (main.go embeds frontend/dist)
         working-directory: frontend
         run: |
-          npm ci
           npx tsc --noEmit
           npm run --silent test
           npm run --silent build
@@ -168,20 +178,41 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Cache Go CLI tools
+        id: go-cli-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/bin/task.exe
+            ~/go/bin/wails3.exe
+          key: ${{ runner.os }}-go-cli-task-${{ env.TASK_VERSION }}-wails3-${{ env.WAILS_VERSION }}
+      - name: Cache frontend node_modules
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          # .task/checksum lets `task windows:build` skip its npm install
+          # dependency when node_modules came from the cache.
+          path: |
+            frontend/node_modules
+            .task/checksum
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('frontend/package-lock.json') }}-task-${{ env.TASK_VERSION }}
       - name: Install Task CLI
+        if: steps.go-cli-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           # Install from the Go module proxy instead of arduino/setup-task:
           # that action resolves the release through GitHub's API and failed
           # the v0.5.13 release on a shared-runner rate limit. go install also
           # keeps the version pinned and reproducible.
-          go install github.com/go-task/task/v3/cmd/task@v3.54.0
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          go install github.com/go-task/task/v3/cmd/task@${TASK_VERSION}
       - name: Install Wails CLI
+        if: steps.go-cli-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Add Go bin to PATH
+        shell: bash
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Stamp version (tag -> build assets)
         shell: bash
         env:
@@ -244,15 +275,24 @@ jobs:
           go-version-file: go.mod
       # `go install .../cmd/wails3` links the linux backend (cgo), so the CLI we
       # need for manifest signing cannot be built without the GTK4 headers.
+      # Both the headers and the compiled CLI are skipped when the cache hits.
+      - name: Cache Wails CLI (manifest signing)
+        id: wails-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/wails3
+          key: ${{ runner.os }}-wails3-${{ env.WAILS_VERSION }}
       - name: Install linux cgo headers (wails3 CLI)
+        if: steps.wails-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libgtk-4-dev libwebkitgtk-6.0-dev
       - name: Install Wails CLI (manifest signing)
-        run: |
-          go install "github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}"
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+        if: steps.wails-cache.outputs.cache-hit != 'true'
+        run: go install "github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}"
+      - name: Add Go bin to PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       # 自动发版在 build 成功后才创建 tag：构建失败不会留下空 tag。tag 消息
       # 写裸版本号，release-notes.sh 会忽略它并按 conventional commits 生成说明。
       - name: Create tag if missing
