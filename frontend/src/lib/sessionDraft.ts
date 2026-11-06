@@ -12,3 +12,14 @@ export function shouldOpenLatestSession(opts: {
 }): boolean {
   return opts.activeID === "" && !opts.draft && opts.sessionCount > 0;
 }
+
+/**
+ * draftUsesProject decides which RPC creates the session for a not-yet-saved
+ * chat: a draft opened from a project's「+」binds to that project, while a
+ * global「新聊天」creates a standalone task session. Neither persists a row
+ * until the first message is actually sent (issue #60: every click used to
+ * create an empty「新对话」).
+ */
+export function draftUsesProject(projectID: string): boolean {
+  return projectID.trim() !== "";
+}
