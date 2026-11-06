@@ -45,5 +45,6 @@ export type {
     TaskWorkspaceSnapshot,
     UpdateStatus,
     UsageInfo,
+    WorkspaceEntry,
     WorkspaceFileInfo
 } from "./models.js";

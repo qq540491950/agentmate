@@ -80,6 +80,16 @@ export function EditAndResend(sessionID: string, newText: string): $CancellableP
 }
 
 /**
+ * EffectiveSkills returns the skills the composer's "/" menu can invoke for a
+ * chat context. The workspace is resolved server-side (session > project >
+ * global) and merged with project/global .agents/skills discovery, so an
+ * editor does not have to guess which directory a chat will run in.
+ */
+export function EffectiveSkills(sessionID: string, projectID: string): $CancellablePromise<config$0.SkillConfig[] | null> {
+    return $Call.ByID(624882946, sessionID, projectID);
+}
+
+/**
  * ExportAllSessions writes every conversation as Markdown into the workspace
  * exports directory and returns the number of exported sessions.
  */
@@ -234,6 +244,15 @@ export function SendWithReasoning(sessionID: string, text: string, attachments: 
 }
 
 /**
+ * SessionAllowAllTools reports whether the chat currently runs side-effectful
+ * builtin tools without per-call confirmation. Unknown IDs are an error, like
+ * the other session-setting RPCs.
+ */
+export function SessionAllowAllTools(sessionID: string): $CancellablePromise<boolean> {
+    return $Call.ByID(551129684, sessionID);
+}
+
+/**
  * SessionStats computes aggregate metrics from the stored ADK events.
  */
 export function SessionStats(sessionID: string): $CancellablePromise<$models.SessionStats | null> {
@@ -247,6 +266,18 @@ export function SessionStats(sessionID: string): $CancellablePromise<$models.Ses
  */
 export function SessionWorkspace(sessionID: string): $CancellablePromise<string> {
     return $Call.ByID(3713305274, sessionID);
+}
+
+/**
+ * SetSessionAllowAllTools grants or revokes this chat's「允许完全访问」
+ * permission. While granted, side-effectful builtin tools run without the
+ * per-call HITL prompt; the switch is persisted on the session (so switching
+ * chats or restarting keeps it) and never affects other sessions. source
+ * records where it was flipped — the confirmation card or the composer
+ * switch — in the audit trail.
+ */
+export function SetSessionAllowAllTools(sessionID: string, allowAll: boolean, source: string): $CancellablePromise<void> {
+    return $Call.ByID(2198391258, sessionID, allowAll, source);
 }
 
 /**

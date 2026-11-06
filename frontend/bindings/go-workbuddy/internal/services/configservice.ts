@@ -91,6 +91,9 @@ export function DeleteTeam(id: string): $CancellablePromise<void> {
 
 /**
  * GetConfig returns the full configuration (API keys included; local app).
+ * Project/global skills discovered from <root>/.agents/skills are merged into
+ * the returned copy only: they are external read-only files, so they must
+ * never be written back to config.json (other agentskills.io tools own them).
  */
 export function GetConfig(): $CancellablePromise<config$0.Config> {
     return $Call.ByID(2830209267);

@@ -98,7 +98,24 @@ const seedConfig = {
       createdAt: "2026-09-18T01:00:00Z",
     },
   ],
-  skills: [],
+  // Slash-menu fixtures: one discovered project skill and one app skill, so
+  // the source tags and descriptions are visible in the browser stub.
+  skills: [
+    {
+      id: "fs:project:weekly-report",
+      name: "weekly-report",
+      description: "根据本周工作记录撰写结构化周报",
+      content: "# 周报\n\n按项目汇总本周进展。",
+      createdAt: "",
+    },
+    {
+      id: "skill_review",
+      name: "Code Review",
+      description: "系统性代码审查清单与输出格式",
+      content: "# Code Review\n\n先看正确性，再看可维护性。",
+      createdAt: "2026-09-18T01:00:00Z",
+    },
+  ],
   mcpServers: [],
   projects: [
     { id: "proj_alpha", name: "proj-alpha", rootDir: "/tmp/proj-alpha", createdAt: "2026-10-01T00:00:00Z" },
@@ -527,6 +544,26 @@ const handlers: Record<string, (args: any[]) => any> = {
     else allowAllSessions.delete(args[0]);
     return null;
   },
+  // ChatService.EffectiveSkills(sessionID, projectID) — composer "/" menu.
+  // Numeric key = generated binding's ByID route; the ByName key keeps older
+  // snapshots working.
+  "624882946": () => seedConfig.skills,
+  "go-workbuddy/internal/services.ChatService.EffectiveSkills": () => seedConfig.skills,
+  // ArtifactService.ListContextPaths(sessionID, projectID) — composer "@" menu.
+  "2142600974": () => [
+    { path: "notes", dir: true },
+    { path: "notes/weekly.md", dir: false },
+    { path: "src", dir: true },
+    { path: "src/main.go", dir: false },
+    { path: "README.md", dir: false },
+  ],
+  "go-workbuddy/internal/services.ArtifactService.ListContextPaths": () => [
+    { path: "notes", dir: true },
+    { path: "notes/weekly.md", dir: false },
+    { path: "src", dir: true },
+    { path: "src/main.go", dir: false },
+    { path: "README.md", dir: false },
+  ],
   // ListProviderModels
   "729587208": () => ["gpt-5-mini", "gpt-5"],
   // SuggestModels(ids)

@@ -32,6 +32,17 @@ export function List(): $CancellablePromise<$models.ArtifactInfo[] | null> {
 }
 
 /**
+ * ListContextPaths lists the files and folders the composer's "@" picker may
+ * reference. The directory follows the chat context (session > draft project >
+ * global workspace) and the same skip rules as the task snapshot: hidden
+ * entries, VCS metadata and dependency caches stay out. A missing workspace is
+ * an empty list, not an error — a fresh draft has not resolved one yet.
+ */
+export function ListContextPaths(sessionID: string, projectID: string): $CancellablePromise<$models.WorkspaceEntry[] | null> {
+    return $Call.ByID(2142600974, sessionID, projectID);
+}
+
+/**
  * Open reads a workspace file for preview. Path is relative to the workspace.
  */
 export function Open(relPath: string): $CancellablePromise<$models.Artifact | null> {

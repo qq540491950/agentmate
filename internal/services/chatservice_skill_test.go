@@ -134,7 +134,7 @@ func TestResolveSkillCommand(t *testing.T) {
 		{"/", "", ""},
 	}
 	for _, c := range cases {
-		got, args := resolveSkillCommand(cfg, c.text)
+		got, args := resolveSkillCommand(cfg.Skills, c.text)
 		gotID := ""
 		if got != nil {
 			gotID = got.ID

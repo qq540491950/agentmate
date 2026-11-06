@@ -5,6 +5,7 @@ import {
   skillCommandName,
   skillCommandNameFor,
   slashCandidates,
+  slashSourceLabel,
   type SlashCommand,
 } from "./slashSkills";
 
@@ -43,6 +44,21 @@ describe("slashCandidates", () => {
     expect(out.filter((c) => c.cmd === "/new")).toHaveLength(1);
     expect(out.find((c) => c.cmd === "/new")?.desc).toBe("新建");
   });
+
+  it("tags discovered skills with their source", () => {
+    const out = slashCandidates(BUILTINS, [
+      { id: "fs:project:weekly-report", name: "Weekly Report", description: "项目周报" },
+      { id: "fs:global:style", name: "Style", description: "全局风格" },
+      { id: "skill_app", name: "App Skill", description: "应用技能" },
+    ]);
+    expect(out.find((c) => c.cmd === "/weekly-report")?.source).toBe("project");
+    expect(out.find((c) => c.cmd === "/style")?.source).toBe("global");
+    expect(out.find((c) => c.cmd === "/app-skill")?.source).toBe("app");
+    expect(slashSourceLabel("project")).toBe("项目");
+    expect(slashSourceLabel("global")).toBe("全局");
+    expect(slashSourceLabel("app")).toBe("应用内");
+    expect(slashSourceLabel("builtin")).toBe("内置");
+  });
 });
 
 describe("filterSlashCommands", () => {
@@ -51,7 +67,7 @@ describe("filterSlashCommands", () => {
   it("filters by case-insensitive prefix", () => {
     expect(filterSlashCommands(all, "/EX")).toEqual([BUILTINS[0]]);
     expect(filterSlashCommands(all, "/week")).toEqual([
-      { cmd: "/weekly-report", desc: "写周报" },
+      { cmd: "/weekly-report", desc: "写周报", source: "app" },
     ]);
   });
 

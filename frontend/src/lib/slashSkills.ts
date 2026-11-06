@@ -1,8 +1,13 @@
+import { skillSource, type SkillSource } from "./skills";
+
+/** Where a "/" entry comes from; built-ins run locally, the rest are skills. */
+export type SlashSource = "builtin" | SkillSource;
+
 /** One entry of the composer's "/" suggestion popup. */
-export type SlashCommand = { cmd: string; desc: string };
+export type SlashCommand = { cmd: string; desc: string; source?: SlashSource };
 
 /** The configured-skill fields the slash menu needs (SkillConfig is wider). */
-export type SkillSlashSource = { name: string; description?: string };
+export type SkillSlashSource = { id?: string; name: string; description?: string };
 
 /**
  * skillCommandName mirrors agentkit.MaterializedSkillName: the lowercase,
@@ -41,9 +46,23 @@ export function slashCandidates(
     const cmd = "/" + skillCommandName(skill.name);
     if (seen.has(cmd)) continue;
     seen.add(cmd);
-    out.push({ cmd, desc: skill.description?.trim() || "技能" });
+    out.push({ cmd, desc: skill.description?.trim() || "技能", source: skillSource(skill.id) });
   }
   return out;
+}
+
+/** slashSourceLabel renders where a command came from. */
+export function slashSourceLabel(source: SlashSource | undefined): string {
+  switch (source) {
+    case "project":
+      return "项目";
+    case "global":
+      return "全局";
+    case "app":
+      return "应用内";
+    default:
+      return "内置";
+  }
 }
 
 /**

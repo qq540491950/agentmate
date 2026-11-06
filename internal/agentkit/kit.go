@@ -645,16 +645,18 @@ func agentSkillKey(ac config.AgentConfig) string {
 // existing skill's materialized directory.
 func MaterializedSkillName(name string) string { return sanitizeSkillName(name) }
 
-// SkillContextStateKey carries the SKILL.md body of a slash-invoked skill into
+// SkillContextStateKey carries the turn context — a slash-invoked skill's
+// SKILL.md body and the inlined content of @-referenced workspace files — into
 // one run. The "temp:" prefix is ADK's temporary-state convention: the value
 // reaches the running invocation (so the instruction provider can append it)
 // but is trimmed before it is written back to the session, so the next turn
-// never inherits a previous skill.
+// never inherits a previous turn's context.
 const SkillContextStateKey = session.KeyPrefixTemp + "workbuddy.skill_context"
 
 // skillAwareInstruction wraps a base system instruction so a turn that was
-// started with a "/<skill-name>" command gets that skill's SKILL.md appended
-// for the duration of the run. This is the per-turn counterpart of mounting a
+// started with a "/<skill-name>" command (or @-referenced files) gets that
+// turn context appended for the duration of the run. This is the per-turn
+// counterpart of mounting a
 // skill on an agent: the model sees the full instructions without the skill
 // body being stored as part of the user's chat history.
 func skillAwareInstruction(base string) func(agent.ReadonlyContext) (string, error) {

@@ -269,13 +269,21 @@ func turnTargetFor(cfg config.Config, target *config.ChatSession, userText strin
 	return &turn
 }
 
+// effectiveSkillsFor is the slash-command view of the skill set for a chat
+// working in workspace: project/global discovery wins over same-named app
+// skills, exactly like the agent-build layer (config.EffectiveSkills).
+func effectiveSkillsFor(cfg config.Config, workspace string) []config.SkillConfig {
+	return config.EffectiveSkills(cfg, workspace, config.GlobalSkillRoot())
+}
+
 // resolveSkillCommand parses a leading "/<skill-name>" command against the
-// configured skills. Matching uses the materialized name ADK would expose
-// (lowercase, hyphenated) and is case-insensitive, so "/Weekly_Report" finds a
-// skill named "Weekly Report". The remainder of the line is returned as the
-// turn's user input. Only the first token is considered: the text doubles as
-// chat history, so Regenerate and HITL resume can re-parse it verbatim.
-func resolveSkillCommand(cfg config.Config, text string) (*config.SkillConfig, string) {
+// effective skills (app config plus project/global .agents/skills discovery).
+// Matching uses the materialized name ADK would expose (lowercase, hyphenated)
+// and is case-insensitive, so "/Weekly_Report" finds a skill named
+// "Weekly Report". The remainder of the line is returned as the turn's user
+// input. Only the first token is considered: the text doubles as chat history,
+// so Regenerate and HITL resume can re-parse it verbatim.
+func resolveSkillCommand(skills []config.SkillConfig, text string) (*config.SkillConfig, string) {
 	t := strings.TrimLeft(text, " \t\r\n")
 	if !strings.HasPrefix(t, "/") {
 		return nil, ""
@@ -290,8 +298,8 @@ func resolveSkillCommand(cfg config.Config, text string) (*config.SkillConfig, s
 		return nil, ""
 	}
 	cmd := agentkit.MaterializedSkillName(token)
-	for i := range cfg.Skills {
-		s := &cfg.Skills[i]
+	for i := range skills {
+		s := &skills[i]
 		if agentkit.MaterializedSkillName(s.Name) == cmd {
 			return s, args
 		}

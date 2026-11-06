@@ -25,7 +25,9 @@ export interface AgentConfig {
     "mcpServerIds": string[] | null;
 
     /**
-     * subset of builtin tool names: time, files, knowledge
+     * BuiltinTools is an explicit narrowing of the built-in tool categories
+     * (time, files, knowledge, memory, todos, shell). Empty means the full
+     * set — see AllBuiltinTools — so narrowing is always a deliberate act.
      */
     "builtinTools": string[] | null;
     "createdAt": string;
@@ -38,9 +40,9 @@ export interface AgentConfig {
 
     /**
      * ConfirmTools lists builtin tool categories whose side-effectful calls
-     * need human approval before execution (ADK HITL). Only "files" is
-     * meaningful today: write_workspace_file asks for confirmation while
-     * list/read stay automatic. Empty = never ask.
+     * need human approval before execution (ADK HITL). "files" gates
+     * write_workspace_file; "shell" gates every run_command call. Empty =
+     * never ask.
      */
     "confirmTools"?: string[] | null;
 
@@ -113,6 +115,17 @@ export interface ChatSession {
      * It is a per-chat UI choice and never writes back to provider config.
      */
     "reasoningLevel"?: string;
+
+    /**
+     * AllowAllTools is this chat's「允许完全访问」permission: while true,
+     * side-effectful builtin tools (workspace writes, run_command) run without
+     * the per-call HITL confirmation prompt. It is session-scoped and
+     * persisted, so switching chats or restarting keeps the grant; new chats
+     * default to off and the composer switch can revoke it. Pending
+     * confirmations answered before the grant still honour an explicit
+     * rejection.
+     */
+    "allowAllTools"?: boolean;
 
     /**
      * WorkspaceDir is the task-level directory used by file tools, prompt

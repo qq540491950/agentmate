@@ -4,7 +4,7 @@ import {
   Plus, Square, Trash2, Pencil, MessageSquare, Bot, Users, Loader2, ArrowUp, ArrowDown,
   Search, Download,
   X, BarChart3, Brain, Network, GitFork, Pin, PinOff, FileCode2, Archive, ClipboardCopy,
-  FolderOpen,
+  FolderOpen, Folder, FileText,
   PanelRightOpen,
   ChevronRight, ChevronDown,
   Settings as SettingsIcon, CircleHelp, Sun, Moon,
@@ -34,7 +34,15 @@ import {
   clampSidebarWidth, parseStoredSidebarWidth, sidebarMaxWidth,
 } from "@/lib/sidebarWidth";
 import { draftModelFor, draftUsesProject, shouldOpenLatestSession } from "@/lib/sessionDraft";
-import { filterSlashCommands, isSkillCommand, slashCandidates, type SlashCommand } from "@/lib/slashSkills";
+import { filterSlashCommands, isSkillCommand, slashCandidates, slashSourceLabel, type SlashCommand } from "@/lib/slashSkills";
+import {
+  applyMentionToken,
+  buildMentionCandidates,
+  isAssistantCandidate,
+  mentionAtCaret,
+  type AssistantCandidate,
+  type MentionCandidate,
+} from "@/lib/mentions";
 import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
 import { levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
 import { resolveAgentModel } from "@/lib/agentModel";
@@ -46,9 +54,10 @@ import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
 import type { SettingsTab } from "@/pages/SettingsPage";
 import {
   Chat, Config, errText, sessionAllowAllTools, setSessionAllowAllTools,
+  effectiveSkills, listContextPaths,
   type AgentConfig, type AttachmentIn, type ChatSession, type TeamConfig,
   type RemoteAgentConfig, type UsageInfo, type ModelProvider, type ModelInfo, type SessionStats,
-  type Project, type SkillConfig,
+  type Project, type SkillConfig, type WorkspaceEntry,
 } from "@/lib/api";
 import {
   ALLOW_ALL_RISK_DESCRIPTION, ALLOW_ALL_RISK_TITLE,
@@ -74,11 +83,11 @@ const SIDEBAR_WIDTH_STORAGE_KEY = "wb-chat-sidebar-width";
 // Built-in commands run locally, without a model round-trip. Configured
 // skills are appended by slashCandidates (issue #53).
 const SLASH_COMMANDS: SlashCommand[] = [
-  { cmd: "/export", desc: "导出会话为 Markdown" },
-  { cmd: "/exporthtml", desc: "导出会话为 HTML" },
-  { cmd: "/stats", desc: "查看会话统计" },
-  { cmd: "/todos", desc: "查看当前任务计划" },
-  { cmd: "/new", desc: "新建对话" },
+  { cmd: "/export", desc: "导出会话为 Markdown", source: "builtin" },
+  { cmd: "/exporthtml", desc: "导出会话为 HTML", source: "builtin" },
+  { cmd: "/stats", desc: "查看会话统计", source: "builtin" },
+  { cmd: "/todos", desc: "查看当前任务计划", source: "builtin" },
+  { cmd: "/new", desc: "新建对话", source: "builtin" },
 ];
 
 /** speak synthesizes speech for text, cancelling previous playback. */
@@ -140,10 +149,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [teams, setTeams] = useState<TeamConfig[]>([]);
   const [remotes, setRemotes] = useState<RemoteAgentConfig[]>([]);
-  // Configured skills furnish the extra "/" commands (issue #53). They ride on
-  // the same config load as agents/teams, so returning from the Skills page
-  // (a remount) picks up edits.
+  // Configured skills furnish the extra "/" commands (issue #53). The list is
+  // session-scoped (see the EffectiveSkills effect below), so a project chat
+  // also sees <project>/.agents/skills without importing them.
   const [skills, setSkills] = useState<SkillConfig[]>([]);
+  // Workspace files/folders offered by the composer's "@" picker.
+  const [contextEntries, setContextEntries] = useState<WorkspaceEntry[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [renamingProject, setRenamingProject] = useState<Project | null>(null);
   const [renameProjectText, setRenameProjectText] = useState("");
@@ -281,7 +292,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         setAgents(c.agents ?? []);
         setTeams(c.teams ?? []);
         setRemotes(c.remoteAgents ?? []);
-        setSkills(c.skills ?? []);
         setProviderCount((c.providers ?? []).length);
         setProviderList(c.providers ?? []);
         setAutoSpeak(!!c.settings?.autoSpeak);
@@ -290,6 +300,33 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       })
       .catch((e) => toast.error(`加载配置失败: ${errText(e)}`));
   }, [reloadSessions]);
+
+  // "/" skills follow the active chat's effective workspace. The backend
+  // merges project/global .agents/skills discovery with config.json skills, so
+  // a project skill is invocable without a manual import. Re-runs when the
+  // workspace is rebound before the first turn (resolvedWorkspace).
+  useEffect(() => {
+    let cancelled = false;
+    effectiveSkills(activeID, activeID ? "" : draftProjectID)
+      .then((list) => {
+        if (!cancelled) setSkills(list);
+      })
+      .catch(() => { /* keep the last known list */ });
+    return () => { cancelled = true; };
+  }, [activeID, draftProjectID, resolvedWorkspace]);
+
+  // "@" picker index: same workspace resolution as the slash skills.
+  useEffect(() => {
+    let cancelled = false;
+    listContextPaths(activeID, activeID ? "" : draftProjectID)
+      .then((list) => {
+        if (!cancelled) setContextEntries(list);
+      })
+      .catch(() => {
+        if (!cancelled) setContextEntries([]);
+      });
+    return () => { cancelled = true; };
+  }, [activeID, draftProjectID, resolvedWorkspace]);
 
   useEffect(() => {
     if (!activeID) {
@@ -1804,9 +1841,16 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     if (input !== slashDismissed) setSlashDismissed(null);
   }, [input, slashDismissed]);
   const applySlash = (cmd: string) => {
-    setInput(cmd + " ");
+    const next = cmd + " ";
+    setInput(next);
     setSlashDismissed(null);
-    inputRef.current?.focus();
+    requestAnimationFrame(() => {
+      const ta = inputRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(next.length, next.length);
+      setCaret(next.length);
+    });
   };
 
   // Auto-grow the composer with its content, capped by max-h-48 (192px) —
@@ -1821,33 +1865,57 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   // Visual feedback while a file hovers the composer drop zone.
   const [dragOver, setDragOver] = useState(false);
 
-  // @-mention autocomplete: a leading "@名称" routes that turn to the named
-  // agent/team/remote (parsed by the backend), so the popup offers exactly
-  // those candidates while the first token is still being typed.
-  const mentionQuery = useMemo(() => {
-    const m = /^@([^@\s]*)$/.exec(input);
-    return m ? m[1].toLowerCase() : null;
-  }, [input]);
-  const mentionCandidates = useMemo(() => {
-    if (mentionQuery == null) return [];
-    const all = [
-      ...agents.map((a) => ({ type: "agent" as const, id: a.id, name: a.name })),
-      ...teams.map((t) => ({ type: "team" as const, id: t.id, name: t.name })),
-      ...remotes.map((r) => ({ type: "remote" as const, id: r.id, name: r.name })),
-    ].filter((x) => x.name.toLowerCase().includes(mentionQuery));
-    return all.slice(0, 8);
-  }, [mentionQuery, agents, teams, remotes]);
+  // @-mention autocomplete. A leading "@名称" routes that turn to the named
+  // agent/team/remote (the backend parses it), while every token also offers
+  // workspace files/folders as context. The token is caret-aware, so "@"
+  // works mid-message and a mid-token pick rewrites only that token.
+  const [caret, setCaret] = useState(0);
+  useEffect(() => {
+    // A session switch replaces the draft; keep the caret at its end. Typing
+    // inside one session must not be pulled back to the end.
+    setCaret(input.length);
+  }, [activeID]);
+  const mentionToken = useMemo(() => mentionAtCaret(input, caret), [input, caret]);
+  const mentionAssistants = useMemo<AssistantCandidate[]>(() => {
+    if (!mentionToken?.leading) return [];
+    return [
+      ...agents.map((a) => ({ kind: "agent" as const, id: a.id, name: a.name })),
+      ...teams.map((t) => ({ kind: "team" as const, id: t.id, name: t.name })),
+      ...remotes.map((r) => ({ kind: "remote" as const, id: r.id, name: r.name })),
+    ];
+  }, [mentionToken?.leading, agents, teams, remotes]);
+  const mentionCandidates = useMemo(
+    () => (mentionToken ? buildMentionCandidates(mentionToken, mentionAssistants, contextEntries) : []),
+    [mentionToken, mentionAssistants, contextEntries],
+  );
   const [mentionIdx, setMentionIdx] = useState(0);
   const [mentionDismissed, setMentionDismissed] = useState<string | null>(null);
+  const mentionKey = mentionToken ? `${mentionToken.start}:${mentionToken.query}` : null;
   useEffect(() => {
     setMentionIdx(0);
-    if (mentionQuery !== mentionDismissed) setMentionDismissed(null);
-  }, [mentionQuery, mentionDismissed]);
-  const mentionOpen = mentionQuery != null && mentionQuery !== mentionDismissed && mentionCandidates.length > 0;
-  const applyMention = (name: string) => {
-    setInput(`@${name} `);
+    if (mentionKey !== mentionDismissed) setMentionDismissed(null);
+  }, [mentionKey, mentionDismissed]);
+  // The workspace index can arrive while the popup is open; never leave the
+  // highlight pointing past the end of the new candidate list.
+  useEffect(() => {
+    if (mentionCandidates.length > 0 && mentionIdx >= mentionCandidates.length) setMentionIdx(0);
+  }, [mentionCandidates.length, mentionIdx]);
+  const mentionOpen = mentionKey != null && mentionKey !== mentionDismissed && mentionCandidates.length > 0;
+  const applyMention = (c: MentionCandidate) => {
+    if (!mentionToken) return;
+    const value = isAssistantCandidate(c) ? c.name : c.kind === "directory" ? `${c.path}/` : c.path;
+    // A folder pick keeps the token open-ended (`@src/`) so the menu drills in;
+    // files and assistants finish the token with a space.
+    const next = applyMentionToken(input, mentionToken, value, { trailingSpace: !(c.kind === "directory") });
+    setInput(next.text);
     setMentionDismissed(null);
-    inputRef.current?.focus();
+    requestAnimationFrame(() => {
+      const ta = inputRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(next.caret, next.caret);
+      setCaret(next.caret);
+    });
   };
 
   // contextUsage: how much of the target model's context window the session
@@ -2647,54 +2715,70 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             >
               <div className="relative">
               {mentionOpen && (
-                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 overflow-hidden rounded-lg border bg-popover shadow-md" role="listbox" aria-label="@ 助手候选">
-                  {mentionCandidates.map((c, i) => (
+                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-lg border bg-popover p-1 shadow-md" role="listbox" aria-label="@ 引用候选">
+                  {mentionCandidates.map((c, i) => {
+                    const key = isAssistantCandidate(c) ? `${c.kind}-${c.id}` : `${c.kind}-${c.path}`;
+                    const label = isAssistantCandidate(c) ? `@${c.name}` : `@${c.path}${c.kind === "directory" ? "/" : ""}`;
+                    const tag = c.kind === "team" ? "团队" : c.kind === "remote" ? "远程"
+                      : c.kind === "agent" ? "助手" : c.kind === "directory" ? "目录" : "文件";
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        role="option"
+                        aria-selected={i === mentionIdx}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs",
+                          i === mentionIdx ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
+                        )}
+                        onMouseEnter={() => setMentionIdx(i)}
+                        onMouseDown={(e) => { e.preventDefault(); applyMention(c); }}
+                      >
+                        {isAssistantCandidate(c)
+                          ? c.kind === "team" ? <Users className="h-3.5 w-3.5 shrink-0 text-primary" />
+                            : c.kind === "remote" ? <Network className="h-3.5 w-3.5 shrink-0 text-primary" />
+                              : <Bot className="h-3.5 w-3.5 shrink-0 text-primary" />
+                          : c.kind === "directory" ? <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                        <span className="min-w-0 flex-1 truncate">{label}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">{tag}</span>
+                      </button>
+                    );
+                  })}
+                  {mentionToken?.leading && (
                     <button
-                      key={`${c.type}-${c.id}`}
                       type="button"
-                      role="option"
-                      aria-selected={i === mentionIdx}
-                      className={cn(
-                        "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs",
-                        i === mentionIdx ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
-                      )}
-                      onMouseEnter={() => setMentionIdx(i)}
-                      onMouseDown={(e) => { e.preventDefault(); applyMention(c.name); }}
+                      className="flex w-full items-center gap-2 border-t px-3 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                      onMouseDown={(e) => { e.preventDefault(); onOpenSettings("agents"); }}
                     >
-                      {c.type === "team" ? <Users className="h-3.5 w-3.5 shrink-0 text-primary" />
-                        : c.type === "remote" ? <Network className="h-3.5 w-3.5 shrink-0 text-primary" />
-                          : <Bot className="h-3.5 w-3.5 shrink-0 text-primary" />}
-                      <span className="min-w-0 flex-1 truncate">@{c.name}</span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
-                        {c.type === "team" ? "团队" : c.type === "remote" ? "远程" : "助手"}
-                      </span>
+                      <Bot className="h-3.5 w-3.5 shrink-0" /> 管理助手与团队…
                     </button>
-                  ))}
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 border-t px-3 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                    onMouseDown={(e) => { e.preventDefault(); onOpenSettings("agents"); }}
-                  >
-                    <Bot className="h-3.5 w-3.5 shrink-0" /> 管理助手与团队…
-                  </button>
+                  )}
                 </div>
               )}
               {slashOpen && (
-                <div className="absolute bottom-full left-0 right-0 mb-2 flex flex-wrap gap-1.5" role="listbox" aria-label="斜杠命令建议">
+                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-lg border bg-popover p-1 shadow-md" role="listbox" aria-label="斜杠命令建议">
                   {slashSuggestions.map((c, i) => (
                     <button
                       key={c.cmd}
                       role="option"
                       aria-selected={i === slashIdx}
                       className={cn(
-                        "rounded-lg border px-2.5 py-1 text-left text-xs transition-colors",
-                        i === slashIdx ? "border-primary bg-accent text-accent-foreground" : "bg-background hover:bg-accent",
+                        "flex w-full flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
+                        i === slashIdx ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
                       )}
                       onMouseEnter={() => setSlashIdx(i)}
                       onMouseDown={(e) => { e.preventDefault(); applySlash(c.cmd); }}
                     >
-                      <span className="font-mono">{c.cmd}</span>
-                      <span className="ml-1.5 text-muted-foreground">{c.desc}</span>
+                      <span className="flex w-full items-center gap-2">
+                        <span className="font-mono font-medium">{c.cmd}</span>
+                        {c.source && c.source !== "builtin" && (
+                          <span className="shrink-0 rounded border px-1 text-[10px] font-normal text-muted-foreground">
+                            {slashSourceLabel(c.source)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="w-full truncate text-[11px] font-normal text-muted-foreground">{c.desc}</span>
                     </button>
                   ))}
                 </div>
@@ -2703,7 +2787,11 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                 ref={inputRef}
                 rows={2}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  setCaret(e.target.selectionStart ?? e.target.value.length);
+                }}
+                onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
                 onKeyDown={(e) => {
                   if (mentionOpen) {
                     if (e.key === "ArrowDown") {
@@ -2718,12 +2806,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                     }
                     if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey && !e.nativeEvent.isComposing) {
                       e.preventDefault();
-                      applyMention(mentionCandidates[mentionIdx].name);
+                      const pick = mentionCandidates[mentionIdx];
+                      if (pick) applyMention(pick);
                       return;
                     }
                     if (e.key === "Escape") {
                       e.preventDefault();
-                      setMentionDismissed(mentionQuery);
+                      setMentionDismissed(mentionKey);
                       return;
                     }
                   }
@@ -2742,7 +2831,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                     }
                     if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey && !e.nativeEvent.isComposing) {
                       e.preventDefault();
-                      applySlash(slashSuggestions[slashIdx].cmd);
+                      const pick = slashSuggestions[slashIdx];
+                      if (pick) applySlash(pick.cmd);
                       return;
                     }
                     if (e.key === "Escape") {
@@ -2797,7 +2887,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   e.preventDefault();
                   addFiles(files);
                 }}
-                placeholder={active ? "今天帮你做些什么？输入 @ 添加上下文，/ 调用技能与指令" : "输入消息开始新对话；@ 可指定助手"}
+                placeholder={active ? "今天帮你做些什么？输入 @ 引用文件或指定助手，/ 调用技能与指令" : "输入消息开始新对话；@ 可引用文件或指定助手"}
                 aria-label="消息输入框"
                 // Typing stays available while a reply streams (matching the
                 // desktops this app mirrors); send() guards the running state.

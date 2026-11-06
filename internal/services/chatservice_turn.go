@@ -204,8 +204,14 @@ func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentI
 	// A leading "/<skill-name>" command attaches that skill's SKILL.md to this
 	// turn only (see runTurn). The message text itself stays untouched: it is
 	// what history renders, and Regenerate/EditAndResend re-parse it verbatim.
-	skillCfg, skillArgs := resolveSkillCommand(cfg, text)
-	skillContext := buildSkillTurnContext(skillCfg, skillArgs)
+	// Discovery is resolved against this chat's effective workspace so project
+	// SKILL.md files never have to be imported into config.json first.
+	workspace := target.EffectiveWorkspaceFor(cfg)
+	skillCfg, skillArgs := resolveSkillCommand(effectiveSkillsFor(cfg, workspace), text)
+	turnContext := joinTurnContexts(
+		buildSkillTurnContext(skillCfg, skillArgs),
+		buildFileMentionContext(workspace, text),
+	)
 	// Layered guardrails: sanitize user input; flag injection attempts.
 	agentCfg := c.targetAgentConfig(cfg, turnTarget)
 	guardOn := agentCfg == nil || agentkit.GuardrailsEnabled(*agentCfg)
@@ -227,7 +233,7 @@ func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentI
 	if err != nil {
 		return err
 	}
-	return c.runTurn(turnTarget, guardOn, msg, text, skillContext, turnReasoning)
+	return c.runTurn(turnTarget, guardOn, msg, text, turnContext, turnReasoning)
 }
 
 // ConfirmToolCall answers a pending ADK tool-confirmation interrupt (HITL):
@@ -303,15 +309,20 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 	turnTarget := turnTargetFor(cfg, target, lastUserText)
 	agentCfg := c.targetAgentConfig(cfg, turnTarget)
 	guardOn := agentCfg == nil || agentkit.GuardrailsEnabled(*agentCfg)
-	// A resumed turn recomputes the skill context from the same user message:
-	// temporary state is not persisted, so the confirmation round-trip must
-	// re-attach the skill the interrupted turn started with.
-	skillCfg, skillArgs := resolveSkillCommand(cfg, lastUserText)
-	skillContext := buildSkillTurnContext(skillCfg, skillArgs)
+	// A resumed turn recomputes the turn context (slash skill and @-referenced
+	// files) from the same user message: temporary state is not persisted, so
+	// the confirmation round-trip must re-attach what the interrupted turn
+	// started with.
+	workspace := target.EffectiveWorkspaceFor(cfg)
+	skillCfg, skillArgs := resolveSkillCommand(effectiveSkillsFor(cfg, workspace), lastUserText)
+	turnContext := joinTurnContexts(
+		buildSkillTurnContext(skillCfg, skillArgs),
+		buildFileMentionContext(workspace, lastUserText),
+	)
 	// Resume on the level the interrupted turn used: a HITL round-trip is one
 	// logical turn, so the continuation must not switch thinking budgets
 	// halfway through.
-	return c.runTurn(turnTarget, guardOn, msg, "", skillContext, lastUserReasoning)
+	return c.runTurn(turnTarget, guardOn, msg, "", turnContext, lastUserReasoning)
 }
 
 // runTurn builds the agent tree for the session target, runs one turn with
@@ -322,10 +333,14 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 // override (empty keeps the session default), resolved once here so the
 // request body and the recorded badge cannot disagree.
 //
+// The turn context carries the slash-invoked skill body and the inlined
+// content of @-referenced workspace files. It rides on temporary session
+// state, so it reaches the model for this invocation only.
+//
 // A panic anywhere in the agent/tool stack is converted into an error event:
 // one misbehaving MCP server or tool must not take the whole desktop process
 // down with the user's unsaved work in it.
-func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *genai.Content, titleFromText, skillContext, turnReasoning string) (err error) {
+func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *genai.Content, titleFromText, turnContext, turnReasoning string) (err error) {
 	sessionID := target.ID
 	defer c.recoverRun(sessionID, &err)
 	cfg := c.S.Store.Get()
@@ -466,17 +481,17 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	if titleFromText != "" && recordedLevel != "" {
 		stateDelta[turnReasoningStateKey] = recordedLevel
 	}
-	if skillContext != "" {
-		stateDelta[agentkit.SkillContextStateKey] = skillContext
+	if turnContext != "" {
+		stateDelta[agentkit.SkillContextStateKey] = turnContext
 	}
 	var runOpts []runner.RunOption
 	if len(stateDelta) > 0 {
 		runOpts = append(runOpts, runner.WithStateDelta(stateDelta))
 	}
 	// Remote A2A agents have no local instruction provider, so a skill command
-	// must ride on the message itself to take effect there.
-	if skillContext != "" && target.TargetType == "remote" && msg != nil {
-		msg.Parts = append([]*genai.Part{genai.NewPartFromText(skillContext + "\n\n用户输入：")}, msg.Parts...)
+	// or file context must ride on the message itself to take effect there.
+	if turnContext != "" && target.TargetType == "remote" && msg != nil {
+		msg.Parts = append([]*genai.Part{genai.NewPartFromText(turnContext + "\n\n用户输入：")}, msg.Parts...)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

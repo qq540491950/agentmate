@@ -42,6 +42,13 @@ type ArtifactInfo struct {
 	Size int64  `json:"size"`
 }
 
+// WorkspaceEntry is one path the composer's "@" picker can reference. Path is
+// relative to the chat's effective workspace and always slash-separated.
+type WorkspaceEntry struct {
+	Path string `json:"path"`
+	Dir  bool   `json:"dir"`
+}
+
 // WorkspaceChangeStatus is the file-level state shown in the result pane.
 type WorkspaceChangeStatus string
 
@@ -388,3 +395,78 @@ func (a *ArtifactService) List() ([]ArtifactInfo, error) {
 
 // Workspace returns the configured workspace directory (for UI display).
 func (a *ArtifactService) Workspace() string { return a.workspace() }
+
+// ListContextPaths lists the files and folders the composer's "@" picker may
+// reference. The directory follows the chat context (session > draft project >
+// global workspace) and the same skip rules as the task snapshot: hidden
+// entries, VCS metadata and dependency caches stay out. A missing workspace is
+// an empty list, not an error — a fresh draft has not resolved one yet.
+func (a *ArtifactService) ListContextPaths(sessionID, projectID string) ([]WorkspaceEntry, error) {
+	ws := contextWorkspace(a.S.Store.Get(), sessionID, projectID)
+	if strings.TrimSpace(ws) == "" {
+		return []WorkspaceEntry{}, nil
+	}
+	info, err := os.Stat(ws)
+	if err != nil || !info.IsDir() {
+		return []WorkspaceEntry{}, nil
+	}
+	return scanContextEntries(ws), nil
+}
+
+// scanContextEntries walks the workspace once and returns slash-separated
+// relative paths, folders first in the natural alphabetical order of their
+// full path. The cap keeps a huge repository from flooding the picker; the
+// picker filters client-side for instant feedback.
+func scanContextEntries(ws string) []WorkspaceEntry {
+	out := make([]WorkspaceEntry, 0, 256)
+	_ = filepath.WalkDir(ws, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if path == ws {
+				return walkErr
+			}
+			return nil
+		}
+		if path != ws && strings.HasPrefix(d.Name(), ".") {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(ws, path)
+		if err != nil {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		if d.IsDir() {
+			if path != ws && skippedWorkspaceDirs[d.Name()] {
+				return fs.SkipDir
+			}
+			if relSlash == "exports" {
+				return fs.SkipDir // generated export directory: nothing to reference
+			}
+			if path != ws {
+				out = append(out, WorkspaceEntry{Path: relSlash, Dir: true})
+			}
+			return nil
+		}
+		if strings.HasPrefix(relSlash, "exports/") {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		out = append(out, WorkspaceEntry{Path: relSlash})
+		if len(out) >= maxSnapshotFiles {
+			return fs.SkipAll
+		}
+		return nil
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
+}

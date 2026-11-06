@@ -146,6 +146,15 @@ func (c *ChatService) ListProjects() []config.Project {
 	return c.S.Store.Get().Projects
 }
 
+// EffectiveSkills returns the skills the composer's "/" menu can invoke for a
+// chat context. The workspace is resolved server-side (session > project >
+// global) and merged with project/global .agents/skills discovery, so an
+// editor does not have to guess which directory a chat will run in.
+func (c *ChatService) EffectiveSkills(sessionID, projectID string) []config.SkillConfig {
+	cfg := c.S.Store.Get()
+	return effectiveSkillsFor(cfg, contextWorkspace(cfg, sessionID, projectID))
+}
+
 // SaveProject creates a project (empty id) or updates name/root of an
 // existing one (blank fields keep the stored value). The root must exist and
 // be writable and may not be claimed by another project.

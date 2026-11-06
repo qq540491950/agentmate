@@ -95,7 +95,7 @@ export interface ChatMessage {
     "id": string;
 
     /**
-     * user|assistant|tool_call|tool_result|confirm_request|confirm_result
+     * user|assistant|thinking|tool_call|tool_result|confirm_request|confirm_result
      */
     "kind": string;
     "author": string;
@@ -122,7 +122,7 @@ export interface ChatStreamEvent {
     "sessionId": string;
 
     /**
-     * user|delta|message|tool_call|tool_result|confirm_request|done|error
+     * user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|done|error
      */
     "kind": string;
     "author": string;
@@ -351,6 +351,15 @@ export enum WorkspaceChangeStatus {
     ChangeModified = "modified",
     ChangeDeleted = "deleted",
 };
+
+/**
+ * WorkspaceEntry is one path the composer's "@" picker can reference. Path is
+ * relative to the chat's effective workspace and always slash-separated.
+ */
+export interface WorkspaceEntry {
+    "path": string;
+    "dir": boolean;
+}
 
 /**
  * WorkspaceFileInfo is one file in a task workspace snapshot.

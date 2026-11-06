@@ -4,6 +4,54 @@
 
 ## 视觉测试与体验设计
 
+### 第二百零五轮迭代：`@` 文件上下文与项目级 `/` 技能（已实施）
+
+依据：用户反馈（对话页输入区）。输入框占位文案承诺「输入 @ 添加上下文」，但实际 `@`
+只识别消息**开头**的助手/团队/远程 Agent，且不会引用任何文件；`/` 菜单只列出内置
+命令与 config.json 里的技能，项目 `.agents/skills` 中的技能既不显示也无法调用。
+期望：`@` 可在消息任意位置引用工作区文件作为当轮上下文；`/` 菜单按当前会话工作区
+展示技能（含项目/用户 `.agents/skills`），并以「名称 + 描述 + 来源」的列表呈现。
+
+**实现要点**
+
+- **`@` 引用（前端）**：新增 `frontend/src/lib/mentions.ts`，`mentionAtCaret` 按光标
+  解析 `@token`（支持消息中部、CJK 紧邻、`@"带 空格 的路径"`）；`buildMentionCandidates`
+  统一排序助手（仅行首，后端只路由行首 @）与工作区文件/目录；`applyMentionToken`
+  只替换当前 token，目录选择插入 `@dir/` 以便继续下钻。`ChatPage` 的 `@` 弹层改为
+  文件/目录/助手统一列表，键盘 ↑↓ / Enter / Tab / Esc 与原有交互一致；占位文案改为
+  「输入 @ 引用文件或指定助手，/ 调用技能与指令」。
+- **`@` 引用（后端）**：新增 `internal/services/chat_context.go`：`fileMentionPaths`
+  解析 `@path` / `@"quoted path"`（拒绝绝对路径、盘符、`..` 与邮箱形态），
+  `buildFileMentionContext` 经 `agentkit.SafeWorkspacePath` 读取工作区内的文本文件，
+  单文件 48KB / 单轮 96KB / 最多 8 个；二进制与超限文件以「未能载入」清单提示模型
+  改用文件工具；内容作为本轮临时指令注入（与 `/skill` 相同的
+  `SkillContextStateKey`），不写入历史、下一轮不继承。
+- **工作区文件索引**：`ArtifactService.ListContextPaths(sessionID, projectID)` 按
+  「会话 > 草稿项目 > 全局工作区」解析目录，复用任务快照的跳过规则（隐藏项、VCS、
+  node_modules 等，5000 条上限），前端在切换会话/项目/工作区时刷新。
+- **`/` 技能（后端）**：`ChatService.EffectiveSkills(sessionID, projectID)` 返回当前
+  上下文的有效技能；`resolveSkillCommand` 改为在
+  `config.EffectiveSkills(cfg, workspace, ~/.agents/skills)` 上匹配，因此项目
+  `.agents/skills` 无需导入 config.json 即可被 `/name` 调用；HITL 恢复与 Regenerate
+  走同一条解析路径。
+- **`/` 菜单（前端）**：`slashCandidates` 为每个技能附带来源（项目 / 全局 / 应用内），
+  弹层由横向 chips 改为纵向列表（命令名、描述、来源徽标），项目技能一眼可见。
+- **桩数据**：`frontend/stub/main.tsx` 增加两个新 RPC 的 mock 与项目/应用技能样例，
+  便于浏览器视觉走查。
+
+**测试证据**
+
+- Go：`chatservice_context_test.go` 覆盖「项目 `.agents/skills` 的 `/project-skill`
+  注入 SKILL.md」「`@notes.md` / `@"my notes.txt"` 内容进入请求、目录外引用不读取、
+  原始文本留在历史、下一轮不继承」；`chat_context_test.go` 覆盖路径解析（邮箱、CJK、
+  盘符、`..`、引号）、二进制/缺失文件、工作区跳过规则与项目目录解析。全量
+  `go vet ./internal/... .` + `go test ./internal/...` 通过。
+- 前端：新增 `mentions.test.ts`（光标解析、引号插入、候选排序、目录下钻）与
+  `slashSkills` 来源标签用例；`npx tsc --noEmit`、`npm test`（15 个文件 127 例）、
+  `npm run build` 全绿；`wails3 generate bindings` 已同步新 RPC 与 `WorkspaceEntry`。
+- 本机未安装 Playwright/Puppeteer，且当前安装未启用应用内浏览器预览，未做自动化 DOM
+  走查；已通过纯函数单测 + 类型检查 + 生产构建验证，桩页面补了可手动走查的数据。
+
 ### 第二百零四轮迭代：「回到底部」悬浮按钮改为圆形状态指示（已实施）
 
 依据：用户反馈。输入框上方的「回到底部」目前是带文字的胶囊按钮，视觉上偏重；

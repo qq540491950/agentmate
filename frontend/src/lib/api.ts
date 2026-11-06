@@ -86,6 +86,19 @@ export function setSessionAllowAllTools(
 }
 
 
+/** WorkspaceEntry is one "@" picker row: a path relative to the chat workspace. */
+export type WorkspaceEntry = serviceModels.WorkspaceEntry;
+
+/** effectiveSkills lists the "/" skills for a session or draft project. */
+export function effectiveSkills(sessionID: string, projectID: string): Promise<SkillConfig[]> {
+  return Chat.EffectiveSkills(sessionID, projectID).then((list) => list ?? []);
+}
+
+/** listContextPaths lists files and folders for the composer "@" picker. */
+export function listContextPaths(sessionID: string, projectID: string): Promise<WorkspaceEntry[]> {
+  return Artifact.ListContextPaths(sessionID, projectID).then((list) => list ?? []);
+}
+
 /** errText extracts a human-readable message from any binding failure. */
 export function errText(e: unknown): string {
   if (!e) return "未知错误";
