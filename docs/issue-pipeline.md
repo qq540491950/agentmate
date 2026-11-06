@@ -24,13 +24,14 @@
 | Dispatcher | 快照、自愈、认领、WIP 与 module 互斥、决定本轮动作 | 不写业务代码、不等 CI、不发版 |
 | Worker | 在独立 worktree 修复/实现、跑质量门禁、推分支、开 PR | 不推 `main`、不打 tag、不发版 |
 | Integrator | 按优先级合入一个 PR、处理 rebase、维护共享文件 | 不修业务 bug、不发版 |
-| Release | 快照 pending、打一个 tag、等 Release、按祖先关系关票 | 不修代码、不重复打 tag |
+| Release（GitHub Actions） | 发布列车：判断窗口、打 patch tag、构建发布、按祖先关系关票 | 不修代码、不重复打 tag |
 
-单轮运行只做一个动作，**绝不在进程内等待 CI**（发版动作例外：必须等待
-Release run 完成）。CI 由 GitHub Actions 在 PR 上并行跑，下一轮再检查结果。
+单轮运行只做一个动作，**绝不在进程内等待 CI**。CI 由 GitHub Actions 在
+PR 上并行跑，下一轮再检查结果；发版也由 CI 的发布列车独立完成，不占用
+本地定时轮。
 
-当前实现由同一个控制循环按动作顺序执行四个角色；Worker 已经在独立
-worktree 中工作，后续可以把编码动作拆成独立会话以提高并发。
+本地控制循环执行 Dispatcher / Integrator / Worker 三个角色；Worker 已经在
+独立 worktree 中工作，后续可以把编码动作拆成独立会话以提高并发。
 
 ## 状态机
 
@@ -69,7 +70,7 @@ worktree 中工作，后续可以把编码动作拆成独立会话以提高并�
 | code | 本地测试、编译、类型检查失败 | 同一轮内只修一次；仍失败直接标 `agent:permanent`。只有确认 flaky 或基础设施故障才用 `agent:retryable` |
 | conflict | PR 与最新 `main` 冲突 | 自动同步 `main` 最多 2 次；仍冲突转 `agent:permanent` |
 | info | 复现信息或验收标准不足 | `needs-info`，等作者补充，不自动重试 |
-| release | 发版失败 | 只影响本批快照 issue，标 `agent:retryable`，不影响新 pending |
+| release | 发版失败 | 只影响本批快照 issue：保留 `agent:pending-release` 并加 `agent:blocked` + `agent:retryable`，发布列车自动重试同一 tag；新 pending 不受影响 |
 
 ## 并发与冲突控制
 
@@ -121,18 +122,32 @@ Worker 不得修改以下文件，除非 issue 本身就是工具链问题：
 运行手册本身也只通过独立的工具链 issue/PR 修改，禁止在修产品 bug 的同一轮
 「顺手」改流程。
 
-## 批量发版
+## 发布列车（GitHub Actions）
 
-Release 是独立动作，不再是每轮修复的尾巴。发版在独立的 detached
-`main` worktree 中进行，不使用主 checkout，因此人工未提交改动不会阻塞发版。
+发版不再由本地定时任务执行，也不再是每轮修复的尾巴。`.github/workflows/release.yml`
+是独立的发布列车，任何本地会话中断都不影响它：
 
-1. `scripts/issue-release.sh snapshot` 读取 `agent:pending-release` issue，
-   从评论里的 `fix-commit: <sha>` 标记生成快照；
-2. 只发快照里的 issue，发版期间新加入的 pending 留到下一批；
-3. `scripts/issue-release.sh close <tag>` 只关闭 `fix-commit` 是 tag 祖先的
-   issue；
-4. 发版失败时 `scripts/issue-release.sh fail <原因>` 只处理快照内的 issue；
-5. 常规窗口 60 分钟；`priority:p0` 可最快 15 分钟发一次。
+1. **触发**：main CI 成功后（`workflow_run`，通常合入后 4–6 分钟）立即
+   评估；`schedule` 每 15 分钟兜底；人工 push tag / `workflow_dispatch`
+   走同一套构建发布。
+2. **决策**（`scripts/release-train.sh plan`）：存在带 `fix-commit` 的
+   `agent:pending-release`；距上次发布 ≥ 30 分钟（任一 pending 为
+   `priority:p0` 时 15 分钟）；main CI 绿；最高 tag 已有完整 Release。
+   若最高 tag 的 Release 缺失或资产不全，先重试同一个 tag，不浪费版本号。
+3. **构建**：`gate` 与 `windows` 并行，使用 tag 对应的提交与版本号；构建
+   成功后才创建 annotated tag（构建失败不留空 tag）。
+4. **发布**：单个 `publish` job 原子创建/更新 Release、`manifest.json`、
+   `SHA256SUMS` 与 `latest` 指向。
+5. **关闭**：发布成功后在同一个 run 里 `scripts/issue-release.sh
+   snapshot/close <tag>`，只关闭 `fix-commit` 是 tag 祖先的 issue；发版期间
+   新加入的 pending 留到下一批。失败时 `fail` 只处理本轮快照内的 issue，
+   保留 `agent:pending-release` 并加 `agent:retryable`，按 30 分钟冷却重试
+   同一 tag；连续 3 次失败后停止自动重试，等人工处理。
+6. **补关**：每次 plan 先对最近已发布 tag 做一次 reconcile，清掉 close
+   中断遗留的 pending。
+
+本地运行手册只负责在合入后写 `fix-commit` 评论并加
+`agent:pending-release`；不打 tag、不等 Release run、不关闭 issue。
 
 ## 提交侧契约
 
@@ -156,6 +171,11 @@ bash scripts/issue-labels.sh
 
 它会创建/更新 `module:*`、`priority:p0`、`agent:retryable`、
 `agent:permanent`、`agent:ready-to-merge`、`agent-fix` 标签。
+
+发布列车需要 `contents: write`（tag / Release）、`actions: read`（读取 main
+CI 结论）与 `issues: write`（关闭本批 issue）。这些权限已写在
+`.github/workflows/release.yml` 的 `permissions` 中，无需额外配置 Secret；
+`UPDATER_SIGNING_KEY` 仍只用于更新清单签名。
 
 ## 观测
 

@@ -150,17 +150,17 @@ P0 会被 Dispatcher 优先选取，发版可走最短 15 分钟窗口。
 
 ### 5. 批量发版节奏
 
-当前默认**每 60 分钟最多打一个 patch tag**。修复合入 main 后先标
-`agent:pending-release`，等待下一个发版窗口；同一窗口内的所有修复合并成一个
-patch 版本（例如 `v0.5.1`）。
+当前默认**每 30 分钟最多打一个 patch tag**（`priority:p0` 为 15 分钟）。
+修复合入 main 后先标 `agent:pending-release`，main CI 变绿后由 GitHub
+Actions 的发布列车自动评估；同一窗口内的所有修复合并成一个 patch 版本
+（例如 `v0.5.1`）。
 
 发版开始时会对当时的 pending 队列做快照：
 
 - 只关闭修复提交是该 tag 祖先的 issue；
 - 发版期间新合入的 pending 留到下一批，不会被误关；
-- 测试机最多约 1 小时后可以更新；
+- main CI 绿后通常 10 分钟内开始发版，测试机通常 15 分钟内可以更新；
 - 没有待发版 issue 的窗口不会产生空 Release。
-- `priority:p0` 可以走最短 15 分钟窗口。
 
 ### 6. 失败不阻塞队列
 
@@ -169,8 +169,8 @@ patch 版本（例如 `v0.5.1`）。
 - 修复或 CI 失败：标 `agent:blocked` + `agent:retryable` 或
   `agent:permanent`。可重试的 30 分钟后自动回队；永久失败等人工处理，但
   不会阻塞其他 issue。
-- 发版失败：只影响本批快照里的 issue，标 `agent:retryable`，新 pending
-  不受影响；不会连续打 tag。
+- 发版失败：只影响本批快照里的 issue，保留 `agent:pending-release` 并标
+  `agent:retryable`；发布列车自动重试同一 tag，新 pending 不受影响。
 
 ### 7. 提交建议
 

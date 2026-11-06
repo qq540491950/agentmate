@@ -150,6 +150,10 @@ git tag -a v0.5.0 -m "..." # tag 消息会被当作发布说明（留空则自�
 git push origin v0.5.0     # 触发 .github/workflows/release.yml
 ```
 
+自动修复流水线合入的修复由同一条**发布列车**自动发版：main CI 绿后立即
+评估，按 30 分钟窗口打 patch tag（`priority:p0` 为 15 分钟），发布成功后
+自动关闭本批 issue。无需本地会话在线，也不占用 15 分钟定时轮。
+
 - **当前发布范围：仅 Windows 64 位**。维护者的测试环境只有 Windows，未经验证的 Linux/macOS 产物配合自动更新等于给用户装一个坏版本；这两个平台的构建配置（AppImage + deb、universal `.app` + dmg）保留在 git 历史中，测试条件具备后按 `0.MINOR` 规则补发
 - **版本号唯一来源是 git tag**：CI 用 `-ldflags "-X main.Version=X.Y.Z"` 注入二进制，并用 `scripts/set-version.sh` 重写 `build/config.yml` 后由 `wails3 update build-assets` 派生 exe 元数据。无 tag 的构建版本为 `dev`
 - 构建使用 `-tags production -trimpath -ldflags "-w -s"`（Windows 追加 `-H windowsgui`）
