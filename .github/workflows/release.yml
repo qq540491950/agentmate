@@ -134,6 +134,7 @@ jobs:
           name: artifacts-windows
           path: dist/*
           if-no-files-found: error
+          retention-days: 7
 
 
   # ------------------------------------------------------------- publish ----
