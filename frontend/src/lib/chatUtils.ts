@@ -149,15 +149,19 @@ export function toolResultFailed(resp?: { [k: string]: any } | null): boolean {
   return resp.isError === true || resp.is_error === true;
 }
 
-/** ToolGroup is one collapsible "execution" block: a run of consecutive
+/** ToolGroup is one collapsible "execution" block for a whole turn: the
  *  process events (thinking entries, tool calls, results, HITL confirmations)
- *  from the same author. */
+ *  plus the assistant narration the model emits between tool batches, all
+ *  from the same author. The turn's final reply stays outside as the result. */
 export type ToolGroup = {
   kind: "tool_group";
   /** id is the first message's id, stable while the run keeps streaming. */
   id: string;
   author: string;
   messages: UIMessage[];
+  /** endTs is the final reply's timestamp: the summary counts the whole turn,
+   *  including the time spent writing the answer, not just the tool runtime. */
+  endTs?: string;
 };
 
 /** ChatItem is one entry in the message list: a standalone message or a
@@ -176,43 +180,110 @@ function isProcessEvent(m: UIMessage): boolean {
 }
 
 /**
- * groupToolMessages merges runs of consecutive process events from the same
- * author into one collapsible execution block, so a round with thinking plus
- * six tool calls renders as one summary line instead of stacked cards. A run
- * becomes a group when it holds at least two invocations, or when at least one
- * thinking entry accompanies a single invocation — the common single-tool
- * round without thinking keeps its existing standalone cards. User/assistant/
- * error messages, plan_todos cards and author changes break runs, preserving
- * the visible reading order; a final assistant reply therefore stays outside
- * the process block.
+ * groupToolMessages turns each turn (everything between two user messages)
+ * into at most one collapsible execution block plus its final reply. Process
+ * events — thinking, tool calls/results, HITL confirmations — and the
+ * assistant narration the model emits between tool batches all belong to the
+ * same block: narration used to break the run, which split one turn into
+ * several look-alike blocks (thinking card, empty skeleton, tool card, reply).
+ * The turn's last assistant message after the last process event is the only
+ * result and stays outside the block. Empty settled assistant shells are
+ * dropped, and plan_todos cards / errors stay standalone. A single tool call
+ * with no reasoning or narration keeps its existing standalone cards.
  */
 export function groupToolMessages(messages: UIMessage[]): ChatItem[] {
   const out: ChatItem[] = [];
+  let start = 0;
+  while (start < messages.length) {
+    if (messages[start].kind === "user") {
+      out.push(messageItem(messages[start]));
+      start++;
+      continue;
+    }
+    let end = start + 1;
+    while (end < messages.length && messages[end].kind !== "user") end++;
+    out.push(...groupTurn(messages.slice(start, end)));
+    start = end;
+  }
+  return out;
+}
+
+function messageItem(m: UIMessage): ChatItem {
+  return { kind: "message", id: m.id, message: m };
+}
+
+/** groupTurn packs one turn's process tail into a single execution block and
+ *  keeps its final reply separate. */
+function groupTurn(turn: UIMessage[]): ChatItem[] {
+  const out: ChatItem[] = [];
+  let lastProcessIdx = -1;
+  for (let i = turn.length - 1; i >= 0; i--) {
+    if (isProcessEvent(turn[i])) { lastProcessIdx = i; break; }
+  }
+
+  // The result is the last assistant message after the last process event.
+  // Empty settled shells (a streaming placeholder whose turn ended in a tool
+  // call) are skipped so they cannot render as an empty assistant block.
+  let resultIdx = -1;
+  for (let i = turn.length - 1; i > lastProcessIdx; i--) {
+    const m = turn[i];
+    if (m.kind !== "assistant") continue;
+    if (!m.text.trim() && !m.streaming) continue;
+    resultIdx = i;
+    break;
+  }
+
+  if (lastProcessIdx < 0) {
+    // No execution events: render plain messages as before.
+    for (const m of turn) {
+      if (m.kind === "assistant" && !m.text.trim() && !m.streaming) continue;
+      out.push(messageItem(m));
+    }
+    return out;
+  }
+
+  const endTs = resultIdx >= 0 ? turn[resultIdx].timestamp : undefined;
   let run: UIMessage[] = [];
-  let runAuthor: string | null = null;
   const flush = () => {
     if (run.length === 0) return;
     const calls = run.filter((m) => m.kind === "tool_call").length;
     const results = run.filter((m) => m.kind === "tool_result").length;
     const invocations = Math.max(calls, results);
+    const hasProcess = run.some(isProcessEvent);
     const hasThinking = run.some((m) => m.kind === "thinking");
-    if (invocations >= 2 || (invocations >= 1 && hasThinking)) {
-      out.push({ kind: "tool_group", id: run[0].id, author: run[0].author, messages: run });
+    const hasConfirm = run.some((m) => m.kind === "confirm");
+    const hasNarration = run.some((m) => m.kind === "assistant" && !!m.text.trim());
+    if (hasProcess && (invocations >= 2 || hasThinking || hasConfirm || hasNarration)) {
+      out.push({ kind: "tool_group", id: run[0].id, author: run[0].author, messages: run, endTs });
     } else {
-      for (const m of run) out.push({ kind: "message", id: m.id, message: m });
+      for (const m of run) out.push(messageItem(m));
     }
     run = [];
-    runAuthor = null;
   };
-  for (const m of messages) {
-    if (!isProcessEvent(m)) {
+
+  for (let i = 0; i < turn.length; i++) {
+    const m = turn[i];
+    if (i === resultIdx) {
       flush();
-      out.push({ kind: "message", id: m.id, message: m });
+      out.push(messageItem(m));
       continue;
     }
-    if (run.length > 0 && runAuthor !== m.author) flush();
+    if (m.kind === "assistant") {
+      // Empty streaming placeholders inside a process run carry no text; the
+      // block header already shows the turn is live.
+      if (!m.text.trim()) continue;
+      if (run.length > 0 && run[0].author !== m.author) flush();
+      run.push(m);
+      continue;
+    }
+    if (!isProcessEvent(m)) {
+      // plan_todos cards and errors stay standalone and break the run.
+      flush();
+      out.push(messageItem(m));
+      continue;
+    }
+    if (run.length > 0 && run[0].author !== m.author) flush();
     run.push(m);
-    runAuthor = m.author;
   }
   flush();
   return out;
@@ -235,7 +306,9 @@ export function toolGroupStatus(messages: UIMessage[], runningTools: Set<string>
       if ((m.confirmStatus ?? "pending") === "pending") pendingConfirm = true;
     } else if (m.kind === "tool_call") {
       if (runningTools.has(m.id)) running = true;
-    } else if (m.kind === "thinking") {
+    } else if (m.kind === "thinking" || m.kind === "assistant") {
+      // Reasoning or inter-tool narration still streaming means the turn is
+      // live; the block must stay open so the new text is visible.
       if (m.streaming) running = true;
     } else if (m.kind === "tool_result" && toolResultFailed(m.toolResp)) {
       failed = true;
@@ -261,7 +334,7 @@ export function toolGroupInvocationCount(messages: UIMessage[]): number {
 }
 
 /** toolGroupDurationMs sums the completed tools' runtimes. Per-tool durations
- *  (instead of wall clock) keep HITL waits out of the header total: the pause
+ *  (instead of wall clock) keep HITL waits out of the per-tool chips: the pause
  *  between a confirmation card and its result is human time, not tool time. */
 export function toolGroupDurationMs(messages: UIMessage[], durations: Map<string, number>): number | null {
   let total = 0;
@@ -273,6 +346,44 @@ export function toolGroupDurationMs(messages: UIMessage[], durations: Map<string
     found = true;
   }
   return found ? total : null;
+}
+
+/** toolGroupElapsedMs is the wall-clock span of the whole turn: from the first
+ *  process event to the final reply (endTs), or to now while the turn is still
+ *  live. Timestamp-less histories fall back to the summed tool runtimes. */
+export function toolGroupElapsedMs(
+  messages: UIMessage[],
+  endTs: string | undefined,
+  nowMs: number,
+  live: boolean,
+  durations: Map<string, number>,
+): number | null {
+  const startTs = messages.find((m) => !!m.timestamp)?.timestamp;
+  const start = startTs ? Date.parse(startTs) : NaN;
+  if (isNaN(start)) return toolGroupDurationMs(messages, durations);
+  let end = NaN;
+  if (live) {
+    end = nowMs;
+  } else if (endTs) {
+    end = Date.parse(endTs);
+  }
+  if (isNaN(end)) {
+    const lastTs = [...messages].reverse().find((m) => !!m.timestamp)?.timestamp;
+    end = lastTs ? Date.parse(lastTs) : NaN;
+  }
+  if (isNaN(end)) return toolGroupDurationMs(messages, durations);
+  return Math.max(0, end - start);
+}
+
+/** formatWorkDuration renders an execution block's elapsed time in Chinese:
+ *  19 秒 / 2 分 4 秒 / 1 小时 2 分. */
+export function formatWorkDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s} 秒`;
+  if (s < 3600) return `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return m > 0 ? `${h} 小时 ${m} 分` : `${h} 小时`;
 }
 
 /** chatItemStartTs / chatItemEndTs expose an item's visible time span so day
