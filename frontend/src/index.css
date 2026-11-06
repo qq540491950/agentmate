@@ -156,3 +156,24 @@
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* 「回到底部」悬浮按钮：轮次运行中显示三点呼吸动画，悬停时让位给下箭头。 */
+@keyframes wb-dot-pulse {
+  0%, 80%, 100% {
+    opacity: 0.25;
+    transform: scale(0.7);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.wb-dot-pulse {
+  animation: wb-dot-pulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-dot-pulse {
+    animation: none;
+    opacity: 0.8;
+  }
+}

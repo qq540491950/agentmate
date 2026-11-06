@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dialogs, Events } from "@wailsio/runtime";
 import {
-  Plus, Square, Trash2, Pencil, MessageSquare, Bot, Users, Loader2, ArrowUp,
+  Plus, Square, Trash2, Pencil, MessageSquare, Bot, Users, Loader2, ArrowUp, ArrowDown,
   Search, Download,
   X, BarChart3, Brain, Network, GitFork, Pin, PinOff, FileCode2, Archive, ClipboardCopy,
   FolderOpen,
@@ -2418,125 +2418,152 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             </button>
           </div>
         )}
-        {!atBottom && messages.length > 0 && (
-          <button
-            className="absolute bottom-32 right-6 z-20 flex h-8 items-center gap-1 rounded-full border bg-popover px-3 text-xs shadow-md transition-colors hover:bg-accent"
-            onClick={() => bottomRef.current?.scrollIntoView({ block: "end" })}
-          >
-            <ChevronDown className="h-3.5 w-3.5" /> 回到底部
-          </button>
-        )}
-        <ScrollArea className="flex-1" viewportRef={scrollRef} aria-label="会话消息">
-          <div className="mx-auto max-w-3xl space-y-3 p-4">
-            {(() => {
-              if (omittedItems <= 0) return null;
-              return (
-                <div className="rounded-lg border bg-muted/40 px-3 py-2 text-center text-xs text-muted-foreground">
-                  <div className="flex items-center justify-center gap-2">
-                    <span>
-                      已省略较早的 {omittedMessages} 条{filterQ ? "匹配" : ""}消息（完整历史已保存，可导出查看）
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-2 text-[11px]"
-                      onClick={() => setRenderLimit((l) => l + RENDER_LIMIT)}
-                    >
-                      显示更早 {Math.min(RENDER_LIMIT, omittedItems)} 条
-                    </Button>
-                  </div>
-                </div>
-              );
-            })()}
-            {contextUsage && contextUsage.pct >= 80 && !ctxBannerDismissed && (
-              <div className="flex items-center justify-between rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-2.5 text-sm">
-                <span>上下文窗口已使用 {contextUsage.pct.toFixed(0)}%，模型可能开始遗忘早期内容。建议导出会话后开启新对话。</span>
-                <div className="flex shrink-0 gap-2">
-                  <Button size="sm" variant="outline" onClick={exportSession}>导出 Markdown</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setCtxBannerDismissed(true)}>知道了</Button>
-                </div>
-              </div>
-            )}
-            {messages.length === 0 && !active && providerCount === 0 && <Onboarding onOpenSettings={onOpenSettings} />}
-            {messages.length === 0 && !active && providerCount > 0 && (
-              // Providers exist but no chat is selected: previously this
-              // rendered an empty pane with no hint about what to do.
-              <div className="py-24 text-center text-sm text-muted-foreground">
-                <div className="mb-2 text-4xl">💬</div>
-                直接输入消息即可开始对话；输入 @ 可指定助手、团队或远程 Agent。
-              </div>
-            )}
-            {messages.length === 0 && active && (
-              <div className="py-24 text-center text-sm text-muted-foreground">
-                <div className="mb-2 text-4xl">💬</div>
-                {active.targetType
-                  ? <>向 <span className="font-medium text-foreground">{targetLabel}</span> 发送第一条消息</>
-                  : <>直接输入开始对话；输入 <span className="font-medium text-foreground">@</span> 可指定助手</>}
-              </div>
-            )}
-            {visibleItems.map((item, i, arr) => {
-              // The first visible item compares against the real previous
-              // entry when the window is truncated (else no separator).
-              const ts = chatItemStartTs(item);
-              const prevTs = i === 0
-                ? (omittedItems > 0 ? chatItemEndTs(renderItems[renderItems.length - visibleItems.length - 1]) : undefined)
-                : chatItemEndTs(arr[i - 1]);
-              const dayChanged = isDayChange(prevTs, ts);
-              return (
-                <Fragment key={item.id}>
-                  {dayChanged && <DaySeparator ts={ts} />}
-                  {item.kind === "tool_group" ? (
-                    <ToolCallGroup
-                      group={item}
-                      live={running && firstVisibleIdx + i > lastUserItemIdx}
-                      runningTools={runningToolsSet}
-                      durations={toolDurations}
-                      sessionID={activeID}
-                      filterQ={filterQ}
-                      onConfirm={answerConfirm}
-                      onAllowAll={allowAllFromCard}
-                      allowAllBusy={allowAllBusy}
-                    />
-                  ) : (
-                    <MessageBubble
-                      m={item.message}
-                      isLastAssistant={item.message.kind === "assistant" && i === arr.length - 1}
-                      onRegenerate={regenerate}
-                      canRegenerate={!running && !!activeID}
-                      toolRunning={item.message.kind === "tool_call" ? runningToolsSet.has(item.message.id) : false}
-                      durationMs={toolDurations.get(item.message.id)}
-                      onSpeak={speakMessage}
-                      costOf={costOf}
-                      onEdit={startEdit}
-                      canEdit={editFlags.get(item.message.id) === true && !running && !!activeID}
-                      onConfirm={answerConfirm}
-                      onAllowAll={allowAllFromCard}
-                      allowAllBusy={allowAllBusy}
-                      sessionID={activeID}
-                      filterQ={filterQ}
-                    />
-                  )}
-                </Fragment>
-              );
-            })}
-            {historyLoading && messages.length === 0 && (
-              <div className="space-y-3" aria-hidden>
-                {[80, 60, 70].map((w, i) => (
-                  <div key={i} className={cn("flex", i % 2 ? "justify-end" : "justify-start")}>
-                    <div className="max-w-[80%] space-y-1.5">
-                      <Skeleton className="h-3 w-24" />
-                      <Skeleton className="h-14 rounded-2xl" style={{ width: `${w}%` }} />
+        {/* The floater anchors to the message viewport: a growing composer
+            shrinks this wrapper instead of sliding under the button. */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {!atBottom && messages.length > 0 && (
+            // Circular floater inside the message area: an arrow when idle,
+            // breathing amber dots while the turn runs, arrow again on hover.
+            <button
+              type="button"
+              title={running ? "正在生成，回到底部" : "回到底部"}
+              aria-label="回到底部"
+              onClick={() => bottomRef.current?.scrollIntoView({ block: "end" })}
+              className={cn(
+                "group absolute bottom-4 left-1/2 z-20 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border bg-popover text-muted-foreground shadow-lg transition-all duration-200 hover:scale-105 hover:bg-accent hover:text-foreground active:scale-95",
+                running && "border-amber-500/30",
+              )}
+            >
+              {running && (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 flex items-center justify-center gap-1 transition-opacity duration-150 group-hover:opacity-0"
+                >
+                  <span className="wb-dot-pulse h-1 w-1 rounded-full bg-amber-500" />
+                  <span className="wb-dot-pulse h-1 w-1 rounded-full bg-amber-500 [animation-delay:160ms]" />
+                  <span className="wb-dot-pulse h-1 w-1 rounded-full bg-amber-500 [animation-delay:320ms]" />
+                </span>
+              )}
+              <ArrowDown
+                className={cn(
+                  "h-4 w-4 transition-opacity duration-150",
+                  running && "opacity-0 group-hover:opacity-100",
+                )}
+              />
+            </button>
+          )}
+          <ScrollArea className="flex-1" viewportRef={scrollRef} aria-label="会话消息">
+            <div className="mx-auto max-w-3xl space-y-3 p-4">
+              {(() => {
+                if (omittedItems <= 0) return null;
+                return (
+                  <div className="rounded-lg border bg-muted/40 px-3 py-2 text-center text-xs text-muted-foreground">
+                    <div className="flex items-center justify-center gap-2">
+                      <span>
+                        已省略较早的 {omittedMessages} 条{filterQ ? "匹配" : ""}消息（完整历史已保存，可导出查看）
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[11px]"
+                        onClick={() => setRenderLimit((l) => l + RENDER_LIMIT)}
+                      >
+                        显示更早 {Math.min(RENDER_LIMIT, omittedItems)} 条
+                      </Button>
                     </div>
                   </div>
-                ))}
-                <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在加载会话历史…
+                );
+              })()}
+              {contextUsage && contextUsage.pct >= 80 && !ctxBannerDismissed && (
+                <div className="flex items-center justify-between rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-2.5 text-sm">
+                  <span>上下文窗口已使用 {contextUsage.pct.toFixed(0)}%，模型可能开始遗忘早期内容。建议导出会话后开启新对话。</span>
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="sm" variant="outline" onClick={exportSession}>导出 Markdown</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setCtxBannerDismissed(true)}>知道了</Button>
+                  </div>
                 </div>
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
-        </ScrollArea>
+              )}
+              {messages.length === 0 && !active && providerCount === 0 && <Onboarding onOpenSettings={onOpenSettings} />}
+              {messages.length === 0 && !active && providerCount > 0 && (
+                // Providers exist but no chat is selected: previously this
+                // rendered an empty pane with no hint about what to do.
+                <div className="py-24 text-center text-sm text-muted-foreground">
+                  <div className="mb-2 text-4xl">💬</div>
+                  直接输入消息即可开始对话；输入 @ 可指定助手、团队或远程 Agent。
+                </div>
+              )}
+              {messages.length === 0 && active && (
+                <div className="py-24 text-center text-sm text-muted-foreground">
+                  <div className="mb-2 text-4xl">💬</div>
+                  {active.targetType
+                    ? <>向 <span className="font-medium text-foreground">{targetLabel}</span> 发送第一条消息</>
+                    : <>直接输入开始对话；输入 <span className="font-medium text-foreground">@</span> 可指定助手</>}
+                </div>
+              )}
+              {visibleItems.map((item, i, arr) => {
+                // The first visible item compares against the real previous
+                // entry when the window is truncated (else no separator).
+                const ts = chatItemStartTs(item);
+                const prevTs = i === 0
+                  ? (omittedItems > 0 ? chatItemEndTs(renderItems[renderItems.length - visibleItems.length - 1]) : undefined)
+                  : chatItemEndTs(arr[i - 1]);
+                const dayChanged = isDayChange(prevTs, ts);
+                return (
+                  <Fragment key={item.id}>
+                    {dayChanged && <DaySeparator ts={ts} />}
+                    {item.kind === "tool_group" ? (
+                      <ToolCallGroup
+                        group={item}
+                        live={running && firstVisibleIdx + i > lastUserItemIdx}
+                        runningTools={runningToolsSet}
+                        durations={toolDurations}
+                        sessionID={activeID}
+                        filterQ={filterQ}
+                        onConfirm={answerConfirm}
+                        onAllowAll={allowAllFromCard}
+                        allowAllBusy={allowAllBusy}
+                      />
+                    ) : (
+                      <MessageBubble
+                        m={item.message}
+                        isLastAssistant={item.message.kind === "assistant" && i === arr.length - 1}
+                        onRegenerate={regenerate}
+                        canRegenerate={!running && !!activeID}
+                        toolRunning={item.message.kind === "tool_call" ? runningToolsSet.has(item.message.id) : false}
+                        durationMs={toolDurations.get(item.message.id)}
+                        onSpeak={speakMessage}
+                        costOf={costOf}
+                        onEdit={startEdit}
+                        canEdit={editFlags.get(item.message.id) === true && !running && !!activeID}
+                        onConfirm={answerConfirm}
+                        onAllowAll={allowAllFromCard}
+                        allowAllBusy={allowAllBusy}
+                        sessionID={activeID}
+                        filterQ={filterQ}
+                      />
+                    )}
+                  </Fragment>
+                );
+              })}
+              {historyLoading && messages.length === 0 && (
+                <div className="space-y-3" aria-hidden>
+                  {[80, 60, 70].map((w, i) => (
+                    <div key={i} className={cn("flex", i % 2 ? "justify-end" : "justify-start")}>
+                      <div className="max-w-[80%] space-y-1.5">
+                        <Skeleton className="h-3 w-24" />
+                        <Skeleton className="h-14 rounded-2xl" style={{ width: `${w}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在加载会话历史…
+                  </div>
+                </div>
+              )}
+              <div ref={bottomRef} />
+            </div>
+          </ScrollArea>
+        </div>
 
         {/* Screen-reader status for turn state: announcing every streamed
             token would be noise, so only the phase transitions speak. */}
