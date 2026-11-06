@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -51,6 +52,34 @@ func TestBuildTransportTrimsStdioCommand(t *testing.T) {
 		if cmd.Args[i] != wantArgs[i] {
 			t.Fatalf("args = %q, want %q", cmd.Args, wantArgs)
 		}
+	}
+}
+
+// TestBuildTransportAppliesStdioProcessAttrs pins the wire-up for issue #67:
+// the platform helper's process attributes must land on the exec.Cmd before
+// CommandTransport starts it. On Windows that is CREATE_NO_WINDOW; on other
+// platforms it stays nil (no console to hide).
+func TestBuildTransportAppliesStdioProcessAttrs(t *testing.T) {
+	base := "sh"
+	if runtime.GOOS == "windows" {
+		base = "cmd"
+	}
+	cfg := config.MCPServerConfig{
+		ID:        "srv1",
+		Name:      "S",
+		Transport: config.MCPStdio,
+		Command:   base,
+	}
+	tr, err := buildTransport(cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("buildTransport: %v", err)
+	}
+	cmdTr, ok := tr.(*mcp.CommandTransport)
+	if !ok {
+		t.Fatalf("expected *mcp.CommandTransport, got %T", tr)
+	}
+	if !reflect.DeepEqual(cmdTr.Command.SysProcAttr, stdioProcessAttrs()) {
+		t.Fatalf("SysProcAttr = %#v, want %#v", cmdTr.Command.SysProcAttr, stdioProcessAttrs())
 	}
 }
 
