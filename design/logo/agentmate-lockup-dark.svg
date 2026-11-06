@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="128" viewBox="0 0 520 128">
+  <g transform="translate(4 8) scale(0.875)">
+    <path d="M 34 104 L 52 46" fill="none" stroke="#14B8A6" stroke-width="14" stroke-linecap="round"/>
+    <path d="M 94 104 L 76 46" fill="none" stroke="#14B8A6" stroke-width="14" stroke-linecap="round"/>
+    <path d="M 46 76 L 82 76" fill="none" stroke="#14B8A6" stroke-width="14" stroke-linecap="round"/>
+    <path d="M 64 12 Q 64 26 78 26 Q 64 26 64 40 Q 64 26 50 26 Q 64 26 64 12 Z" fill="#FB923C"/>
+  </g>
+  <text x="136" y="82" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-weight="600" font-size="54" letter-spacing="-1"><tspan fill="#F8FAFC">Agent</tspan><tspan fill="#14B8A6">Mate</tspan></text>
+</svg>
