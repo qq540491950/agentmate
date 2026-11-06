@@ -1,125 +1,88 @@
 # AGENTS.md — WorkBuddy Agent 工程指南
 
-面向在本仓库工作的编码代理（与人类贡献者）。先读 README.md 的功能总览与各轮迭代记录了解能力边界。
+面向在本仓库工作的编码代理。功能总览、架构与完整边界见 [README.md](README.md)，迭代记录见 [docs/iteration-log.md](docs/iteration-log.md)，术语见 [GLOSSARY.md](GLOSSARY.md)。
 
-## 项目概要
-
-类 WorkBuddy 的本地 AI Agent 桌面应用：**Google ADK Go v2**（agent 运行时）+ **Wails v3**（桌面壳）+ **React/TS + shadcn/ui**（前端）。
+类 WorkBuddy 的本地 AI Agent 桌面应用：**Google ADK Go v2**（运行时）+ **Wails v3**（桌面壳）+ **React/TS + shadcn/ui**（前端）。
 
 ## 常用命令
 
-一键全量验证（测试 + race + 前端 + 打包）：`./scripts/verify.sh`
+一键全量验证（测试 + race + 前端 + 打包）：`./scripts/verify.sh`。
 
 ```bash
-go test ./internal/...                     # 后端全量测试（提交前必须全绿）
-go test -race ./internal/...               # 并发安全回归（改并发/数据库代码后必跑）
+go test ./internal/...                     # 后端全量（提交前必须全绿）
+go test -race ./internal/...               # 改并发/数据库后必跑
 go vet ./internal/... .
-cd frontend && npx tsc --noEmit && npm run build   # 前端类型检查 + 构建
-cd frontend && npm test                            # vitest（lib/chatUtils、lib/mcpEnv 纯函数单测）
-wails3 generate bindings -f '-tags production' -clean=true -ts -i   # 再生成 Wails 绑定
-wails3 build                               # 生产构建（自动重跑绑定生成 + 前端构建 + Go 编译）
-wails3 package                             # 打包 macOS .app
-cd frontend && npm run stub                # 浏览器视觉回归桩（端口 9246，/stub/index.html）
+cd frontend && npx tsc --noEmit && npm test && npm run build
 ```
 
-注意：`wails3 build` 的绑定生成带 `-clean=true`，会**重建**绑定文件 —— 手工改绑定会被覆盖。改 Go 服务后直接跑再生成即可（前端 import 用生成产物）。
+```bash
+wails3 generate bindings -f '-tags production' -clean=true -ts -i   # 须在仓库根目录
+wails3 build        # 绑定生成 + 前端构建 + Go 编译
+wails3 package      # 打包 macOS .app
+cd frontend && npm run stub   # 视觉回归桩（:9246/stub/index.html）
+```
 
-- **`wails3 generate bindings` 必须在仓库根目录执行**：在子目录（如 frontend/）执行会扫描到 Go 标准库与依赖包，生成 `bindings/time/`、`bindings/gorm.io/`、`bindings/context/` 等垃圾目录（可删除；正确产物为 `bindings/go-workbuddy/` 与 `bindings/github.com/`——后者含 wails-typed-events 插件必需的 eventcreate/eventdata，勿删）。
-- **依赖包绑定产物不入库**：`.gitignore` 已排除 `bindings/{context,database,gorm.io,reflect,strings,sync,time,google.golang.org}`——每次 `wails3 build` 自动重建，git status 不会显示。
+- 绑定由构建自动重建（`-clean=true`），**勿手改**。仅在仓库根目录生成；子目录执行会产 `bindings/{time,gorm.io,…}` 垃圾目录（可删），但 `bindings/github.com/`（wails-typed-events）勿删。依赖包绑定已被 `.gitignore` 排除。
+- 方法 ID = FNV-1a32(`go-workbuddy/internal/services.<Service>.<Method>`)，生成器自动处理。
 
 ## 目录地图
 
+完整目录见 [README.md](README.md#目录结构)。
+
 ```
-main.go                      # 装配：服务注册、窗口、托盘+全局快捷键、SQLite 会话库、知识索引
-internal/config/             # 配置模型与 JSON 存储（0600 config.json；含默认 Skills 种子、MCP 令牌缓存）
-internal/agentkit/           # ADK 集成核心
-  llm.go                     #   OpenAI 兼容 / Anthropic 自研 model.LLM 适配器（SSE 流式 + 函数调用）
-  kit.go                     #   Agent/团队构建、内置工具装配、SanitizeAgentName
-  semantic.go                #   知识库向量索引（SQLite、增量、混合检索）+ OpenAI 兼容 /embeddings 客户端
-  knowledge.go               #   关键词检索与 search_knowledge 工具
-  remote.go                  #   A2A 远程 Agent（官方 a2a-go）+ Agent Card 解析
-  guardrail.go               #   密钥脱敏 / 提示注入检测
-internal/mcpmgr/             # MCP 服务器生命周期；auth.go = Bearer/API-Key/OAuth 2.1 传输层
-internal/memory/             # 长期记忆（ADK memory.Service，SQLite）
-internal/services/           # Wails 服务（前端可调用 RPC）
-  chatservice.go             #   共享类型/构造/审计/运行生命周期（recoverRun/Cancel/registerRun）
-  chatservice_sessions.go    #   会话 CRUD、项目、改绑守卫、GetSessionMessages、Fork
-  chatservice_turn.go        #   Send/Regenerate/sendTurn/ConfirmToolCall/runTurn/autoTitle
-  chatservice_render.go      #   renderEvent、确认中断识别、目标与 @ 路由解析
-  chatservice_export.go      #   Markdown/HTML 导出
-  chatservice_stats.go       #   长期记忆、会话统计
-  task_workspace.go          #   任务目录校验、会话级改绑锁与工作区 RPC
-  workspace_snapshot.go      #   任务快照基线、产物与文件级变更
-  artifactservice.go         #   会话级文件列表/预览与安全扫描
-  a2aservice.go              #   A2A 服务端（对外发布本地 Agent）
-  app.go                     #   AppInfo、配置备份导出/导入、Agent 分享
-frontend/src/pages/          # Chat / Agents / Teams / Skills / MCP / Models / Settings
-frontend/src/components/TaskWorkspacePanel.tsx # 右侧任务结果区
-frontend/bindings/           # wails3 生成的 TS 绑定（勿手改，会被 -clean 覆盖）
-frontend/stub/               # 浏览器视觉回归：setTransport 数据桩 + window.__emit 事件注入
+main.go                   # 装配：服务、窗口、托盘/快捷键、SQLite、知识索引
+internal/agentkit/        # ADK 集成：LLM 适配器、Agent/团队、语义检索、A2A 客户端、护栏
+internal/mcpmgr/          # MCP 生命周期与认证（Bearer / API Key / OAuth 2.1）
+internal/memory/          # 长期记忆（ADK memory.Service，SQLite）
+internal/services/        # Wails RPC；chatservice_* 为对话引擎，task_workspace + workspace_snapshot + artifactservice 为任务工作区
+frontend/src/pages/       # Chat / Agents / Teams / Skills / MCP / Models / Settings
+frontend/src/components/TaskWorkspacePanel.tsx  # 右侧任务结果区
+frontend/stub/            # 浏览器视觉回归桩（setTransport + window.__emit）
+frontend/bindings/        # wails3 生成绑定（勿手改）
 ```
 
 ## 关键机制（改动前必读）
 
-- **对话引擎**：`ChatService.runTurn` 是 Send / Regenerate / EditAndResend / ConfirmToolCall 的共享引擎。改事件流（`ChatStreamEvent`）时同步改前端 `ChatPage.tsx` 的 switch 与历史渲染 `renderEvent`。
-- **HITL 确认协议**：ADK 以 `adk_request_confirmation` FunctionCall（带 `LongRunningToolIDs`）暂停运行；应答 = 发送 `{ID, Name: "adk_request_confirmation", Response: {"confirmed": bool}}` 的 FunctionResponse 作为下一轮消息。ADK 在恢复后对模型隐藏确认往返。
-- **会话库并发**：`sessions.db` 使用 WAL + busy_timeout(5000) + **单连接**（`SetMaxOpenConns(1)`）。WAL 下延迟事务的快照冲突会绕过 busy_timeout —— 不要移除单连接限制，否则并行会话写库触发 SQLITE_BUSY。
-- **绑定哈希**：方法 ID = FNV-1a32(`go-workbuddy/internal/services.<Service>.<Method>`)（生成器自动处理；手工计算仅用于应急）。
-- **全局代理**：`agentkit.ApplyGlobalProxy` 在启动时改写 `http.DefaultTransport.Proxy`——模型适配器、embeddings、MCP、gemini SDK、a2a-go 的出站流量统一生效；新增直连客户端时务必走 DefaultTransport 或在代理测试中钉住覆盖。
-- **A2A 双向**：客户端 = `agentkit.BuildRemoteAgent`（remoteagent v2，AgentCardProvider 每次调用重解析）；服务端 = `a2aservice.go` / 测试中 `a2asrv.NewHandler + adka2a(v2).NewExecutor`（与 ADK launcher 同配方）。Agent Card 必须含 `SupportedInterfaces`（JSONRPC 绑定），否则客户端报 "no supported interfaces"。
-- **假模型服务器**：OpenAI 兼容桩必须同时处理 `"stream":false`（返回普通 chat.completion JSON）与 SSE（A2A executor 以非流式调用模型）。
-- **知识库索引**：`knowledge.index.db` 独立于 sessions.db；按文件 mtime 增量；变更文件重嵌入前先删除其旧行（否则缩小文件会留下过期分块）；换 Embedding 模型全量重建；Embedding 故障优雅回退关键词。
-- **配置读取**：`Store.Get()` 返回深拷贝（切片/map 均独立），可以随意修改返回值；`Store.Settings()` 用于只需要全局设置的热路径。`ExportConfig(false)` 依赖这一点——脱敏只能作用在副本上。
-- **取消登记**：每轮运行在 `runs[sessionID]` 登记 `*runHandle`，释放时只在指针仍属于自己时删除，避免旧轮次清掉新轮次的取消函数。
-- **会话元数据变更**：Rename/SetModel/Archive/Pin 统一走 `mutateSession`（未知会话返回错误，审计仅成功后落笔）；`DeleteSession` 与 `Regenerate/EditAndResend` 先 `Cancel` 在跑轮次再动历史。
-- **会话级模型覆盖**：`ChatSession.ModelOverride` 经 `agentkit.EffectiveModel` 统一钳制（覆盖 ID 不在供应商列表则回落默认），运行、统计计费、autoTitle 侧调用三处共用；设置侧的即时开关（autoRemember/AutoTitle/A2A 自启动）从「上次已保存快照」持久化，避免冲洗未保存字段。
-- **任务级工作区**：公开 `NewSession` 与 `NewSessionWithWorkspace` 均创建任务目录（前者自动、后者可指定）；首轮事件后锁定，活动任务不能重复占用同一显式目录。`ChatSession.EffectiveWorkspace` 是文件工具、`{{workspace}}` 与预览的唯一后端解析入口，前端通过 `SessionWorkspace` RPC 获取有效路径；旧会话空值回落全局工作区。发送/确认与改绑共用会话级 workspace 锁，避免启动竞态。知识库/Skills/导出仍使用全局工作区。
-- **任务产物快照**：基线存于应用数据目录的 `task-snapshots/<sessionID>.json`（版本化、原子写，不进 sessions.db）。结果区按文件存在性/大小/mtime 计算新增、修改、删除；扫描跳过隐藏/版本库/依赖目录与符号链接，5000 文件/200 条展示上限。删除会话清基线但保留任务文件；分叉共享工作区但建立独立基线。
-- **plan_todos**：状态存 ADK session state 键 `workbuddy.todos`，全量替换语义（省略参数=只读，空数组=清空）；前端从 tool_result 渲染清单卡与置顶条。
-- **autoTitle**：opt-in（`Settings.AutoTitle`），首轮后异步 30s 侧调用生成标题，仅替换自己写下的兜底标题；goroutine 自带 recover。
-- **A2A 失效联动**：SaveAgent（替换）/DeleteAgent 通过 `Services.StopPublishedAgent` 下线已发布服务器；OAuth 回调端口惰性重绑（授权流程结束必释放）。
-- **单轮超时**：Agent 未配置 `MaxTurnSeconds` 时默认 600 秒兜底；`runTurn` 的 recover 把 panic 转为 `error` + `done` 事件，界面不会卡在运行态。
-- **单实例**：`main.go` 的 `application.Options.SingleInstance` 以 `build/config.yml` 的 `productIdentifier` 为锁名（Windows 命名互斥量 / macOS 锁文件 / Linux D-Bus）；二次启动把激活请求转发给首个实例（`activateMainWindow`：UnMinimise→Show→Focus）后自行退出。UniqueID 不可改——换名等于让新旧版本互不可见，重新可以多开。
-- **更新残留清理**：Wails updater 在 Windows 上只能把旧 exe 改名成 `<exe>.old.<unixnano>`，且删除时 helper 仍映射该文件，故每次更新都会留下上一版本副本。新版本启动（单实例锁之后）由 `updateleftover.go` 清扫 `<exe>.old.*` 与 `<exe>.bak`：目标必须存在、只认 updater 命名、30 秒内新文件不碰、30 秒重试最多 10 分钟。
-- **导出脱敏**：`ExportConfig(false)` 剥离供应商 API Key 与 MCP AuthToken；`MCPTokens` 任何导出都不携带。
+- **对话引擎**：`ChatService.runTurn` 是 Send / Regenerate / EditAndResend / ConfirmToolCall 的共用引擎；改 `ChatStreamEvent` 时同步改前端 `ChatPage.tsx` 的 switch 与历史渲染 `renderEvent`。
+- **HITL 确认**：ADK 以 `adk_request_confirmation` FunctionCall（带 `LongRunningToolIDs`）暂停；应答为 `{ID, Name, Response: {"confirmed": bool}}` FunctionResponse；ADK 恢复后对模型隐藏该往返。
+- **会话库并发**：`sessions.db` 用 WAL + busy_timeout(5000) + **单连接**（`SetMaxOpenConns(1)`）；不要移除单连接，否则并行会话写库触发 `SQLITE_BUSY`。
+- **全局代理**：`agentkit.ApplyGlobalProxy` 启动时改写 `http.DefaultTransport.Proxy`；新增出站客户端必须走 DefaultTransport，或在代理测试中钉住覆盖。
+- **A2A 双向**：客户端 `agentkit.BuildRemoteAgent`（Agent Card 每次调用重解析）；服务端 `a2aservice.go`（测试同配方：`a2asrv.NewHandler + adka2a(v2).NewExecutor`）。Card 必须含 `SupportedInterfaces`（JSONRPC），否则报 "no supported interfaces"。`SaveAgent`（替换）/`DeleteAgent` 下线已发布服务器；OAuth 回调端口惰性重绑（授权结束必释放）。
+- **假模型服务器**：OpenAI 兼容桩必须同时处理 `"stream": false` 的普通 JSON 与 SSE（A2A executor 走非流式）。
+- **知识库索引**：`knowledge.index.db` 独立于 sessions.db；按 mtime 增量；重嵌入前先删旧行（否则缩小文件留过期分块）；换 Embedding 模型全量重建；故障回退关键词。
+- **配置读取**：`Store.Get()` 返回深拷贝，可随意改；`Settings()` 用于全局设置热路径。`ExportConfig(false)` 剥离供应商 API Key 与 MCP AuthToken；`MCPTokens` 任何导出都不带。
+- **取消登记**：每轮在 `runs[sessionID]` 登记 `*runHandle`，释放时只在指针仍属于自己时删除。
+- **会话元数据**：Rename / SetModel / Archive / Pin 统一走 `mutateSession`；`DeleteSession` 与 `Regenerate/EditAndResend` 先 `Cancel` 再动历史。
+- **会话级模型覆盖**：`ChatSession.ModelOverride` 经 `agentkit.EffectiveModel` 统一钳制；运行、统计计费、autoTitle 三处共用。
+- **任务级工作区**：`NewSession` 与 `NewSessionWithWorkspace` 均创建任务目录；`EffectiveWorkspace` 是文件工具、`{{workspace}}` 与预览的唯一后端解析入口；首轮后锁定，活动任务不能重复占用同一显式目录；发送/确认/改绑共用会话级 workspace 锁。知识库/Skills/导出仍用全局工作区。
+- **任务产物快照**：基线存应用数据目录 `task-snapshots/<sessionID>.json`（版本化、原子写，不进 sessions.db）；按存在性/大小/mtime 算新增、修改、删除；跳过隐藏/VCS/依赖目录与符号链接（5000 文件 / 200 条上限）；删会话清基线但保留任务文件，分叉共享工作区但独立基线。
+- **plan_todos**：状态存 ADK session state 键 `workbuddy.todos`，全量替换（省略参数=只读，空数组=清空）；前端从 tool_result 渲染清单卡与置顶条。
+- **autoTitle**：opt-in（`Settings.AutoTitle`）；首轮后异步 30s 侧调用，仅替换自己写的兜底标题；goroutine 自带 recover。
+- **单轮超时**：未配置 `MaxTurnSeconds` 时默认 600 秒；`runTurn` 的 recover 把 panic 转为 `error` + `done`。
+- **桌面壳**：单实例锁名 = `build/config.yml` 的 `productIdentifier`（不可改），二次启动转发激活后退出。Windows 更新残留 `<exe>.old.*` / `.bak` 由 `updateleftover.go` 在锁后清扫（30 秒内新文件不碰，重试至 10 分钟）。
 
 ## Issue 自动修复流水线
 
-自动修复不再直接修改 `main`。流程、状态机与标签约定见
-[`docs/issue-pipeline.md`](docs/issue-pipeline.md)，可执行步骤见
-[`docs/issue-fixer-prompt.md`](docs/issue-fixer-prompt.md)。
+自动修复不直接改 `main`（只由 Integrator 推进）：Dispatcher / Worker / Integrator 在本地定时任务运行，Worker 一律在 `git worktree` + 分支 + PR 中工作，主 checkout 不参与。Release 是 GitHub Actions 发布列车（`.github/workflows/release.yml`），本地轮次不打 tag、不等 CI。流程见 [docs/issue-pipeline.md](docs/issue-pipeline.md)，执行步骤见 [docs/issue-fixer-prompt.md](docs/issue-fixer-prompt.md)。
 
-- **角色**：Dispatcher（认领/调度）、Worker（worktree + 分支 + PR）、
-  Integrator（串行合入）在本地定时任务中运行；Release 是 GitHub Actions
-  的**发布列车**（`.github/workflows/release.yml`），由 main CI
-  `workflow_run` 与 15 分钟 `schedule` 触发，本地轮次不打 tag、不等
-  Release run。单轮只做一个短动作，不在进程内等 CI。
-- **隔离**：Worker 一律在 `git worktree` 中工作，主 checkout 不参与自动修复；
-  `main` 只由 Integrator 推进。全局 WIP ≤ 3，同一 module 同时 ≤ 1。
-- **共享文件**由 Integrator 统一维护：`docs/iteration-log.md`、
-  `frontend/bindings/**`、`go.mod` / `go.sum`、`frontend/package-lock.json`、
-  版本号与构建产物。Worker 不直接改这些文件。
-- **运行手册自身**只通过独立的工具链 issue/PR 修改，禁止在修产品 bug 的
-  同一轮「顺手」改流程。
-- 辅助命令：`scripts/issue-env.sh`（source 后提供流水线变量）、
-  `scripts/issue-queue.sh`（队列快照）、`scripts/issue-lease.sh`
-  （认领租约）、`scripts/release-train.sh`（发布列车决策）、
-  `scripts/issue-release.sh`（发版快照与按祖先关系关票）、
-  `scripts/issue-labels.sh`（首次部署或新仓库创建路由标签）。
+- 全局 WIP ≤ 3，同一 module 同时 ≤ 1；单轮只做一个短动作，不在进程内等 CI。
+- 共享文件只由 Integrator 改：`docs/iteration-log.md`、`frontend/bindings/**`、`go.mod` / `go.sum`、`frontend/package-lock.json`、版本号与构建产物。
+- 流水线的迭代记录写 `docs/iterations/issue-<N>-<slug>.md` 片段，由 Integrator 插入；人工提交可直接追加。
+- 运行手册自身只通过独立的工具链 issue/PR 修改。
+- 辅助脚本：`scripts/issue-*.sh`、`scripts/release-train.sh`。
 
 ## 约定
 
-- 测试与被测代码同包同目录（`*_test.go`），e2e 用 `httptest` 假服务器（fake SSE 模型 / 假授权服务器 / 内存 A2A 服务端），不依赖外部网络。
-- UI 文案为中文；错误经 `errText()` 透传到 toast。
-- 每轮功能迭代在 `docs/iteration-log.md` 顶层「视觉测试与体验设计」章节**顶部**追加「### 第 N 轮迭代：<主题>（已实施）」记录（含依据、实现要点、测试证据）。README 只保留概览与「质量与验证」。
-- **自动修复流水线中的功能迭代**先写 `docs/iterations/issue-<N>-<slug>.md`
-  片段，由 Integrator 在合入时统一插入 `docs/iteration-log.md` 顶部，避免
-  并行分支都改同一个文件；人工直接提交的迭代仍可直接追加。
-- 提交信息采用约定式前缀（feat / fix / docs / test / chore / refactor）+ scope，如 `feat(chat): 主题 — 要点`；正文列出实现与测试清单。
+- 测试与被测代码同包同目录（`*_test.go`）；e2e 用 `httptest` 假服务器（fake SSE 模型 / 假授权服务器 / 内存 A2A），不依赖外网。
+- UI 文案中文；错误经 `errText()` 透传到 toast。
+- 每轮功能迭代在 `docs/iteration-log.md` 顶层「视觉测试与体验设计」章节顶部追加记录（含依据、实现要点、测试证据）；README 只保留概览与「质量与验证」。
+- 提交信息用约定式前缀 + scope（如 `feat(chat): 主题 — 要点`），正文列实现与测试清单。
 
 ## 已知边界
 
-- 长会话渲染上限 200 条（完整历史持久化，可导出查看）
-- MCP OAuth 令牌缓存在 config.json（0600）；脱敏导出不带令牌
-- 团队负责人必须为本地 Agent（远程 A2A 成员仅作为可转移的子代理）
-- 任务结果区支持行级 diff（基线内容快照存于 `task-snapshots/content/<sessionID>/`，文本 ≤256KB、每会话 32MB 预算）；仍不支持 Office 在线预览或网页运行预览
+- 长会话渲染上限 200 条（历史完整持久化，可导出）。
+- MCP OAuth 令牌缓存在 config.json（0600），脱敏导出不带。
+- 团队负责人必须为本地 Agent（远程 A2A 成员仅作为可转移子代理）。
+- 结果区支持行级 diff（基线内容快照 ≤256KB/文件、32MB/会话），不支持 Office 在线预览或网页运行预览。
+
+更多边界见 [README.md](README.md#已知边界)。
