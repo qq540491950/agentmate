@@ -23,3 +23,16 @@ export function shouldOpenLatestSession(opts: {
 export function draftUsesProject(projectID: string): boolean {
   return projectID.trim() !== "";
 }
+
+/**
+ * draftModelFor resolves the model a not-yet-created chat would run. The
+ * composer picker must stay usable before the first message exists (issue
+ * #64), so it shows the explicit draft pick when that model still exists,
+ * otherwise the provider's first model — the same fallback the backend applies
+ * to an override that is no longer in the provider's list. An empty list means
+ * no provider is configured and the picker stays hidden.
+ */
+export function draftModelFor<T extends { id: string }>(models: T[], override: string): T | null {
+  if (models.length === 0) return null;
+  return models.find((m) => m.id === override) ?? models[0];
+}
