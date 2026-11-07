@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { Dialogs, Events } from "@wailsio/runtime";
 import {
   Plus, Square, Trash2, Pencil, MessageSquare, Bot, Users, Loader2, ArrowUp, ArrowDown,
-  Search, Download, Sparkles,
+  Search, Download,
   X, BarChart3, Brain, Network, GitFork, Pin, PinOff, FileCode2, Archive, ClipboardCopy,
   FolderOpen, Folder, FileText,
   PanelRightOpen,
@@ -2038,11 +2038,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
       {!sidebarCollapsed && (
       <>
       <div className="flex shrink-0 flex-col border-r border-border bg-surface-1" style={{ width: sidebarWidth }}>
-        <div className="flex items-center gap-2 px-3 pb-1 pt-3">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand/15 text-brand">
-            <Sparkles className="h-3.5 w-3.5" />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-ui font-semibold">AgentMate</span>
+        <div className="flex items-center justify-end px-3 pb-1 pt-3">
           <button
             title="折叠对话列表（⌘B）"
             aria-label="折叠对话列表"

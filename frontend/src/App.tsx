@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Toaster } from "@/components/ui/sonner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { TopBar } from "@/components/layout/TopBar";
 import { applyTheme, cachedTheme, onSystemThemeChange, type ThemePrefs } from "@/lib/theme";
 import { App as AppService, Config } from "@/lib/api";
 
@@ -110,26 +111,29 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-      <main className="min-w-0 flex-1 overflow-hidden">
-        {/* key={view} resets the boundary on navigation: one crashed view must
-            not keep the other behind the error screen. */}
-        <ErrorBoundary key={view}>
-          <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
-            {view === "chat" ? (
-              <ChatPage
-                isDark={isDark}
-                onToggleTheme={toggleTheme}
-                onOpenHelp={() => setHelpOpen(true)}
-                onOpenSettings={openSettings}
-                version={version}
-              />
-            ) : (
-              <SettingsPage initialTab={settingsTab} onClose={() => setView("chat")} version={version} />
-            )}
-          </Suspense>
-        </ErrorBoundary>
-      </main>
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+      <TopBar />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <main className="min-w-0 flex-1 overflow-hidden">
+          {/* key={view} resets the boundary on navigation: one crashed view must
+              not keep the other behind the error screen. */}
+          <ErrorBoundary key={view}>
+            <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
+              {view === "chat" ? (
+                <ChatPage
+                  isDark={isDark}
+                  onToggleTheme={toggleTheme}
+                  onOpenHelp={() => setHelpOpen(true)}
+                  onOpenSettings={openSettings}
+                  version={version}
+                />
+              ) : (
+                <SettingsPage initialTab={settingsTab} onClose={() => setView("chat")} version={version} />
+              )}
+            </Suspense>
+          </ErrorBoundary>
+        </main>
+      </div>
 
       <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
           <DialogContent className="sm:max-w-md">
