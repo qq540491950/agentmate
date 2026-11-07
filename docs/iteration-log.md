@@ -4,6 +4,21 @@
 
 ## 视觉测试与体验设计
 
+### 第二百一十七轮迭代：会话历史重放 author 一致化——重启后执行过程不再拆碎（已实施）
+
+依据：用户报告执行过程在首次会话显示正常，重启应用后同一会话被拆成多个「执行过程」块与成对裸工具卡。代码走读 + 失败测试实证：`renderEvent` 给 thinking/assistant 消息用 `displayAuthor`（如「写手」），但 tool_call/tool_result/confirm 四处回写原始作者（`agent_<hash>`）；前端 `groupTurn` 遇 author 变化即 flush，一轮在每个工具边界被撕开——thinking 段成无工具数的小组、单工具段成两张相邻裸卡，与截图逐一吻合。实时流（`chatservice_turn.go`）所有事件统一 `displayAuthor`，故首次会话正常。
+
+**实现要点**
+
+- **renderEvent**：删除 tool_call / tool_result / confirm_request / confirm_result 四处 `m.Author = ev.Author` 覆盖，统一沿用 base 的 `displayAuthor`。团队多代理场景不受影响：`displayAuthor` 仍按代理各自映射，前端拆组只要求同一代理的作者一致。
+- 导出（Author 仅用于 assistant 消息）与统计（用原始 `ev.Author`）不受影响。
+
+**测试证据**
+
+- 回归闭环：新增 `TestRenderHistoryAuthorsConsistent`（假 SSE 模型：工具调用轮 + 文本回复轮，断言 tool_call/tool_result 与最终回复 author 相同且为显示名），先红（call/result=`agent_7995374d`、reply=`写手`）后绿。
+- `go test ./internal/...` 全绿；`go vet ./internal/... .` 通过。
+- 待人工冒烟：重启应用打开旧会话，含工具的轮次应整轮一个「执行过程」块，不再出现相邻裸工具卡。
+
 ### 第二百一十六轮迭代：执行过程空窗抖动修复与用户消息长 URL 溢出修复（已实施）
 
 依据：用户报告①会话里粘贴的无空格长 URL（vless://…）把用户气泡横向撑出聊天栏被裁切；②执行过程在回合进行中反复"收缩→展开"，批次间隙徽章闪成绿色"完成"，多轮工具时持续抖动，明显未完成却显示完成。

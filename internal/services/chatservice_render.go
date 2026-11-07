@@ -79,7 +79,6 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 				m.ToolArgs = orig.Args
 				m.Hint = hint
 			}
-			m.Author = ev.Author
 			out = append(out, m)
 		case p.FunctionCall != nil:
 			flushText()
@@ -87,7 +86,6 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 			m.Kind = "tool_call"
 			m.ToolName = p.FunctionCall.Name
 			m.ToolArgs = p.FunctionCall.Args
-			m.Author = ev.Author
 			out = append(out, m)
 		case p.FunctionResponse != nil && p.FunctionResponse.Name == toolconfirmation.FunctionCallName:
 			flushText()
@@ -96,7 +94,6 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 			m.CallID = p.FunctionResponse.ID
 			m.ToolName = p.FunctionResponse.Name
 			m.ToolResp = p.FunctionResponse.Response
-			m.Author = ev.Author
 			out = append(out, m)
 		case p.FunctionResponse != nil:
 			flushText()
@@ -104,7 +101,6 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 			m.Kind = "tool_result"
 			m.ToolName = p.FunctionResponse.Name
 			m.ToolResp = p.FunctionResponse.Response
-			m.Author = ev.Author
 			out = append(out, m)
 		case p.InlineData != nil && p.InlineData.Data != nil:
 			flushText()
