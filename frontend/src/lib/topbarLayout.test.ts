@@ -18,9 +18,9 @@ describe("resolveTopbarLayout", () => {
     expect(layout.trafficLightInset).toBeGreaterThan(0);
   });
 
-  it("浏览器（stub）：全部降级，无按钮区、无拖拽区、无留白", () => {
+  it("浏览器（stub）：渲染按钮区（操作无操作）以便视觉回归覆盖，无拖拽区、无留白", () => {
     expect(resolveTopbarLayout("browser")).toEqual({
-      windowButtonsArea: false,
+      windowButtonsArea: true,
       trafficLightInset: 0,
       dragRegion: false,
     });

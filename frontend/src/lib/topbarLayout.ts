@@ -19,10 +19,12 @@ export function resolveTopbarLayout(platform?: TopbarPlatform): TopbarLayout {
       // 红绿灯位于隐藏标题栏内（约 20px 边距 + 52px 宽度），顶栏内容让位约 78px。
       return { windowButtonsArea: false, trafficLightInset: 78, dragRegion: false };
     case "browser":
-      return { windowButtonsArea: false, trafficLightInset: 0, dragRegion: false };
+      // stub / 浏览器渲染按钮以覆盖视觉回归（操作层降级为无操作）；
+      // Linux 桌面同样走此分支（v1 无 Linux 自绘 chrome）。
+      return { windowButtonsArea: true, trafficLightInset: 0, dragRegion: false };
     default:
       // SSR / 无 window 环境按 browser 降级，组件静态渲染不炸。
-      return { windowButtonsArea: false, trafficLightInset: 0, dragRegion: false };
+      return resolveTopbarLayout("browser");
   }
 }
 

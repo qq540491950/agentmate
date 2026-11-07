@@ -13,10 +13,19 @@ describe("TopBar", () => {
     expect(html).toContain('data-slot="topbar-slot-end"');
   });
 
-  it("Windows 变体：顶栏声明拖拽区并预留窗口按钮区", () => {
-    const half = renderToStaticMarkup(<TopBar layout={resolveTopbarLayout("windows")} />);
-    expect(half).toContain("--wails-draggable");
-    expect(half).toContain('data-slot="topbar-window-buttons"');
+  it("Windows 变体：渲染 3 个带 aria-label 的窗口按钮并声明拖拽区", () => {
+    const html = renderToStaticMarkup(<TopBar layout={resolveTopbarLayout("windows")} />);
+    expect(html).toContain('data-slot="topbar-window-buttons"');
+    expect(html).toContain('aria-label="最小化"');
+    expect(html).toContain('aria-label="最大化"');
+    expect(html).toContain('aria-label="关闭"');
+    expect(html).toContain("--wails-draggable");
+  });
+
+  it("浏览器（stub）变体：渲染窗口按钮（操作无操作），不声明拖拽区", () => {
+    const html = renderToStaticMarkup(<TopBar />);
+    expect(html).toContain('aria-label="最小化"');
+    expect(html).not.toContain("--wails-draggable");
   });
 
   it("macOS 变体：预留红绿灯留白，不渲染窗口按钮区", () => {
