@@ -13,7 +13,6 @@ import { TodoListCard } from "@/components/chat/TodoCards";
 import { dayLabel, fmtTime, type UIMessage } from "@/lib/chatUtils";
 import { allowAllToggleHint, allowAllToggleLabel } from "@/lib/allowAll";
 import { highlightText } from "@/components/chat/highlightText";
-import { levelLabel } from "@/lib/modelLabel";
 import type { UsageInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -191,14 +190,6 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
     return (
       <div className="group wb-message-in flex justify-end">
         <div className="flex max-w-[85%] flex-col items-end gap-1.5 sm:max-w-[640px]">
-          {m.reasoning && (
-            <span
-              className="text-3xs leading-none text-muted-foreground"
-              title="该轮发送时的思考强度"
-            >
-              思考强度：{levelLabel(m.reasoning)}
-            </span>
-          )}
           {(m.attachments?.length ?? 0) > 0 && (
             <div className="flex flex-wrap justify-end gap-1.5">
               {m.attachments!.map((a, i) => (

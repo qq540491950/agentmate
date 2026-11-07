@@ -4,6 +4,23 @@
 
 ## 视觉测试与体验设计
 
+### 第二百一十八轮迭代：思考强度标注移除与上下文占用圆环——未报用量模型的 ≈ 估算兜底（已实施）
+
+依据：用户报告①用户消息上方的「思考强度：最高」标注没有必要显示；②上下文占用「又不显示了」，希望按 Codex 桌面端的圆圈样式实现。实证定位（本机 config + sessions.db + 对上游的最小 curl 实测）：占用条一直存在（composer 工具条），但天气会话 `sess_b020eba68fd2f49f`（catpaw/deepseek-v4.1-flash 路由）32 条事件 0 条 usage 元数据——该路由即使显式携带 `stream_options.include_usage` 也从不返回 usage 块（curl 实测 99 个 data 行无一含 usage），`resolveContextUsage` 收到空数据按「不猜测」原则返回 null，整个指示器随之消失；minimax 路由则正常返回 usage 块。
+
+**实现要点**
+
+- **MessageBubble**：删除用户气泡上方的「思考强度」标注（该轮 reasoning 仍随消息持久化，发送侧 composer 选择器与排队提示不变）。
+- **composer 圆环**：新增 `ContextRing`（SVG 进度圆，成功/黄/红三档随占用变色，数字进 tooltip），替换原 16px 线性条 + 百分比文本；tooltip 区分真实值与估算值。
+- **≈ 估算兜底**：`estimateContextTokens` 按会话内容估算下一轮 prompt 规模（CJK ≈0.7 token/字、其余 ≈0.25 token/字符、每条消息 +12 字符信封、工具载荷 96KB/条封顶），仅在模型未报 usage 时以「≈」标注展示；真实 usage 永远优先，「上下文即将耗尽」header 徽标与 80% 横幅仍只用真实值（延续 214 轮的反误报口径）。
+- **llm.go 解析加固**：usage 原来只在 choices 为空的尾块被捕获，改为与 choices 无关一律捕获——覆盖「usage 附在最后一个内容块」的网关形态。
+
+**测试证据**
+
+- 回归闭环（Go）：新增 `TestOpenAICompatStreamUsageOnContentChunk`（usage 附在带 finish_reason 的内容块），先红（usage=nil）后绿；curl 实测证明 catpaw 路由属「完全不回」形态，由 ≈ 估算兜底覆盖。
+- 回归闭环（前端）：contextUsage.test.ts 新增估算口径用例（中英分别计价、载荷 96KB 封顶、≈ 视图标记），9/9 通过；vitest 156/156；`npx tsc --noEmit` 0 错；`npm run build` 通过；`go test ./internal/...` 全绿；`go vet ./internal/... .` 通过。
+- 待人工冒烟：打开天气会话应出现灰色 ≈ 圆环（tooltip 注明估算原因）；跑一轮 minimax 会话应出现真实值圆环；用户消息上方不再有思考强度标注。
+
 ### 第二百一十七轮迭代：会话历史重放 author 一致化——重启后执行过程不再拆碎（已实施）
 
 依据：用户报告执行过程在首次会话显示正常，重启应用后同一会话被拆成多个「执行过程」块与成对裸工具卡。代码走读 + 失败测试实证：`renderEvent` 给 thinking/assistant 消息用 `displayAuthor`（如「写手」），但 tool_call/tool_result/confirm 四处回写原始作者（`agent_<hash>`）；前端 `groupTurn` 遇 author 变化即 flush，一轮在每个工具边界被撕开——thinking 段成无工具数的小组、单工具段成两张相邻裸卡，与截图逐一吻合。实时流（`chatservice_turn.go`）所有事件统一 `displayAuthor`，故首次会话正常。

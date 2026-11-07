@@ -679,10 +679,10 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 				yield(nil, fmt.Errorf("模型供应商错误（OpenAI 兼容）: %s", chunk.Error.Message))
 				return
 			}
+			if chunk.Usage != nil {
+				usage = chunk.Usage
+			}
 			if len(chunk.Choices) == 0 {
-				if chunk.Usage != nil {
-					usage = chunk.Usage
-				}
 				continue
 			}
 			d := chunk.Choices[0].Delta

@@ -48,6 +48,7 @@ import { composerReasoningModel, levelLabel, modelLabel, reasoningLevels } from 
 import { resolveAgentModel } from "@/lib/agentModel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
+import { ContextRing } from "@/components/chat/ContextRing";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
 import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
@@ -59,7 +60,7 @@ import {
   type RemoteAgentConfig, type UsageInfo, type ModelProvider, type ModelInfo, type SessionStats,
   type Project, type SkillConfig, type WorkspaceEntry,
 } from "@/lib/api";
-import { resolveContextUsage } from "@/lib/contextUsage";
+import { estimateContextTokens, resolveContextUsage } from "@/lib/contextUsage";
 import {
   ALLOW_ALL_RISK_DESCRIPTION, ALLOW_ALL_RISK_TITLE,
   allowAllRiskAlreadyAcknowledged, allowAllToggleHint, allowAllToggleLabel,
@@ -1929,10 +1930,25 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   // billed usage: every call re-sends the full history, so the sum over a
   // tool loop is a multiple of the real size and once showed 6.4M tokens
   // (100%) for a session whose true occupancy was 16.6%.
-  const contextUsage = useMemo(
-    () => resolveContextUsage(sessionUsage?.contextTokens, target.model?.contextWindow ?? 0),
-    [target.model, sessionUsage],
+  const contextWindow = target.model?.contextWindow ?? 0;
+  const realContextUsage = useMemo(
+    () => resolveContextUsage(sessionUsage?.contextTokens, contextWindow),
+    [contextWindow, sessionUsage],
   );
+  // ≈ fallback for models whose upstream never reports usage metadata (some
+  // gateways ignore stream_options.include_usage): approximate the next
+  // prompt from the conversation itself. Debounced — the estimate is coarse
+  // and must not re-run JSON.stringify on every streamed flush.
+  const [estimatedTokens, setEstimatedTokens] = useState(0);
+  useEffect(() => {
+    const t = window.setTimeout(() => setEstimatedTokens(estimateContextTokens(messages)), 250);
+    return () => window.clearTimeout(t);
+  }, [messages]);
+  const contextUsage = useMemo(() => {
+    if (realContextUsage) return realContextUsage;
+    if (contextWindow <= 0 || messages.length === 0 || estimatedTokens <= 0) return null;
+    return resolveContextUsage(estimatedTokens, contextWindow, true);
+  }, [realContextUsage, contextWindow, messages.length, estimatedTokens]);
 
   // Whole-session cost estimate for the stats dialog (label/value order must
   // match the other stat cells: value muted on top, label bold below).
@@ -2387,9 +2403,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                 {sessionUsage.totalTokens.toLocaleString()} tokens{costOf(sessionUsage) && ` · ${costOf(sessionUsage)}`}
               </span>
             )}
-            {contextUsage && contextUsage.pct >= 80 && (
+            {realContextUsage && realContextUsage.pct >= 80 && (
               <span className="shrink-0 rounded-md bg-destructive/10 px-1.5 py-0.5 text-2xs text-destructive">
-                上下文即将耗尽（{contextUsage.pct.toFixed(0)}%）
+                上下文即将耗尽（{realContextUsage.pct.toFixed(0)}%）
               </span>
             )}
             {active && (
@@ -2527,9 +2543,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   </div>
                 );
               })()}
-              {contextUsage && contextUsage.pct >= 80 && !ctxBannerDismissed && (
+              {realContextUsage && realContextUsage.pct >= 80 && !ctxBannerDismissed && (
                 <div className="flex items-center justify-between rounded-lg border border-warning/50 bg-warning/10 px-4 py-2.5 text-sm">
-                  <span>上下文窗口已使用 {contextUsage.pct.toFixed(0)}%，模型可能开始遗忘早期内容。建议导出会话后开启新对话。</span>
+                  <span>上下文窗口已使用 {realContextUsage.pct.toFixed(0)}%，模型可能开始遗忘早期内容。建议导出会话后开启新对话。</span>
                   <div className="flex shrink-0 gap-2">
                     <Button size="sm" variant="outline" onClick={exportSession}>导出 Markdown</Button>
                     <Button size="sm" variant="ghost" onClick={() => setCtxBannerDismissed(true)}>知道了</Button>
@@ -2940,13 +2956,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                 <div className="flex min-w-0 items-center gap-1.5">
                   {contextUsage && (
                     <div
-                      className="hidden shrink-0 items-center gap-1.5 px-1 sm:flex"
-                      title={`上下文窗口：已用 ${contextUsage.used.toLocaleString()} / ${contextUsage.win.toLocaleString()} tokens（${contextUsage.pct.toFixed(1)}%，剩余 ${(100 - contextUsage.pct).toFixed(0)}%）`}
+                      className="hidden shrink-0 items-center px-1 sm:flex"
+                      title={contextUsage.estimated
+                        ? `上下文窗口：≈已用 ${contextUsage.used.toLocaleString()} / ${contextUsage.win.toLocaleString()} tokens（${contextUsage.label}，按会话内容估算——当前模型未返回用量）`
+                        : `上下文窗口：已用 ${contextUsage.used.toLocaleString()} / ${contextUsage.win.toLocaleString()} tokens（${contextUsage.label}，剩余 ${(100 - contextUsage.pct).toFixed(0)}%）`}
                     >
-                      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
-                        <div className={cn("h-full rounded-full transition-all", contextUsage.color)} style={{ width: `max(3px, ${contextUsage.pct}%)` }} />
-                      </div>
-                      <span className="text-2xs tabular-nums text-muted-foreground">{contextUsage.label}</span>
+                      <ContextRing usage={contextUsage} />
                     </div>
                   )}
                   {availableLevels.length > 0 && (

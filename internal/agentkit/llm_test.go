@@ -344,6 +344,34 @@ func TestOpenAICompatUsageExtraction(t *testing.T) {
 	}
 }
 
+// TestOpenAICompatStreamUsageOnContentChunk pins usage parsing for gateways
+// that attach the usage object to the final content chunk instead of sending
+// a choices-less trailer — the trailer-only capture dropped those numbers and
+// left such turns without any usage data.
+func TestOpenAICompatStreamUsageOnContentChunk(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"hey"}}]}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":3,"total_tokens":10}}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+	llm, _ := NewOpenAICompat(OpenAICompatConfig{BaseURL: srv.URL, Model: "m"})
+	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("x", genai.RoleUser)}}
+	var got *genai.GenerateContentResponseUsageMetadata
+	for resp, err := range llm.GenerateContent(context.Background(), req, true) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp != nil && !resp.Partial {
+			got = resp.UsageMetadata
+		}
+	}
+	if got == nil || got.PromptTokenCount != 7 || got.TotalTokenCount != 10 {
+		t.Fatalf("stream usage on content chunk = %+v", got)
+	}
+}
+
 func TestAnthropicUsageExtraction(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
