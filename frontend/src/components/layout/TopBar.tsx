@@ -67,6 +67,7 @@ export function TopBar({ layout, ops, centerSlot, endSlot }: TopBarProps) {
 
   const dragStyle = resolved.dragRegion ? ({ "--wails-draggable": "drag" } as CSSProperties) : undefined;
   const nodragStyle = resolved.dragRegion ? ({ "--wails-draggable": "no-drag" } as CSSProperties) : undefined;
+  const maximiseLabel = resolveMaximiseIcon(isMaximised) === "restore" ? "还原" : "最大化";
 
   return (
     <header
@@ -111,8 +112,8 @@ export function TopBar({ layout, ops, centerSlot, endSlot }: TopBarProps) {
               </button>
               <button
                 type="button"
-                title={resolveMaximiseIcon(isMaximised) === "restore" ? "还原" : "最大化"}
-                aria-label={resolveMaximiseIcon(isMaximised) === "restore" ? "还原" : "最大化"}
+                title={maximiseLabel}
+                aria-label={maximiseLabel}
                 onClick={resolvedOps.toggleMaximise}
                 className="flex h-10 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
