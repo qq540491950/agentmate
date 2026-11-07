@@ -59,6 +59,7 @@ import {
   type RemoteAgentConfig, type UsageInfo, type ModelProvider, type ModelInfo, type SessionStats,
   type Project, type SkillConfig, type WorkspaceEntry,
 } from "@/lib/api";
+import { resolveContextUsage } from "@/lib/contextUsage";
 import {
   ALLOW_ALL_RISK_DESCRIPTION, ALLOW_ALL_RISK_TITLE,
   allowAllRiskAlreadyAcknowledged, allowAllToggleHint, allowAllToggleLabel,
@@ -490,6 +491,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
           promptTokens: st.tokensIn,
           completionTokens: st.tokensOut,
           totalTokens: st.tokensTotal,
+          contextTokens: st.contextTokens,
         });
       })
       .catch(() => { /* stats are best-effort */ });
@@ -1922,15 +1924,15 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   };
 
   // contextUsage: how much of the target model's context window the session
-  // has consumed so far (best-effort, based on streamed usage totals).
-  const contextUsage = useMemo(() => {
-    const win = target.model?.contextWindow ?? 0;
-    if (win <= 0 || !sessionUsage || sessionUsage.totalTokens <= 0) return null;
-    const pct = Math.min(100, (sessionUsage.totalTokens / win) * 100);
-    const color = pct >= 80 ? "bg-destructive" : pct >= 50 ? "bg-warning" : "bg-success";
-    const label = pct < 1 ? "<1%" : pct < 10 ? `${pct.toFixed(1)}%` : `${pct.toFixed(0)}%`;
-    return { pct, color, win, label };
-  }, [target.model, sessionUsage]);
+  // has consumed so far. The numerator is the REAL context occupancy — the
+  // last model call's prompt token count (contextTokens) — not the cumulative
+  // billed usage: every call re-sends the full history, so the sum over a
+  // tool loop is a multiple of the real size and once showed 6.4M tokens
+  // (100%) for a session whose true occupancy was 16.6%.
+  const contextUsage = useMemo(
+    () => resolveContextUsage(sessionUsage?.contextTokens, target.model?.contextWindow ?? 0),
+    [target.model, sessionUsage],
+  );
 
   // Whole-session cost estimate for the stats dialog (label/value order must
   // match the other stat cells: value muted on top, label bold below).
@@ -2939,7 +2941,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   {contextUsage && (
                     <div
                       className="hidden shrink-0 items-center gap-1.5 px-1 sm:flex"
-                      title={`上下文窗口：已用 ${sessionUsage?.totalTokens.toLocaleString()} / ${contextUsage.win.toLocaleString()} tokens（${contextUsage.pct.toFixed(1)}%，剩余 ${(100 - contextUsage.pct).toFixed(0)}%）`}
+                      title={`上下文窗口：已用 ${contextUsage.used.toLocaleString()} / ${contextUsage.win.toLocaleString()} tokens（${contextUsage.pct.toFixed(1)}%，剩余 ${(100 - contextUsage.pct).toFixed(0)}%）`}
                     >
                       <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
                         <div className={cn("h-full rounded-full transition-all", contextUsage.color)} style={{ width: `max(3px, ${contextUsage.pct}%)` }} />

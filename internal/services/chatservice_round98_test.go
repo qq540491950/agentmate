@@ -342,10 +342,14 @@ func TestTurnUsageAccumulatesAcrossToolLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	var msgUsage *UsageInfo
+	var doneUsage *UsageInfo
 	for i := range *events {
 		ev := (*events)[i]
 		if ev.Kind == "message" && ev.Usage != nil {
 			msgUsage = ev.Usage
+		}
+		if ev.Kind == "done" && ev.SessionUsage != nil {
+			doneUsage = ev.SessionUsage
 		}
 	}
 	if msgUsage == nil {
@@ -354,6 +358,56 @@ func TestTurnUsageAccumulatesAcrossToolLoop(t *testing.T) {
 	if msgUsage.PromptTokens != 110 || msgUsage.CompletionTokens != 44 || msgUsage.TotalTokens != 154 {
 		t.Fatalf("usage not accumulated: %+v", msgUsage)
 	}
+	// ContextTokens is the CURRENT context size — the last call's prompt, not
+	// the cumulative sum (which double-counts the shared history prefix).
+	if doneUsage == nil {
+		t.Fatal("done carried no session usage")
+	}
+	if doneUsage.ContextTokens != 100 {
+		t.Fatalf("done context tokens = %d, want the last call's prompt 100", doneUsage.ContextTokens)
+	}
+	if doneUsage.TotalTokens != 154 {
+		t.Fatalf("done total tokens = %d, want cumulative 154", doneUsage.TotalTokens)
+	}
+	st, err := chat.SessionStats(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.ContextTokens != 100 {
+		t.Fatalf("stats context tokens = %d, want the last call's prompt 100", st.ContextTokens)
+	}
+	if st.TokensTotal != 154 {
+		t.Fatalf("stats total tokens = %d, want cumulative 154", st.TokensTotal)
+	}
+}
+
+// TestChatPreviewStripsControlChars: model output can carry C0 control bytes
+// (e.g. U+0001); the sidebar preview must not surface them.
+func TestChatPreviewStripsControlChars(t *testing.T) {
+	chat, _, _ := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		// \u0001 rides inside the JSON string (raw C0 bytes would be invalid
+		// JSON): after parsing, the reply carries a real U+0001.
+		_, _ = w.Write([]byte(sseText("代码已拉取，当前分支已是最新\\u0001（already up to date）") + sseDone))
+	})
+	hookEvents(t)
+
+	sess, err := chat.newLegacySession("agent", "agent_r", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := chat.Send(sess.ID, "拉取代码", nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range chat.S.Store.Get().Sessions {
+		if s.ID == sess.ID {
+			if strings.ContainsAny(s.Preview, "\x01\x02\x1b\x7f") {
+				t.Fatalf("preview contains control chars: %q", s.Preview)
+			}
+			return
+		}
+	}
+	t.Fatal("session not found")
 }
 
 // TestChatPreviewTruncatedByRune: the sidebar preview never splits a UTF-8

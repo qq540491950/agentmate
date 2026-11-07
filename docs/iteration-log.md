@@ -4,6 +4,24 @@
 
 ## 视觉测试与体验设计
 
+### 第二百一十四轮迭代：上下文占用口径修正——「token 耗尽」误报治理（已实施）
+
+依据：用户报告会话显示 6,435,098 tokens /「上下文即将耗尽 (100%)」且多轮失败。诊断（sessions.db 只读 SQL 回路）证实：该数字是 76 次模型调用的计费累计（每次 prompt 都重复携带完整历史前缀），而真实上下文峰值仅 166,145（1M 窗口的 16.6%）——口径错配（累计 ÷ 窗口）导致的误报；轮次失败与上下文无关（待错误文本裁决，疑为 provider 限流）。compaction 两项配置为 0（关闭）是放大器。
+
+**实现要点**
+
+- **UsageInfo.ContextTokens**：usageOf 提取时携带 PromptTokenCount，addUsage 累加时"最后一次覆盖"（永不累加）——done 事件的 SessionUsage 自动携带真实上下文占用；SessionStats.ContextTokens 从持久化 usage 事件按序取最后一条。
+- **前端口径切换**：ChatPage contextUsage 分子从累计 totalTokens 改为 contextTokens，抽为 lib/contextUsage.ts 纯函数（无数据不渲染，不做累计口径 fallback）；tooltip 改用真实占用。头部「累计 tokens + 成本」保留计费口径——双口径各表其义。
+- **失败落日志**：runTurn 错误路径补 log.Printf（此前失败只流式到 UI，事后不可诊断）。
+- **控制字符过滤**：truncateRunes 剥离 C0 控制字符与 DEL（模型输出携带 U+0001 进入会话副标题显示为 ^A）。
+- 压缩（compaction）默认值未改动：自动总结会产生额外模型调用成本，属行为变化，留待用户决策。
+
+**测试证据**
+
+- 回归闭环：round98 双调用 fixture（prompt 10→100）断言 done.SessionUsage.ContextTokens=100、SessionStats.ContextTokens=100 且 TotalTokens=154（累计语义不变）；控制字符 e2e 断言 preview 无 \x01（先红后绿）。
+- `go vet ./internal/... .` 干净；`go test ./internal/...` 全绿；`npx tsc --noEmit` 0 错；vitest 151/151（新增 lib/contextUsage 5 用例）；`npm run build` 通过；绑定已重新生成（UsageInfo/SessionStats 新增 contextTokens）。
+- 待人工冒烟：打开该长会话，上下文条应显示约 17% 而非 100%；头部累计 tokens 数字不变。
+
 ### 第二百一十三轮迭代：自绘顶栏窗口拖动修复——平台检测对齐 Wails runtime 真实契约（已实施）
 
 依据：用户报告 Windows 无边框自绘顶栏（#75/#76/#77）不能拖动窗口，且窗口按钮工作正常。按诊断流程先建红色信号再修复。

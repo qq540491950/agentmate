@@ -42,10 +42,16 @@ type AttachmentOut struct {
 }
 
 // UsageInfo reports token consumption for a turn or a whole session.
+// ContextTokens is the CURRENT context occupancy: the last model call's
+// prompt token count (addUsage overwrites it on every call, so it never
+// accumulates). Deliberately not the cumulative total — every call re-sends
+// the full history, so the sum over a tool loop is a multiple of the real
+// context size (billing semantics vs window semantics).
 type UsageInfo struct {
 	PromptTokens     int64 `json:"promptTokens"`
 	CompletionTokens int64 `json:"completionTokens"`
 	TotalTokens      int64 `json:"totalTokens"`
+	ContextTokens    int64 `json:"contextTokens,omitempty"`
 }
 
 // ChatStreamEvent is streamed to the frontend while a run progresses.
@@ -86,6 +92,7 @@ func usageOf(ev *session.Event) *UsageInfo {
 		PromptTokens:     int64(u.PromptTokenCount),
 		CompletionTokens: int64(u.CandidatesTokenCount),
 		TotalTokens:      int64(u.TotalTokenCount),
+		ContextTokens:    int64(u.PromptTokenCount),
 	}
 }
 

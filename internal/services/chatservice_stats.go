@@ -46,6 +46,11 @@ type SessionStats struct {
 	TokensIn       int64        `json:"tokensIn"`
 	TokensOut      int64        `json:"tokensOut"`
 	TokensTotal    int64        `json:"tokensTotal"`
+	// ContextTokens is the CURRENT context occupancy (the last model call's
+	// prompt size), not the cumulative TokensTotal — the UI's context-window
+	// gauge must use this, or a long tool-loop session reports "context
+	// exhausted" while the real occupancy is a fraction of the window.
+	ContextTokens  int64        `json:"contextTokens,omitempty"`
 	Daily          []StatDay    `json:"daily,omitempty"`   // per-day token/cost breakdown
 	Authors        []AuthorStat `json:"authors,omitempty"` // per-participant breakdown (team timelines)
 	FirstAt        *time.Time   `json:"firstAt,omitempty"`
@@ -139,6 +144,8 @@ func (c *ChatService) SessionStats(sessionID string) (*SessionStats, error) {
 			st.TokensIn += u.PromptTokens
 			st.TokensOut += u.CompletionTokens
 			st.TokensTotal += u.TotalTokens
+			// Events arrive in order; the last usage is the live context size.
+			st.ContextTokens = u.ContextTokens
 
 			as := authors[ev.Author]
 			if as == nil {

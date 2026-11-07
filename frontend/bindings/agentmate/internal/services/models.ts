@@ -259,6 +259,14 @@ export interface SessionStats {
     "tokensTotal": number;
 
     /**
+     * ContextTokens is the CURRENT context occupancy (the last model call's
+     * prompt size), not the cumulative TokensTotal — the UI's context-window
+     * gauge must use this, or a long tool-loop session reports "context
+     * exhausted" while the real occupancy is a fraction of the window.
+     */
+    "contextTokens"?: number;
+
+    /**
      * per-day token/cost breakdown
      */
     "daily"?: StatDay[] | null;
@@ -331,11 +339,17 @@ export interface UpdateStatus {
 
 /**
  * UsageInfo reports token consumption for a turn or a whole session.
+ * ContextTokens is the CURRENT context occupancy: the last model call's
+ * prompt token count (addUsage overwrites it on every call, so it never
+ * accumulates). Deliberately not the cumulative total — every call re-sends
+ * the full history, so the sum over a tool loop is a multiple of the real
+ * context size (billing semantics vs window semantics).
  */
 export interface UsageInfo {
     "promptTokens": number;
     "completionTokens": number;
     "totalTokens": number;
+    "contextTokens"?: number;
 }
 
 /**

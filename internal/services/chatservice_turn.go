@@ -34,6 +34,8 @@ func addUsage(total, u *UsageInfo) *UsageInfo {
 	m.PromptTokens += u.PromptTokens
 	m.CompletionTokens += u.CompletionTokens
 	m.TotalTokens += u.TotalTokens
+	// Context occupancy never accumulates: the last call's prompt wins.
+	m.ContextTokens = u.ContextTokens
 	return &m
 }
 
@@ -521,6 +523,10 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			return context.Canceled
 		}
 		if err != nil {
+			// The failure is only streamed to the UI; without this line it
+			// leaves no trace on disk (provider 429s / quota errors were
+			// previously undiagnosable after the fact).
+			log.Printf("会话 %s 轮次失败: %v", sessionID, err)
 			emit(ChatStreamEvent{Kind: "error", Text: err.Error()})
 			// Surface the failure to the caller instead of reporting success.
 			return fmt.Errorf("run turn: %w", err)
@@ -880,10 +886,18 @@ func (c *ChatService) autoTitle(sessionID string, cfg config.Config, fallback, u
 }
 
 // truncateRunes caps a string at maxRunes without splitting a UTF-8 rune.
+// C0 control bytes and DEL are stripped first: model output can carry them
+// (e.g. U+0001) and they render as garbage in the sidebar preview and titles.
 func truncateRunes(s string, maxRunes int) string {
-	r := []rune(strings.TrimSpace(s))
+	s = strings.Map(func(r rune) rune {
+		if (r < 0x20 && r != '\n' && r != '\t') || r == 0x7f {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(s))
+	r := []rune(s)
 	if len(r) <= maxRunes {
-		return string(r)
+		return s
 	}
 	return string(r[:maxRunes])
 }
