@@ -4,6 +4,96 @@
 
 ## 视觉测试与体验设计
 
+### 第二百一十一轮迭代：界面质感 P4——对比度实测、设计系统文档与截图基线（已实施）
+
+依据：用户确认继续 [docs/ui-refresh-plan.md](../docs/ui-refresh-plan.md) 的 P4 收尾：把 P0–P3 的令牌与规则固化成文档，实测对比度并修复不达标项，留双主题截图基线。
+
+**实现要点**
+
+- **对比度实测**（浏览器内 OKLCH→sRGB 精确换算 + WCAG 公式，深浅两套 × 15 组关键配对）：深色全部 ≥ 6.56；浅色状态色在 10% 自色底上 4.19/4.31/3.82，不达 AA——将浅色 `--success/--warning/--destructive` 各加深一档（0.48/0.50/0.53），复测全部 ≥ 4.67。
+- **设计系统速查**：新增 [docs/design-system.md](../docs/design-system.md)——四级表面、`--primary`/`--brand` 分离、语义色、字号阶梯（禁止 10/11px 中文）、圆角/阴影/动效令牌、组件模式（PageShell/PageHeader/Section/SettingRow、消息解剖、执行组、确认卡、代码块、空态）与对比度实测表。
+- **截图基线**：新增 [docs/ui-baseline/](ui-baseline/README.md)——stub 1280×800 下对话页深/浅、设置通用、Agents 四张参考图 + 重新生成步骤 + 每轮 UI 走查清单。
+
+**测试证据**
+
+- 前端：`npx tsc --noEmit` 通过；`npm test` 131/131 通过；`npm run build` 通过。
+- 对比度：深色 15 组配对全部 ≥ 6.56，浅色全部 ≥ 4.67（含状态文字 / 10% 自色底）。
+
+### 第二百一十轮迭代：界面质感 P3——动效与精修（已实施）
+
+依据：用户确认继续 [docs/ui-refresh-plan.md](../docs/ui-refresh-plan.md) 的 P3 阶段：此前界面只有 hover 变色，展开/收起是瞬间 mount/unmount，代码块无语法高亮，裸 `<button>` 缺可见焦点样式。
+
+**实现要点**
+
+- 消息进场：`wb-message-in`（opacity 0→1 + 4px 上移，180ms ease-standard）挂在消息与执行组根节点，流式新消息与「显示更早」补载时轻推入位；`prefers-reduced-motion` 下被 P0 的全局规则归零。
+- 折叠展开：执行组与思考过程改用 grid-rows `0fr→1fr` 过渡（200ms），内容保持挂载、CSS 负责高度，流式追加不再触发重挂载；`aria-hidden` 跟随状态。
+- 代码高亮：`MessageMarkdown` 内置零依赖分词器（注释/字符串/数字/关键字四类，组合正则 + 共享关键字表），仅对支持语言生效，分词失败时原样输出；四类语义色以 OKLCH 变量定义、深浅主题各自取值。
+- 焦点环：`button:focus-visible` 元素级规则统一给裸按钮 2px 品牌色 outline；shadcn 组件在自身基类管理 outline，不受影响。
+- 图标尺寸：会话行操作图标 3→3.5px，与消息区一致。
+
+**测试证据**
+
+- 前端：`npx tsc --noEmit` 通过；`npm test` 131/131 通过；`npm run build` 通过。
+- stub 走查（深色）：ts 代码块关键词紫色/字符串绿色/数字蓝色/注释斜体灰，深浅两套色值随 `.dark` 切换；执行组收起后内容高度实测 0px、`transition: grid-template-rows 0.2s` 生效；消息根节点挂载 `wb-message-in` 动画；`button:focus-visible` 规则已注入样式表。
+
+### 第二百零九轮迭代：界面质感 P2——管理页统一外壳（已实施）
+
+依据：用户确认继续 [docs/ui-refresh-plan.md](../docs/ui-refresh-plan.md) 的 P2 阶段：管理页此前各自实现 18px 标题 + 自定宽度/内边距，设置页用 CSS `columns` 瀑布流导致卡片顺序不可预测，Agents 页远程区标题行 4 个直接子元素挤在 `justify-between` 里把按钮甩到页面中部。
+
+**实现要点**
+
+- 新增 `frontend/src/components/layout/PageShell.tsx`：`PageShell`（统一滚动容器 / max-w-5xl / px-8 py-7）、`PageHeader`（20px 标题 + 13px 描述 + 右对齐动作）、`Section`（16px 区段标题 + 动作）、`SettingRow`（左标签/说明、右控件的令牌化设置行）。
+- Models / Skills / Teams / MCP / Agents 六个管理页全部换用 `PageShell + PageHeader`；标题 18→20px，动作区统一 32px 按钮高度。
+- Models 与 Agents 列表从 2 列卡片改单列行式布局：品牌色圆角图标 + 名称/元信息 + 徽章 + 右侧动作（删除改 28px 图标并补 aria-label）。
+- Agents 远程区改用 `Section`，导入/新增按钮归位到区段标题右侧，修复动作错位。
+- Settings 通用/数据页弃用 `columns` 瀑布流，改 `grid items-start gap-4 lg:grid-cols-2`（窄窗口自动单列）；四处「边框行」统一替换为 `SettingRow`。
+
+**测试证据**
+
+- 前端：`npx tsc --noEmit` 通过；`npm test` 131/131 通过；`npm run build` 通过。
+- stub 走查（1440 宽）：设置通用页双列网格顺序稳定、SettingRow 行样式一致；Agents/Models/Skills/MCP 页 20px 标题 + 右对齐动作，Agents 远程区按钮不再错位，行式列表带图标块与徽章。
+
+### 第二百零八轮迭代：界面质感 P1——对话主界面重塑（已实施）
+
+依据：用户确认继续 [docs/ui-refresh-plan.md](../docs/ui-refresh-plan.md) 的 P1 阶段：侧栏、顶栏、消息流、执行组、确认卡、composer 全面重塑，消除「框套框」并重建阅读层级。
+
+**实现要点**
+
+- 字号令牌补齐：`text-ui`（13px，控件/列表）与 `text-md`（15px/1.7，正文），对话正文从 14px 升到 15px，侧栏与控件统一 13px。
+- 消息流（`MessageBubble` / `MessageMarkdown`）：助手消息去掉灰色气泡，改为全宽正文（作者行 12px 置顶，复制/重新生成/朗读收为 24px 图标按钮悬停显示）；用户消息改 `bg-brand/10` + 品牌描边、20px 圆角、最大宽 640px；思考过程由虚线盒改为左侧 2px 竖线；日期分隔去胶囊底色；代码块独立 `bg-muted/40` 底、复制按钮悬停显示；Markdown 标题/表格/引用按新令牌重排。
+- 执行组（`ToolCallGroup` / `ToolCallCard`）：组容器统一 `rounded-xl` + 发丝线，展开后行间只留间距；新增 `flat` 形态让组内工具行不再各自描边，展开的参数/结果区改内衬底色；确认卡改左侧 2px 语义色条 + 10% 底色，参数区无边框。
+- 侧栏：顶部新增品牌头（Sparkles 徽标 + WorkBuddy + 折叠按钮）；「新聊天」降为中性描边按钮；会话行 13px/更紧行高，当前会话加品牌底色与左侧 2px 色条，类型图标降噪为 muted；分组标题 11→12px。
+- 顶栏：固定 48px，标题 14px 半粗，目标徽章改 `bg-elevated` 无边框，token 数改纯文本，运行中改品牌胶囊，图标按钮 28px。
+- Composer：容器 `rounded-2xl bg-card shadow-card`，聚焦 `ring-4 ring-brand/10`；输入 15px；发送/停止 28px 圆形；@ 与 / 弹层换 `shadow-pop`；拖拽整块品牌色高亮。
+- 空态：聊天空态改品牌圆形图标 + 15px 标题 + 13px 说明并垂直居中；Onboarding 去 emoji，改品牌徽标与步骤行。
+
+**测试证据**
+
+- 前端：`npx tsc --noEmit` 通过；`npm test` 131/131 通过；`npm run build` 通过。
+- stub 走查（深/浅两套）：助手正文（标题/列表/行内代码/代码块/表格/引用）15px 阅读层级清晰、无气泡底色；用户消息品牌底色 + 右下角图标操作；执行组内工具行与确认卡无嵌套描边；侧栏品牌头/激活行色条/12px 分组标题；顶栏 48px 与遥测文本；composer 聚焦光环与 28px 控件；新聊天空态居中且无 emoji。
+
+### 第二百零七轮迭代：界面质感 P0——设计令牌层与 composer 收敛（已实施）
+
+依据：用户反馈整体界面「质感差」，要求给出方案并从 P0（设计令牌层）开始实施；同期提出四处交互收敛：用户消息操作改为区块右下角图标、删除 composer 下方工作区/快捷键整行、思考强度菜单去掉「默认」项直接选中生效档位、并在思考强度左侧显示上下文用量。完整方案见 `docs/ui-refresh-plan.md`。
+
+**实现要点**
+
+- `frontend/src/index.css`：建立四级表面（background / surface-1 / card / elevated）；拆分 `--brand`（强调/选中/焦点/运行态）与中性 `--primary`（填充按钮）；新增 `--success` / `--warning` 语义色；字体栈补中文回退（PingFang SC / {{SECRET_729ud52h}} UI / Noto Sans SC）；新增 `text-2xs` / `text-3xs` rem 字号令牌；统一圆角、阴影（浅色外投影、深色内高光）与过渡令牌；全局 `prefers-reduced-motion` 归零；`::selection` 使用品牌色。
+- `frontend/src/lib/theme.ts`：强调色只写入 `--brand` / `--brand-foreground` / `--ring`，不再覆盖 `--primary` 与 `--sidebar-primary`。
+- 全库清理：48 处 `amber/emerald/red` 硬编码改为 `warning/success/destructive`；63 处 `text-[10px]/[11px]` 改为 rem 令牌；组件内表示强调的 `text-primary` 等迁移为 `brand`；`Card` 增加 `shadow-card`，对话框/下拉菜单/Sheet 改用 `shadow-dialog` / `shadow-pop`；复选框与开关选中态改用品牌色。
+- `ChatPage`：删除 composer 下方工作区路径与快捷键提示整行（含仅此处使用的 `changeSessionWorkspace`、`workspaceContext`、`workspaceLock`）；思考强度菜单去掉「跟随会话默认/模型默认」，菜单始终选中当前生效档位，触发文案直接显示档位名；上下文进度条与百分比移到思考强度左侧（`sm` 以下隐藏）。
+- `MessageBubble`：用户消息的编辑/复制改为纯图标按钮，收进气泡区块右下角，悬停或键盘聚焦时显示；`CopyButton` 支持 `iconOnly`。
+- `ChatPage` 上下文占比：打开既有会话时用 `SessionStats` 播种 `sessionUsage`（不必等下一轮结束），占比 <1% 显示 `<1%`、进度条最小 3px，切换会话时重置后重新拉取。
+- 供应商编辑弹窗（`ModelsPage` / `ModelRowEditor`）：拆为「连接」「模型」两个分组；模型列表改为手风琴（摘要显示名称/ID/上下文/档位数，展开编辑）；字段标签统一 12px、输入 32px，图片输入与价格改为三列对齐；API Key 支持显示/隐藏；名称与 Base URL 内联校验、保存按钮带 loading；弹窗加宽至 3xl、遮罩加深、重开时滚动复位。
+- 关于页：问题反馈从「左侧按钮 + 行内说明」改为分隔线上的设置行（左标题/说明、右按钮）。
+- 侧栏页脚：由技术栈文案改为软件版本号（`WorkBuddy v<version>`），技术栈移入 title 提示。
+
+**测试证据**
+
+- 前端：`npx tsc --noEmit` 通过；`npm test` 131/131 通过；`npm run build` 通过。
+- stub 走查（深/浅两套）：侧栏与画布分层、卡面深色内高光、当前会话行品牌底色、确认卡语义色、composer 无页脚行、上下文条按 `SessionStats` 显示 `<1%`（最小 3px 可见）、思考强度菜单无「默认」项且当前档位选中；供应商弹窗验证两组分区、模型手风琴、三列价格/图片输入对齐、正文滚动而页脚固定、重开滚动复位；字号设置 112.5% 下 `text-xs` 实测 12→13.5px，固定 px 字号不再脱钩。
+- 已知未覆盖：真实后端的上下文用量只在前端 stream 事件中可见，stub 需注入 `sessionUsage` 才能显示进度条；浅色主题仅做了 stub 走查，未在 Windows 实机复核。
+
 ### 第二百零六轮迭代：新对话草稿态可选思考强度（已实施）
 
 依据：用户反馈。在项目内新建对话与顶部「新聊天」出现的草稿输入框中，无法选择

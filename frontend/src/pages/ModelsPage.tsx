@@ -1,16 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2, PlugZap, Star, Loader2, RefreshCw, Image as ImageIcon, Boxes } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Plus, Trash2, PlugZap, Star, Loader2, RefreshCw, Image as ImageIcon, Boxes, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ModelRowEditor } from "@/components/ModelRowEditor";
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -22,6 +21,8 @@ import {
   PROVIDER_EDITOR_BODY_CLASS,
   PROVIDER_EDITOR_DIALOG_CLASS,
 } from "@/lib/providerEditorLayout";
+import { cn } from "@/lib/utils";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 const protocolLabels: Record<string, string> = {
   [Protocol.ProtocolOpenAI]: "OpenAI 兼容 (DeepSeek/Kimi/Ollama...)",
@@ -41,11 +42,46 @@ function blankProvider(): ModelProvider {
   };
 }
 
+/** Section is the provider editor's grouping primitive: one title row, optional
+ *  description and right-aligned actions, then the fields. */
+function Section({ title, description, actions, children }: {
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="grid gap-3">
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium">{title}</h3>
+          {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
+        </div>
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export function ModelsPage() {
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [editing, setEditing] = useState<ModelProvider | null>(null);
   const [testing, setTesting] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [openModel, setOpenModel] = useState<number | null>(null);
+  const [showKey, setShowKey] = useState(false);
+  const [nameError, setNameError] = useState("");
+  const [urlError, setUrlError] = useState("");
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  // Reopening the editor should land on the first section, not wherever the
+  // previous edit left the scroll position.
+  const dialogOpen = !!editing;
+  useEffect(() => {
+    if (dialogOpen) bodyRef.current?.scrollTo({ top: 0 });
+  }, [dialogOpen]);
 
   const reload = useCallback(() => {
     Config.GetConfig()
@@ -57,6 +93,10 @@ export function ModelsPage() {
   const openEditor = (p?: ModelProvider) => {
     const item = p ? { ...p, models: (p.models ?? []).map((m) => ({ ...m })) } : blankProvider();
     setEditing(item);
+    setOpenModel((item.models ?? []).length > 0 ? 0 : null);
+    setShowKey(false);
+    setNameError("");
+    setUrlError("");
   };
 
   /** updateModel patches one row of the model list being edited. */
@@ -72,9 +112,11 @@ export function ModelsPage() {
       ...prev,
       models: (prev.models ?? []).filter((_, i) => i !== index),
     } : prev);
+    setOpenModel((cur) => (cur === null ? null : cur === index ? null : cur > index ? cur - 1 : cur));
   };
 
   const addModel = () => {
+    setOpenModel((editing?.models ?? []).length);
     setEditing((prev) => prev ? {
       ...prev,
       models: [...(prev.models ?? []), { id: "", displayName: "" }],
@@ -134,6 +176,7 @@ export function ModelsPage() {
         return sug ? { ...sug, id, displayName: sug.displayName || id } : { id, displayName: id };
       });
       setEditing((prev) => (prev ? { ...prev, models: [...(prev.models ?? []), ...fresh] } : prev));
+      if (fresh.length > 0 && openModel === null) setOpenModel((editing.models ?? []).length);
       toast.success(fresh.length > 0 ? `拉取成功，新增 ${fresh.length} 个模型` : `拉取成功，无新增模型（共 ${ids.length} 个）`);
     } catch (e) {
       toast.error(`拉取失败: ${errText(e)}，可手动输入`);
@@ -144,17 +187,16 @@ export function ModelsPage() {
 
   const save = async () => {
     if (!editing) return;
-    if (!editing.name.trim()) {
-      toast.error("请填写供应商名称");
-      return;
-    }
+    // Field-level validation stays next to the input instead of a toast: the
+    // dialog is long, and a toast at the top of the screen loses the context.
+    const baseUrl = (editing.baseUrl ?? "").trim();
+    const nextNameError = editing.name.trim() ? "" : "请填写供应商名称";
+    const nextUrlError = baseUrl && !/^https?:\/\//.test(baseUrl) ? "需以 http:// 或 https:// 开头" : "";
+    setNameError(nextNameError);
+    setUrlError(nextUrlError);
+    if (nextNameError || nextUrlError) return;
     // Pasted URLs often carry stray whitespace/newlines that make every
     // request fail opaquely.
-    const baseUrl = (editing.baseUrl ?? "").trim();
-    if (baseUrl && !/^https?:\/\//.test(baseUrl)) {
-      toast.error("Base URL 需以 http:// 或 https:// 开头");
-      return;
-    }
     // Trim ids and drop empty / duplicate rows. Normalize the thinking table so
     // the Go resolver (exact level match, dotted parameter names) sees clean
     // values, and reject a table that would silently send nothing.
@@ -187,6 +229,7 @@ export function ModelsPage() {
       toast.error("请至少填写一个模型 ID");
       return;
     }
+    setSaving(true);
     try {
       await Config.SaveProvider({ ...editing, baseUrl, models });
       toast.success("已保存");
@@ -194,6 +237,8 @@ export function ModelsPage() {
       reload();
     } catch (e) {
       toast.error(`保存失败: ${errText(e)}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -227,16 +272,16 @@ export function ModelsPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">模型配置</h1>
-          <p className="text-sm text-muted-foreground">配置 LLM 供应商与模型，供 Agent 使用</p>
-        </div>
-        <Button onClick={() => openEditor()}>
-          <Plus className="mr-1 h-4 w-4" /> 新增供应商
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="模型配置"
+        description="配置 LLM 供应商与模型，供 Agent 使用"
+        actions={
+          <Button onClick={() => openEditor()}>
+            <Plus className="h-4 w-4" /> 新增供应商
+          </Button>
+        }
+      />
 
       <div className="grid gap-3">
         {providers.length === 0 && (
@@ -247,158 +292,260 @@ export function ModelsPage() {
           </Card>
         )}
         {providers.map((p) => (
-          <Card key={p.id}>
-            <CardContent className="flex items-center justify-between p-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{p.name}</span>
-                  {p.isDefault && (
-                    <Badge variant="secondary" className="gap-1">
-                      <Star className="h-3 w-3" /> 默认
-                    </Badge>
-                  )}
-                </div>
-                <div className="mt-1 truncate text-xs text-muted-foreground">
-                  {protocolLabels[p.protocol] ?? p.protocol}
-                  {p.baseUrl && ` · ${p.baseUrl}`}
-                </div>
-                <div className="mt-1.5 flex flex-wrap gap-1">
-                  {(p.models ?? []).map((m) => (
-                    <Badge
-                      key={m.id}
-                      variant="outline"
-                      className="gap-1 font-normal"
-                      title={[m.id, m.multimodal ? "多模态" : "", m.contextWindow ? `上下文 ${m.contextWindow}` : ""]
-                        .filter(Boolean).join(" · ")}
-                    >
-                      {m.multimodal && <ImageIcon className="h-3 w-3 text-muted-foreground" />}
-                      {modelLabel(m)}
-                    </Badge>
-                  ))}
-                </div>
+          <div
+            key={p.id}
+            className="flex items-center gap-3.5 rounded-xl border border-border bg-card px-4 py-3.5"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+              <Boxes className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{p.name}</span>
+                {p.isDefault && (
+                  <Badge variant="secondary" className="gap-1">
+                    <Star className="h-3 w-3" /> 默认
+                  </Badge>
+                )}
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button variant="outline" size="sm" disabled={testing} onClick={() => test(p)}>
-                  {testing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <PlugZap className="mr-1 h-3.5 w-3.5" />}
-                  测试
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => openEditor(p)}>编辑</Button>
-                <Button variant="ghost" size="icon" onClick={() => remove(p)}>
-                  <Trash2 className="h-4 w-4 text-muted-foreground" />
-                </Button>
+              <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                {protocolLabels[p.protocol] ?? p.protocol}
+                {p.baseUrl && ` · ${p.baseUrl}`}
               </div>
-            </CardContent>
-          </Card>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {(p.models ?? []).map((m) => (
+                  <Badge
+                    key={m.id}
+                    variant="outline"
+                    className="gap-1 font-normal"
+                    title={[m.id, m.multimodal ? "多模态" : "", m.contextWindow ? `上下文 ${m.contextWindow}` : ""]
+                      .filter(Boolean).join(" · ")}
+                  >
+                    {m.multimodal && <ImageIcon className="h-3 w-3 text-muted-foreground" />}
+                    {modelLabel(m)}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button variant="outline" size="sm" disabled={testing} onClick={() => test(p)}>
+                {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlugZap className="h-3.5 w-3.5" />}
+                测试
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => openEditor(p)}>编辑</Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => remove(p)} title="删除供应商" aria-label="删除供应商">
+                <Trash2 className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </div>
+          </div>
         ))}
       </div>
 
       <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
         <DialogContent className={PROVIDER_EDITOR_DIALOG_CLASS}>
-          <DialogHeader>
+          <DialogHeader className="border-b border-border px-6 py-4">
             <DialogTitle>{editing?.id ? "编辑供应商" : "新增供应商"}</DialogTitle>
+            <DialogDescription className="text-xs">
+              连接信息决定请求发往哪里；模型列表决定可选用哪些模型及其能力。
+            </DialogDescription>
           </DialogHeader>
           {editing && (
-            <div className={PROVIDER_EDITOR_BODY_CLASS}>
-              <div className="grid gap-1.5">
-                <Label>名称</Label>
-                <Input
-                  value={editing.name}
-                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                  placeholder="例如 DeepSeek、OpenAI、本地 Ollama"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>协议</Label>
-                <Select
-                  value={editing.protocol}
-                  onValueChange={(v) => setEditing({ ...editing, protocol: v as Protocol })}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(protocolLabels).map(([v, label]) => (
-                      <SelectItem key={v} value={v}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Base URL</Label>
-                <Input
-                  value={editing.baseUrl}
-                  onChange={(e) => setEditing({ ...editing, baseUrl: e.target.value })}
-                  placeholder={
-                    editing.protocol === Protocol.ProtocolOpenAI
-                      ? "https://api.deepseek.com/v1（留空使用 OpenAI 官方）"
-                      : editing.protocol === Protocol.ProtocolAnthropic
-                        ? "https://api.minimaxi.com/anthropic（留空使用 Anthropic 官方）"
-                        : "留空使用 Google 官方"
-                  }
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>API Key</Label>
-                <Input
-                  type="password"
-                  value={editing.apiKey}
-                  onChange={(e) => setEditing({ ...editing, apiKey: e.target.value })}
-                  placeholder="sk-..."
-                />
-              </div>
+            <div className={PROVIDER_EDITOR_BODY_CLASS} ref={bodyRef}>
+              <Section title="连接" description="供应商名称、协议与访问凭据">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">名称</span>
+                    <Input
+                      value={editing.name}
+                      aria-invalid={!!nameError}
+                      onChange={(e) => {
+                        setEditing({ ...editing, name: e.target.value });
+                        if (nameError) setNameError("");
+                      }}
+                      onBlur={() => setNameError(editing.name.trim() ? "" : "请填写供应商名称")}
+                      placeholder="例如 DeepSeek、OpenAI、本地 Ollama"
+                    />
+                    {nameError && <span className="text-2xs text-destructive">{nameError}</span>}
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">协议</span>
+                    <Select
+                      value={editing.protocol}
+                      onValueChange={(v) => setEditing({ ...editing, protocol: v as Protocol })}
+                    >
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(protocolLabels).map(([v, label]) => (
+                          <SelectItem key={v} value={v}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                </div>
 
-              <div className="grid gap-2">
-                <div className="flex items-center justify-between">
-                  <Label>模型列表</Label>
-                  <div className="flex gap-2">
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Base URL</span>
+                  <Input
+                    value={editing.baseUrl}
+                    aria-invalid={!!urlError}
+                    onChange={(e) => {
+                      setEditing({ ...editing, baseUrl: e.target.value });
+                      if (urlError) setUrlError("");
+                    }}
+                    onBlur={() => {
+                      const v = editing.baseUrl.trim();
+                      setUrlError(v && !/^https?:\/\//.test(v) ? "需以 http:// 或 https:// 开头" : "");
+                    }}
+                    placeholder={
+                      editing.protocol === Protocol.ProtocolOpenAI
+                        ? "https://api.deepseek.com/v1（留空使用 OpenAI 官方）"
+                        : editing.protocol === Protocol.ProtocolAnthropic
+                          ? "https://api.minimaxi.com/anthropic（留空使用 Anthropic 官方）"
+                          : "留空使用 Google 官方"
+                    }
+                  />
+                  {urlError
+                    ? <span className="text-2xs text-destructive">{urlError}</span>
+                    : <span className="text-2xs text-muted-foreground">留空则使用该协议的官方地址</span>}
+                </label>
+
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">API Key</span>
+                  <div className="relative">
+                    <Input
+                      type={showKey ? "text" : "password"}
+                      value={editing.apiKey}
+                      onChange={(e) => setEditing({ ...editing, apiKey: e.target.value })}
+                      placeholder="sk-..."
+                      className="pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKey((v) => !v)}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+                      title={showKey ? "隐藏 API Key" : "显示 API Key"}
+                      aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
+                    >
+                      {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                </label>
+
+                <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                  <div>
+                    <div className="text-sm font-medium">设为默认供应商</div>
+                    <div className="text-2xs text-muted-foreground">新会话默认使用该供应商的首个模型</div>
+                  </div>
+                  <Switch
+                    checked={editing.isDefault}
+                    onCheckedChange={(v) => setEditing({ ...editing, isDefault: v })}
+                  />
+                </div>
+              </Section>
+
+              <Section
+                title={`模型（${(editing.models ?? []).length}）`}
+                description="模型能力、价格与思考强度档位"
+                actions={
+                  <>
                     <Button variant="outline" size="sm" disabled={fetching} onClick={fetchModels}>
                       {fetching
-                        ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                        : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <RefreshCw className="h-3.5 w-3.5" />}
                       拉取模型
                     </Button>
                     <Button variant="outline" size="sm" onClick={addModel}>
-                      <Plus className="mr-1 h-3.5 w-3.5" /> 添加
+                      <Plus className="h-3.5 w-3.5" /> 添加
                     </Button>
-                  </div>
-                </div>
+                  </>
+                }
+              >
                 {(editing.models ?? []).length === 0 ? (
-                  <p className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
-                    暂无模型。点击「拉取模型」从供应商接口获取，或「添加」手动输入。
-                  </p>
+                  <div className="flex flex-col items-center gap-1 rounded-xl border border-dashed border-border px-4 py-8 text-center">
+                    <Boxes className="h-5 w-5 text-muted-foreground" />
+                    <div className="text-sm font-medium">还没有模型</div>
+                    <p className="text-xs text-muted-foreground">从供应商接口拉取，或手动添加模型 ID。</p>
+                  </div>
                 ) : (
                   <div className="grid gap-2">
-                    {(editing.models ?? []).map((m, i) => (
-                      <ModelRowEditor
-                        key={i}
-                        model={m}
-                        index={i}
-                        onSuggest={(force) => { void suggestOne(i, force); }}
-                        onChange={(patch) => updateModel(i, patch)}
-                        onRemove={() => removeModel(i)}
-                      />
-                    ))}
+                    {(editing.models ?? []).map((m, i) => {
+                      const open = openModel === i;
+                      return (
+                        <div
+                          key={i}
+                          className={cn(
+                            "overflow-hidden rounded-xl border bg-muted/10 transition-colors",
+                            open ? "border-border-strong" : "border-border",
+                          )}
+                        >
+                          <div className="flex items-center gap-2 px-3 py-2.5">
+                            <button
+                              type="button"
+                              onClick={() => setOpenModel(open ? null : i)}
+                              aria-expanded={open}
+                              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                            >
+                              <ChevronRight className={cn(
+                                "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
+                                open && "rotate-90",
+                              )} />
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="truncate text-sm font-medium">{modelLabel(m) || "未命名模型"}</span>
+                                  {m.multimodal && <ImageIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                                </span>
+                                <span className="mt-0.5 block truncate font-mono text-2xs text-muted-foreground">
+                                  {m.id || "未填写模型 ID"}
+                                  {m.contextWindow ? ` · ${(m.contextWindow / 1000).toFixed(0)}K 上下文` : ""}
+                                </span>
+                              </span>
+                            </button>
+                            {m.reasoning?.enabled && (
+                              <Badge variant="secondary" className="shrink-0 font-normal">
+                                {m.reasoning.levels?.length ?? 0} 档
+                              </Badge>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="shrink-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => removeModel(i)}
+                              title="删除模型"
+                              aria-label="删除模型"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                          {open && (
+                            <div className="border-t border-border px-3 py-4">
+                              <ModelRowEditor
+                                model={m}
+                                index={i}
+                                onSuggest={(force) => { void suggestOne(i, force); }}
+                                onChange={(patch) => updateModel(i, patch)}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  显示名称只影响界面展示，请求仍使用模型 ID；填写价格后对话中会显示成本估算。
-                  「图片输入」决定聊天页是否允许发送图片；「推理等级」的档位表会随请求下发（OpenAI 兼容 / Anthropic）。
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  显示名称仅影响界面；价格用于成本估算；「图片输入」控制聊天页能否发送图片。
                 </p>
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <Label>设为默认供应商</Label>
-                <Switch
-                  checked={editing.isDefault}
-                  onCheckedChange={(v) => setEditing({ ...editing, isDefault: v })}
-                />
-              </div>
+              </Section>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditing(null)}>取消</Button>
-            <Button onClick={save}>保存</Button>
+          <DialogFooter className="mx-0 mb-0 gap-2 rounded-none border-t border-border bg-transparent px-6 py-4">
+            <Button variant="outline" onClick={() => setEditing(null)} disabled={saving}>取消</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              保存
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

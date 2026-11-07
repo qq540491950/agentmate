@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Config, type SkillConfig, errText } from "@/lib/api";
 import { isReadOnlySkill, skillSource, skillSourceLabel } from "@/lib/skills";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 function blankSkill(): SkillConfig {
   return { id: "", name: "", description: "", content: "", createdAt: "" };
@@ -57,30 +58,30 @@ export function SkillsPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Skills</h1>
-          <p className="text-sm text-muted-foreground">
-            可复用的技能指令包（SKILL.md 规范），可附加到任意 Agent
-          </p>
-        </div>
-        <Button variant="outline" onClick={async () => {
-          try {
-            const n = await Config.ImportSkillsFromWorkspace();
-            if (n > 0) toast.success(`已导入 ${n} 个 Skill`);
-            else toast.info("没有发现新的 Skill");
-            reload();
-          } catch (e) {
-            toast.error(`导入失败: ${errText(e)}`);
-          }
-        }}>
-          <FolderDown className="mr-1 h-4 w-4" /> 从工作区导入
-        </Button>
-        <Button onClick={() => setEditing(blankSkill())}>
-          <Plus className="mr-1 h-4 w-4" /> 新增 Skill
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Skills"
+        description="可复用的技能指令包（SKILL.md 规范），可附加到任意 Agent"
+        actions={
+          <>
+            <Button variant="outline" onClick={async () => {
+              try {
+                const n = await Config.ImportSkillsFromWorkspace();
+                if (n > 0) toast.success(`已导入 ${n} 个 Skill`);
+                else toast.info("没有发现新的 Skill");
+                reload();
+              } catch (e) {
+                toast.error(`导入失败: ${errText(e)}`);
+              }
+            }}>
+              <FolderDown className="h-4 w-4" /> 从工作区导入
+            </Button>
+            <Button onClick={() => setEditing(blankSkill())}>
+              <Plus className="h-4 w-4" /> 新增 Skill
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid gap-3 md:grid-cols-2">
         {skills.length === 0 && (
@@ -96,8 +97,8 @@ export function SkillsPage() {
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                    <Sparkles className="h-4 w-4 text-primary" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand/10">
+                    <Sparkles className="h-4 w-4 text-brand" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
@@ -170,6 +171,6 @@ export function SkillsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

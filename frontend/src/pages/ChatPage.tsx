@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { Dialogs, Events } from "@wailsio/runtime";
 import {
   Plus, Square, Trash2, Pencil, MessageSquare, Bot, Users, Loader2, ArrowUp, ArrowDown,
-  Search, Download,
+  Search, Download, Sparkles,
   X, BarChart3, Brain, Network, GitFork, Pin, PinOff, FileCode2, Archive, ClipboardCopy,
   FolderOpen, Folder, FileText,
   PanelRightOpen,
@@ -10,7 +10,7 @@ import {
   Settings as SettingsIcon, CircleHelp, Sun, Moon,
   Boxes, LockOpen,
   PanelLeftClose, PanelLeftOpen,
-  FolderPlus, FolderInput, MoreHorizontal, SquarePen,
+  FolderPlus, MoreHorizontal, SquarePen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ import {
   type AssistantCandidate,
   type MentionCandidate,
 } from "@/lib/mentions";
-import { isDialogCancelError, workspaceLockReason } from "@/lib/workspace";
+import { isDialogCancelError } from "@/lib/workspace";
 import { composerReasoningModel, levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
 import { resolveAgentModel } from "@/lib/agentModel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
@@ -100,11 +100,12 @@ function speak(text: string) {
   window.speechSynthesis.speak(u);
 }
 
-export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: {
+export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, version }: {
   isDark: boolean;
   onToggleTheme: () => void;
   onOpenHelp: () => void;
   onOpenSettings: (tab?: SettingsTab) => void;
+  version?: string;
 }) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeID, setActiveID] = useState("");
@@ -479,6 +480,19 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         fireQueued(activeID);
       }
     }).catch(() => {});
+    // Seed the token/context readout from persisted aggregates so opening an
+    // existing chat shows its usage before the next turn completes. A live
+    // turn overwrites this with the same cumulative figure on its done event.
+    Chat.SessionStats(activeID)
+      .then((st) => {
+        if (cancelled || !st || st.tokensTotal <= 0) return;
+        setSessionUsage({
+          promptTokens: st.tokensIn,
+          completionTokens: st.tokensOut,
+          totalTokens: st.tokensTotal,
+        });
+      })
+      .catch(() => { /* stats are best-effort */ });
     return () => {
       cancelled = true;
       setHistoryLoading(false);
@@ -1292,27 +1306,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     });
   };
 
-  const changeSessionWorkspace = async () => {
-    if (!active) return;
-    if (messages.length > 0) {
-      toast.info("首轮已开始，任务工作区已锁定");
-      return;
-    }
-    if (active.projectId) {
-      toast.info("项目会话使用项目根目录，不能单独指定工作区");
-      return;
-    }
-    try {
-      const picked = await pickWorkspace();
-      if (!picked) return;
-      await Chat.SetSessionWorkspace(active.id, picked);
-      await reloadSessions();
-      toast.success("任务工作区已更新");
-    } catch (e) {
-      toast.error(`更新工作区失败: ${errText(e)}`);
-    }
-  };
-
   const forkSession = async (s: ChatSession) => {
     try {
       const fork = await Chat.ForkSession(s.id);
@@ -1716,7 +1709,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
   const nextReasoningLevel = effectiveReasoningLevel(availableLevels, pendingReasoning, sessionReasoning, defaultReasoningLevel);
   const nextReasoningLabel = pendingReasoning
     ? `本轮 ${levelLabel(pendingReasoning)}`
-    : sessionReasoning ? `会话 ${levelLabel(sessionReasoning)}` : "默认";
+    : sessionReasoning ? `会话 ${levelLabel(sessionReasoning)}` : levelLabel(nextReasoningLevel);
   // A pick belongs to one chat+model; switching either starts from the
   // session default again (a level valid for the old table may not exist).
   // A pick belongs to one chat+model; switching either (including a draft's
@@ -1934,8 +1927,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     const win = target.model?.contextWindow ?? 0;
     if (win <= 0 || !sessionUsage || sessionUsage.totalTokens <= 0) return null;
     const pct = Math.min(100, (sessionUsage.totalTokens / win) * 100);
-    const color = pct >= 80 ? "bg-destructive" : pct >= 50 ? "bg-amber-500" : "bg-emerald-500";
-    return { pct, color, win };
+    const color = pct >= 80 ? "bg-destructive" : pct >= 50 ? "bg-warning" : "bg-success";
+    const label = pct < 1 ? "<1%" : pct < 10 ? `${pct.toFixed(1)}%` : `${pct.toFixed(0)}%`;
+    return { pct, color, win, label };
   }, [target.model, sessionUsage]);
 
   // Whole-session cost estimate for the stats dialog (label/value order must
@@ -1944,31 +1938,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
     () => (stats ? costOf({ promptTokens: stats.tokensIn, completionTokens: stats.tokensOut, totalTokens: stats.tokensTotal }) : ""),
     [stats, costOf],
   );
-
-  // Composer context chip (Codex-style): which project/directory this chat
-  // will work in. Auto task dirs under the global workspace count as the
-  // default project; explicit dirs outside it surface by folder name. The
-  // binding stays switchable until the first turn locks the workspace.
-  const workspaceContext = useMemo(() => {
-    if (!active) return null;
-    const project = active.projectId ? projects.find((p) => p.id === active.projectId) : undefined;
-    if (project) return { label: project.name, path: project.rootDir };
-    const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-    const ws = norm(active.workspaceDir || "");
-    const root = norm(globalWorkspace);
-    const underGlobal = root !== "" && (ws === root || ws.startsWith(root + "/"));
-    if (ws && !underGlobal) {
-      const parts = ws.split("/").filter(Boolean);
-      return { label: parts[parts.length - 1] ?? active.workspaceDir, path: active.workspaceDir };
-    }
-    return { label: "默认项目", path: "" };
-  }, [active, projects, globalWorkspace]);
-
-  // One directory menu: a project chat runs in its project root, and the
-  // binding freezes once the first turn has started.
-  const workspaceLock = active
-    ? workspaceLockReason({ hasProject: !!active.projectId, started: messages.length > 0 })
-    : "";
 
   // renderSessionRow draws one chat list row; shared by the project accordion,
   // the 最近 list and search results so hover actions stay identical.
@@ -1979,8 +1948,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       tabIndex={0}
       title={s.title}
       className={cn(
-        "group flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm",
-        s.id === activeID ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
+        "group relative flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-ui",
+        s.id === activeID ? "bg-brand/10 text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
       )}
       onClick={() => setActiveID(s.id)}
       onKeyDown={(e) => {
@@ -1990,21 +1959,24 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         }
       }}
     >
-      {s.targetType === "team" ? <Users className="h-3.5 w-3.5 shrink-0 text-primary" />
-        : s.targetType === "remote" ? <Network className="h-3.5 w-3.5 shrink-0 text-primary" />
-          : s.targetType === "" ? <MessageSquare className="h-3.5 w-3.5 shrink-0 text-primary" />
-            : <Bot className="h-3.5 w-3.5 shrink-0 text-primary" />}
+      {s.id === activeID && (
+        <span aria-hidden className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-brand" />
+      )}
+      {s.targetType === "team" ? <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        : s.targetType === "remote" ? <Network className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          : s.targetType === "" ? <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            : <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
       <span className="min-w-0 flex-1">
         <span className="block truncate" title={s.forkedFrom ? `分叉自「${sessions.find((x) => x.id === s.forkedFrom)?.title ?? s.forkedFrom}」` : s.title}>
           {s.forkedFrom && <GitFork className="mr-1 inline h-3 w-3 text-muted-foreground" />}
           {s.title}
         </span>
-        {s.preview && <span className="block truncate text-[11px] text-muted-foreground">{s.preview}</span>}
+        {s.preview && <span className="block truncate text-xs text-muted-foreground/80">{s.preview}</span>}
       </span>
-      {s.pinned && <Pin className="h-3 w-3 shrink-0 text-primary" aria-label="已置顶" />}
-      {s.archived && <Badge variant="outline" className="shrink-0 px-1 py-0 text-[10px] text-muted-foreground">归档</Badge>}
-      {runningMap[s.id] && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" aria-label="生成中" />}
-      {!runningMap[s.id] && unread[s.id] && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="有新回复未查看" />}
+      {s.pinned && <Pin className="h-3 w-3 shrink-0 text-brand" aria-label="已置顶" />}
+      {s.archived && <Badge variant="outline" className="shrink-0 px-1 py-0 text-2xs text-muted-foreground">归档</Badge>}
+      {runningMap[s.id] && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-brand" aria-label="生成中" />}
+      {!runningMap[s.id] && unread[s.id] && <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-label="有新回复未查看" />}
       {/* The cluster hosts the "…" dropdown anchor, so it must keep its layout
           box while the menu is open — see SESSION_ROW_ACTIONS_CLASS (#28). */}
       <span className={SESSION_ROW_ACTIONS_CLASS} data-slot="session-row-actions">
@@ -2019,7 +1991,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             Chat.ArchiveSession(s.id, !s.archived).then(reloadSessions).catch((e2) => toast.error(`归档失败: ${errText(e2)}`));
           }}
         >
-          <Archive className="h-3 w-3" />
+          <Archive className="h-3.5 w-3.5" />
         </button>
         <button
           className="rounded p-0.5 hover:bg-foreground/10"
@@ -2030,7 +2002,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             Chat.PinSession(s.id, !s.pinned).then(reloadSessions).catch((e2) => toast.error(`置顶失败: ${errText(e2)}`));
           }}
         >
-          {s.pinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+          {s.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -2040,7 +2012,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               aria-label="会话操作"
               onClick={(e) => e.stopPropagation()}
             >
-              <MoreHorizontal className="h-3 w-3" />
+              <MoreHorizontal className="h-3.5 w-3.5" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
@@ -2065,26 +2037,35 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
       {/* Sessions */}
       {!sidebarCollapsed && (
       <>
-      <div className="flex shrink-0 flex-col border-r" style={{ width: sidebarWidth }}>
-        <div className="grid gap-2 p-3">
-          <div className="flex items-center gap-1">
-            <Button className="min-w-0 flex-1 justify-start" size="sm" variant="secondary" onClick={createDirectSession}>
-              <SquarePen className="mr-1 h-4 w-4" /> 新聊天
-            </Button>
-            <button
-              title="折叠对话列表（⌘B）"
-              aria-label="折叠对话列表"
-              aria-expanded={!sidebarCollapsed}
-              onClick={toggleSidebar}
-              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </button>
-          </div>
+      <div className="flex shrink-0 flex-col border-r border-border bg-surface-1" style={{ width: sidebarWidth }}>
+        <div className="flex items-center gap-2 px-3 pb-1 pt-3">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand/15 text-brand">
+            <Sparkles className="h-3.5 w-3.5" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-ui font-semibold">WorkBuddy</span>
+          <button
+            title="折叠对话列表（⌘B）"
+            aria-label="折叠对话列表"
+            aria-expanded={!sidebarCollapsed}
+            onClick={toggleSidebar}
+            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="grid gap-2 px-3 pb-3 pt-2">
+          <Button
+            className="w-full justify-start gap-1.5 border-border bg-transparent text-ui"
+            size="sm"
+            variant="outline"
+            onClick={createDirectSession}
+          >
+            <SquarePen className="h-3.5 w-3.5" /> 新聊天
+          </Button>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="h-8 pl-8 text-xs"
+              className="h-8 bg-background/40 pl-8 text-ui"
               placeholder="搜索对话"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -2101,7 +2082,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
           <div className="grid grid-cols-1 gap-1 pb-3">
             {searching ? (
               <>
-                <div className="px-2 pb-0.5 pt-2 text-[11px] font-medium text-muted-foreground">搜索结果（{searchResults.length}）</div>
+                <div className="px-2 pb-0.5 pt-2 text-xs font-medium text-muted-foreground">搜索结果（{searchResults.length}）</div>
                 {searchResults.map(renderSessionRow)}
                 {searchResults.length === 0 && (
                   <div className="px-2 py-6 text-center text-xs text-muted-foreground">没有匹配的对话</div>
@@ -2109,7 +2090,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               </>
             ) : (
               <>
-                <div className="flex items-center justify-between px-2 pb-0.5 pt-1 text-[11px] font-medium text-muted-foreground">
+                <div className="flex items-center justify-between px-2 pb-0.5 pt-1 text-xs font-medium text-muted-foreground">
                   <button
                     className="flex items-center gap-1 rounded px-1 py-0.5 hover:text-foreground"
                     onClick={() => setProjectsOpen((o) => !o)}
@@ -2136,8 +2117,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                             tabIndex={0}
                             title={g.path ?? g.label}
                             className={cn(
-                              "group flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm",
-                              expanded ? "bg-accent/60 text-accent-foreground" : "hover:bg-accent/50",
+                              "group flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-ui",
+                              expanded ? "bg-accent/60 text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
                             )}
                             onClick={() => setExpandedFolderKey(expanded ? null : g.key)}
                             onKeyDown={(e) => {
@@ -2163,21 +2144,21 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                                     aria-label={`在项目「${g.label}」中新建对话`}
                                     onClick={(e) => { e.stopPropagation(); createProjectSession(project.id); }}
                                   >
-                                    <Plus className="h-3 w-3" />
+                                    <Plus className="h-3.5 w-3.5" />
                                   </button>
                                   <button
                                     className="rounded p-0.5 hover:bg-foreground/10"
                                     title="重命名项目"
                                     onClick={(e) => { e.stopPropagation(); setRenamingProject(project); setRenameProjectText(g.label); }}
                                   >
-                                    <Pencil className="h-3 w-3" />
+                                    <Pencil className="h-3.5 w-3.5" />
                                   </button>
                                 </>
                               )}
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <button title={project ? "管理项目" : "目录操作"} onClick={(e) => e.stopPropagation()} className="rounded p-0.5 hover:bg-foreground/10">
-                                    <MoreHorizontal className="h-3 w-3" />
+                                    <MoreHorizontal className="h-3.5 w-3.5" />
                                   </button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
@@ -2229,21 +2210,21 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                       );
                     })}
                     {folderGroups.length === 0 && (
-                      <div className="px-2 py-1 text-[11px] leading-relaxed text-muted-foreground">
+                      <div className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">
                         暂无项目：对话绑定到工作区目录后自动归类到这里，也可点右上角 + 添加
                       </div>
                     )}
                   </div>
                 )}
                 <button
-                  className="flex items-center gap-1 rounded px-2 pb-0.5 pt-2 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  className="flex items-center gap-1 rounded px-2 pb-0.5 pt-2 text-xs font-medium text-muted-foreground hover:text-foreground"
                   onClick={() => setRecentOpen((o) => !o)}
                 >
                   {recentOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />} 最近
                 </button>
                 {recentOpen && timeGroups.map((group) => (
                   <div key={group.key}>
-                    <div className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground/80">{group.label}</div>
+                    <div className="px-2 pb-0.5 pt-1.5 text-xs text-muted-foreground/80">{group.label}</div>
                     {group.sessions.map(renderSessionRow)}
                   </div>
                 ))}
@@ -2260,7 +2241,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                         <ChevronDown className="h-3 w-3" /> 已归档会话（{archivedSessions.length}）
                       </button>
                       <button
-                        className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent/60 hover:text-destructive"
+                        className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-accent/60 hover:text-destructive"
                         title="删除全部已归档会话（任务文件保留）"
                         onClick={() => setConfirmRequest({
                           title: `清空全部已归档会话（${archivedSessions.length} 条）？`,
@@ -2294,8 +2275,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             )}
           </div>
         </div>
-        <div className="flex items-center justify-between border-t px-3 py-2 text-[11px] text-muted-foreground">
-          <span className="truncate">ADK Go v2 · Wails v3</span>
+        <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
+          <span className="truncate" title="基于 Google ADK Go v2 · Wails v3">{version ? `WorkBuddy v${version}` : "WorkBuddy"}</span>
           <span className="flex shrink-0 items-center gap-1">
             <button title="设置（⌘,）" onClick={() => onOpenSettings()} className="rounded p-1 hover:bg-accent hover:text-foreground">
               <SettingsIcon className="h-3.5 w-3.5" />
@@ -2329,8 +2310,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
         onKeyDown={resizeSidebarWithKeyboard}
         className={cn(
           "w-1.5 shrink-0 cursor-col-resize touch-none select-none bg-transparent transition-colors",
-          "hover:bg-primary/40 focus-visible:bg-primary/50 focus-visible:outline-none",
-          resizingSidebar && "bg-primary/50",
+          "hover:bg-brand/40 focus-visible:bg-brand/50 focus-visible:outline-none",
+          resizingSidebar && "bg-brand/50",
         )}
       />
       </>
@@ -2338,21 +2319,21 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
 
       {/* Chat area */}
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center justify-between border-b px-4 py-2.5">
-          <div className="flex items-center gap-2 text-sm">
+        <div className="flex h-12 items-center justify-between border-b border-border px-4">
+          <div className="flex min-w-0 items-center gap-2">
             {sidebarCollapsed && (
               <button
                 title="展开对话列表（⌘B）"
                 aria-label="展开对话列表"
                 aria-expanded={false}
                 onClick={toggleSidebar}
-                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <PanelLeftOpen className="h-4 w-4" />
               </button>
             )}
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            <span className="max-w-[320px] truncate font-medium">{active ? active.title : "WorkBuddy"}</span>
+            <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="max-w-[360px] truncate text-sm font-semibold">{active ? active.title : "WorkBuddy"}</span>
             {active && (
               (() => {
                 const label = sessionTargetBadgeLabel(active.targetType);
@@ -2362,24 +2343,27 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                 // Configurable targets deep-link into the settings hub.
                 const tab: SettingsTab | undefined = active.targetType === "agent" ? "agents" : active.targetType === "team" ? "teams" : undefined;
                 return (
-                  <Badge
-                    variant="outline"
-                    className={cn("font-normal", tab && "cursor-pointer hover:border-foreground/40 hover:text-foreground")}
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-md bg-elevated px-1.5 py-0.5 text-2xs text-muted-foreground ring-1 ring-border",
+                      tab && "cursor-pointer transition-colors hover:text-foreground hover:ring-border-strong",
+                    )}
                     title={tab ? "管理此配置" : undefined}
                     onClick={tab ? () => onOpenSettings(tab) : undefined}
                   >
                     {label}: {targetLabel}
-                  </Badge>
+                  </span>
                 );
               })()
             )}
             {active && (
               <button
                 className={cn(
-                  "rounded p-1 text-muted-foreground transition-opacity hover:text-foreground",
-                  filterOpen ? "opacity-100 text-primary" : "opacity-60 hover:opacity-100",
+                  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                  filterOpen && "bg-accent text-brand",
                 )}
                 title="在会话内搜索消息（⌘F）"
+                aria-label="在会话内搜索消息"
                 onClick={toggleFilter}
               >
                 <Search className="h-3.5 w-3.5" />
@@ -2387,35 +2371,28 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             )}
             {active && (
               <button
-                className="rounded p-1 text-muted-foreground opacity-60 transition-opacity hover:text-foreground hover:opacity-100"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 title="重命名会话"
+                aria-label="重命名会话"
                 onClick={() => { setRenaming(active); setRenameText(active.title); }}
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {sessionUsage && sessionUsage.totalTokens > 0 && (
-              <Badge variant="outline" className="font-normal" title={`输入 ${sessionUsage.promptTokens} + 输出 ${sessionUsage.completionTokens} tokens`}>
-                {sessionUsage.totalTokens.toLocaleString()} tokens{costOf(sessionUsage) && ` · ${costOf(sessionUsage)}`}
-              </Badge>
-            )}
-            {contextUsage && (
-              <div
-                className="flex items-center gap-1.5"
-                title={`上下文窗口：已用 ${sessionUsage?.totalTokens.toLocaleString()} / ${contextUsage.win.toLocaleString()} tokens（${contextUsage.pct.toFixed(1)}%）`}
+              <span
+                className="text-2xs tabular-nums text-muted-foreground"
+                title={`输入 ${sessionUsage.promptTokens.toLocaleString()} + 输出 ${sessionUsage.completionTokens.toLocaleString()} tokens`}
               >
-                <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
-                  <div className={`h-full rounded-full transition-all ${contextUsage.color}`} style={{ width: `${contextUsage.pct}%` }} />
-                </div>
-                <span className="text-[11px] text-muted-foreground">{contextUsage.pct.toFixed(0)}%</span>
-              </div>
+                {sessionUsage.totalTokens.toLocaleString()} tokens{costOf(sessionUsage) && ` · ${costOf(sessionUsage)}`}
+              </span>
             )}
             {contextUsage && contextUsage.pct >= 80 && (
-              <Badge variant="outline" className="border-destructive/50 font-normal text-destructive">
+              <span className="shrink-0 rounded-md bg-destructive/10 px-1.5 py-0.5 text-2xs text-destructive">
                 上下文即将耗尽（{contextUsage.pct.toFixed(0)}%）
-              </Badge>
+              </span>
             )}
             {active && (
               <>
@@ -2423,7 +2400,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                     buttons crowded the header on narrow windows. */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" title="更多操作" aria-label="更多操作">
+                    <Button variant="ghost" size="icon-sm" title="更多操作" aria-label="更多操作">
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -2456,7 +2433,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                 </DropdownMenu>
                 <Button
                   variant={workspacePanelOpen ? "secondary" : "ghost"}
-                  size="icon"
+                  size="icon-sm"
                   title={workspacePanelOpen ? "收起任务结果区" : "打开任务结果区"}
                   aria-label={workspacePanelOpen ? "收起任务结果区" : "打开任务结果区"}
                   onClick={() => setWorkspacePanelOpen((v) => !v)}
@@ -2466,9 +2443,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               </>
             )}
             {running && (
-              <Badge variant="secondary" className="gap-1">
+              <span className="flex shrink-0 items-center gap-1 rounded-md bg-brand/10 px-1.5 py-0.5 text-2xs text-brand">
                 <Loader2 className="h-3 w-3 animate-spin" /> 运行中
-              </Badge>
+              </span>
             )}
           </div>
         </div>
@@ -2508,8 +2485,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               aria-label="回到底部"
               onClick={() => bottomRef.current?.scrollIntoView({ block: "end" })}
               className={cn(
-                "group absolute bottom-4 left-1/2 z-20 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border bg-popover text-muted-foreground shadow-lg transition-all duration-200 hover:scale-105 hover:bg-accent hover:text-foreground active:scale-95",
-                running && "border-amber-500/30",
+                "group absolute bottom-4 left-1/2 z-20 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-popover text-muted-foreground shadow-pop transition-all duration-200 hover:scale-105 hover:bg-accent hover:text-foreground active:scale-95",
+                running && "border-warning/30",
               )}
             >
               {running && (
@@ -2517,9 +2494,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   aria-hidden="true"
                   className="absolute inset-0 flex items-center justify-center gap-1 transition-opacity duration-150 group-hover:opacity-0"
                 >
-                  <span className="wb-dot-pulse h-1 w-1 rounded-full bg-amber-500" />
-                  <span className="wb-dot-pulse h-1 w-1 rounded-full bg-amber-500 [animation-delay:160ms]" />
-                  <span className="wb-dot-pulse h-1 w-1 rounded-full bg-amber-500 [animation-delay:320ms]" />
+                  <span className="wb-dot-pulse h-1 w-1 rounded-full bg-warning" />
+                  <span className="wb-dot-pulse h-1 w-1 rounded-full bg-warning [animation-delay:160ms]" />
+                  <span className="wb-dot-pulse h-1 w-1 rounded-full bg-warning [animation-delay:320ms]" />
                 </span>
               )}
               <ArrowDown
@@ -2531,11 +2508,11 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             </button>
           )}
           <ScrollArea className="flex-1" viewportRef={scrollRef} aria-label="会话消息">
-            <div className="mx-auto max-w-3xl space-y-3 p-4">
+            <div className="mx-auto max-w-3xl space-y-4 px-5 py-6">
               {(() => {
                 if (omittedItems <= 0) return null;
                 return (
-                  <div className="rounded-lg border bg-muted/40 px-3 py-2 text-center text-xs text-muted-foreground">
+                  <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-center text-xs text-muted-foreground">
                     <div className="flex items-center justify-center gap-2">
                       <span>
                         已省略较早的 {omittedMessages} 条{filterQ ? "匹配" : ""}消息（完整历史已保存，可导出查看）
@@ -2543,7 +2520,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-6 px-2 text-[11px]"
+                        className="h-6 px-2 text-2xs"
                         onClick={() => setRenderLimit((l) => l + RENDER_LIMIT)}
                       >
                         显示更早 {Math.min(RENDER_LIMIT, omittedItems)} 条
@@ -2553,7 +2530,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                 );
               })()}
               {contextUsage && contextUsage.pct >= 80 && !ctxBannerDismissed && (
-                <div className="flex items-center justify-between rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-2.5 text-sm">
+                <div className="flex items-center justify-between rounded-lg border border-warning/50 bg-warning/10 px-4 py-2.5 text-sm">
                   <span>上下文窗口已使用 {contextUsage.pct.toFixed(0)}%，模型可能开始遗忘早期内容。建议导出会话后开启新对话。</span>
                   <div className="flex shrink-0 gap-2">
                     <Button size="sm" variant="outline" onClick={exportSession}>导出 Markdown</Button>
@@ -2565,17 +2542,27 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
               {messages.length === 0 && !active && providerCount > 0 && (
                 // Providers exist but no chat is selected: previously this
                 // rendered an empty pane with no hint about what to do.
-                <div className="py-24 text-center text-sm text-muted-foreground">
-                  <div className="mb-2 text-4xl">💬</div>
-                  直接输入消息即可开始对话；输入 @ 可指定助手、团队或远程 Agent。
+                <div className="flex min-h-[55vh] flex-col items-center justify-center gap-3 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand/10 text-brand">
+                    <MessageSquare className="h-6 w-6" />
+                  </span>
+                  <div className="text-md font-medium">直接开始对话</div>
+                  <p className="max-w-sm text-ui leading-relaxed text-muted-foreground">
+                    输入消息即可开始；输入 <span className="font-medium text-foreground">@</span> 可指定助手、团队或远程 Agent。
+                  </p>
                 </div>
               )}
               {messages.length === 0 && active && (
-                <div className="py-24 text-center text-sm text-muted-foreground">
-                  <div className="mb-2 text-4xl">💬</div>
-                  {active.targetType
-                    ? <>向 <span className="font-medium text-foreground">{targetLabel}</span> 发送第一条消息</>
-                    : <>直接输入开始对话；输入 <span className="font-medium text-foreground">@</span> 可指定助手</>}
+                <div className="flex min-h-[55vh] flex-col items-center justify-center gap-3 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand/10 text-brand">
+                    <MessageSquare className="h-6 w-6" />
+                  </span>
+                  <div className="text-md font-medium">发送第一条消息</div>
+                  <p className="max-w-sm text-ui leading-relaxed text-muted-foreground">
+                    {active.targetType
+                      ? <>向 <span className="font-medium text-foreground">{targetLabel}</span> 发送消息开始任务</>
+                      : <>直接输入开始对话；输入 <span className="font-medium text-foreground">@</span> 可指定助手</>}
+                  </p>
                 </div>
               )}
               {visibleItems.map((item, i, arr) => {
@@ -2655,11 +2642,11 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             </div>
           )}
           {(queued[activeID] ?? []).map((q, qi) => (
-            <div key={qi} className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs">
+            <div key={qi} className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-3 py-1.5 text-xs">
               <span className="shrink-0 text-muted-foreground">{qi === 0 ? "已排队" : `排队 #${qi + 1}`}</span>
               <span className="min-w-0 flex-1 truncate">{q.text}</span>
               {q.reasoning && (
-                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-3xs text-muted-foreground">
                   思考：{levelLabel(q.reasoning)}
                 </span>
               )}
@@ -2676,7 +2663,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
           ))}
           <div className="mx-auto max-w-3xl">
             {editing && (
-              <div className="mb-2 flex items-center justify-between rounded-md border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs text-muted-foreground">
+              <div className="mb-2 flex items-center justify-between rounded-md border border-brand/40 bg-brand/5 px-3 py-1.5 text-xs text-muted-foreground">
                 <span>正在编辑最后一条消息，发送后将替换该轮对话</span>
                 <button className="underline underline-offset-2 hover:text-foreground" onClick={cancelEdit}>
                   取消编辑
@@ -2705,8 +2692,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
           <div className="mx-auto max-w-3xl">
             <div
               className={cn(
-                "rounded-2xl border bg-card shadow-sm transition-colors focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/15",
-                dragOver && "border-primary ring-2 ring-primary/30",
+                "rounded-2xl border border-border bg-card shadow-card transition-colors focus-within:border-brand/40 focus-within:ring-4 focus-within:ring-brand/10",
+                dragOver && "border-brand bg-brand/5 ring-4 ring-brand/15",
               )}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -2725,7 +2712,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
             >
               <div className="relative">
               {mentionOpen && (
-                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-lg border bg-popover p-1 shadow-md" role="listbox" aria-label="@ 引用候选">
+                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-pop" role="listbox" aria-label="@ 引用候选">
                   {mentionCandidates.map((c, i) => {
                     const key = isAssistantCandidate(c) ? `${c.kind}-${c.id}` : `${c.kind}-${c.path}`;
                     const label = isAssistantCandidate(c) ? `@${c.name}` : `@${c.path}${c.kind === "directory" ? "/" : ""}`;
@@ -2745,13 +2732,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                         onMouseDown={(e) => { e.preventDefault(); applyMention(c); }}
                       >
                         {isAssistantCandidate(c)
-                          ? c.kind === "team" ? <Users className="h-3.5 w-3.5 shrink-0 text-primary" />
-                            : c.kind === "remote" ? <Network className="h-3.5 w-3.5 shrink-0 text-primary" />
-                              : <Bot className="h-3.5 w-3.5 shrink-0 text-primary" />
+                          ? c.kind === "team" ? <Users className="h-3.5 w-3.5 shrink-0 text-brand" />
+                            : c.kind === "remote" ? <Network className="h-3.5 w-3.5 shrink-0 text-brand" />
+                              : <Bot className="h-3.5 w-3.5 shrink-0 text-brand" />
                           : c.kind === "directory" ? <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                         <span className="min-w-0 flex-1 truncate">{label}</span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground">{tag}</span>
+                        <span className="shrink-0 text-3xs text-muted-foreground">{tag}</span>
                       </button>
                     );
                   })}
@@ -2767,7 +2754,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                 </div>
               )}
               {slashOpen && (
-                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-lg border bg-popover p-1 shadow-md" role="listbox" aria-label="斜杠命令建议">
+                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-pop" role="listbox" aria-label="斜杠命令建议">
                   {slashSuggestions.map((c, i) => (
                     <button
                       key={c.cmd}
@@ -2783,12 +2770,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                       <span className="flex w-full items-center gap-2">
                         <span className="font-mono font-medium">{c.cmd}</span>
                         {c.source && c.source !== "builtin" && (
-                          <span className="shrink-0 rounded border px-1 text-[10px] font-normal text-muted-foreground">
+                          <span className="shrink-0 rounded border px-1 text-3xs font-normal text-muted-foreground">
                             {slashSourceLabel(c.source)}
                           </span>
                         )}
                       </span>
-                      <span className="w-full truncate text-[11px] font-normal text-muted-foreground">{c.desc}</span>
+                      <span className="w-full truncate text-2xs font-normal text-muted-foreground">{c.desc}</span>
                     </button>
                   ))}
                 </div>
@@ -2897,14 +2884,14 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   e.preventDefault();
                   addFiles(files);
                 }}
-                placeholder={active ? "今天帮你做些什么？输入 @ 引用文件或指定助手，/ 调用技能与指令" : "输入消息开始新对话；@ 可引用文件或指定助手"}
+                placeholder={active ? "输入消息，@ 引用文件或指定助手，/ 调用技能" : "输入消息开始新对话"}
                 aria-label="消息输入框"
                 // Typing stays available while a reply streams (matching the
                 // desktops this app mirrors); send() guards the running state.
                 disabled={!active && providerCount === 0}
                 // Cap the growing textarea so a long paste shrinks the message
                 // list instead of squeezing the composer out of the viewport.
-                className="max-h-48 min-h-[64px] resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
+                className="max-h-48 min-h-[64px] resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 text-md leading-[1.65] shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
               />
               <input
                 ref={fileRef}
@@ -2942,7 +2929,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                     className={cn(
                       "flex h-7 max-w-[168px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
                       composerAllowAll
-                        ? "bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 dark:text-amber-400"
+                        ? "bg-warning/15 text-warning hover:bg-warning/25 dark:text-warning"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground",
                       ((!active && providerCount === 0) || allowAllBusy) && "cursor-not-allowed opacity-50",
                     )}
@@ -2953,6 +2940,17 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   </button>
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
+                  {contextUsage && (
+                    <div
+                      className="hidden shrink-0 items-center gap-1.5 px-1 sm:flex"
+                      title={`上下文窗口：已用 ${sessionUsage?.totalTokens.toLocaleString()} / ${contextUsage.win.toLocaleString()} tokens（${contextUsage.pct.toFixed(1)}%，剩余 ${(100 - contextUsage.pct).toFixed(0)}%）`}
+                    >
+                      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                        <div className={cn("h-full rounded-full transition-all", contextUsage.color)} style={{ width: `max(3px, ${contextUsage.pct}%)` }} />
+                      </div>
+                      <span className="text-2xs tabular-nums text-muted-foreground">{contextUsage.label}</span>
+                    </div>
+                  )}
                   {availableLevels.length > 0 && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -2969,21 +2967,18 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                       <DropdownMenuContent align="end" className="w-60">
                         <DropdownMenuLabel>本条消息思考强度</DropdownMenuLabel>
                         <DropdownMenuRadioGroup
-                          value={pendingReasoning || "__default"}
-                          onValueChange={(v) => setTurnReasoning(v === "__default" ? "" : v)}
+                          value={nextReasoningLevel}
+                          onValueChange={(v) => setTurnReasoning(v)}
                         >
-                          <DropdownMenuRadioItem value="__default" className="text-xs">
-                            {active ? "跟随会话默认" : "跟随模型默认"}（{sessionReasoning ? levelLabel(sessionReasoning) : `模型默认${defaultReasoningLevel ? ` · ${levelLabel(defaultReasoningLevel)}` : ""}`}）
-                          </DropdownMenuRadioItem>
                           {availableLevels.map((l) => (
                             <DropdownMenuRadioItem key={l.level} value={l.level} className="text-xs">
                               <span className="flex-1">{levelLabel(l.level)}</span>
-                              <span className="font-mono text-[10px] text-muted-foreground">{l.level}</span>
+                              <span className="font-mono text-3xs text-muted-foreground">{l.level}</span>
                             </DropdownMenuRadioItem>
                           ))}
                         </DropdownMenuRadioGroup>
                         <DropdownMenuSeparator />
-                        <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+                        <DropdownMenuLabel className="text-2xs font-normal text-muted-foreground">
                           会话默认（影响后续所有轮次）
                         </DropdownMenuLabel>
                         {active && (
@@ -3044,7 +3039,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                     <Button
                       variant="destructive"
                       size="icon"
-                      className="h-8 w-8 rounded-full"
+                      className="h-7 w-7 rounded-full"
                       title="停止生成（Esc）"
                       aria-label="停止生成"
                       onClick={cancel}
@@ -3054,77 +3049,19 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings }: 
                   ) : (
                     <Button
                       size="icon"
-                      className="h-8 w-8 rounded-full"
+                      className="h-7 w-7 rounded-full"
                       title={editing ? "重新发送（Enter）" : "发送（Enter）"}
                       aria-label={editing ? "重新发送" : "发送"}
                       onClick={() => send()}
                       disabled={(!active && providerCount === 0) || !input.trim()}
                     >
-                      <ArrowUp className="h-4 w-4" />
+                      <ArrowUp className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </div>
               </div>
             </div>
-            {active && (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild disabled={messages.length > 0}>
-                    <button
-                      className={cn(
-                        "flex min-w-0 max-w-[220px] items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors",
-                        messages.length === 0 ? "hover:bg-accent hover:text-foreground" : "cursor-default opacity-70",
-                      )}
-                      title={messages.length > 0
-                        ? `${workspaceContext?.path || "自动任务目录（全局工作区）"}（首轮已开始，任务目录已锁定）`
-                        : workspaceLock
-                          ? `${workspaceContext?.path || "自动任务目录（全局工作区）"}（${workspaceLock}）`
-                          : `${workspaceContext?.path || "自动任务目录（全局工作区）"}（点击选择任务目录）`}
-                      aria-label="选择任务目录"
-                      disabled={messages.length > 0}
-                    >
-                      <FolderOpen className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{workspaceContext?.label ?? "默认项目"}</span>
-                      {messages.length === 0 && <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />}
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-72">
-                    <DropdownMenuLabel>任务目录</DropdownMenuLabel>
-                    <DropdownMenuItem disabled={!!workspaceLock} onClick={changeSessionWorkspace}>
-                      <FolderInput className="h-3.5 w-3.5" />
-                      <span>选择其他目录…</span>
-                      {workspaceLock && (
-                        <span className="ml-auto max-w-[150px] truncate text-[10px] text-muted-foreground">
-                          {workspaceLock}
-                        </span>
-                      )}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={addProject}>
-                      <FolderPlus className="h-3.5 w-3.5" /> 添加新项目…
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <span
-                  className={cn(
-                    "flex min-w-0 max-w-[320px] items-center gap-1.5 rounded-md px-1.5 py-1 text-xs",
-                    workspaceError ? "text-destructive" : "text-muted-foreground",
-                  )}
-                  title={workspaceError
-                    ? `任务工作区错误：${workspaceError}`
-                    : `任务工作区：${resolvedWorkspace}`}
-                  aria-label="当前任务工作区"
-                >
-                  <FolderInput className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">
-                    {workspaceError ? "工作区不可用" : resolvedWorkspace || "读取工作区…"}
-                  </span>
-                </span>
-                <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">
-                  Enter 发送 · Shift+Enter 换行
-                </span>
-              </div>
-            )}
-          </div>
+            </div>
         </div>
       </div>
 

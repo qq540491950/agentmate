@@ -18,6 +18,7 @@ import {
 import {
   Config, type TeamConfig, type AgentConfig, type ModelProvider, type RemoteAgentConfig, errText } from "@/lib/api";
 import { modelLabel } from "@/lib/modelLabel";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 /** TeamTopology renders a lead→members hierarchy for a team. */
 function TeamTopology({ team, agentName, remoteName, modelName }: {
@@ -35,11 +36,11 @@ function TeamTopology({ team, agentName, remoteName, modelName }: {
   return (
     <div className="rounded-lg border bg-muted/20 p-3">
       <div className="flex flex-col items-center gap-2">
-        <div className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-center">
-          <div className="text-xs font-semibold text-primary">
+        <div className="rounded-lg border border-brand/40 bg-brand/10 px-3 py-1.5 text-center">
+          <div className="text-xs font-semibold text-brand">
             {isAuto ? "🧭 自动协调员" : `👑 ${agentName(team.leadAgentId)}`}
           </div>
-          <div className="text-[10px] text-muted-foreground">
+          <div className="text-3xs text-muted-foreground">
             {isAuto ? modelName(team.model) || "分派任务 · 汇总结果" : "调度成员 · 汇总结果"}
           </div>
         </div>
@@ -56,7 +57,7 @@ function TeamTopology({ team, agentName, remoteName, modelName }: {
                       <div className="text-xs font-medium">
                         {isLead && "👑 "}{m.kind === "remote" && "🌐 "}{m.label}
                       </div>
-                      <div className="text-[10px] text-muted-foreground">
+                      <div className="text-3xs text-muted-foreground">
                         {isLead ? "负责人" : m.kind === "remote" ? "远程成员" : "成员"}
                       </div>
                     </div>
@@ -176,16 +177,16 @@ export function TeamsPage() {
   const remoteName = (id: string) => remotes.find((r) => r.id === id)?.name ?? "?";
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Agent 团队</h1>
-          <p className="text-sm text-muted-foreground">将多个 Agent 组队协作：负责人调度成员，共同完成任务</p>
-        </div>
-        <Button onClick={() => setEditing(blankTeam())} disabled={agents.length < 1 && remotes.length < 1}>
-          <Plus className="mr-1 h-4 w-4" /> 新增团队
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Agent 团队"
+        description="将多个 Agent 组队协作：负责人调度成员，共同完成任务"
+        actions={
+          <Button onClick={() => setEditing(blankTeam())} disabled={agents.length < 1 && remotes.length < 1}>
+            <Plus className="h-4 w-4" /> 新增团队
+          </Button>
+        }
+      />
 
       <div className="grid gap-3 md:grid-cols-2">
         {teams.length === 0 && (
@@ -200,8 +201,8 @@ export function TeamsPage() {
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                    <Users className="h-4 w-4 text-primary" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10">
+                    <Users className="h-4 w-4 text-brand" />
                   </div>
                   <div>
                     <div className="font-medium">{t.name}</div>
@@ -366,6 +367,6 @@ export function TeamsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

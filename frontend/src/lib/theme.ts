@@ -8,7 +8,7 @@ export interface ThemePrefs {
 }
 
 export const ACCENTS: Record<string, { label: string; color: string }> = {
-  blue: { label: "默认蓝", color: "" }, // empty = theme default
+  blue: { label: "默认蓝", color: "" }, // empty = CSS default brand
   violet: { label: "紫罗兰", color: "#8b5cf6" },
   emerald: { label: "祖母绿", color: "#10b981" },
   orange: { label: "暖橙", color: "#f97316" },
@@ -33,19 +33,17 @@ export function applyTheme(prefs: ThemePrefs): boolean {
 
   const accent = ACCENTS[prefs.accent] ?? ACCENTS.blue;
   const root = document.documentElement.style;
+  // The accent drives --brand (highlight/selection/focus/running states) only.
+  // --primary stays a neutral action color, so filled buttons keep their
+  // contrast and the accent never becomes a full-screen paint job.
   if (accent.color) {
-    root.setProperty("--primary", accent.color);
-    const fg = readableForeground(accent.color);
-    root.setProperty("--primary-foreground", fg);
+    root.setProperty("--brand", accent.color);
+    root.setProperty("--brand-foreground", readableForeground(accent.color));
     root.setProperty("--ring", accent.color);
-    root.setProperty("--sidebar-primary", accent.color);
-    root.setProperty("--sidebar-primary-foreground", fg);
   } else {
-    root.removeProperty("--primary");
-    root.removeProperty("--primary-foreground");
+    root.removeProperty("--brand");
+    root.removeProperty("--brand-foreground");
     root.removeProperty("--ring");
-    root.removeProperty("--sidebar-primary");
-    root.removeProperty("--sidebar-primary-foreground");
   }
   return dark;
 }

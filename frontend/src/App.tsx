@@ -122,6 +122,7 @@ export default function App() {
                 onToggleTheme={toggleTheme}
                 onOpenHelp={() => setHelpOpen(true)}
                 onOpenSettings={openSettings}
+                version={version}
               />
             ) : (
               <SettingsPage initialTab={settingsTab} onClose={() => setView("chat")} version={version} />

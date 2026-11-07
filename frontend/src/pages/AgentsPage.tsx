@@ -3,7 +3,7 @@ import { Plus, Trash2, Bot, Network, Loader2, FolderDown, Upload, ChevronDown, C
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,7 @@ import {
   type RemoteAgentConfig, type RemoteAgentInfo, App, errText } from "@/lib/api";
 import { modelLabel } from "@/lib/modelLabel";
 import { resolveAgentModel } from "@/lib/agentModel";
+import { PageHeader, PageShell, Section } from "@/components/layout/PageShell";
 
 const agentTemplates: { label: string; make: () => AgentConfig }[] = [
   {
@@ -245,67 +246,67 @@ export function AgentsPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Agents</h1>
-          <p className="text-sm text-muted-foreground">定义具备系统提示词、Skills、MCP 工具的自定义 Agent</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            className="h-9 rounded-md border bg-background px-2 text-sm text-muted-foreground"
-            value=""
-            onChange={(e) => {
-              const t = agentTemplates.find((x) => x.label === e.target.value);
-              if (t) openEditor(t.make());
-            }}
-          >
-            <option value="" disabled>
-              从模板创建…
-            </option>
-            {agentTemplates.map((t) => (
-              <option key={t.label} value={t.label}>
-                {t.label}
+    <PageShell>
+      <PageHeader
+        title="Agents"
+        description="定义具备系统提示词、Skills、MCP 工具的自定义 Agent"
+        actions={
+          <>
+            <select
+              className="h-8 rounded-md border border-border bg-transparent px-2 text-xs text-muted-foreground"
+              value=""
+              onChange={(e) => {
+                const t = agentTemplates.find((x) => x.label === e.target.value);
+                if (t) openEditor(t.make());
+              }}
+            >
+              <option value="" disabled>
+                从模板创建…
               </option>
-            ))}
-          </select>
-          <Button variant="outline" onClick={() => agentImportRef.current?.click()}>
-            <FolderDown className="mr-1 h-4 w-4" /> 导入 Agent
-          </Button>
-          <input
-            ref={agentImportRef}
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            onChange={async (e) => {
-              const f = e.target.files?.[0];
-              e.target.value = "";
-              if (!f) return;
-              try {
-              const res = await App.ImportAgent(await f.text());
-              const imported = res.agent;
-                toast.success(`已导入 Agent「${imported.name}」`);
-              if (res.warnings?.length) {
-                toast.warning(res.warnings.join("；"));
-              }
-                reload();
-                // Open the editor for review; imported definitions are valid
-                // as-is when they rely on the default model and tools.
-                openEditor({ ...imported, skillIds: imported.skillIds ?? [], mcpServerIds: imported.mcpServerIds ?? [], builtinTools: imported.builtinTools ?? [] });
-              } catch (err) {
-                toast.error(`导入失败: ${errText(err)}`);
-              }
-            }}
-          />
-          <Button onClick={() => openEditor(blankAgent())}>
-            <Plus className="mr-1 h-4 w-4" /> 新增 Agent
-          </Button>
-        </div>
-      </div>
+              {agentTemplates.map((t) => (
+                <option key={t.label} value={t.label}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <Button variant="outline" onClick={() => agentImportRef.current?.click()}>
+              <FolderDown className="h-4 w-4" /> 导入 Agent
+            </Button>
+            <input
+              ref={agentImportRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                try {
+                  const res = await App.ImportAgent(await f.text());
+                  const imported = res.agent;
+                  toast.success(`已导入 Agent「${imported.name}」`);
+                  if (res.warnings?.length) {
+                    toast.warning(res.warnings.join("；"));
+                  }
+                  reload();
+                  // Open the editor for review; imported definitions are valid
+                  // as-is when they rely on the default model and tools.
+                  openEditor({ ...imported, skillIds: imported.skillIds ?? [], mcpServerIds: imported.mcpServerIds ?? [], builtinTools: imported.builtinTools ?? [] });
+                } catch (err) {
+                  toast.error(`导入失败: ${errText(err)}`);
+                }
+              }}
+            />
+            <Button onClick={() => openEditor(blankAgent())}>
+              <Plus className="h-4 w-4" /> 新增 Agent
+            </Button>
+          </>
+        }
+      />
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-2">
         {agents.length === 0 && (
-          <Card className="md:col-span-2">
+          <Card>
             <EmptyState icon={Bot} title="还没有 Agent" desc="先到「模型配置」添加供应商，然后创建你的第一个 Agent。" />
           </Card>
         )}
@@ -315,47 +316,24 @@ export function AgentsPage() {
             ? modelLabel(p.model) || a.model
             : p.model ? `默认 · ${modelLabel(p.model)}` : "默认模型";
           return (
-            <Card key={a.id}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                      <Bot className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <div className="font-medium">{a.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {modelText} · {p.provider?.name ?? "未配置供应商"}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost" size="icon"
-                      title="导出为分享文件"
-                      onClick={async () => {
-                        try {
-                          const p = await App.ExportAgent(a.id);
-                          toast.success(`已导出: ${p}`);
-                        } catch (err) {
-                          toast.error(`导出失败: ${errText(err)}`);
-                        }
-                      }}
-                    >
-                      <Upload className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => openEditor({ ...a, skillIds: a.skillIds ?? [], mcpServerIds: a.mcpServerIds ?? [], builtinTools: a.builtinTools ?? [] })}>
-                      编辑
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => remove(a)}>
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </div>
+            <div
+              key={a.id}
+              className="flex items-start gap-3.5 rounded-xl border border-border bg-card px-4 py-3.5"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                <Bot className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">{a.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {modelText} · {p.provider?.name ?? "未配置供应商"}
+                  </span>
                 </div>
                 {a.description && (
-                  <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{a.description}</p>
+                  <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{a.description}</p>
                 )}
-                <div className="mt-2 flex flex-wrap gap-1">
+                <div className="mt-1.5 flex flex-wrap gap-1">
                   {(a.builtinTools ?? []).length === 0 ? (
                     <Badge variant="outline" className="font-normal">内置:全量</Badge>
                   ) : (
@@ -372,102 +350,142 @@ export function AgentsPage() {
                     return s ? <Badge key={id} variant="secondary" className="font-normal">MCP:{s.name}</Badge> : null;
                   })}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title="导出为分享文件"
+                  aria-label="导出为分享文件"
+                  onClick={async () => {
+                    try {
+                      const p = await App.ExportAgent(a.id);
+                      toast.success(`已导出: ${p}`);
+                    } catch (err) {
+                      toast.error(`导出失败: ${errText(err)}`);
+                    }
+                  }}
+                >
+                  <Upload className="h-4 w-4 text-muted-foreground" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openEditor({ ...a, skillIds: a.skillIds ?? [], mcpServerIds: a.mcpServerIds ?? [], builtinTools: a.builtinTools ?? [] })}
+                >
+                  编辑
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title="删除 Agent"
+                  aria-label="删除 Agent"
+                  onClick={() => remove(a)}
+                >
+                  <Trash2 className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </div>
+            </div>
           );
         })}
       </div>
 
-      <div className="mt-6 mb-3 flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold flex items-center gap-2">
-            <Network className="h-4 w-4 text-primary" /> 远程 Agent（A2A 协议）
-          </h2>
-          <p className="text-sm text-muted-foreground">连接远程 A2A Agent（Agent Card 自动发现），可直接对话</p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => remoteImportRef.current?.click()}
-        >
-          <FolderDown className="mr-1 h-4 w-4" /> 导入
-        </Button>
-        <input
-          ref={remoteImportRef}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={async (e) => {
-            const f = e.target.files?.[0];
-            e.target.value = "";
-            if (!f) return;
-            try {
-              const imported = await App.ImportRemoteAgent(await f.text());
-              toast.success(`已导入远程 Agent「${imported.name}」`);
-              reload();
-            } catch (err) {
-              toast.error(`导入失败: ${errText(err)}`);
-            }
-          }}
-        />
-        <Button
-          variant="outline"
-          onClick={() => {
-            setRemoteCheck(null);
-            setRemoteEditing({ id: "", name: "", description: "", cardUrl: "", createdAt: "" });
-          }}
-        >
-          <Plus className="mr-1 h-4 w-4" /> 新增远程 Agent
-        </Button>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <Section
+        className="mt-8"
+        title="远程 Agent（A2A 协议）"
+        description="连接远程 A2A Agent（Agent Card 自动发现），可直接对话"
+        actions={
+          <>
+            <Button variant="outline" onClick={() => remoteImportRef.current?.click()}>
+              <FolderDown className="h-4 w-4" /> 导入
+            </Button>
+            <input
+              ref={remoteImportRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                try {
+                  const imported = await App.ImportRemoteAgent(await f.text());
+                  toast.success(`已导入远程 Agent「${imported.name}」`);
+                  reload();
+                } catch (err) {
+                  toast.error(`导入失败: ${errText(err)}`);
+                }
+              }}
+            />
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRemoteCheck(null);
+                setRemoteEditing({ id: "", name: "", description: "", cardUrl: "", createdAt: "" });
+              }}
+            >
+              <Plus className="h-4 w-4" /> 新增远程 Agent
+            </Button>
+          </>
+        }
+      >
+      <div className="grid gap-2">
         {remotes.length === 0 && (
-          <Card className="md:col-span-2">
+          <Card>
             <EmptyState icon={Network} title="还没有远程 Agent" desc="填写对方的 A2A 服务地址即可连接（例如 http://localhost:8080）。" />
           </Card>
         )}
         {remotes.map((r) => (
-          <Card key={r.id}>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                    <Network className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <div className="font-medium">{r.name}</div>
-                    <div className="max-w-[240px] truncate text-xs text-muted-foreground" title={r.cardUrl}>{r.cardUrl}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost" size="icon"
-                    title="导出为分享文件"
-                    onClick={async () => {
-                      try {
-                        const p = await App.ExportRemoteAgent(r.id);
-                        toast.success(`已导出: ${p}`);
-                      } catch (err) {
-                        toast.error(`导出失败: ${errText(err)}`);
-                      }
-                    }}
-                  >
-                    <Upload className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => { setRemoteCheck(null); setRemoteEditing(r); }}>
-                    编辑
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => removeRemote(r)}>
-                    <Trash2 className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                </div>
+          <div
+            key={r.id}
+            className="flex items-start gap-3.5 rounded-xl border border-border bg-card px-4 py-3.5"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+              <Network className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{r.name}</span>
+                <span className="max-w-[280px] truncate font-mono text-xs text-muted-foreground" title={r.cardUrl}>{r.cardUrl}</span>
               </div>
               {r.description && (
-                <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{r.description}</p>
+                <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{r.description}</p>
               )}
-            </CardContent>
-          </Card>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title="导出为分享文件"
+                aria-label="导出为分享文件"
+                onClick={async () => {
+                  try {
+                    const p = await App.ExportRemoteAgent(r.id);
+                    toast.success(`已导出: ${p}`);
+                  } catch (err) {
+                    toast.error(`导出失败: ${errText(err)}`);
+                  }
+                }}
+              >
+                <Upload className="h-4 w-4 text-muted-foreground" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { setRemoteCheck(null); setRemoteEditing(r); }}>
+                编辑
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title="删除远程 Agent"
+                aria-label="删除远程 Agent"
+                onClick={() => removeRemote(r)}
+              >
+                <Trash2 className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </div>
+          </div>
         ))}
       </div>
+      </Section>
 
       <Dialog open={!!remoteEditing} onOpenChange={(v) => !v && setRemoteEditing(null)}>
         <DialogContent className="sm:max-w-md">
@@ -820,6 +838,6 @@ export function AgentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

@@ -21,6 +21,7 @@ import {
 import { ArtifactPreview } from "@/components/ToolCallCard";
 import { UpdateCard } from "@/components/UpdateCard";
 import { cn } from "@/lib/utils";
+import { SettingRow } from "@/components/layout/PageShell";
 import { buildIssueReportURL } from "@/lib/issue";
 import { ACCENTS, FONT_SCALES, applyTheme, cacheTheme, type ThemePrefs } from "@/lib/theme";
 import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
@@ -217,12 +218,12 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
         {tab === "models" && <ModelsPage />}
         {(tab === "general" || tab === "knowledge" || tab === "data" || tab === "about") && (
         <div className="h-full overflow-y-auto p-6">
-      {/* 卡片按瀑布式两列排布：短卡片不再被同行的高卡片撑出大片空白；
+      {/* 双列网格按列内流式排布（items-start 防止同行矮卡被撑高）；
           单卡片页（知识库/关于）保持单列宽度，避免右半屏空置。 */}
       <div className={cn("mx-auto", tab === "general" || tab === "data" ? "max-w-5xl" : "max-w-3xl")}>
       <div className={cn(
         tab === "general" || tab === "data"
-          ? "columns-1 gap-4 lg:columns-2 [&>div[data-slot=card]]:mb-4 [&>div[data-slot=card]]:break-inside-avoid"
+          ? "grid items-start gap-4 lg:grid-cols-2"
           : "grid gap-4",
       )}>
         {tab === "general" && (
@@ -284,44 +285,32 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <div className="text-sm font-medium">自动朗读回复</div>
-                <div className="text-xs text-muted-foreground">助手回复完成后使用语音朗读（TTS）</div>
-              </div>
+            <SettingRow label="自动朗读回复" description="助手回复完成后使用语音朗读（TTS）">
               <Switch
-                checked={settings.autoSpeak}
-                onCheckedChange={(v) => update({ autoSpeak: v })}
-              />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <div className="text-sm font-medium">智能会话命名</div>
-                <div className="text-xs text-muted-foreground">首轮对话后由模型生成简短标题（关闭则截取首条消息前 30 字）</div>
-              </div>
+          checked={settings.autoSpeak}
+          onCheckedChange={(v) => update({ autoSpeak: v })}
+          />
+            </SettingRow>
+            <SettingRow label="智能会话命名" description="首轮对话后由模型生成简短标题（关闭则截取首条消息前 30 字）">
               <Switch
-                checked={settings.autoTitle == null ? false : settings.autoTitle}
-                onCheckedChange={(v) => {
-                  // Persist only this flag from the last-saved snapshot, like
-                  // autoRemember — never flush half-typed fields.
-                  update({ autoTitle: v });
-                  const next = { ...(savedRef.current ?? settings), autoTitle: v };
-                  Config.SaveSettings(next)
-                    .then(() => { savedRef.current = next; })
-                    .catch((e) => toast.error(`保存失败: ${errText(e)}`));
-                }}
-              />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <div className="text-sm font-medium">工具调用审计日志</div>
-                <div className="text-xs text-muted-foreground">将每次工具调用/结果以 JSONL 追加到应用日志目录（tools-audit.jsonl）</div>
-              </div>
+          checked={settings.autoTitle == null ? false : settings.autoTitle}
+          onCheckedChange={(v) => {
+          // Persist only this flag from the last-saved snapshot, like
+          // autoRemember — never flush half-typed fields.
+          update({ autoTitle: v });
+          const next = { ...(savedRef.current ?? settings), autoTitle: v };
+          Config.SaveSettings(next)
+          .then(() => { savedRef.current = next; })
+          .catch((e) => toast.error(`保存失败: ${errText(e)}`));
+          }}
+          />
+            </SettingRow>
+            <SettingRow label="工具调用审计日志" description="将每次工具调用/结果以 JSONL 追加到应用日志目录（tools-audit.jsonl）">
               <Switch
-                checked={settings.toolsAudit}
-                onCheckedChange={(v) => update({ toolsAudit: v })}
-              />
-            </div>
+          checked={settings.toolsAudit}
+          onCheckedChange={(v) => update({ toolsAudit: v })}
+          />
+            </SettingRow>
           </CardContent>
         </Card>
         )}
@@ -451,7 +440,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                   </Button>
                 </div>
                 {kbTestResult && (
-                  <pre className="max-h-40 overflow-auto rounded bg-muted/60 p-2 text-[11px] leading-relaxed text-muted-foreground">{kbTestResult}</pre>
+                  <pre className="max-h-40 overflow-auto rounded bg-muted/60 p-2 text-2xs leading-relaxed text-muted-foreground">{kbTestResult}</pre>
                 )}
               </div>
               {kbFiles.length > 0 && (
@@ -636,7 +625,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                 <DialogHeader>
                   <DialogTitle>{logTitle}</DialogTitle>
                 </DialogHeader>
-                <pre className="max-h-[50vh] overflow-auto rounded bg-muted/60 p-3 font-mono text-[11px] leading-relaxed">{logText}</pre>
+                <pre className="max-h-[50vh] overflow-auto rounded bg-muted/60 p-3 font-mono text-2xs leading-relaxed">{logText}</pre>
               </DialogContent>
             </Dialog>
             <div className="flex items-center justify-between gap-2">
@@ -792,37 +781,33 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                 ))}
               </div>
             )}
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <div className="text-sm font-medium">开机自动启动 A2A 服务</div>
-                <div className="text-xs text-muted-foreground">使用上方选择的 Agent 与端口，应用启动时自动发布</div>
-              </div>
+            <SettingRow label="开机自动启动 A2A 服务" description="使用上方选择的 Agent 与端口，应用启动时自动发布">
               <Switch
-                checked={settings.a2aAutoStart}
-                onCheckedChange={(v) => {
-                  const agentId = v ? (a2aAgent || settings.a2aAgentId) : settings.a2aAgentId;
-                  const port = Number(a2aPort);
-                  if (v && !agentId) {
-                    toast.error("开启自动启动前请先选择要发布的 Agent");
-                    return;
-                  }
-                  if (v && (!Number.isInteger(port) || port < 1 || port > 65535)) {
-                    toast.error("端口需为 1-65535 的整数");
-                    return;
-                  }
-                  const next = {
-                    ...(savedRef.current ?? settings),
-                    a2aAutoStart: v,
-                    a2aAgentId: agentId,
-                    a2aPort: Number.isInteger(port) ? port : 0,
-                  };
-                  update(next);
-                  Config.SaveSettings(next)
-                    .then(() => { savedRef.current = next; })
-                    .catch((e) => toast.error(`保存失败: ${errText(e)}`));
-                }}
-              />
-            </div>
+          checked={settings.a2aAutoStart}
+          onCheckedChange={(v) => {
+          const agentId = v ? (a2aAgent || settings.a2aAgentId) : settings.a2aAgentId;
+          const port = Number(a2aPort);
+          if (v && !agentId) {
+          toast.error("开启自动启动前请先选择要发布的 Agent");
+          return;
+          }
+          if (v && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+          toast.error("端口需为 1-65535 的整数");
+          return;
+          }
+          const next = {
+          ...(savedRef.current ?? settings),
+          a2aAutoStart: v,
+          a2aAgentId: agentId,
+          a2aPort: Number.isInteger(port) ? port : 0,
+          };
+          update(next);
+          Config.SaveSettings(next)
+          .then(() => { savedRef.current = next; })
+          .catch((e) => toast.error(`保存失败: ${errText(e)}`));
+          }}
+          />
+            </SettingRow>
             <p className="text-xs text-muted-foreground">
               启动后其他 A2A 客户端可通过该地址发现并调用此 Agent（仅监听本机地址）。
             </p>
@@ -841,11 +826,14 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
               工具：ADK FunctionTool、MCP Toolset（go-sdk）、Skill Toolset（agentskills.io 规范）。
             </div>
             <UpdateCard version={version} />
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+              <div>
+                <div className="text-sm font-medium text-foreground">问题反馈</div>
+                <div className="text-xs text-muted-foreground">在浏览器打开 GitHub 表单，自动填入版本与环境</div>
+              </div>
               <Button size="sm" variant="outline" onClick={reportIssue}>
-                反馈问题
+                打开表单
               </Button>
-              <span className="text-xs">在浏览器打开 GitHub 表单，自动填入版本与环境</span>
             </div>
           </CardContent>
         </Card>

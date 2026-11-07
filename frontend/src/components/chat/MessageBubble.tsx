@@ -31,26 +31,26 @@ export function ConfirmCard({ m, onConfirm, onAllowAll, allowAllBusy }: {
   const status = m.confirmStatus ?? "pending";
   return (
     <div className={cn(
-      "rounded-lg border px-4 py-3",
-      status === "pending" && "border-amber-500/50 bg-amber-500/10",
-      status === "approved" && "border-emerald-500/40 bg-emerald-500/5",
-      status === "rejected" && "border-destructive/40 bg-destructive/5",
+      "wb-message-in rounded-lg border border-l-2 px-4 py-3",
+      status === "pending" && "border-warning/25 border-l-warning bg-warning/10",
+      status === "approved" && "border-success/25 border-l-success bg-success/5",
+      status === "rejected" && "border-destructive/25 border-l-destructive bg-destructive/5",
     )}>
       <div className="flex items-center gap-2">
         <ShieldAlert className={cn(
           "h-4 w-4 shrink-0",
-          status === "pending" && "text-amber-600",
-          status === "approved" && "text-emerald-600",
+          status === "pending" && "text-warning",
+          status === "approved" && "text-success",
           status === "rejected" && "text-destructive",
         )} />
         <span className="text-sm font-medium">
           {status === "pending" ? "工具执行确认" : status === "approved" ? "已批准执行" : "已拒绝"}
         </span>
-        <Badge variant="outline" className="font-mono text-[11px]">{m.toolName}</Badge>
+        <Badge variant="outline" className="font-mono text-2xs">{m.toolName}</Badge>
       </div>
       {m.hint && <div className="mt-1.5 text-xs text-muted-foreground">{m.hint}</div>}
       {m.toolArgs && Object.keys(m.toolArgs).length > 0 && (
-        <pre className="mt-2 max-h-32 overflow-auto rounded bg-muted/60 p-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+        <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-background/40 p-2 font-mono text-2xs leading-relaxed text-muted-foreground">
           {JSON.stringify(m.toolArgs, null, 2)}
         </pre>
       )}
@@ -76,7 +76,7 @@ export function ConfirmCard({ m, onConfirm, onAllowAll, allowAllBusy }: {
       ) : (
         <div className={cn(
           "mt-2 text-xs",
-          status === "approved" ? "text-emerald-600" : "text-destructive",
+          status === "approved" ? "text-success" : "text-destructive",
         )}>
           {status === "approved" ? "模型已继续执行该工具调用" : "模型已收到拒绝结果"}
         </div>
@@ -99,23 +99,23 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
   }, [m.streaming]);
   if (inline) {
     return (
-      <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2">
+      <div className="border-l-2 border-border pl-3">
         <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
           <Brain className="h-3.5 w-3.5 shrink-0" />
           <span className="font-medium">思考过程</span>
           {m.streaming && <Loader2 className="h-3 w-3 animate-spin" />}
         </div>
-        <div className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+        <div className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-[1.7] text-muted-foreground">
           {m.text || (m.streaming ? "思考中…" : "")}
         </div>
       </div>
     );
   }
   return (
-    <div className="rounded-xl border border-dashed bg-muted/30">
+    <div className="border-l-2 border-border pl-3">
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+        className="flex w-full items-center gap-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
@@ -129,11 +129,19 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
           <ChevronDown className="ml-auto h-3.5 w-3.5" />
         )}
       </button>
-      {open && (
-        <div className="max-h-64 overflow-auto whitespace-pre-wrap break-words border-t border-dashed px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-          {m.text || (m.streaming ? "思考中…" : "")}
+      <div
+        aria-hidden={!open}
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-standard",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-[1.7] text-muted-foreground">
+            {m.text || (m.streaming ? "思考中…" : "")}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 });
@@ -141,9 +149,9 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
 /** DaySeparator marks calendar-day boundaries in long conversations. */
 export function DaySeparator({ ts }: { ts: string | undefined }) {
   return (
-    <div role="separator" aria-label={dayLabel(ts)} className="flex items-center gap-3 py-1">
+    <div role="separator" aria-label={dayLabel(ts)} className="flex items-center gap-3 py-2">
       <div className="h-px flex-1 bg-border" aria-hidden />
-      <span className="shrink-0 rounded-full bg-muted px-3 py-0.5 text-[11px] text-muted-foreground">{dayLabel(ts)}</span>
+      <span className="shrink-0 px-2 text-xs text-muted-foreground">{dayLabel(ts)}</span>
       <div className="h-px flex-1 bg-border" aria-hidden />
     </div>
   );
@@ -181,11 +189,11 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   };
   if (m.kind === "user") {
     return (
-      <div className="group flex justify-end">
-        <div className="flex max-w-[80%] flex-col items-end gap-1.5">
+      <div className="group wb-message-in flex justify-end">
+        <div className="flex max-w-[85%] flex-col items-end gap-1.5 sm:max-w-[640px]">
           {m.reasoning && (
             <span
-              className="text-[10px] leading-none text-muted-foreground"
+              className="text-3xs leading-none text-muted-foreground"
               title="该轮发送时的思考强度"
             >
               思考强度：{levelLabel(m.reasoning)}
@@ -206,24 +214,34 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
             </div>
           )}
           {m.text && (
-          <div className="flex items-end gap-1.5">
-          {canEdit && (
-            <button
-              className="mb-1 inline-flex items-center gap-0.5 rounded p-0.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
-              title="编辑并重发这条消息"
-              onClick={() => onEdit(m.text)}
+          <div className="flex flex-col items-end gap-1">
+            <div
+              className="whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-brand/10 px-4 py-2.5 text-md leading-[1.65] text-foreground ring-1 ring-brand/15"
+              title={fmtTime(m.timestamp)}
             >
-              <Pencil className="h-3 w-3" />
-              编辑
-            </button>
-          )}
-          <CopyButton text={m.text} className="mb-1 opacity-0 transition-opacity group-hover:opacity-100" />
-          <div
-            className="whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground"
-            title={fmtTime(m.timestamp)}
-          >
-            {highlightText(m.text, filterQ, "bg-primary-foreground/30 text-primary-foreground rounded-sm")}
-          </div>
+              {highlightText(m.text, filterQ, "bg-brand/25 text-foreground rounded-sm")}
+            </div>
+            {/* Row actions sit in the block's bottom-right corner, icon-only,
+                and appear only while the row is hovered or keyboard-focused. */}
+            <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+              {canEdit && (
+                <button
+                  type="button"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  title="编辑并重发这条消息"
+                  aria-label="编辑并重发这条消息"
+                  onClick={() => onEdit(m.text)}
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              )}
+              <CopyButton
+                text={m.text}
+                iconOnly
+                title="复制这条消息"
+                className="h-5 w-5 justify-center rounded border-0 bg-transparent p-0"
+              />
+            </div>
           </div>
           )}
         </div>
@@ -240,7 +258,7 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   }
   if (m.kind === "error") {
     return (
-      <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+      <div className="wb-message-in rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
         {highlightText(m.text, filterQ, "bg-destructive/25 text-destructive rounded-sm")}
         {canRegenerate && (
           <div className="mt-2">
@@ -280,71 +298,72 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   }
   if (m.kind === "thinking") {
     return (
-      <div className="flex justify-start">
-        <div className="w-full max-w-[85%]">
+      <div className="wb-message-in flex justify-start">
+        <div className="w-full">
           <ThinkingBlock m={m} />
         </div>
       </div>
     );
   }
   return (
-    <div className="group flex justify-start">
-      <div className="max-w-[85%]">
-        <div className="mb-0.5 flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">
+    <div className="group wb-message-in flex justify-start">
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">
             {m.author}
-            {m.timestamp && <span className="ml-1 opacity-70">· {fmtTime(m.timestamp)}</span>}
+            {m.timestamp && <span className="ml-1.5 font-normal opacity-70">{fmtTime(m.timestamp)}</span>}
           </span>
           {/* Copy/speak/usage work on every finished assistant message —
               scrolling back to grab an earlier reply is a top action. Only
               重新生成 stays bound to the last reply. */}
           {!m.streaming && m.text && (
-            <span className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <span className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
               <button
-                className="inline-flex items-center gap-0.5 rounded p-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                title={copied ? "已复制" : "复制"}
+                aria-label={copied ? "已复制" : "复制这条回复"}
                 onClick={copyMsg}
               >
-                {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                {copied ? "已复制" : "复制"}
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               </button>
               {isLastAssistant && canRegenerate && (
                 <button
-                  className="inline-flex items-center gap-0.5 rounded p-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   title="重新生成最后一条回复"
+                  aria-label="重新生成最后一条回复"
                   onClick={onRegenerate}
                 >
-                  <RefreshCw className="h-3 w-3" />
-                  重新生成
+                  <RefreshCw className="h-3.5 w-3.5" />
                 </button>
               )}
               <button
-                className="inline-flex items-center gap-0.5 rounded p-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 title="朗读这条回复"
+                aria-label="朗读这条回复"
                 onClick={() => onSpeak(m.text)}
               >
-                <Volume2 className="h-3 w-3" />
-                朗读
+                <Volume2 className="h-3.5 w-3.5" />
               </button>
               {m.usage && m.usage.totalTokens > 0 && (
-                <span className="text-[11px] text-muted-foreground/70" title={`输入 ${m.usage.promptTokens} + 输出 ${m.usage.completionTokens}`}>
-                  · {m.usage.totalTokens.toLocaleString()} tokens{costOf(m.usage) && ` · ${costOf(m.usage)}`}
+                <span className="ml-1 text-2xs tabular-nums text-muted-foreground/70" title={`输入 ${m.usage.promptTokens} + 输出 ${m.usage.completionTokens}`}>
+                  {m.usage.totalTokens.toLocaleString()} tokens{costOf(m.usage) && ` · ${costOf(m.usage)}`}
                 </span>
               )}
             </span>
           )}
         </div>
-        <div className="rounded-2xl rounded-bl-md bg-muted px-4 py-2.5">
+        <div className="min-w-0">
           {m.streaming && !m.text ? (
-            <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" /> 思考中…
+            <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> 思考中…
             </span>
           ) : m.kind === "assistant" ? (
             <>
               <MessageMarkdown content={m.text} />
-              {m.streaming && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-foreground/60 align-middle" />}
+              {m.streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-xs bg-brand align-middle" />}
             </>
           ) : (
-            <div className="whitespace-pre-wrap break-words text-sm">{m.text}</div>
+            <div className="whitespace-pre-wrap break-words text-md leading-[1.7]">{m.text}</div>
           )}
         </div>
       </div>

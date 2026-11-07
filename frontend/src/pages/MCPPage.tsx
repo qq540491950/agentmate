@@ -20,6 +20,7 @@ import {
   Config, MCP, MCPTransport,
   type MCPServerConfig, type ServerStatus, errText } from "@/lib/api";
 import { parseEnvText } from "@/lib/mcpEnv";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 function blankServer(): MCPServerConfig {
   return {
@@ -152,18 +153,16 @@ export function MCPPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">MCP 服务</h1>
-          <p className="text-sm text-muted-foreground">
-            连接 Model Context Protocol 服务器，为 Agent 提供外部工具
-          </p>
-        </div>
-        <Button onClick={() => setEditing(blankServer())}>
-          <Plus className="mr-1 h-4 w-4" /> 新增服务
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="MCP 服务"
+        description="连接 Model Context Protocol 服务器，为 Agent 提供外部工具"
+        actions={
+          <Button onClick={() => setEditing(blankServer())}>
+            <Plus className="h-4 w-4" /> 新增服务
+          </Button>
+        }
+      />
 
       <div className="grid gap-3">
         {servers.length === 0 && (
@@ -194,7 +193,7 @@ export function MCPPage() {
                         {s.transport === MCPTransport.MCPStdio ? "stdio" : "streamable-http"}
                       </Badge>
                       {authPendingServer === s.name && (
-                        <Badge variant="outline" className="border-amber-500/50 font-normal text-amber-600">
+                        <Badge variant="outline" className="border-warning/50 font-normal text-warning">
                           等待浏览器授权…
                         </Badge>
                       )}
@@ -368,6 +367,6 @@ export function MCPPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

@@ -216,7 +216,7 @@ export function UpdateCard({ version }: { version?: string }) {
         <div className="mt-2">
           <div className="h-1.5 w-full overflow-hidden rounded bg-muted">
             <div
-              className="h-full bg-primary transition-all"
+              className="h-full bg-brand transition-all"
               style={{ width: `${percent ?? 5}%` }}
             />
           </div>

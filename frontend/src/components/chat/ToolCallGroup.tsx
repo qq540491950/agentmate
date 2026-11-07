@@ -15,10 +15,10 @@ import { cn } from "@/lib/utils";
 
 /** STATUS_META maps an execution block's state to its header badge. */
 const STATUS_META: Record<ToolGroupStatus, { label: string; icon: ReactNode; cls: string }> = {
-  confirm: { label: "等待确认", icon: <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />, cls: "border-amber-500/50 text-amber-700 dark:text-amber-400" },
-  running: { label: "运行中", icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />, cls: "border-primary/40 text-primary" },
+  confirm: { label: "等待确认", icon: <ShieldAlert className="h-3.5 w-3.5 text-warning" />, cls: "border-warning/50 text-warning" },
+  running: { label: "运行中", icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />, cls: "border-brand/40 text-brand" },
   failed: { label: "失败", icon: <XCircle className="h-3.5 w-3.5 text-destructive" />, cls: "border-destructive/40 text-destructive" },
-  done: { label: "完成", icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />, cls: "border-emerald-500/40 text-emerald-600 dark:text-emerald-400" },
+  done: { label: "完成", icon: <CheckCircle2 className="h-3.5 w-3.5 text-success" />, cls: "border-success/40 text-success" },
 };
 
 /**
@@ -75,10 +75,10 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
   const elapsedMs = computedMs == null ? null : Math.max(computedMs, peakMs);
 
   return (
-    <div className="rounded-lg border bg-muted/20 text-sm" data-toolgroup data-state={status}>
+    <div className="wb-message-in rounded-xl border border-border bg-card/40 text-sm" data-toolgroup data-state={status}>
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
         aria-expanded={expanded}
         onClick={() => setUserExpanded(!expanded)}
       >
@@ -86,10 +86,10 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
         {meta.icon}
         <span className="font-medium">执行过程</span>
         {elapsedMs != null && (
-          <span className="text-[11px] text-muted-foreground">已工作 {formatWorkDuration(elapsedMs)}</span>
+          <span className="text-2xs text-muted-foreground">已工作 {formatWorkDuration(elapsedMs)}</span>
         )}
         {count > 0 && (
-          <span className="text-[11px] text-muted-foreground/70" title={`本回合调用了 ${count} 个工具`}>
+          <span className="text-2xs text-muted-foreground/70" title={`本回合调用了 ${count} 个工具`}>
             · {count} 个工具
           </span>
         )}
@@ -97,17 +97,26 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
           {meta.label}
         </Badge>
       </button>
-      {expanded && (
-        <div className="space-y-1.5 border-t p-2">
-          {messages.map((m) => m.kind === "confirm" ? (
+      {/* Collapse is animated with the grid-rows 0fr→1fr trick: the content stays
+          mounted so streaming appends don't remount it, and CSS does the height. */}
+      <div
+        aria-hidden={!expanded}
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-standard",
+          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="space-y-3 border-t border-border px-3 py-3">
+            {messages.map((m) => m.kind === "confirm" ? (
             <ConfirmCard key={m.id} m={m} onConfirm={onConfirm} onAllowAll={onAllowAll} allowAllBusy={allowAllBusy} />
           ) : m.kind === "thinking" ? (
             <ThinkingBlock key={m.id} m={m} inline />
           ) : m.kind === "assistant" ? (
             // Inter-tool narration: process detail, so it stays muted inside
             // the block instead of rendering another assistant bubble header.
-            <div key={m.id} className="px-1 py-0.5 text-muted-foreground" data-toolgroup-narration>
-              <MessageMarkdown content={m.text} />
+            <div key={m.id} className="px-1 text-muted-foreground" data-toolgroup-narration>
+              <MessageMarkdown content={m.text} className="text-sm leading-[1.7]" />
             </div>
           ) : (
             <ToolCallCard
@@ -119,10 +128,12 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
               running={m.kind === "tool_call" && runningTools.has(m.id)}
               durationMs={durations.get(m.id)}
               filterQ={filterQ}
+              flat
             />
           ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

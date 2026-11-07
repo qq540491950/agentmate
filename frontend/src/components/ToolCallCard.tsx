@@ -12,6 +12,7 @@ import { DiffView } from "@/components/TaskWorkspacePanel";
 import { highlightText } from "@/components/chat/highlightText";
 import { toolResultFailed } from "@/lib/chatUtils";
 import { Artifact, errText, type Artifact as ArtifactData } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 /** extractArtifactPaths finds workspace-relative file references in tool
  *  arguments/results so their outputs can be previewed. */
@@ -35,6 +36,8 @@ type ToolCallProps = {
   running: boolean;
   durationMs?: number;
   filterQ?: string;
+  /** flat drops the card outline for rows nested inside an execution group. */
+  flat?: boolean;
 };
 
 /**
@@ -53,7 +56,7 @@ export function formatDuration(ms: number): string {
 /** ToolCallCard renders one tool invocation with live status visualization.
  *  Memoized because extractArtifactPaths JSON-stringifies args/results and
  *  would otherwise run for every visible tool on each streamed token. */
-export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, resp, running, durationMs, filterQ }: ToolCallProps) {
+export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, resp, running, durationMs, filterQ, flat = false }: ToolCallProps) {
   const [open, setOpen] = useState(false);
   // Inspect the parsed payload: substring matching used to flag successful
   // envelopes that merely carry an "error": null field, and missed MCP's
@@ -75,18 +78,27 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
   );
 
   return (
-    <div className="rounded-lg border bg-muted/30 text-sm transition-colors" data-toolcard={name}>
+    <div
+      className={cn(
+        "text-sm transition-colors",
+        flat ? "rounded-lg" : "rounded-xl border border-border bg-card/40",
+      )}
+      data-toolcard={name}
+    >
       <button
-        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+        className={cn(
+          "flex w-full items-center gap-2 px-3 py-2.5 text-left",
+          flat && "rounded-lg transition-colors hover:bg-accent/40",
+        )}
         onClick={() => setOpen((v) => !v)}
       >
         <span className="shrink-0">
           {running ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
           ) : failed ? (
             <XCircle className="h-3.5 w-3.5 text-destructive" />
           ) : (
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
           )}
         </span>
         <Badge variant="outline" className="shrink-0 font-normal">
@@ -94,11 +106,11 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
         </Badge>
         <span className="font-mono text-xs">{name}</span>
         {durationMs != null && (
-          <span className="shrink-0 text-[11px] text-muted-foreground">{formatDuration(durationMs)}</span>
+          <span className="shrink-0 text-2xs text-muted-foreground">{formatDuration(durationMs)}</span>
         )}
         <span className="hidden min-w-0 flex-1 items-center gap-1 overflow-hidden sm:flex">
           {argChips.map(({ k, text }) => (
-            <span key={k} className="truncate rounded bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground" title={`${k}: ${text}`}>
+            <span key={k} className="truncate rounded bg-background px-1.5 py-0.5 text-2xs text-muted-foreground" title={`${k}: ${text}`}>
               {text}
             </span>
           ))}
@@ -106,19 +118,19 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
         <ChevronRight className={`ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} />
       </button>
       {open && (
-        <div className="relative border-t">
+        <div className={cn("relative", flat ? "mt-1 rounded-md bg-background/40" : "border-t border-border")}>
           <CopyButton
             text={JSON.stringify(running ? args : (resp ?? args), null, 2)}
             className="absolute right-2 top-2 z-10 opacity-50 transition-opacity hover:opacity-100"
           />
-          <pre className="max-h-44 overflow-auto px-3 py-2 text-xs text-muted-foreground">
-            {highlightText(JSON.stringify(running ? args : (resp ?? args), null, 2), filterQ ?? "", "bg-primary/25 text-foreground rounded-sm")}
+          <pre className="max-h-44 overflow-auto px-3 py-2 text-xs leading-[1.7] text-muted-foreground">
+            {highlightText(JSON.stringify(running ? args : (resp ?? args), null, 2), filterQ ?? "", "bg-brand/25 text-foreground rounded-sm")}
           </pre>
         </div>
       )}
       {paths.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t px-3 py-1.5">
-          <span className="text-[11px] text-muted-foreground">产物：</span>
+        <div className={cn("flex flex-wrap items-center gap-1.5", flat ? "px-1 pt-2" : "border-t border-border px-3 py-2")}>
+          <span className="text-2xs text-muted-foreground">产物：</span>
           {paths.map((p) => (
             <ArtifactOpenButton
               key={p}
@@ -139,7 +151,7 @@ export function ArtifactOpenButton({ path, label, sessionID }: { path: string; l
       <Button
         variant="outline"
         size="sm"
-        className="h-6 gap-1 px-2 text-[11px]"
+        className="h-6 gap-1 px-2 text-2xs"
         onClick={() => setTarget(path)}
       >
         <FileImage className="h-3 w-3" />
