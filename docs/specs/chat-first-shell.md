@@ -23,7 +23,7 @@
 7. As a 用户, I want to see 置顶会话始终排在列表最上方（跨组优先）, so that 最重要的对话永远一步可达。
 8. As a 用户, I want to 在对话列表顶部搜索框中按标题与摘要过滤全部会话, so that 会话多时也能秒找。
 9. As a 用户, I want to 悬停会话项时直接执行置顶 / 归档 / 重命名, so that 整理列表不需要进入二级菜单。
-10. As a 用 WorkBuddy 做编码任务的用户, I want to 切换「按项目分组」让会话按其工作区目录聚合, so that 我能按项目而非时间回顾工作。
+10. As a 用 AgentMate 做编码任务的用户, I want to 切换「按项目分组」让会话按其工作区目录聚合, so that 我能按项目而非时间回顾工作。
 11. As a 按项目分组的用户, I want to see 显式选择过工作区的会话以目录名成组（悬停显示完整路径）, so that 项目边界一目了然。
 12. As a 按项目分组的用户, I want to see 自动任务目录与直聊会话归入「默认项目」组, so that 列表不会因为每个会话的独立任务目录而碎片化。
 13. As a 用户, I want to see 分组偏好（时间/项目）在重启后保持, so that 不必反复切换。

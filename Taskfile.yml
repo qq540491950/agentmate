@@ -1,7 +1,7 @@
 version: '3'
 
 vars:
-  APP_NAME: "go-workbuddy"
+  APP_NAME: "agentmate"
   BIN_DIR: "bin"
   # VERSION is the single source of truth for the app version. It comes from
   # the git tag at build time (v0.5.0 -> 0.5.0) and is injected into the

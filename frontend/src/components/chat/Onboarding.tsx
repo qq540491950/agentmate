@@ -13,7 +13,7 @@ export function Onboarding({ onOpenSettings }: { onOpenSettings: (tab?: Settings
           <Sparkles className="h-5 w-5" />
         </span>
         <div className="min-w-0">
-          <div className="text-xl font-semibold leading-tight">欢迎使用 WorkBuddy</div>
+          <div className="text-xl font-semibold leading-tight">欢迎使用 AgentMate</div>
           <p className="mt-0.5 text-ui text-muted-foreground">基于 Google ADK 的本地 Agent 工作台</p>
         </div>
       </div>

@@ -28,7 +28,7 @@ import * as $models from "./models.js";
  * quit must become a hard exit rather than a second copy of the old app.
  */
 export function ApplyUpdate(): $CancellablePromise<void> {
-    return $Call.ByID(2882833721);
+    return $Call.ByID(3841001903);
 }
 
 /**
@@ -37,7 +37,7 @@ export function ApplyUpdate(): $CancellablePromise<void> {
  * A nil error with State=="up-to-date" means nothing newer exists.
  */
 export function CheckNow(): $CancellablePromise<$models.UpdateStatus> {
-    return $Call.ByID(245125220);
+    return $Call.ByID(1466640382);
 }
 
 /**
@@ -46,7 +46,7 @@ export function CheckNow(): $CancellablePromise<$models.UpdateStatus> {
  * 「重启完成更新」.
  */
 export function InstallUpdate(): $CancellablePromise<$models.UpdateStatus> {
-    return $Call.ByID(1800293470);
+    return $Call.ByID(2207111860);
 }
 
 /**
@@ -54,7 +54,7 @@ export function InstallUpdate(): $CancellablePromise<$models.UpdateStatus> {
  * the only install path where the running copy cannot replace itself.
  */
 export function OpenDownloadPage(): $CancellablePromise<void> {
-    return $Call.ByID(68566519);
+    return $Call.ByID(3636894733);
 }
 
 /**
@@ -62,7 +62,7 @@ export function OpenDownloadPage(): $CancellablePromise<void> {
  * for every later one.
  */
 export function SetAutoCheck(enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(3963648701, enabled);
+    return $Call.ByID(1479064715, enabled);
 }
 
 /**
@@ -71,12 +71,12 @@ export function SetAutoCheck(enabled: boolean): $CancellablePromise<void> {
  * mute the channel.
  */
 export function Skip(version: string): $CancellablePromise<void> {
-    return $Call.ByID(2803500715, version);
+    return $Call.ByID(4080878037, version);
 }
 
 /**
  * Status returns the current update state for the settings page.
  */
 export function Status(): $CancellablePromise<$models.UpdateStatus> {
-    return $Call.ByID(2472791198);
+    return $Call.ByID(3324897568);
 }

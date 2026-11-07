@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 
 	"google.golang.org/adk/v2/session"
 )

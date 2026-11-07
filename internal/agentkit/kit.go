@@ -25,8 +25,8 @@ import (
 	"google.golang.org/adk/v2/tool/skilltoolset/skill"
 	"google.golang.org/genai"
 
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 )
 
 // ModelFactory builds the model.LLM for a provider/model pair.
@@ -651,7 +651,7 @@ func MaterializedSkillName(name string) string { return sanitizeSkillName(name) 
 // reaches the running invocation (so the instruction provider can append it)
 // but is trimmed before it is written back to the session, so the next turn
 // never inherits a previous turn's context.
-const SkillContextStateKey = session.KeyPrefixTemp + "workbuddy.skill_context"
+const SkillContextStateKey = session.KeyPrefixTemp + "agentmate.skill_context"
 
 // skillAwareInstruction wraps a base system instruction so a turn that was
 // started with a "/<skill-name>" command (or @-referenced files) gets that
@@ -1084,7 +1084,7 @@ func WriteFileTool(workspace string, requireConfirmation bool) (tool.Tool, error
 
 // todosStateKey stores the plan in the ADK session state so it survives
 // restarts and stays scoped to the conversation.
-const todosStateKey = "workbuddy.todos"
+const todosStateKey = "agentmate.todos"
 
 type todoItem struct {
 	Content string `json:"content"`

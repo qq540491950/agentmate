@@ -10,7 +10,7 @@ import (
 
 	"google.golang.org/adk/v2/session"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // NewSession creates a task session with an automatically isolated workspace.

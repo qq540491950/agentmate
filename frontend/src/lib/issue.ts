@@ -2,7 +2,7 @@
 // 字段 id 与 .github/ISSUE_TEMPLATE/bug_report.yml 保持一致；GitHub 不支持
 // 预填 dropdown（复现频率），该字段由提交者在页面上选择。
 
-const ISSUE_NEW_URL = "https://github.com/qq540491950/go-workbuddy/issues/new";
+const ISSUE_NEW_URL = "https://github.com/qq540491950/agentmate/issues/new";
 
 const OS_NAMES: Record<string, string> = {
   windows: "Windows",

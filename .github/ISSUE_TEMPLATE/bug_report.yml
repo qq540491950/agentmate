@@ -28,7 +28,7 @@ body:
         Windows 11 23H2 x64
         模型：OpenAI 兼容 / gpt-4o
         MCP：filesystem
-        工作区：D:\workbuddy-test
+        工作区：D:\agentmate-test
     validations:
       required: true
   - type: textarea

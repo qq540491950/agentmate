@@ -11,7 +11,7 @@ import "../src/index.css";
 
 const seedConfig = {
   settings: {
-    workspaceDir: "/tmp/workbuddy-workspace",
+    workspaceDir: "/tmp/agentmate-workspace",
     language: "zh-CN",
     themeMode: "dark",
     accent: "blue",
@@ -119,10 +119,10 @@ const seedConfig = {
   mcpServers: [],
   projects: [
     { id: "proj_alpha", name: "proj-alpha", rootDir: "/tmp/proj-alpha", createdAt: "2026-10-01T00:00:00Z" },
-    { id: "proj_beta", name: "go-workbuddy", rootDir: "D:/projects/go-workbuddy", createdAt: "2026-10-20T00:00:00Z" },
+    { id: "proj_beta", name: "agentmate", rootDir: "D:/projects/agentmate", createdAt: "2026-10-20T00:00:00Z" },
   ],
   sessions: [
-    { id: "sess_confirm", title: "需要确认的写入", targetType: "agent", targetId: "agent_1", createdAt: "2026-09-18T01:00:00Z", updatedAt: "2026-09-18T01:05:00Z", modelOverride: "gpt-5-mini", workspaceDir: "/tmp/workbuddy-workspace/tasks/sess_confirm" },
+    { id: "sess_confirm", title: "需要确认的写入", targetType: "agent", targetId: "agent_1", createdAt: "2026-09-18T01:00:00Z", updatedAt: "2026-09-18T01:05:00Z", modelOverride: "gpt-5-mini", workspaceDir: "/tmp/agentmate-workspace/tasks/sess_confirm" },
     { id: "sess_plain", title: "普通对话", targetType: "team", targetId: "team_1", createdAt: "2026-09-17T09:00:00Z", updatedAt: "2026-09-17T09:10:00Z" },
     { id: "sess_direct", title: "我如何选择模型呢？", targetType: "", targetId: "", createdAt: "2026-11-01T00:45:00Z", updatedAt: "2026-11-01T00:48:00Z" },
     // Sidebar-grouping fixtures: dates relative to load time so the time
@@ -308,7 +308,7 @@ const handlers: Record<string, (args: any[]) => any> = {
       targetId: args[1],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      workspaceDir: args[3] || `/tmp/workbuddy-workspace/tasks/${id}`,
+      workspaceDir: args[3] || `/tmp/agentmate-workspace/tasks/${id}`,
     };
     seedConfig.sessions.unshift(sess);
     histories[id] = [];
@@ -502,7 +502,7 @@ const handlers: Record<string, (args: any[]) => any> = {
     };
   },
   // AppInfo
-  "2925845021": () => ({ name: "WorkBuddy Agent", version: "stub", adk: "google adk-go v2" }),
+  "2925845021": () => ({ name: "AgentMate", version: "stub", adk: "google adk-go v2" }),
   // AppService.RevealWorkspaceFile(sessionID, relPath) — 桩仅记录调用
   "2394507974": (args) => {
     (window).__revealed = ((window).__revealed ?? []).concat(args[1]);
@@ -537,9 +537,9 @@ const handlers: Record<string, (args: any[]) => any> = {
   // ChatService.SessionAllowAllTools(sessionID) — issue #48. These RPCs are
   // newer than the committed bindings snapshot, so the app calls them by
   // method name (`Call.ByName`) and the stub routes on methodName as well.
-  "go-workbuddy/internal/services.ChatService.SessionAllowAllTools": (args) => allowAllSessions.has(args[0]),
+  "agentmate/internal/services.ChatService.SessionAllowAllTools": (args) => allowAllSessions.has(args[0]),
   // ChatService.SetSessionAllowAllTools(sessionID, allowAll, source)
-  "go-workbuddy/internal/services.ChatService.SetSessionAllowAllTools": (args) => {
+  "agentmate/internal/services.ChatService.SetSessionAllowAllTools": (args) => {
     if (args[1] === true) allowAllSessions.add(args[0]);
     else allowAllSessions.delete(args[0]);
     return null;
@@ -548,7 +548,7 @@ const handlers: Record<string, (args: any[]) => any> = {
   // Numeric key = generated binding's ByID route; the ByName key keeps older
   // snapshots working.
   "624882946": () => seedConfig.skills,
-  "go-workbuddy/internal/services.ChatService.EffectiveSkills": () => seedConfig.skills,
+  "agentmate/internal/services.ChatService.EffectiveSkills": () => seedConfig.skills,
   // ArtifactService.ListContextPaths(sessionID, projectID) — composer "@" menu.
   "2142600974": () => [
     { path: "notes", dir: true },
@@ -557,7 +557,7 @@ const handlers: Record<string, (args: any[]) => any> = {
     { path: "src/main.go", dir: false },
     { path: "README.md", dir: false },
   ],
-  "go-workbuddy/internal/services.ArtifactService.ListContextPaths": () => [
+  "agentmate/internal/services.ArtifactService.ListContextPaths": () => [
     { path: "notes", dir: true },
     { path: "notes/weekly.md", dir: false },
     { path: "src", dir: true },
@@ -605,7 +605,7 @@ const handlers: Record<string, (args: any[]) => any> = {
 setTransport({
   call: async (_objectID, _method, _windowName, descriptor) => {
     if (_objectID === 5 && _method === 4) {
-      return dialogMode === "cancel" ? "" : "/tmp/workbuddy-picked";
+      return dialogMode === "cancel" ? "" : "/tmp/agentmate-picked";
     }
     (window as any).__lastCalls.push(descriptor);
     // The descriptor {call-id, methodID, args} arrives as the args slot.

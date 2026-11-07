@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // newContextTestChat wires a ChatService whose model server records every

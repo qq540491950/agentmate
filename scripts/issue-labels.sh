@@ -3,7 +3,7 @@
 # 需要 gh 已登录并有仓库写权限。
 set -euo pipefail
 
-REPO="${ISSUE_REPO:-qq540491950/go-workbuddy}"
+REPO="${ISSUE_REPO:-qq540491950/agentmate}"
 
 while IFS='|' read -r name color desc; do
 	[ -n "$name" ] || continue

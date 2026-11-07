@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // taskSnapshotVersion v2 adds per-file baseline content snapshots (see

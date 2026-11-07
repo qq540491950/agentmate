@@ -5,7 +5,7 @@
 export type AllowAllSource = "confirm_card" | "composer";
 
 /** localStorage key of the one-time risk acknowledgement. */
-export const ALLOW_ALL_RISK_KEY = "workbuddy.allowAll.riskAcknowledged";
+export const ALLOW_ALL_RISK_KEY = "agentmate.allowAll.riskAcknowledged";
 
 export const ALLOW_ALL_RISK_TITLE = "允许完全访问本会话";
 

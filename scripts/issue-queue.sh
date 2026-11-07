@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO="${ISSUE_REPO:-qq540491950/go-workbuddy}"
+REPO="${ISSUE_REPO:-qq540491950/agentmate}"
 AUTHOR="${ISSUE_AUTHOR:-qq540491950}"
 
 echo "== NOW =="

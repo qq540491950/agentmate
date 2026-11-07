@@ -10,7 +10,7 @@ import (
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/genai"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 func openAIReasoningProvider(baseURL string) config.ModelProvider {

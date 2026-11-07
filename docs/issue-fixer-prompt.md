@@ -1,8 +1,8 @@
 # Issue 自动处理运行手册（流水线版）
 
 本文件是定时任务每轮运行时的唯一执行指令。仓库：
-`qq540491950/go-workbuddy`；本地根目录：
-`/Users/liruitao/Desktop/go-project/go-workbuddy`。
+`qq540491950/agentmate`；本地根目录：
+`/Users/liruitao/Desktop/go-project/agentmate`。
 
 设计与状态机见 [`issue-pipeline.md`](issue-pipeline.md)；提交侧契约见
 [`../.agents/skills/github-bug-relay/SKILL.md`](../.agents/skills/github-bug-relay/SKILL.md)。
@@ -28,7 +28,7 @@
 **变量不跨 Bash 调用保留。每个 Bash 调用开头都先 source：**
 
 ```bash
-source /Users/liruitao/Desktop/go-project/go-workbuddy/scripts/issue-env.sh
+source /Users/liruitao/Desktop/go-project/agentmate/scripts/issue-env.sh
 ```
 
 它提供 `REPO` / `ROOT` / `STATE` / `LEASE` / `WT_ROOT` / `MAIN_WT` / `RUN`。
@@ -38,7 +38,7 @@ source /Users/liruitao/Desktop/go-project/go-workbuddy/scripts/issue-env.sh
 每个新命令块开头按当前动作重新赋值。
 
 ```bash
-source /Users/liruitao/Desktop/go-project/go-workbuddy/scripts/issue-env.sh
+source /Users/liruitao/Desktop/go-project/agentmate/scripts/issue-env.sh
 RUN="$(date -u +%Y%m%dT%H%M%SZ)"
 printf '%s\n' "$RUN" >"$STATE/run-id"
 export RUN

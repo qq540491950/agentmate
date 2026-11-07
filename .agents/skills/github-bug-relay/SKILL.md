@@ -1,6 +1,6 @@
 ---
 name: github-bug-relay
-description: 手动调用的提票工具：把用户报告的缺陷整理成 GitHub issue，交接给远端定时修复 agent，并在修复后回报。只提票，不在本地复现、验证或改代码，也不产生任何文件。仅用于本仓库 qq540491950/go-workbuddy。
+description: 手动调用的提票工具：把用户报告的缺陷整理成 GitHub issue，交接给远端定时修复 agent，并在修复后回报。只提票，不在本地复现、验证或改代码，也不产生任何文件。仅用于本仓库 qq540491950/agentmate。
 disable-model-invocation: true
 ---
 
@@ -62,8 +62,8 @@ disable-model-invocation: true
 
 按 issue-template.md 的字段表从上到下收：版本/commit、测试环境、复现步骤、期望结果、实际结果、复现频率、日志/截图、前置条件。
 
-- 版本自己查，别问「你是什么版本」当第一个问题：`gh release list --repo qq540491950/go-workbuddy --limit 20 --json tagName,publishedAt`，取最新 `v*` 给用户确认。查不到就留空——修复侧会按 issue 创建时间推断当时最新版本，不必卡住。
-- 日志由用户粘贴。告诉用户去 `%APPDATA%\workbuddy-agent\logs\app.log` 取错误前后 30～50 行，你自己不去翻本机文件。
+- 版本自己查，别问「你是什么版本」当第一个问题：`gh release list --repo qq540491950/agentmate --limit 20 --json tagName,publishedAt`，取最新 `v*` 给用户确认。查不到就留空——修复侧会按 issue 创建时间推断当时最新版本，不必卡住。
+- 日志由用户粘贴。告诉用户去 `%APPDATA%\agentmate\logs\app.log` 取错误前后 30～50 行，你自己不去翻本机文件。
 - 缺的字段按「提问预算」问：≤3 个/轮、总量 ≤2 轮、能给选项就给选项、未知合法。
 - 问完语义仍不清（见提问预算末条）→ 停，不要提半成品。
 
@@ -100,7 +100,7 @@ disable-model-invocation: true
 ## 4. 查重
 
 ```bash
-gh issue list --repo qq540491950/go-workbuddy --state open --limit 100 \
+gh issue list --repo qq540491950/agentmate --state open --limit 100 \
   --json number,title,labels --search "<现象关键词>"
 ```
 
@@ -147,7 +147,7 @@ Windows 11 23H2 x64；模型：…；MCP：…；工作区：<path>
 LABELS="bug,module:<模块>"
 # LABELS="$LABELS,priority:p0"
 # LABELS="$LABELS,ready-for-agent"
-gh issue create --repo qq540491950/go-workbuddy \
+gh issue create --repo qq540491950/agentmate \
   --title "[模块] 简短现象" \
   --label "$LABELS" \
   --body "<上面拼好的正文>"
@@ -158,7 +158,7 @@ gh issue create --repo qq540491950/go-workbuddy \
 提完复核：
 
 ```bash
-gh issue view <N> --repo qq540491950/go-workbuddy \
+gh issue view <N> --repo qq540491950/agentmate \
   --json number,author,state,labels,url
 ```
 
@@ -176,7 +176,7 @@ gh issue view <N> --repo qq540491950/go-workbuddy \
 按需轮询（间隔 5～10 分钟，别空转刷屏）：
 
 ```bash
-gh issue view <N> --repo qq540491950/go-workbuddy --json state,labels,comments
+gh issue view <N> --repo qq540491950/agentmate --json state,labels,comments
 ```
 
 标签翻译成人话：

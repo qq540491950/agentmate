@@ -2,8 +2,8 @@
 set -e
 
 # Build configuration
-APP_NAME="go-workbuddy"
-BUNDLE_ID="com.workbuddy.agent"
+APP_NAME="go-AgentMate"
+BUNDLE_ID="com.agentmate.app"
 VERSION="0.4.0"
 BUILD_NUMBER="0.4.0"
 BUILD_DIR="build/ios"

@@ -1,4 +1,4 @@
-# WorkBuddy 设计系统速查
+# AgentMate 设计系统速查
 
 > 面向在本仓库写 UI 的迭代记录与代理。完整方案与背景见 [ui-refresh-plan.md](ui-refresh-plan.md)，迭代记录见 [iteration-log.md](iteration-log.md) 第二百零七——二百一十一轮。
 

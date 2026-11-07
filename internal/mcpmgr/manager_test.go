@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // TestBuildTransportTrimsStdioCommand: pasted or imported configs can carry

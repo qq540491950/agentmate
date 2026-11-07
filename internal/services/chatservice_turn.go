@@ -18,8 +18,8 @@ import (
 	"google.golang.org/adk/v2/tool/toolconfirmation"
 	"google.golang.org/genai"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
 )
 
 func addUsage(total, u *UsageInfo) *UsageInfo {

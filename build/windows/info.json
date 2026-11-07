@@ -5,10 +5,10 @@
 	"info": {
 		"0000": {
 			"ProductVersion": "0.4.0",
-			"CompanyName": "WorkBuddy",
-			"FileDescription": "WorkBuddy Agent — 本地 AI Agent 桌面应用",
-			"LegalCopyright": "© 2026 WorkBuddy",
-			"ProductName": "WorkBuddy Agent",
+			"CompanyName": "AgentMate",
+			"FileDescription": "AgentMate — 本地 AI Agent 桌面应用",
+			"LegalCopyright": "© 2026 AgentMate",
+			"ProductName": "AgentMate",
 			"Comments": "Some Product Comments"
 		}
 	}

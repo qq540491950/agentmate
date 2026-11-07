@@ -14,8 +14,8 @@ import (
 	"google.golang.org/genai"
 	"gorm.io/gorm"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
 )
 
 // Event names emitted to the frontend (registered in main.go).
@@ -111,7 +111,7 @@ type ChatMessage struct {
 // event. The key deliberately has no "temp:" prefix: the database session
 // service strips temp keys from stored events, and history rendering needs
 // the value after a reload.
-const turnReasoningStateKey = "workbuddy.reasoning_level"
+const turnReasoningStateKey = "agentmate.reasoning_level"
 
 const (
 	maxAttachmentBytes = 6 << 20 // 6 MB decoded per file
@@ -241,7 +241,7 @@ func NewChatService(s *Services, sessions session.Service, db *gorm.DB) *ChatSer
 		workspaceLocks: map[string]*sync.Mutex{},
 		sessions:       sessions,
 		db:             db,
-		appName:        "workbuddy",
+		appName:        "agentmate",
 		userID:         "local",
 	}
 }

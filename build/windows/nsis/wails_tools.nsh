@@ -5,19 +5,19 @@
 !include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
-    !define INFO_PROJECTNAME "go-workbuddy"
+    !define INFO_PROJECTNAME "agentmate"
 !endif
 !ifndef INFO_COMPANYNAME
-    !define INFO_COMPANYNAME "WorkBuddy"
+    !define INFO_COMPANYNAME "AgentMate"
 !endif
 !ifndef INFO_PRODUCTNAME
-    !define INFO_PRODUCTNAME "WorkBuddy Agent"
+    !define INFO_PRODUCTNAME "AgentMate"
 !endif
 !ifndef INFO_PRODUCTVERSION
     !define INFO_PRODUCTVERSION "0.4.0"
 !endif
 !ifndef INFO_COPYRIGHT
-    !define INFO_COPYRIGHT "© 2026 WorkBuddy"
+    !define INFO_COPYRIGHT "© 2026 AgentMate"
 !endif
 !ifndef PRODUCT_EXECUTABLE
     !define PRODUCT_EXECUTABLE "${INFO_PROJECTNAME}.exe"

@@ -327,7 +327,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                   className="flex-1"
                   value={settings.workspaceDir}
                   onChange={(e) => setSettings({ ...settings, workspaceDir: e.target.value })}
-                  placeholder="例如：D:\\WorkBuddyWorkspace"
+                  placeholder="例如：D:\\AgentMateWorkspace"
                 />
                 <Button variant="outline" className="shrink-0" onClick={pickWorkspaceDir}>
                   <FolderOpen className="mr-1.5 h-4 w-4" />
@@ -820,7 +820,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
             <CardTitle className="text-base">关于</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            <div>WorkBuddy Agent{version ? ` · v${version}` : ""} · 基于 Google ADK Go v2 构建</div>
+            <div>AgentMate{version ? ` · v${version}` : ""} · 基于 Google ADK Go v2 构建</div>
             <div className="mt-1">
               Agent 运行时：ADK Runner / LLMAgent / AgentTool；会话存储：SQLite（ADK Database Session Service）；
               工具：ADK FunctionTool、MCP Toolset（go-sdk）、Skill Toolset（agentskills.io 规范）。

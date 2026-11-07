@@ -10,8 +10,8 @@ import (
 	"google.golang.org/adk/v2/tool/toolconfirmation"
 	"google.golang.org/genai"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
 )
 
 func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
@@ -202,7 +202,7 @@ func directAgentConfig(cfg config.Config) (config.AgentConfig, error) {
 		Name:       directAssistantName,
 		ProviderID: provider.ID,
 		Model:      model,
-		SystemPrompt: "你是 WorkBuddy 桌面助手。用中文简洁、准确地回答用户问题。\n" +
+		SystemPrompt: "你是 AgentMate 桌面助手。用中文简洁、准确地回答用户问题。\n" +
 			"当前任务工作区：{{workspace}}。当问题涉及项目或文件内容时，先调用 " +
 			"list_workspace_files 查看目录结构，再按需调用 read_workspace_file 读取文件，" +
 			"基于实际内容回答，不要凭空猜测。\n" +

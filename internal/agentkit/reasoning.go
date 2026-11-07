@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // reasoningExtraBody turns one resolved model level into request-body fields.

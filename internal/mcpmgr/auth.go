@@ -14,7 +14,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 	"golang.org/x/oauth2"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // URLOpener opens the authorization URL in the user's default browser.
@@ -148,7 +148,7 @@ func newBrowserAuthCodeFetcher(port int, onAuthPending func(authURL string)) aut
 				errCh <- fmt.Errorf("授权服务器返回 %s: %s", e, q.Get("error_description"))
 				return
 			}
-			fmt.Fprint(w, "<html><body><h3>已收到授权，请返回 WorkBuddy Agent。</h3></body></html>")
+			fmt.Fprint(w, "<html><body><h3>已收到授权，请返回 AgentMate。</h3></body></html>")
 			codeCh <- &auth.AuthorizationResult{Code: q.Get("code"), State: q.Get("state"), Iss: q.Get("iss")}
 		})
 		srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}

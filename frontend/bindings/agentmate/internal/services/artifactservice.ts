@@ -21,14 +21,14 @@ import * as $models from "./models.js";
  * come back as a result with an Unsupported reason rather than an error.
  */
 export function FileDiff(sessionID: string, relPath: string): $CancellablePromise<$models.FileDiffResult | null> {
-    return $Call.ByID(1773899386, sessionID, relPath);
+    return $Call.ByID(1150633980, sessionID, relPath);
 }
 
 /**
  * List returns previewable files under the workspace (newest first, capped).
  */
 export function List(): $CancellablePromise<$models.ArtifactInfo[] | null> {
-    return $Call.ByID(2133326259);
+    return $Call.ByID(1188689437);
 }
 
 /**
@@ -39,21 +39,21 @@ export function List(): $CancellablePromise<$models.ArtifactInfo[] | null> {
  * an empty list, not an error — a fresh draft has not resolved one yet.
  */
 export function ListContextPaths(sessionID: string, projectID: string): $CancellablePromise<$models.WorkspaceEntry[] | null> {
-    return $Call.ByID(2142600974, sessionID, projectID);
+    return $Call.ByID(3076769680, sessionID, projectID);
 }
 
 /**
  * Open reads a workspace file for preview. Path is relative to the workspace.
  */
 export function Open(relPath: string): $CancellablePromise<$models.Artifact | null> {
-    return $Call.ByID(2457957399, relPath);
+    return $Call.ByID(495022461, relPath);
 }
 
 /**
  * OpenForSession previews a file inside the task workspace bound to sessionID.
  */
 export function OpenForSession(sessionID: string, relPath: string): $CancellablePromise<$models.Artifact | null> {
-    return $Call.ByID(3670798310, sessionID, relPath);
+    return $Call.ByID(3147936404, sessionID, relPath);
 }
 
 /**
@@ -62,12 +62,12 @@ export function OpenForSession(sessionID: string, relPath: string): $Cancellable
  * still returns the complete task view without blocking on baseline state.
  */
 export function TaskWorkspaceSnapshot(sessionID: string): $CancellablePromise<$models.TaskWorkspaceSnapshot | null> {
-    return $Call.ByID(2781372891, sessionID);
+    return $Call.ByID(573382165, sessionID);
 }
 
 /**
  * Workspace returns the configured workspace directory (for UI display).
  */
 export function Workspace(): $CancellablePromise<string> {
-    return $Call.ByID(1776296288);
+    return $Call.ByID(2848387186);
 }

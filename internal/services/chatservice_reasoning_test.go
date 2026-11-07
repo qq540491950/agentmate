@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // TestSessionReasoningLevel: the chat-level thinking picker persists per

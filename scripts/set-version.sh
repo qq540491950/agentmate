@@ -49,7 +49,7 @@ awk -v v="$VERSION" '
 mv "$tmp" "$CONFIG"
 
 echo "==> build/config.yml info.version = $VERSION"
-(cd build && wails3 update build-assets -name "go-workbuddy" -binaryname "go-workbuddy" -config config.yml -dir .)
+(cd build && wails3 update build-assets -name "agentmate" -binaryname "agentmate" -config config.yml -dir .)
 
 echo "==> generated assets now report:"
 grep -Ho '"ProductVersion": "[^"]*"' build/windows/info.json || true

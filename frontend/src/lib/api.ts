@@ -1,10 +1,10 @@
 // Thin re-export layer over the generated Wails bindings.
 import { Call } from "@wailsio/runtime";
-import * as services from "../../bindings/go-workbuddy/internal/services";
-import * as configModels from "../../bindings/go-workbuddy/internal/config/models";
-import * as mcpModels from "../../bindings/go-workbuddy/internal/mcpmgr/models";
-import * as serviceModels from "../../bindings/go-workbuddy/internal/services/models";
-import * as agentkitModels from "../../bindings/go-workbuddy/internal/agentkit/models";
+import * as services from "../../bindings/agentmate/internal/services";
+import * as configModels from "../../bindings/agentmate/internal/config/models";
+import * as mcpModels from "../../bindings/agentmate/internal/mcpmgr/models";
+import * as serviceModels from "../../bindings/agentmate/internal/services/models";
+import * as agentkitModels from "../../bindings/agentmate/internal/agentkit/models";
 
 export const App = services.AppService;
 export const A2A = services.A2AService;
@@ -67,7 +67,7 @@ export type Project = configModels.Project;
 // shared file the integrator regenerates after merging Go changes — so call
 // them by fully qualified method name through the Wails runtime. Method names
 // are the stable contract the generator itself writes into the bindings.
-const chatServiceName = "go-workbuddy/internal/services.ChatService";
+const chatServiceName = "agentmate/internal/services.ChatService";
 
 /** sessionAllowAllTools reads this chat's「允许完全访问」grant. */
 export function sessionAllowAllTools(sessionID: string): Promise<boolean> {

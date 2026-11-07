@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 func TestDetectUpdateMode(t *testing.T) {
@@ -48,11 +48,11 @@ func TestDetectUpdateMode(t *testing.T) {
 			wantMode: UpdateModeNotifyOnly, wantReasonHas: "deb/rpm",
 		},
 		{
-			name: "linux appimage can self-update", goos: "linux", appImage: "/home/u/Apps/workbuddy.AppImage", exeDirWritable: true,
+			name: "linux appimage can self-update", goos: "linux", appImage: "/home/u/Apps/agentmate.AppImage", exeDirWritable: true,
 			wantMode: UpdateModeAutoInstall,
 		},
 		{
-			name: "linux appimage on read-only mount", goos: "linux", appImage: "/opt/ro/workbuddy.AppImage", exeDirWritable: false,
+			name: "linux appimage on read-only mount", goos: "linux", appImage: "/opt/ro/agentmate.AppImage", exeDirWritable: false,
 			wantMode: UpdateModeNotifyOnly, wantReasonHas: "不可写",
 		},
 		{

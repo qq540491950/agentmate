@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // TestGetConfigMergesDiscoveredSkillsReadOnly pins issue #52's contract:

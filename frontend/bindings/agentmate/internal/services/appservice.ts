@@ -26,7 +26,7 @@ import * as $models from "./models.js";
  * prefill so testers never hand-type their environment.
  */
 export function AppInfo(): $CancellablePromise<{ [_ in string]?: string } | null> {
-    return $Call.ByID(2925845021);
+    return $Call.ByID(1931243627);
 }
 
 /**
@@ -35,7 +35,7 @@ export function AppInfo(): $CancellablePromise<{ [_ in string]?: string } | null
  * the file path.
  */
 export function ExportAgent(agentID: string): $CancellablePromise<string> {
-    return $Call.ByID(3542031845, agentID);
+    return $Call.ByID(2894073343, agentID);
 }
 
 /**
@@ -45,7 +45,7 @@ export function ExportAgent(agentID: string): $CancellablePromise<string> {
  * safe to share.
  */
 export function ExportConfig(includeSecrets: boolean): $CancellablePromise<string> {
-    return $Call.ByID(2041032410, includeSecrets);
+    return $Call.ByID(1277702052, includeSecrets);
 }
 
 /**
@@ -53,7 +53,7 @@ export function ExportConfig(includeSecrets: boolean): $CancellablePromise<strin
  * into <workspace>/exports/remotes and returns the file path.
  */
 export function ExportRemoteAgent(id: string): $CancellablePromise<string> {
-    return $Call.ByID(1090368063, id);
+    return $Call.ByID(3941235009, id);
 }
 
 /**
@@ -61,7 +61,7 @@ export function ExportRemoteAgent(id: string): $CancellablePromise<string> {
  * agent with the same name exists, a (2)/(3)… suffix is appended.
  */
 export function ImportAgent(data: string): $CancellablePromise<$models.ImportAgentResult> {
-    return $Call.ByID(2056581976, data);
+    return $Call.ByID(1002358858, data);
 }
 
 /**
@@ -71,7 +71,7 @@ export function ImportAgent(data: string): $CancellablePromise<$models.ImportAge
  * unmasked backup restores connectivity directly.
  */
 export function ImportConfig(data: string): $CancellablePromise<void> {
-    return $Call.ByID(1422091961, data);
+    return $Call.ByID(1542980275, data);
 }
 
 /**
@@ -79,21 +79,21 @@ export function ImportConfig(data: string): $CancellablePromise<void> {
  * ID; name conflicts get a numeric suffix.
  */
 export function ImportRemoteAgent(data: string): $CancellablePromise<config$0.RemoteAgentConfig> {
-    return $Call.ByID(3989105098, data);
+    return $Call.ByID(4041702892, data);
 }
 
 /**
  * MemoryClear wipes all long-term memory entries for the local user.
  */
 export function MemoryClear(): $CancellablePromise<void> {
-    return $Call.ByID(1600516054);
+    return $Call.ByID(3105738032);
 }
 
 /**
  * MemoryStats returns the number of long-term memory entries.
  */
 export function MemoryStats(): $CancellablePromise<$models.MemoryInfo | null> {
-    return $Call.ByID(1364444048);
+    return $Call.ByID(2898070546);
 }
 
 /**
@@ -101,14 +101,14 @@ export function MemoryStats(): $CancellablePromise<$models.MemoryInfo | null> {
  * diagnostics.
  */
 export function RecentLogs(tail: number): $CancellablePromise<string[] | null> {
-    return $Call.ByID(241095550, tail);
+    return $Call.ByID(3341172364, tail);
 }
 
 /**
  * RecentToolAudit returns the last lines of the tool audit JSONL.
  */
 export function RecentToolAudit(tail: number): $CancellablePromise<string[] | null> {
-    return $Call.ByID(3192240662, tail);
+    return $Call.ByID(3945833556, tail);
 }
 
 /**
@@ -117,35 +117,35 @@ export function RecentToolAudit(tail: number): $CancellablePromise<string[] | nu
  * resolved against the session's effective workspace, traversal blocked.
  */
 export function RevealWorkspaceFile(sessionID: string, relPath: string): $CancellablePromise<void> {
-    return $Call.ByID(2394507974, sessionID, relPath);
+    return $Call.ByID(147551796, sessionID, relPath);
 }
 
 /**
  * SetLogPath points the diagnostics log reader at the app log file.
  */
 export function SetLogPath(path: string): $CancellablePromise<void> {
-    return $Call.ByID(253227427, path);
+    return $Call.ByID(922981997, path);
 }
 
 /**
  * SetStoragePaths records the database file locations for storage stats.
  */
 export function SetStoragePaths(sessionsDB: string, knowledgeDB: string, gormDB: gorm$0.DB | null): $CancellablePromise<void> {
-    return $Call.ByID(2294190397, sessionsDB, knowledgeDB, gormDB);
+    return $Call.ByID(3287806759, sessionsDB, knowledgeDB, gormDB);
 }
 
 /**
  * SetToolAuditPath points the diagnostics reader at the tool audit JSONL.
  */
 export function SetToolAuditPath(path: string): $CancellablePromise<void> {
-    return $Call.ByID(2548013184, path);
+    return $Call.ByID(1077257042, path);
 }
 
 /**
  * StorageStats returns the current database file sizes (-1 when absent).
  */
 export function StorageStats(): $CancellablePromise<$models.StorageInfo> {
-    return $Call.ByID(1091222926);
+    return $Call.ByID(3775841788);
 }
 
 /**
@@ -154,5 +154,5 @@ export function StorageStats(): $CancellablePromise<$models.StorageInfo> {
  * only on transient "database is locked" style errors which we surface.
  */
 export function VacuumSessions(): $CancellablePromise<void> {
-    return $Call.ByID(3499140120);
+    return $Call.ByID(3256301742);
 }

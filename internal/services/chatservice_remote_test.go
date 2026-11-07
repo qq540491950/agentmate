@@ -13,9 +13,9 @@ import (
 	"google.golang.org/adk/v2/runner"
 	adka2av2 "google.golang.org/adk/v2/server/adka2a/v2"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 )
 
 // TestChatRemoteAgentE2E hosts a real llmagent behind an in-process A2A

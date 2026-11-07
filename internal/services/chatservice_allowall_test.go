@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
 )
 
 // TestSessionAllowAllToolsPersistsAndAudits covers the session-level grant:

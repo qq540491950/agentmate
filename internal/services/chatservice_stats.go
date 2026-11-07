@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/adk/v2/session"
 
-	"go-workbuddy/internal/agentkit"
+	"agentmate/internal/agentkit"
 )
 
 // RememberSession ingests the whole conversation into long-term memory so

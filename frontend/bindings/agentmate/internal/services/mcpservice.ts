@@ -19,19 +19,19 @@ import * as mcpmgr$0 from "../mcpmgr/models.js";
  * status including the discovered tool list.
  */
 export function Connect(id: string): $CancellablePromise<mcpmgr$0.ServerStatus> {
-    return $Call.ByID(4282434697, id);
+    return $Call.ByID(284296643, id);
 }
 
 /**
  * Disconnect drops the connection state of one MCP server.
  */
 export function Disconnect(id: string): $CancellablePromise<void> {
-    return $Call.ByID(641060155, id);
+    return $Call.ByID(464828165, id);
 }
 
 /**
  * Status returns the current status of all configured MCP servers.
  */
 export function Status(): $CancellablePromise<mcpmgr$0.ServerStatus[] | null> {
-    return $Call.ByID(903018591);
+    return $Call.ByID(205262185);
 }

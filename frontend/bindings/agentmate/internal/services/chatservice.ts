@@ -23,14 +23,14 @@ import * as $models from "./models.js";
  * are hidden from the default sidebar list but never deleted).
  */
 export function ArchiveSession(id: string, archived: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2286215193, id, archived);
+    return $Call.ByID(888199383, id, archived);
 }
 
 /**
  * Cancel aborts the in-flight run of a session, if any.
  */
 export function Cancel(sessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(2677860025, sessionID);
+    return $Call.ByID(3127246171, sessionID);
 }
 
 /**
@@ -39,7 +39,7 @@ export function Cancel(sessionID: string): $CancellablePromise<void> {
  * sees the rejection and can adjust.
  */
 export function ConfirmToolCall(sessionID: string, callID: string, approved: boolean): $CancellablePromise<void> {
-    return $Call.ByID(3242111371, sessionID, callID, approved);
+    return $Call.ByID(820768781, sessionID, callID, approved);
 }
 
 /**
@@ -47,7 +47,7 @@ export function ConfirmToolCall(sessionID: string, callID: string, approved: boo
  * included) and returns how many were removed.
  */
 export function DeleteArchivedSessions(): $CancellablePromise<number> {
-    return $Call.ByID(3028356991);
+    return $Call.ByID(3279551857);
 }
 
 /**
@@ -56,7 +56,7 @@ export function DeleteArchivedSessions(): $CancellablePromise<number> {
  * never touched. Projects with running chats are refused.
  */
 export function DeleteProject(id: string): $CancellablePromise<void> {
-    return $Call.ByID(911459121, id);
+    return $Call.ByID(3471163035, id);
 }
 
 /**
@@ -68,7 +68,7 @@ export function DeleteProject(id: string): $CancellablePromise<void> {
  * deleted session until its timeout.
  */
 export function DeleteSession(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2756846968, id);
+    return $Call.ByID(4210965934, id);
 }
 
 /**
@@ -76,7 +76,7 @@ export function DeleteSession(id: string): $CancellablePromise<void> {
  * keeping the turn's original attachments.
  */
 export function EditAndResend(sessionID: string, newText: string): $CancellablePromise<void> {
-    return $Call.ByID(2423925711, sessionID, newText);
+    return $Call.ByID(3244190929, sessionID, newText);
 }
 
 /**
@@ -86,7 +86,7 @@ export function EditAndResend(sessionID: string, newText: string): $CancellableP
  * editor does not have to guess which directory a chat will run in.
  */
 export function EffectiveSkills(sessionID: string, projectID: string): $CancellablePromise<config$0.SkillConfig[] | null> {
-    return $Call.ByID(624882946, sessionID, projectID);
+    return $Call.ByID(3460564544, sessionID, projectID);
 }
 
 /**
@@ -94,7 +94,7 @@ export function EffectiveSkills(sessionID: string, projectID: string): $Cancella
  * exports directory and returns the number of exported sessions.
  */
 export function ExportAllSessions(): $CancellablePromise<number> {
-    return $Call.ByID(754476113);
+    return $Call.ByID(565010859);
 }
 
 /**
@@ -102,7 +102,7 @@ export function ExportAllSessions(): $CancellablePromise<number> {
  * directory and returns the file path.
  */
 export function ExportSession(sessionID: string): $CancellablePromise<string> {
-    return $Call.ByID(1209328767, sessionID);
+    return $Call.ByID(3980950141, sessionID);
 }
 
 /**
@@ -110,7 +110,7 @@ export function ExportSession(sessionID: string): $CancellablePromise<string> {
  * file (Markdown pipeline via gomarkdown) and returns the file path.
  */
 export function ExportSessionHTML(sessionID: string): $CancellablePromise<string> {
-    return $Call.ByID(2216986690, sessionID);
+    return $Call.ByID(1201604376, sessionID);
 }
 
 /**
@@ -119,42 +119,42 @@ export function ExportSessionHTML(sessionID: string): $CancellablePromise<string
  * without touching the original timeline.
  */
 export function ForkSession(sessionID: string): $CancellablePromise<config$0.ChatSession> {
-    return $Call.ByID(2896494109, sessionID);
+    return $Call.ByID(45262787, sessionID);
 }
 
 /**
  * GetSessionMessages renders the stored ADK events for a session.
  */
 export function GetSessionMessages(sessionID: string): $CancellablePromise<$models.ChatMessage[] | null> {
-    return $Call.ByID(252791171, sessionID);
+    return $Call.ByID(2172610353, sessionID);
 }
 
 /**
  * IsRunning reports whether a session currently has an in-flight run.
  */
 export function IsRunning(sessionID: string): $CancellablePromise<boolean> {
-    return $Call.ByID(2185013938, sessionID);
+    return $Call.ByID(4072370396, sessionID);
 }
 
 /**
  * ListProjects returns the registered projects in creation order.
  */
 export function ListProjects(): $CancellablePromise<config$0.Project[] | null> {
-    return $Call.ByID(2203540805);
+    return $Call.ByID(297616315);
 }
 
 /**
  * ListSessions returns all chat sessions, pinned first, then newest first.
  */
 export function ListSessions(): $CancellablePromise<config$0.ChatSession[] | null> {
-    return $Call.ByID(2944653350);
+    return $Call.ByID(488268720);
 }
 
 /**
  * NewSession creates a task session with an automatically isolated workspace.
  */
 export function NewSession(targetType: string, targetID: string, title: string): $CancellablePromise<config$0.ChatSession> {
-    return $Call.ByID(2521642057, targetType, targetID, title);
+    return $Call.ByID(2399094707, targetType, targetID, title);
 }
 
 /**
@@ -163,7 +163,7 @@ export function NewSession(targetType: string, targetID: string, title: string):
  * so many sessions can work in one project side by side.
  */
 export function NewSessionWithProject(targetType: string, targetID: string, title: string, projectID: string): $CancellablePromise<config$0.ChatSession> {
-    return $Call.ByID(3614387014, targetType, targetID, title, projectID);
+    return $Call.ByID(2389986728, targetType, targetID, title, projectID);
 }
 
 /**
@@ -171,14 +171,14 @@ export function NewSessionWithProject(targetType: string, targetID: string, titl
  * the backend to create a unique directory under the global workspace.
  */
 export function NewSessionWithWorkspace(targetType: string, targetID: string, title: string, workspaceDir: string): $CancellablePromise<config$0.ChatSession> {
-    return $Call.ByID(1384618270, targetType, targetID, title, workspaceDir);
+    return $Call.ByID(1490809424, targetType, targetID, title, workspaceDir);
 }
 
 /**
  * PinSession toggles the pinned flag of a session.
  */
 export function PinSession(id: string, pinned: boolean): $CancellablePromise<void> {
-    return $Call.ByID(3144528906, id, pinned);
+    return $Call.ByID(277538384, id, pinned);
 }
 
 /**
@@ -187,7 +187,7 @@ export function PinSession(id: string, pinned: boolean): $CancellablePromise<voi
  * with its original attachments.
  */
 export function Regenerate(sessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(2174579433, sessionID);
+    return $Call.ByID(3071282671, sessionID);
 }
 
 /**
@@ -195,7 +195,7 @@ export function Regenerate(sessionID: string): $CancellablePromise<void> {
  * other sessions (with the memory tool) can recall it later.
  */
 export function RememberSession(sessionID: string): $CancellablePromise<number> {
-    return $Call.ByID(3337271148, sessionID);
+    return $Call.ByID(904015878, sessionID);
 }
 
 /**
@@ -204,7 +204,7 @@ export function RememberSession(sessionID: string): $CancellablePromise<number> 
  * false "renamed" entry behind.
  */
 export function RenameSession(id: string, title: string): $CancellablePromise<void> {
-    return $Call.ByID(3235807879, id, title);
+    return $Call.ByID(2415089245, id, title);
 }
 
 /**
@@ -213,7 +213,7 @@ export function RenameSession(id: string, title: string): $CancellablePromise<vo
  * be writable and may not be claimed by another project.
  */
 export function SaveProject(id: string, name: string, rootDir: string): $CancellablePromise<config$0.Project> {
-    return $Call.ByID(2762009531, id, name, rootDir);
+    return $Call.ByID(2167030877, id, name, rootDir);
 }
 
 /**
@@ -222,7 +222,7 @@ export function SaveProject(id: string, name: string, rootDir: string): $Cancell
  * (pinned first, then most recently active).
  */
 export function SearchSessions(query: string): $CancellablePromise<config$0.ChatSession[] | null> {
-    return $Call.ByID(330853022, query);
+    return $Call.ByID(3009119976, query);
 }
 
 /**
@@ -230,7 +230,7 @@ export function SearchSessions(query: string): $CancellablePromise<config$0.Chat
  * until the run completes and streams progress via chat:stream events.
  */
 export function Send(sessionID: string, text: string, attachments: $models.AttachmentIn[] | null): $CancellablePromise<void> {
-    return $Call.ByID(179271769, sessionID, text, attachments);
+    return $Call.ByID(675839471, sessionID, text, attachments);
 }
 
 /**
@@ -240,7 +240,7 @@ export function Send(sessionID: string, text: string, attachments: $models.Attac
  * is never written back to the session or provider configuration.
  */
 export function SendWithReasoning(sessionID: string, text: string, attachments: $models.AttachmentIn[] | null, reasoningLevel: string): $CancellablePromise<void> {
-    return $Call.ByID(1733058623, sessionID, text, attachments, reasoningLevel);
+    return $Call.ByID(2673407093, sessionID, text, attachments, reasoningLevel);
 }
 
 /**
@@ -249,14 +249,14 @@ export function SendWithReasoning(sessionID: string, text: string, attachments: 
  * the other session-setting RPCs.
  */
 export function SessionAllowAllTools(sessionID: string): $CancellablePromise<boolean> {
-    return $Call.ByID(551129684, sessionID);
+    return $Call.ByID(3408629530, sessionID);
 }
 
 /**
  * SessionStats computes aggregate metrics from the stored ADK events.
  */
 export function SessionStats(sessionID: string): $CancellablePromise<$models.SessionStats | null> {
-    return $Call.ByID(4163807688, sessionID);
+    return $Call.ByID(1596027322, sessionID);
 }
 
 /**
@@ -265,7 +265,7 @@ export function SessionStats(sessionID: string): $CancellablePromise<$models.Ses
  * legacy fallback rule.
  */
 export function SessionWorkspace(sessionID: string): $CancellablePromise<string> {
-    return $Call.ByID(3713305274, sessionID);
+    return $Call.ByID(3556141484, sessionID);
 }
 
 /**
@@ -277,7 +277,7 @@ export function SessionWorkspace(sessionID: string): $CancellablePromise<string>
  * switch — in the audit trail.
  */
 export function SetSessionAllowAllTools(sessionID: string, allowAll: boolean, source: string): $CancellablePromise<void> {
-    return $Call.ByID(2198391258, sessionID, allowAll, source);
+    return $Call.ByID(1682135824, sessionID, allowAll, source);
 }
 
 /**
@@ -286,7 +286,7 @@ export function SetSessionAllowAllTools(sessionID: string, allowAll: boolean, so
  * previous thinking level is cleared too: the new model may not offer it.
  */
 export function SetSessionModel(sessionID: string, modelID: string): $CancellablePromise<void> {
-    return $Call.ByID(359717012, sessionID, modelID);
+    return $Call.ByID(398006402, sessionID, modelID);
 }
 
 /**
@@ -295,7 +295,7 @@ export function SetSessionModel(sessionID: string, modelID: string): $Cancellabl
  * a per-chat choice and never writes back to provider configuration.
  */
 export function SetSessionReasoningLevel(sessionID: string, level: string): $CancellablePromise<void> {
-    return $Call.ByID(3185250285, sessionID, level);
+    return $Call.ByID(2230420479, sessionID, level);
 }
 
 /**
@@ -303,12 +303,12 @@ export function SetSessionReasoningLevel(sessionID: string, level: string): $Can
  * canonicalized and checked for writability and active-session conflicts.
  */
 export function SetSessionWorkspace(sessionID: string, workspaceDir: string): $CancellablePromise<void> {
-    return $Call.ByID(185468012, sessionID, workspaceDir);
+    return $Call.ByID(1971102894, sessionID, workspaceDir);
 }
 
 /**
  * SetToolAuditPath enables the JSONL tool-call audit trail at path.
  */
 export function SetToolAuditPath(path: string): $CancellablePromise<void> {
-    return $Call.ByID(782279333, path);
+    return $Call.ByID(3549074391, path);
 }

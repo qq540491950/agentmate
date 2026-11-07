@@ -11,12 +11,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"go-workbuddy/internal/memory"
+	"agentmate/internal/memory"
 	adkmemory "google.golang.org/adk/v2/memory"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 )
 
 // newChatFixture spins up a fake OpenAI SSE server whose reply is controlled
@@ -373,7 +373,7 @@ func TestRememberSessionIngestsMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	chat.S.Memory = memSvc
-	if _, err := memSvc.Count("workbuddy", "local"); err != nil {
+	if _, err := memSvc.Count("agentmate", "local"); err != nil {
 		t.Fatal(err)
 	}
 	_ = sessions
@@ -387,7 +387,7 @@ func TestRememberSessionIngestsMemory(t *testing.T) {
 	}
 	// The deployment fact must be recallable.
 	resp, err := memSvc.SearchMemory(context.Background(), &adkmemory.SearchRequest{
-		AppName: "workbuddy", UserID: "local", Query: "europe-west4",
+		AppName: "agentmate", UserID: "local", Query: "europe-west4",
 	})
 	if err != nil {
 		t.Fatal(err)

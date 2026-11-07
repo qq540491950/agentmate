@@ -1,4 +1,4 @@
-// Debug probe: load the real WorkBuddy config (read-only) and connect every
+// Debug probe: load the real AgentMate config (read-only) and connect every
 // configured MCP server exactly like main.go's startup auto-connect, to tell
 // apart "old binary still running" from "injection path broken". Env values
 // and tokens are never printed.
@@ -10,8 +10,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 )
 
 func main() {
@@ -20,7 +20,7 @@ func main() {
 		fmt.Println("user config dir:", err)
 		os.Exit(1)
 	}
-	store, err := config.Open(filepath.Join(base, "workbuddy-agent"))
+	store, err := config.Open(filepath.Join(base, "agentmate"))
 	if err != nil {
 		fmt.Println("open config:", err)
 		os.Exit(1)

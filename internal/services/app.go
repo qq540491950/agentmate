@@ -12,16 +12,16 @@ import (
 
 	"gorm.io/gorm"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 )
 
 func nowUTC() time.Time { return time.Now().UTC().Truncate(time.Second) }
 
 // appName/userID mirror ChatService's fixed local identity (single-user app).
 const (
-	appName = "workbuddy"
+	appName = "agentmate"
 	userID  = "local"
 )
 
@@ -53,7 +53,7 @@ var AppVersion = "dev"
 // prefill so testers never hand-type their environment.
 func (a *AppService) AppInfo() map[string]string {
 	return map[string]string{
-		"name":     "WorkBuddy Agent",
+		"name":     "AgentMate",
 		"version":  AppVersion,
 		"adk":      "google adk-go v2",
 		"platform": runtime.GOOS + "/" + runtime.GOARCH,
@@ -414,7 +414,7 @@ func (a *AppService) ExportConfig(includeSecrets bool) (string, error) {
 	data, err := json.MarshalIndent(configBackup{
 		Version:    backupSchemaVersion,
 		ExportedAt: nowUTC(),
-		App:        "workbuddy-agent",
+		App:        "agentmate",
 		Config:     &cfg,
 	}, "", "  ")
 	if err != nil {
@@ -440,7 +440,7 @@ func (a *AppService) ExportConfig(includeSecrets bool) (string, error) {
 	if includeSecrets {
 		suffix = "secrets"
 	}
-	path := filepath.Join(dir, fmt.Sprintf("workbuddy-config-%s-%s.json", nowUTC().Format("20060102-150405"), suffix))
+	path := filepath.Join(dir, fmt.Sprintf("agentmate-config-%s-%s.json", nowUTC().Format("20060102-150405"), suffix))
 	if err := os.WriteFile(path, data, perm); err != nil {
 		return "", err
 	}

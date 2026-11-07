@@ -146,7 +146,7 @@ if [ -n "$PREV" ] && ! git rev-parse --verify --quiet "refs/tags/${PREV}" >/dev/
 	PREV="v${PREV}"
 fi
 
-echo "## WorkBuddy Agent v${TAG}"
+echo "## AgentMate v${TAG}"
 echo
 msg="$(tag_message "$TAG_REF" 2>/dev/null || true)"
 if printf '%s' "$msg" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then

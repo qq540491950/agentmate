@@ -237,7 +237,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item "bin/go-workbuddy.exe" "dist/WorkBuddy-Agent-windows-amd64.exe"
+          Copy-Item "bin/agentmate.exe" "dist/AgentMate-windows-amd64.exe"
       - name: Show artifact sizes
         shell: pwsh
         run: Get-ChildItem dist | Select-Object Name, @{n = "MB"; e = { [math]::Round($_.Length / 1MB, 1) } } | Format-Table -AutoSize
@@ -358,12 +358,12 @@ jobs:
           cd dist
           wails3 updater manifest \
             -version "$VERSION" \
-            -name "WorkBuddy Agent $TAG" \
+            -name "AgentMate $TAG" \
             -notes-file ../notes.md \
             -url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/" \
             -output manifest.json \
             "${key_args[@]}" \
-            WorkBuddy-Agent-windows-amd64.exe
+            AgentMate-windows-amd64.exe
           cat manifest.json
       - name: Publish release
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -374,10 +374,10 @@ jobs:
             # Re-run of an existing tag: replace assets in place and re-point
             # `latest` at it.
             gh release upload "$TAG" --clobber dist/*
-            gh release edit "$TAG" --title "WorkBuddy Agent $TAG" --notes-file notes.md --latest
+            gh release edit "$TAG" --title "AgentMate $TAG" --notes-file notes.md --latest
           else
             gh release create "$TAG" \
-              --title "WorkBuddy Agent $TAG" \
+              --title "AgentMate $TAG" \
               --notes-file notes.md \
               --latest \
               dist/*

@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/adk/v2/tool/skilltoolset/skill"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 func writeAgentSkillMD(t *testing.T, root, name, desc, body string) {

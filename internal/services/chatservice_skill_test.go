@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 )
 
 // newSkillTestChat wires a ChatService against a scripted SSE model server.

@@ -19,7 +19,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/updater"
 	"github.com/wailsapp/wails/v3/pkg/updater/providers/endpoint"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // Update channel wiring.
@@ -31,7 +31,7 @@ import (
 // hotfix moves the pointer, and turning a bad release back into a draft moves
 // it back.
 const (
-	updateRepo        = "qq540491950/go-workbuddy"
+	updateRepo        = "qq540491950/agentmate"
 	updateManifestURL = "https://github.com/" + updateRepo + "/releases/latest/download/manifest.json"
 	updateReleasesURL = "https://github.com/" + updateRepo + "/releases"
 

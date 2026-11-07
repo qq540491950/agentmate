@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 )
 
 // TestForkSession branches a conversation: the fork carries a full copy of
@@ -34,7 +34,7 @@ func TestForkSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The default workspace is $HOME/Documents/WorkBuddyWorkspace, which does
+	// The default workspace is $HOME/Documents/AgentMateWorkspace, which does
 	// not exist on a bare CI runner (and making every test depend on $HOME is
 	// how you get a red build that says nothing about the code). Point the
 	// session workspace at the test's temp dir instead.

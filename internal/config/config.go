@@ -627,7 +627,7 @@ func defaultWorkspace() string {
 	if err != nil {
 		return "."
 	}
-	return filepath.Join(home, "Documents", "WorkBuddyWorkspace")
+	return filepath.Join(home, "Documents", "AgentMateWorkspace")
 }
 
 // Default returns a config seeded with useful defaults.

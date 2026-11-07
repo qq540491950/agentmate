@@ -5,11 +5,11 @@ version: '3'
 
 # This information is used to generate the build assets.
 info:
-  companyName: "WorkBuddy" # The name of the company
-  productName: "WorkBuddy Agent" # The name of the application
-  productIdentifier: "com.workbuddy.agent" # The unique product identifier
-  description: "WorkBuddy Agent — 本地 AI Agent 桌面应用" # The application description
-  copyright: "© 2026 WorkBuddy" # Copyright text
+  companyName: "AgentMate" # The name of the company
+  productName: "AgentMate" # The name of the application
+  productIdentifier: "com.agentmate.app" # The unique product identifier
+  description: "AgentMate — 本地 AI Agent 桌面应用" # The application description
+  copyright: "© 2026 AgentMate" # Copyright text
   comments: "Some Product Comments" # Comments
   version: "0.4.0"
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)

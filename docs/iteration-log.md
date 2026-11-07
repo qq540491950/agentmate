@@ -4,6 +4,27 @@
 
 ## 视觉测试与体验设计
 
+### 第二百一十二轮迭代：项目更名 AgentMate——品牌、代码身份、数据目录与图标全量切换（已实施，待审核提交）
+
+依据：用户确认三项决策——GitHub 仓库走改名路线保留 issue/release 历史、应用数据目录全新开始（零迁移）、持久状态键直接改名；logo 采用已定稿的火花 A 设计（design/logo/）。执行范围仅本地修改，远端改名与推送由用户单独指令触发。
+
+**实现要点**
+
+- **代码身份**：Go module 改为 `agentmate`，71 个 Go/TS 文件的 import 与方法 ID 命名空间随动；绑定重新生成（`agentmate/` 目录就位，`github.com/` wails-typed-events 目录保留）；视觉桩方法 ID 与前端手写 import 同步。
+- **数据身份（全新开始）**：应用数据目录改为 `agentmate`（旧目录永不读取、不自动删除）；默认工作区 `Documents\AgentMateWorkspace`；ADK 状态键 `agentmate.todos` / `agentmate.reasoning_level` / `agentmate.skill_context` 与本地存储风险确认键直接改名，零迁移代码。
+- **桌面与打包身份**：`APP_NAME=agentmate`、productIdentifier `com.agentmate.app`；config.yml、darwin/iOS plist、windows info.json/manifest/MSIX/NSIS、linux desktop/nfpm 全部打包资产同步；发布产物更名 `AgentMate-windows-amd64.exe`（release 工作流硬编码名同步）。
+- **图标接入**：火花 A 应用图标覆盖 `build/appicon.png`（托盘随内嵌联动）与前端 favicon；Windows exe 图标由构建从 appicon 自动生成的 icon.ico 承载，已目检确认。
+- **品牌文案**：窗口标题、托盘 tooltip/菜单、OAuth 成功页、系统提示词、欢迎页、关于页、侧栏底部、占位符、前端包名全部换新；更新渠道常量与应用内反馈 URL 预置指向 `qq540491950/agentmate`（本地预置，远端改名前不 push）。
+- **文档与流水线**：README/GLOSSARY/AGENTS/design-system 标题与正文、issue 模板示例、issue-fixer/pipeline 文档、bug-relay skill、脚本 REPO 常量、.gitignore 注释全部更新；全仓旧名检索零残留（白名单：历史迭代记录、issues 归档、本 spec 与 .scratch 工单）。
+
+**测试证据**
+
+- `go vet ./internal/... .` 干净；`go test ./internal/... .` 全绿（模块路径已是 `agentmate/internal/...`）。
+- `npx tsc --noEmit`、vitest 131/131、`npm run build` 通过。
+- `wails3 build`（含绑定 `-clean` 再生成）端到端成功，产出 `bin/agentmate.exe`（v0.5.28）；更新器/leftover 相关测试随品牌期望值更新后全绿。
+- 全仓 `rg -in workbuddy --hidden` 仅命中白名单（历史迭代记录、issues-archive、agentmate-rename spec、.scratch 工单）。
+- 待人工冒烟（用户执行）：托盘图标与提示、二次启动单实例转发、全新目录 onboarding、语义检索重建。
+
 ### 第二百一十一轮迭代：界面质感 P4——对比度实测、设计系统文档与截图基线（已实施）
 
 依据：用户确认继续 [docs/ui-refresh-plan.md](../docs/ui-refresh-plan.md) 的 P4 收尾：把 P0–P3 的令牌与规则固化成文档，实测对比度并修复不达标项，留双主题截图基线。

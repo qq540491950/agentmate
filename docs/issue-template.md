@@ -54,7 +54,7 @@
 Windows 11 23H2 x64
 模型：OpenAI 兼容 / gpt-4o
 MCP：filesystem
-工作区：D:\workbuddy-test
+工作区：D:\agentmate-test
 
 ## 复现步骤
 1. 打开应用，新建会话

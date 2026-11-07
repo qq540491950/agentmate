@@ -9,8 +9,8 @@ import (
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/skilltoolset/skill"
 
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 )
 
 // newTestKit builds a Kit over a temp config store.

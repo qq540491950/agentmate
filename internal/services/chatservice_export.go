@@ -10,7 +10,7 @@ import (
 	"github.com/gomarkdown/markdown"
 	htmlrenderer "github.com/gomarkdown/markdown/html"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // reasoningLabel renders the common level names in Chinese for exports; a

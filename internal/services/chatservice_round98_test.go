@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 )
 
 // newRecordingChat is a fixture like newConfirmTestChat whose fake model

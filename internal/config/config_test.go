@@ -65,7 +65,7 @@ func TestProjectsRoundTripAndCloneIndependent(t *testing.T) {
 	}
 	err = s.Update(func(cfg *Config) {
 		cfg.Projects = append(cfg.Projects, Project{
-			ID: "proj_1", Name: "go-workbuddy", RootDir: `D:\projects\go-workbuddy`,
+			ID: "proj_1", Name: "agentmate", RootDir: `D:\projects\agentmate`,
 			CreatedAt: time.Now().UTC(),
 		})
 		cfg.Sessions = append(cfg.Sessions, ChatSession{ID: "s1", Title: "p", ProjectID: "proj_1"})
@@ -78,7 +78,7 @@ func TestProjectsRoundTripAndCloneIndependent(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := s2.Get()
-	if len(got.Projects) != 1 || got.Projects[0].Name != "go-workbuddy" {
+	if len(got.Projects) != 1 || got.Projects[0].Name != "agentmate" {
 		t.Fatalf("projects not persisted: %+v", got.Projects)
 	}
 	if len(got.Sessions) != 1 || got.Sessions[0].ProjectID != "proj_1" {
@@ -86,7 +86,7 @@ func TestProjectsRoundTripAndCloneIndependent(t *testing.T) {
 	}
 	clone := got.Clone()
 	clone.Projects[0].Name = "changed"
-	if got.Projects[0].Name != "go-workbuddy" {
+	if got.Projects[0].Name != "agentmate" {
 		t.Fatalf("Clone shares the Projects backing array: %+v", got.Projects)
 	}
 }

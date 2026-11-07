@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // fakeEmbeddings serves the OpenAI-compatible /embeddings contract with

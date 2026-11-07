@@ -9,8 +9,8 @@ import (
 
 	"google.golang.org/adk/v2/session"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
 )
 
 // A panicking or failing agent runtime must never take the app down: the

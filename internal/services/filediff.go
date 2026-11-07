@@ -11,8 +11,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
 )
 
 // 行级 diff 的资源上限：基线内容快照是尽力而为的后台成本，diff 计算是

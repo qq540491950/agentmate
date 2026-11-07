@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 func TestRevealCommandPerPlatform(t *testing.T) {

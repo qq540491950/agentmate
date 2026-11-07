@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // ListProviderModels fetches the model IDs offered by the provider, using

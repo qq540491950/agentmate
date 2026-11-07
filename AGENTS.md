@@ -1,8 +1,8 @@
-# AGENTS.md — WorkBuddy Agent 工程指南
+# AGENTS.md — AgentMate 工程指南
 
 面向在本仓库工作的编码代理。功能总览、架构与完整边界见 [README.md](README.md)，迭代记录见 [docs/iteration-log.md](docs/iteration-log.md)，术语见 [GLOSSARY.md](GLOSSARY.md)。
 
-类 WorkBuddy 的本地 AI Agent 桌面应用：**Google ADK Go v2**（运行时）+ **Wails v3**（桌面壳）+ **React/TS + shadcn/ui**（前端）。
+本地 AI Agent 桌面应用：**Google ADK Go v2**（运行时）+ **Wails v3**（桌面壳）+ **React/TS + shadcn/ui**（前端）。
 
 ## 常用命令
 
@@ -23,7 +23,7 @@ cd frontend && npm run stub   # 视觉回归桩（:9246/stub/index.html）
 ```
 
 - 绑定由构建自动重建（`-clean=true`），**勿手改**。仅在仓库根目录生成；子目录执行会产 `bindings/{time,gorm.io,…}` 垃圾目录（可删），但 `bindings/github.com/`（wails-typed-events）勿删。依赖包绑定已被 `.gitignore` 排除。
-- 方法 ID = FNV-1a32(`go-workbuddy/internal/services.<Service>.<Method>`)，生成器自动处理。
+- 方法 ID = FNV-1a32(`agentmate/internal/services.<Service>.<Method>`)，生成器自动处理。
 
 ## 目录地图
 
@@ -57,7 +57,7 @@ frontend/bindings/        # wails3 生成绑定（勿手改）
 - **@ 文件上下文与技能发现**：`@path` / `@"quoted path"` 由 `chat_context.go` 从会话的有效工作区读取，按轮注入（单文件 48KB / 单轮 96KB / ≤8 个，越界与二进制不读）；`/skill` 在 `config.EffectiveSkills`（项目 > 用户 `~/.agents/skills` > 应用）上匹配，`ChatService.EffectiveSkills` 与 `ArtifactService.ListContextPaths` 供前端按会话/草稿项目解析菜单。
 - **任务级工作区**：`NewSession` 与 `NewSessionWithWorkspace` 均创建任务目录；`EffectiveWorkspace` 是文件工具、`{{workspace}}` 与预览的唯一后端解析入口；首轮后锁定，活动任务不能重复占用同一显式目录；发送/确认/改绑共用会话级 workspace 锁。知识库/Skills/导出仍用全局工作区。
 - **任务产物快照**：基线存应用数据目录 `task-snapshots/<sessionID>.json`（版本化、原子写，不进 sessions.db）；按存在性/大小/mtime 算新增、修改、删除；跳过隐藏/VCS/依赖目录与符号链接（5000 文件 / 200 条上限）；删会话清基线但保留任务文件，分叉共享工作区但独立基线。
-- **plan_todos**：状态存 ADK session state 键 `workbuddy.todos`，全量替换（省略参数=只读，空数组=清空）；前端从 tool_result 渲染清单卡与置顶条。
+- **plan_todos**：状态存 ADK session state 键 `agentmate.todos`，全量替换（省略参数=只读，空数组=清空）；前端从 tool_result 渲染清单卡与置顶条。
 - **autoTitle**：opt-in（`Settings.AutoTitle`）；首轮后异步 30s 侧调用，仅替换自己写的兜底标题；goroutine 自带 recover。
 - **单轮超时**：未配置 `MaxTurnSeconds` 时默认 600 秒；`runTurn` 的 recover 把 panic 转为 `error` + `done`。
 - **桌面壳**：单实例锁名 = `build/config.yml` 的 `productIdentifier`（不可改），二次启动转发激活后退出。Windows 更新残留 `<exe>.old.*` / `.bak` 由 `updateleftover.go` 在锁后清扫（30 秒内新文件不碰，重试至 10 分钟）。

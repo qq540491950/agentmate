@@ -342,7 +342,7 @@ export function MCPPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="grid gap-1.5">
                         <Label>Client ID（预注册）</Label>
-                        <Input value={editing.oauthClientId} onChange={(e) => setEditing({ ...editing, oauthClientId: e.target.value })} placeholder="workbuddy-desktop" />
+                        <Input value={editing.oauthClientId} onChange={(e) => setEditing({ ...editing, oauthClientId: e.target.value })} placeholder="agentmate-desktop" />
                       </div>
                       <div className="grid gap-1.5">
                         <Label>回调端口（0=自动）</Label>

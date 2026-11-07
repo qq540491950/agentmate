@@ -3,9 +3,9 @@ package services
 import (
 	"testing"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 )
 
 // TestSaveMCPServerNormalizesWhitespace: UI-pasted whitespace must not reach

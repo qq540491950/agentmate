@@ -1,6 +1,6 @@
-# WorkBuddy Agent
+# AgentMate
 
-基于 **Google ADK Go v2**（`google.golang.org/adk/v2`）+ **Wails v3** + **React/TypeScript + shadcn/ui** 构建的类 WorkBuddy Agent 桌面应用。
+基于 **Google ADK Go v2**（`google.golang.org/adk/v2`）+ **Wails v3** + **React/TypeScript + shadcn/ui** 构建的本地 AI Agent 桌面应用。
 
 支持：可配置模型供应商、自定义 Agent、Agent 团队（ADK 子代理委派）、Skills（agentskills.io SKILL.md 规范）、MCP 工具服务器、流式对话、会话持久化（SQLite）。
 
@@ -71,10 +71,10 @@ wails3 dev
 
 ```bash
 # 生产构建（生成绑定 → 构建前端 → 编译 Go）
-wails3 build          # 产物: bin/go-workbuddy
+wails3 build          # 产物: bin/agentmate
 
 # 打包 macOS .app
-wails3 package        # 产物: bin/go-workbuddy.app（重命名为 WorkBuddy Agent.app）
+wails3 package        # 产物: bin/agentmate.app（重命名为 AgentMate.app）
 ```
 
 ### 自测
@@ -157,7 +157,7 @@ git push origin v0.5.0     # 触发 .github/workflows/release.yml
 - **当前发布范围：仅 Windows 64 位**。维护者的测试环境只有 Windows，未经验证的 Linux/macOS 产物配合自动更新等于给用户装一个坏版本；这两个平台的构建配置（AppImage + deb、universal `.app` + dmg）保留在 git 历史中，测试条件具备后按 `0.MINOR` 规则补发
 - **版本号唯一来源是 git tag**：CI 用 `-ldflags "-X main.Version=X.Y.Z"` 注入二进制，并用 `scripts/set-version.sh` 重写 `build/config.yml` 后由 `wails3 update build-assets` 派生 exe 元数据。无 tag 的构建版本为 `dev`
 - 构建使用 `-tags production -trimpath -ldflags "-w -s"`（Windows 追加 `-H windowsgui`）
-- 产物（每次发布原子出齐，缺一不发）：`WorkBuddy-Agent-windows-amd64.exe`（**免安装，下载即用**）、`SHA256SUMS`、`manifest.json`
+- 产物（每次发布原子出齐，缺一不发）：`AgentMate-windows-amd64.exe`（**免安装，下载即用**）、`SHA256SUMS`、`manifest.json`
 - 不发安装包、也不发 zip：那一个 exe 既是用户下载的东西，也是自更新替换的目标，所以把它放在可写目录（`D:\Apps`、下载目录、U 盘）时自更新直接可用
 - 详见 `docs/adr/0001-git-tag-as-version-source.md` 与 `docs/adr/0002-in-app-updater-and-dual-release-artifacts.md`
 
@@ -197,9 +197,9 @@ git push origin v0.5.0     # 触发 .github/workflows/release.yml
 - 每个任务有独立工作区；首轮开始后目录锁定，删除会话不会删除任务文件
 
 ### 运维与诊断
-- 日志：`~/Library/Application Support/workbuddy-agent/logs/app.log`（5MB 自动轮转）
+- 日志：`~/Library/Application Support/agentmate/logs/app.log`（5MB 自动轮转）
 - 故障排查：先看 app.log；会话库异常时检查 `sessions.db.corrupt-*` 备份
-- 数据备份：直接复制 `~/Library/Application Support/workbuddy-agent/`（配置 + 会话 + Skills）
+- 数据备份：直接复制 `~/Library/Application Support/agentmate/`（配置 + 会话 + Skills）
 
 ### 已知边界
 - 语音识别依赖 Web Speech API（macOS WKWebView 可用性随系统版本变化，不支持时按钮自动禁用）
@@ -219,10 +219,10 @@ git push origin v0.5.0     # 触发 .github/workflows/release.yml
 
 | 内容 | 位置（macOS） |
 | --- | --- |
-| 配置（供应商/Agent/团队/Skills/MCP/会话元数据） | `~/Library/Application Support/workbuddy-agent/config.json` |
-| Skills 物化目录 | `~/Library/Application Support/workbuddy-agent/skills/` |
-| ADK 会话历史（SQLite） | `~/Library/Application Support/workbuddy-agent/sessions.db` |
-| 任务快照基线（按会话 ID，原子 JSON） | `~/Library/Application Support/workbuddy-agent/task-snapshots/` |
+| 配置（供应商/Agent/团队/Skills/MCP/会话元数据） | `~/Library/Application Support/agentmate/config.json` |
+| Skills 物化目录 | `~/Library/Application Support/agentmate/skills/` |
+| ADK 会话历史（SQLite） | `~/Library/Application Support/agentmate/sessions.db` |
+| 任务快照基线（按会话 ID，原子 JSON） | `~/Library/Application Support/agentmate/task-snapshots/` |
 | 自动创建的任务工作区 | `<全局工作区>/tasks/<sessionID>/` |
 
 ## 目录结构

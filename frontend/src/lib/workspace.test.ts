@@ -19,8 +19,8 @@ describe("isDialogCancelError", () => {
 
 describe("pickedDirectoryValue", () => {
   it("keeps the absolute path returned by the native picker", () => {
-    expect(pickedDirectoryValue("D:\\WorkBuddyWorkspace")).toBe("D:\\WorkBuddyWorkspace");
-    expect(pickedDirectoryValue("/Users/you/Documents/WorkBuddyWorkspace")).toBe("/Users/you/Documents/WorkBuddyWorkspace");
+    expect(pickedDirectoryValue("D:\\AgentMateWorkspace")).toBe("D:\\AgentMateWorkspace");
+    expect(pickedDirectoryValue("/Users/you/Documents/AgentMateWorkspace")).toBe("/Users/you/Documents/AgentMateWorkspace");
   });
 
   it("treats cancellation and malformed results as no selection", () => {

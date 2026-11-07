@@ -13,10 +13,10 @@ import (
 // sweep must look where it actually leaves files.
 func TestUpdateTargetForExe(t *testing.T) {
 	cases := []struct{ name, exe, goos, want string }{
-		{"windows desktop exe", `C:\Users\u\Desktop\WorkBuddy-Agent-windows-amd64.exe`, "windows", `C:\Users\u\Desktop\WorkBuddy-Agent-windows-amd64.exe`},
-		{"linux appimage", "/home/u/Apps/workbuddy.AppImage", "linux", "/home/u/Apps/workbuddy.AppImage"},
-		{"darwin bundle", "/Users/u/Applications/WorkBuddy Agent.app/Contents/MacOS/workbuddy", "darwin", "/Users/u/Applications/WorkBuddy Agent.app"},
-		{"darwin plain binary", "/usr/local/bin/workbuddy", "darwin", "/usr/local/bin/workbuddy"},
+		{"windows desktop exe", `C:\Users\u\Desktop\AgentMate-Agent-windows-amd64.exe`, "windows", `C:\Users\u\Desktop\AgentMate-Agent-windows-amd64.exe`},
+		{"linux appimage", "/home/u/Apps/AgentMate.AppImage", "linux", "/home/u/Apps/AgentMate.AppImage"},
+		{"darwin bundle", "/Users/u/Applications/AgentMate Agent.app/Contents/MacOS/AgentMate", "darwin", "/Users/u/Applications/AgentMate Agent.app"},
+		{"darwin plain binary", "/usr/local/bin/AgentMate", "darwin", "/usr/local/bin/AgentMate"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -48,15 +48,15 @@ func TestSweepUpdateLeftovers(t *testing.T) {
 
 	t.Run("removes stale aside and keeps fresh or foreign files", func(t *testing.T) {
 		dir := t.TempDir()
-		target := writeTarget(t, dir, "WorkBuddy.exe")
-		stale := filepath.Join(dir, asideName("WorkBuddy.exe", now.Add(-time.Hour)))
-		fresh := filepath.Join(dir, asideName("WorkBuddy.exe", now.Add(-time.Second)))
+		target := writeTarget(t, dir, "AgentMate.exe")
+		stale := filepath.Join(dir, asideName("AgentMate.exe", now.Add(-time.Hour)))
+		fresh := filepath.Join(dir, asideName("AgentMate.exe", now.Add(-time.Second)))
 		foreign := []string{
-			filepath.Join(dir, "WorkBuddy.exe.old.123"),        // pre-2020 stamp
-			filepath.Join(dir, "WorkBuddy.exe.old.notanumber"), // not ours
+			filepath.Join(dir, "AgentMate.exe.old.123"),        // pre-2020 stamp
+			filepath.Join(dir, "AgentMate.exe.old.notanumber"), // not ours
 			filepath.Join(dir, "Other.exe.old."+fmt.Sprint(now.UnixNano())),
-			filepath.Join(dir, "WorkBuddy.exe.old"),
-			filepath.Join(dir, "WorkBuddy.exe.old2."),
+			filepath.Join(dir, "AgentMate.exe.old"),
+			filepath.Join(dir, "AgentMate.exe.old2."),
 		}
 		for _, p := range []string{stale, fresh} {
 			if err := os.WriteFile(p, []byte("old"), 0o755); err != nil {
@@ -88,7 +88,7 @@ func TestSweepUpdateLeftovers(t *testing.T) {
 
 	t.Run("removes stale backup file", func(t *testing.T) {
 		dir := t.TempDir()
-		target := writeTarget(t, dir, "WorkBuddy.exe")
+		target := writeTarget(t, dir, "AgentMate.exe")
 		backup := target + ".bak"
 		if err := os.WriteFile(backup, []byte("old"), 0o755); err != nil {
 			t.Fatal(err)
@@ -109,7 +109,7 @@ func TestSweepUpdateLeftovers(t *testing.T) {
 
 	t.Run("removes stale bundle backup directory", func(t *testing.T) {
 		dir := t.TempDir()
-		target := filepath.Join(dir, "WorkBuddy Agent.app")
+		target := filepath.Join(dir, "AgentMate Agent.app")
 		if err := os.MkdirAll(imageInsideBundle(t, target), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -138,8 +138,8 @@ func TestSweepUpdateLeftovers(t *testing.T) {
 	// only surviving copy: never delete in that state.
 	t.Run("keeps everything when the installed target is missing", func(t *testing.T) {
 		dir := t.TempDir()
-		target := filepath.Join(dir, "WorkBuddy.exe")
-		aside := filepath.Join(dir, asideName("WorkBuddy.exe", now.Add(-time.Hour)))
+		target := filepath.Join(dir, "AgentMate.exe")
+		aside := filepath.Join(dir, asideName("AgentMate.exe", now.Add(-time.Hour)))
 		backup := target + ".bak"
 		for _, p := range []string{aside, backup} {
 			if err := os.WriteFile(p, []byte("old"), 0o755); err != nil {
@@ -165,8 +165,8 @@ func TestSweepUpdateLeftovers(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		target := writeTarget(t, dir, "WorkBuddy.exe")
-		stale := filepath.Join(dir, asideName("WorkBuddy.exe", now.Add(-time.Hour)))
+		target := writeTarget(t, dir, "AgentMate.exe")
+		stale := filepath.Join(dir, asideName("AgentMate.exe", now.Add(-time.Hour)))
 		if err := os.WriteFile(stale, []byte("old"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -187,8 +187,8 @@ func imageInsideBundle(t *testing.T, bundle string) string {
 // so the next attempt is what actually removes it.
 func TestSweepUpdateLeftoversLoopRetriesUntilUnlocked(t *testing.T) {
 	dir := t.TempDir()
-	target := writeTarget(t, dir, "WorkBuddy.exe")
-	fresh := filepath.Join(dir, asideName("WorkBuddy.exe", time.Now()))
+	target := writeTarget(t, dir, "AgentMate.exe")
+	fresh := filepath.Join(dir, asideName("AgentMate.exe", time.Now()))
 	if err := os.WriteFile(fresh, []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestSweepUpdateLeftoversLoopRetriesUntilUnlocked(t *testing.T) {
 
 func TestSweepUpdateLeftoversLoopExitsWhenClean(t *testing.T) {
 	dir := t.TempDir()
-	target := writeTarget(t, dir, "WorkBuddy.exe")
+	target := writeTarget(t, dir, "AgentMate.exe")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()

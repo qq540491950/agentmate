@@ -80,7 +80,7 @@ func TestSingleInstanceOptions(t *testing.T) {
 	if opts == nil {
 		t.Fatal("singleInstanceOptions returned nil; Wails would not enforce a single instance")
 	}
-	if opts.UniqueID != "com.workbuddy.agent" {
+	if opts.UniqueID != "com.agentmate.app" {
 		t.Fatalf("UniqueID = %q, want the stable product identifier", opts.UniqueID)
 	}
 	if opts.OnSecondInstanceLaunch == nil {

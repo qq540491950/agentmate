@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 func newProjectTestChat(t *testing.T) (*ChatService, *config.Store, string) {
@@ -48,11 +48,11 @@ func TestSaveProjectValidatesAndDedupes(t *testing.T) {
 		t.Fatal("expected missing dir rejection")
 	}
 	// Rename keeps the root; a blank root on update is a no-op.
-	renamed, err := chat.SaveProject(p.ID, "go-workbuddy", "")
+	renamed, err := chat.SaveProject(p.ID, "agentmate", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if renamed.Name != "go-workbuddy" || renamed.RootDir != p.RootDir {
+	if renamed.Name != "agentmate" || renamed.RootDir != p.RootDir {
 		t.Fatalf("rename changed root: %+v", renamed)
 	}
 }

@@ -26,7 +26,7 @@ import * as $models from "./models.js";
  * returns a summary for the UI connectivity check.
  */
 export function CheckRemoteAgent(cardURL: string): $CancellablePromise<agentkit$0.RemoteAgentInfo | null> {
-    return $Call.ByID(3750747172, cardURL);
+    return $Call.ByID(901399030, cardURL);
 }
 
 /**
@@ -34,42 +34,42 @@ export function CheckRemoteAgent(cardURL: string): $CancellablePromise<agentkit$
  * to overwrite existing files).
  */
 export function CreateKnowledgeFile(name: string, content: string): $CancellablePromise<string> {
-    return $Call.ByID(4180834523, name, content);
+    return $Call.ByID(2958209677, name, content);
 }
 
 /**
  * DeleteAgent removes an agent and detaches it from teams.
  */
 export function DeleteAgent(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1490280653, id);
+    return $Call.ByID(1866119775, id);
 }
 
 /**
  * DeleteKnowledgeFile removes one knowledge file by name (traversal-guarded).
  */
 export function DeleteKnowledgeFile(name: string): $CancellablePromise<void> {
-    return $Call.ByID(1242658822, name);
+    return $Call.ByID(2434264776, name);
 }
 
 /**
  * DeleteMCPServer removes an MCP server and detaches it from agents.
  */
 export function DeleteMCPServer(id: string): $CancellablePromise<void> {
-    return $Call.ByID(864729011, id);
+    return $Call.ByID(1277414881, id);
 }
 
 /**
  * DeleteProvider removes a provider by id.
  */
 export function DeleteProvider(id: string): $CancellablePromise<void> {
-    return $Call.ByID(300254753, id);
+    return $Call.ByID(2415069703, id);
 }
 
 /**
  * DeleteRemoteAgent removes a remote agent and detaches it from teams.
  */
 export function DeleteRemoteAgent(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2195452647, id);
+    return $Call.ByID(49618913, id);
 }
 
 /**
@@ -79,14 +79,14 @@ export function DeleteRemoteAgent(id: string): $CancellablePromise<void> {
  * immediately.
  */
 export function DeleteSkill(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3348287897, id);
+    return $Call.ByID(2548223483, id);
 }
 
 /**
  * DeleteTeam removes a team by id.
  */
 export function DeleteTeam(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1967673397, id);
+    return $Call.ByID(920225451, id);
 }
 
 /**
@@ -96,7 +96,7 @@ export function DeleteTeam(id: string): $CancellablePromise<void> {
  * never be written back to config.json (other agentskills.io tools own them).
  */
 export function GetConfig(): $CancellablePromise<config$0.Config> {
-    return $Call.ByID(2830209267);
+    return $Call.ByID(189916213);
 }
 
 /**
@@ -105,21 +105,21 @@ export function GetConfig(): $CancellablePromise<config$0.Config> {
  * not already present. Returns the number of imported skills.
  */
 export function ImportSkillsFromWorkspace(): $CancellablePromise<number> {
-    return $Call.ByID(1388176457);
+    return $Call.ByID(4083325643);
 }
 
 /**
  * KnowledgeIndexStats reports the semantic knowledge index state for the UI.
  */
 export function KnowledgeIndexStats(): $CancellablePromise<agentkit$0.KnowledgeIndexStats> {
-    return $Call.ByID(2250008310);
+    return $Call.ByID(1126907376);
 }
 
 /**
  * ListKnowledgeFiles lists the workspace knowledge directory files.
  */
 export function ListKnowledgeFiles(): $CancellablePromise<$models.KnowledgeFile[] | null> {
-    return $Call.ByID(3858202904);
+    return $Call.ByID(3670087910);
 }
 
 /**
@@ -127,7 +127,7 @@ export function ListKnowledgeFiles(): $CancellablePromise<$models.KnowledgeFile[
  * endpoint, so the user can pick instead of typing model ids by hand.
  */
 export function ListProviderModels(p: config$0.ModelProvider): $CancellablePromise<string[] | null> {
-    return $Call.ByID(729587208, p);
+    return $Call.ByID(2439782322, p);
 }
 
 /**
@@ -135,14 +135,14 @@ export function ListProviderModels(p: config$0.ModelProvider): $CancellablePromi
  * everything from the workspace files.
  */
 export function ResetKnowledgeIndex(): $CancellablePromise<void> {
-    return $Call.ByID(3994394390);
+    return $Call.ByID(2679775856);
 }
 
 /**
  * SaveAgent inserts or updates an agent.
  */
 export function SaveAgent(a: config$0.AgentConfig): $CancellablePromise<void> {
-    return $Call.ByID(122182183, a);
+    return $Call.ByID(4191368937, a);
 }
 
 /**
@@ -152,21 +152,21 @@ export function SaveAgent(a: config$0.AgentConfig): $CancellablePromise<void> {
  * the OLD transport (URL, token, args, env) while the UI shows the new one.
  */
 export function SaveMCPServer(s: config$0.MCPServerConfig): $CancellablePromise<void> {
-    return $Call.ByID(3468673449, s);
+    return $Call.ByID(3425224335, s);
 }
 
 /**
  * SaveProvider inserts or updates a model provider.
  */
 export function SaveProvider(p: config$0.ModelProvider): $CancellablePromise<void> {
-    return $Call.ByID(3638398639, p);
+    return $Call.ByID(3170807621, p);
 }
 
 /**
  * SaveRemoteAgent inserts or updates a remote A2A agent.
  */
 export function SaveRemoteAgent(r: config$0.RemoteAgentConfig): $CancellablePromise<void> {
-    return $Call.ByID(2684095977, r);
+    return $Call.ByID(2434532491, r);
 }
 
 /**
@@ -174,21 +174,21 @@ export function SaveRemoteAgent(r: config$0.RemoteAgentConfig): $CancellableProm
  * up front so a typo surfaces immediately instead of at next app start.
  */
 export function SaveSettings(s: config$0.Settings): $CancellablePromise<void> {
-    return $Call.ByID(2800339991, s);
+    return $Call.ByID(1161742997, s);
 }
 
 /**
  * SaveSkill inserts or updates a skill (materialized to SKILL.md).
  */
 export function SaveSkill(s: config$0.SkillConfig): $CancellablePromise<void> {
-    return $Call.ByID(4029131731, s);
+    return $Call.ByID(3879044885, s);
 }
 
 /**
  * SaveTeam inserts or updates an agent team.
  */
 export function SaveTeam(t: config$0.TeamConfig): $CancellablePromise<void> {
-    return $Call.ByID(731399107, t);
+    return $Call.ByID(1625532785, t);
 }
 
 /**
@@ -197,7 +197,7 @@ export function SaveTeam(t: config$0.TeamConfig): $CancellablePromise<void> {
  * offline and does not touch the saved config.
  */
 export function SuggestModels(ids: string[] | null): $CancellablePromise<config$0.ModelInfo[] | null> {
-    return $Call.ByID(1306580425, ids);
+    return $Call.ByID(159703691, ids);
 }
 
 /**
@@ -205,7 +205,7 @@ export function SuggestModels(ids: string[] | null): $CancellablePromise<config$
  * so the user can verify semantic retrieval quality from the settings page.
  */
 export function TestKnowledgeSearch(query: string): $CancellablePromise<string> {
-    return $Call.ByID(1295061221, query);
+    return $Call.ByID(1900595315, query);
 }
 
 /**
@@ -214,5 +214,5 @@ export function TestKnowledgeSearch(query: string): $CancellablePromise<string> 
  * latency in milliseconds for display.
  */
 export function TestProvider(p: config$0.ModelProvider, model: string): $CancellablePromise<number> {
-    return $Call.ByID(3894126338, p, model);
+    return $Call.ByID(646608668, p, model);
 }

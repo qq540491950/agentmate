@@ -11,7 +11,7 @@ import (
 
 	"google.golang.org/adk/v2/session"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // SetSessionWorkspace rebinds a task before its first event. The directory is
@@ -186,7 +186,7 @@ func validateTaskWorkspace(raw string) (string, error) {
 	if _, err := os.ReadDir(abs); err != nil {
 		return "", fmt.Errorf("工作区不可读: %w", err)
 	}
-	probe, err := os.CreateTemp(abs, ".workbuddy-write-test-*")
+	probe, err := os.CreateTemp(abs, ".agentmate-write-test-*")
 	if err != nil {
 		return "", fmt.Errorf("工作区不可写: %w", err)
 	}

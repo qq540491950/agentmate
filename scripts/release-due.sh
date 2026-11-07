@@ -30,7 +30,7 @@ if [ "$ahead" -ne 0 ] || [ "$behind" -ne 0 ]; then
 	exit 0
 fi
 
-if ! latest="$(gh release list --repo qq540491950/go-workbuddy --limit 1 \
+if ! latest="$(gh release list --repo qq540491950/agentmate --limit 1 \
 	--json tagName,publishedAt \
 	--jq 'if length == 0 then "" else (.[0].tagName + "\t" + .[0].publishedAt) end')"; then
 	echo "release-due: gh release list failed" >&2

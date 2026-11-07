@@ -17,11 +17,11 @@ import (
 	"google.golang.org/adk/v2/tool/loadmemorytool"
 	"gorm.io/gorm"
 
-	"go-workbuddy/internal/agentkit"
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
-	"go-workbuddy/internal/memory"
-	"go-workbuddy/internal/services"
+	"agentmate/internal/agentkit"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
+	"agentmate/internal/memory"
+	"agentmate/internal/services"
 )
 
 // Wails uses Go's `embed` package to embed the frontend files into the binary.
@@ -52,7 +52,7 @@ func init() {
 
 func main() {
 	// Configuration lives under the OS user config directory.
-	cfgDir, err := osUserConfigDir("workbuddy-agent")
+	cfgDir, err := osUserConfigDir("agentmate")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func main() {
 	var mainWindow atomic.Pointer[application.WebviewWindow]
 
 	app := application.New(application.Options{
-		Name:        "WorkBuddy Agent",
+		Name:        "AgentMate",
 		Description: "ADK-powered agent desktop app",
 		Services: []application.Service{
 			application.NewService(logSvc),
@@ -178,7 +178,7 @@ func main() {
 	}
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "WorkBuddy Agent",
+		Title:     "AgentMate",
 		Width:     1280,
 		Height:    820,
 		MinWidth:  960,
@@ -268,16 +268,16 @@ func shutdownBounded(name string, timeout time.Duration, fn func()) {
 }
 
 // setupSystemTray adds a menu bar tray: click toggles the window, the menu
-// offers show/hide and quit (类 WorkBuddy 的常驻入口).
+// offers show/hide and quit (常驻托盘入口).
 func setupSystemTray(app *application.App, window *application.WebviewWindow) {
 	tray := app.SystemTray.New()
 	tray.SetIcon(trayIcon)
-	tray.SetTooltip("WorkBuddy Agent")
+	tray.SetTooltip("AgentMate")
 	// 左键直接切换主窗口显隐（smart default），右键弹出菜单。
 	tray.AttachWindow(window).WindowOffset(8)
 
 	menu := app.NewMenu()
-	menu.Add("显示/隐藏 WorkBuddy").OnClick(func(*application.Context) {
+	menu.Add("显示/隐藏 AgentMate").OnClick(func(*application.Context) {
 		if window.IsVisible() {
 			window.Hide()
 		} else {
@@ -297,7 +297,7 @@ func setupSystemTray(app *application.App, window *application.WebviewWindow) {
 // It matches productIdentifier in build/config.yml.
 func singleInstanceOptions(activate func()) *application.SingleInstanceOptions {
 	return &application.SingleInstanceOptions{
-		UniqueID: "com.workbuddy.agent",
+		UniqueID: "com.agentmate.app",
 		OnSecondInstanceLaunch: func(application.SecondInstanceData) {
 			if activate != nil {
 				activate()

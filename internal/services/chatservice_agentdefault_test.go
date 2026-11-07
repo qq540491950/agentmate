@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // TestAgentWithoutExplicitModelRunsOnDefault: an agent created from the

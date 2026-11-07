@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 // fileDiffFixture wires an artifact service with a session whose workspace is

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # 供 issue 自动修复运行手册在每个 Bash 调用开头 source。
-# 用法：source /Users/liruitao/Desktop/go-project/go-workbuddy/scripts/issue-env.sh
+# 用法：source /Users/liruitao/Desktop/go-project/agentmate/scripts/issue-env.sh
 #
 # 提供 REPO / ROOT / STATE / LEASE / WT_ROOT / MAIN_WT / RUN。
 # RUN 每轮固定：首次 source 时生成并写入 $STATE/run-id；后续调用复用。
 # 新一轮开始前由运行手册显式重置（见 issue-fixer-prompt.md 第 0 节）。
-export REPO="${ISSUE_REPO:-qq540491950/go-workbuddy}"
-export ROOT="${ISSUE_REPO_ROOT:-/Users/liruitao/Desktop/go-project/go-workbuddy}"
+export REPO="${ISSUE_REPO:-qq540491950/agentmate}"
+export ROOT="${ISSUE_REPO_ROOT:-/Users/liruitao/Desktop/go-project/agentmate}"
 export STATE="${ISSUE_STATE_DIR:-$HOME/.claude/scheduled-tasks/issue-fixer}"
 export LEASE="$STATE/leases"
 export WT_ROOT="${ISSUE_WORKTREE_ROOT:-$STATE/worktrees}"

@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
-Name=WorkBuddy Agent
-Comment=WorkBuddy Agent — 本地 AI Agent 桌面应用
+Name=AgentMate
+Comment=AgentMate — 本地 AI Agent 桌面应用
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/go-workbuddy %u
+Exec=/usr/local/bin/agentmate %u
 Terminal=false
 Type=Application
-Icon=go-workbuddy
+Icon=agentmate
 Categories=Utility;
-StartupWMClass=go-workbuddy
+StartupWMClass=agentmate
 
  

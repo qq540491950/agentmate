@@ -15,7 +15,7 @@
 # agent:retryable，让发布列车按冷却时间自动重试同一 tag。
 set -euo pipefail
 
-REPO="${ISSUE_REPO:-qq540491950/go-workbuddy}"
+REPO="${ISSUE_REPO:-qq540491950/agentmate}"
 STATE_DIR="${ISSUE_STATE_DIR:-$HOME/.claude/scheduled-tasks/issue-fixer}"
 SNAPSHOT="$STATE_DIR/release-snapshot.tsv"
 

@@ -18,7 +18,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 
-	"go-workbuddy/internal/config"
+	"agentmate/internal/config"
 )
 
 const (
@@ -170,7 +170,7 @@ func browserSimulator() func(string) error {
 
 func listToolsThrough(t *testing.T, tr mcp.Transport) []string {
 	t.Helper()
-	client := mcp.NewClient(&mcp.Implementation{Name: "workbuddy-test", Version: "1.0.0"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "agentmate-test", Version: "1.0.0"}, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	session, err := client.Connect(ctx, tr, nil)
@@ -230,7 +230,7 @@ func TestMCPAuthOAuth2Flow(t *testing.T) {
 	cfg := config.MCPServerConfig{
 		ID: "m3", Name: "secured", Transport: config.MCPStreamableHTTP,
 		URL: resource.URL + "/mcp", AuthType: "oauth2",
-		OAuthClientID: "workbuddy-desktop",
+		OAuthClientID: "agentmate-desktop",
 	}
 	var pendingURL atomic.Value
 	tr, err := buildTransport(cfg, nil, func(authURL string) {
@@ -262,7 +262,7 @@ func TestMCPAuthUnauthenticatedRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "workbuddy-test", Version: "1.0.0"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "agentmate-test", Version: "1.0.0"}, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	session, err := client.Connect(ctx, tr, nil)
@@ -289,7 +289,7 @@ func TestMCPAuthTokenPersistence(t *testing.T) {
 	cfg := config.MCPServerConfig{
 		ID: "m5", Name: "secured", Transport: config.MCPStreamableHTTP,
 		URL: resource.URL + "/mcp", AuthType: "oauth2",
-		OAuthClientID: "workbuddy-desktop",
+		OAuthClientID: "agentmate-desktop",
 	}
 
 	// First run: full consent flow; the browser simulator is required.

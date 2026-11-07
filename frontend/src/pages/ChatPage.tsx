@@ -2042,7 +2042,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand/15 text-brand">
             <Sparkles className="h-3.5 w-3.5" />
           </span>
-          <span className="min-w-0 flex-1 truncate text-ui font-semibold">WorkBuddy</span>
+          <span className="min-w-0 flex-1 truncate text-ui font-semibold">AgentMate</span>
           <button
             title="折叠对话列表（⌘B）"
             aria-label="折叠对话列表"
@@ -2276,7 +2276,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
           </div>
         </div>
         <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
-          <span className="truncate" title="基于 Google ADK Go v2 · Wails v3">{version ? `WorkBuddy v${version}` : "WorkBuddy"}</span>
+          <span className="truncate" title="基于 Google ADK Go v2 · Wails v3">{version ? `AgentMate v${version}` : "AgentMate"}</span>
           <span className="flex shrink-0 items-center gap-1">
             <button title="设置（⌘,）" onClick={() => onOpenSettings()} className="rounded p-1 hover:bg-accent hover:text-foreground">
               <SettingsIcon className="h-3.5 w-3.5" />
@@ -2333,7 +2333,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               </button>
             )}
             <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="max-w-[360px] truncate text-sm font-semibold">{active ? active.title : "WorkBuddy"}</span>
+            <span className="max-w-[360px] truncate text-sm font-semibold">{active ? active.title : "AgentMate"}</span>
             {active && (
               (() => {
                 const label = sessionTargetBadgeLabel(active.targetType);

@@ -11,7 +11,7 @@ func TestAppInfoReportsInjectedVersion(t *testing.T) {
 	defer func() { AppVersion = "dev" }()
 	a := NewAppService(&Services{})
 	info := a.AppInfo()
-	if info["version"] != "9.9.9-test" || info["name"] != "WorkBuddy Agent" {
+	if info["version"] != "9.9.9-test" || info["name"] != "AgentMate" {
 		t.Fatalf("AppInfo = %v", info)
 	}
 	if want := runtime.GOOS + "/" + runtime.GOARCH; info["platform"] != want {

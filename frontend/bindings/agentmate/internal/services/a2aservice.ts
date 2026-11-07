@@ -22,26 +22,26 @@ import * as $models from "./models.js";
  * returns its existing status. Multiple agents may be published at once.
  */
 export function Start(agentID: string, port: number): $CancellablePromise<$models.A2AStatus> {
-    return $Call.ByID(2586883553, agentID, port);
+    return $Call.ByID(2948556223, agentID, port);
 }
 
 /**
  * Status lists all currently published agents.
  */
 export function Status(): $CancellablePromise<$models.A2AStatus[] | null> {
-    return $Call.ByID(2073073381);
+    return $Call.ByID(1063646287);
 }
 
 /**
  * StopAgent shuts down one published agent's server.
  */
 export function StopAgent(agentID: string): $CancellablePromise<void> {
-    return $Call.ByID(2740249224, agentID);
+    return $Call.ByID(948825286, agentID);
 }
 
 /**
  * StopAll shuts down every published agent server.
  */
 export function StopAll(): $CancellablePromise<void> {
-    return $Call.ByID(444664702);
+    return $Call.ByID(2758890980);
 }

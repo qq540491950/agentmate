@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"go-workbuddy/internal/config"
-	"go-workbuddy/internal/mcpmgr"
+	"agentmate/internal/config"
+	"agentmate/internal/mcpmgr"
 
-	"go-workbuddy/internal/agentkit"
+	"agentmate/internal/agentkit"
 )
 
 func newBackupTestService(t *testing.T) (*AppService, *config.Store, string) {
