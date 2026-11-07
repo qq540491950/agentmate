@@ -4,6 +4,23 @@
 
 ## 视觉测试与体验设计
 
+### 第二百一十六轮迭代：执行过程空窗抖动修复与用户消息长 URL 溢出修复（已实施）
+
+依据：用户报告①会话里粘贴的无空格长 URL（vless://…）把用户气泡横向撑出聊天栏被裁切；②执行过程在回合进行中反复"收缩→展开"，批次间隙徽章闪成绿色"完成"，多轮工具时持续抖动，明显未完成却显示完成。
+
+**实现要点**
+
+- **toolGroupStatus**：补回合级存活——live 且未答复（answered=false）时返回 running，即便当前没有任何 streaming 消息或运行中工具（两次工具批次之间的静默空窗）；errored 仍优先 failed，settled 且无答复维持 failed。修掉每个批次间隙 done↔running 翻转导致的折叠条收展抖动与徽章误报。
+- **用户气泡**：`break-words`（overflow-wrap: break-word 不参与 min-content 计算）改为 `[overflow-wrap:anywhere]`——无空格长 token 的 min-content 收敛为约 1 字符，flex 链的 `max-w-[85%] / sm:max-w-[640px]` 上限重新生效，URL 在气泡内折行。
+- ToolCallGroup 无需改动：autoExpanded 跟随 status，修复后空窗期保持展开直至回合 settled，与组件 doc 声明的"运行中展开、settled 收起"语义一致。
+
+**测试证据**
+
+- 回归闭环：chatUtils.test.ts 把"live 且未答复"的预期从 done 翻转为 running（先红后绿），并补 narration 流完后的静默空窗用例（同样先红后绿）；errored/settled 既有用例不变。
+- 溢出差异回路：临时页链接构建产物 CSS，同屏渲染旧/新两类气泡 + 同一条长 URL，无头 Edge 截图——旧类气泡溢出 640px 上限被裁切（复现症状），新类完整收进气泡内折行（真实 Chromium 引擎验证；jsdom 无布局测不了宽度，仓库无 Playwright，故按诊断流程以截图差异回路代替）。
+- `npx tsc --noEmit` 0 错；vitest 152/152；`npm run build` 通过。
+- 待人工冒烟：真机重发含长 URL 的消息（应完全收进气泡内折行）；跑一轮多工具会话（执行过程应保持展开到回合结束，徽章不再中途闪"完成"）。
+
 ### 第二百一十五轮迭代：执行过程组拆组修复——plan_todos 更新不再打断整轮（已实施）
 
 依据：用户报告一次"分析项目问题"的轮次把执行过程拆成 6 个"0 秒失败"卡片。sessions.db 实证：该轮仅 1 条用户消息、79 次工具调用、author 恒定；轮内 `plan_todos` 更新 3 次——`groupTurn` 对"非 process event"一律 `flush()`，每次 plan_todos 的 call/result（共 6 个事件）都把整轮撕开一段，拆点数与截图组数吻合。

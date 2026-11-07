@@ -309,11 +309,13 @@ describe("toolGroupStatus", () => {
     expect(toolGroupStatus(failed, new Set(), false)).toBe("failed");
   });
 
-  it("fails a settled turn that never produced a reply (history keeps no errors)", () => {
+  it("fails a settled turn without a reply; keeps a live gap running", () => {
     const missing = group([call, result({ ok: true })], { answered: false });
     expect(toolGroupStatus(missing, new Set(), false)).toBe("failed");
-    // While the turn is live the reply may simply not be written yet.
-    expect(toolGroupStatus(missing, new Set(), true)).toBe("done");
+    // Between two tool batches nothing streams and no tool is running, but
+    // the turn is still live: the block must stay open instead of flapping
+    // done→running on every batch gap.
+    expect(toolGroupStatus(missing, new Set(), true)).toBe("running");
   });
 
   it("keeps the run successful when a step failed but the turn answered", () => {
@@ -381,6 +383,9 @@ describe("toolGroupStatus", () => {
     const narration = msg({ id: "mid", kind: "assistant", text: "我来读取模板", streaming: true });
     expect(toolGroupStatus(group([result({ ok: true }), narration]), new Set(), true)).toBe("running");
     expect(toolGroupStatus(group([result({ ok: true }), { ...narration, streaming: false }]), new Set(), false)).toBe("done");
+    // A finished narration followed by silence is the batch gap: the turn is
+    // live, so the block keeps its running state until it settles.
+    expect(toolGroupStatus(group([result({ ok: true }), { ...narration, streaming: false }], { answered: false }), new Set(), true)).toBe("running");
   });
 });
 

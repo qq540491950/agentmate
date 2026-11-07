@@ -216,7 +216,7 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
           {m.text && (
           <div className="flex flex-col items-end gap-1">
             <div
-              className="whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-brand/10 px-4 py-2.5 text-md leading-[1.65] text-foreground ring-1 ring-brand/15"
+              className="whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl rounded-br-md bg-brand/10 px-4 py-2.5 text-md leading-[1.65] text-foreground ring-1 ring-brand/15"
               title={fmtTime(m.timestamp)}
             >
               {highlightText(m.text, filterQ, "bg-brand/25 text-foreground rounded-sm")}

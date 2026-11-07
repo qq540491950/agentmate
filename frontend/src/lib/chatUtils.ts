@@ -321,7 +321,10 @@ export type ToolGroupStatus = "confirm" | "running" | "failed" | "done";
  *  without this the block would collapse and hide the actionable card. A
  *  still-streaming thinking entry or narration also counts as running: the
  *  model may reason between tool batches while the turn continues, and the
- *  block must stay open so the live text is visible.
+ *  block must stay open so the live text is visible. A live turn with no
+ *  in-flight signal at all is the silent gap between two tool batches —
+ *  deriving "done" there made the block collapse and flip to 完成 between
+ *  every batch, so turn-level liveness keeps it running until it settles.
  *  The run failed when it ended in an error without a final reply; a settled
  *  turn with no reply never completed either (history does not keep error
  *  bubbles, so the missing answer is the only durable failure signal left). */
@@ -341,7 +344,8 @@ export function toolGroupStatus(group: ToolGroup, runningTools: Set<string>, liv
   }
   if (pendingConfirm) return "confirm";
   if (running) return "running";
-  if (group.errored || (!live && !group.answered)) return "failed";
+  if (group.errored) return "failed";
+  if (!group.answered) return live ? "running" : "failed";
   return "done";
 }
 
