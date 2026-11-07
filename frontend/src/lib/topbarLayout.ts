@@ -28,9 +28,13 @@ export function resolveTopbarLayout(platform?: TopbarPlatform): TopbarLayout {
   }
 }
 
-/** 从 Wails 注入的运行环境推断顶栏平台；无注入（浏览器/stub）降级为 browser。 */
-export function detectTopbarPlatform(env: { os?: string } | undefined): TopbarPlatform {
-  switch (env?.os) {
+/** 从 Wails 注入的运行环境推断顶栏平台；无注入（浏览器/stub）降级为 browser。
+ *  真实契约是大写字段：Wails v3 runtime 在页面脚本前同步注入
+ *  `window._wails.environment={"OS":…,"Arch":…,"Debug":false}`
+ *  （wails internal/runtime/runtime_prod.go），@wailsio/runtime 内部
+ *  （system.js / drag.js）也按大写读取；小写 os 为手写环境兜底。 */
+export function detectTopbarPlatform(env: { OS?: string; os?: string } | undefined): TopbarPlatform {
+  switch (env?.OS ?? env?.os) {
     case "windows": return "windows";
     case "darwin": return "macos";
     case "linux": return "browser";

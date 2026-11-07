@@ -4,7 +4,21 @@
 
 ## 视觉测试与体验设计
 
-### 第二百一十二轮迭代：项目更名 AgentMate——品牌、代码身份、数据目录与图标全量切换（已实施，待审核提交）
+### 第二百一十三轮迭代：自绘顶栏窗口拖动修复——平台检测对齐 Wails runtime 真实契约（已实施）
+
+依据：用户报告 Windows 无边框自绘顶栏（#75/#76/#77）不能拖动窗口，且窗口按钮工作正常。按诊断流程先建红色信号再修复。
+
+**实现要点**
+
+- **根因**：Wails v3 runtime 在页面脚本前同步注入 `window._wails.environment={"OS":…,"Arch":…,"Debug":false}`（大写字段，internal/runtime/runtime_prod.go）；TopBar 平台检测 `detectTopbarPlatform` 读小写 `env?.os`，恒为 undefined → 平台恒判 `browser` → `dragRegion: false` → 顶栏永不声明 `--wails-draggable: drag`，runtime 的拖动监听（@wailsio/runtime drag.js 的 mousedown/capture 检查 computed style）永远不触发 `wails:drag`。窗口按钮不受影响（browser 分支同样渲染按钮，操作走 runtime 内部的大写读取），与"只有拖动失效"症状吻合。
+- **修复**：`detectTopbarPlatform` 改读 `env?.OS ?? env?.os`（大写真实契约优先，小写兜底），类型签名同步；TopBar 调用处类型同步；注释写明契约来源。Go 侧无涉。
+- **测试契约更正**：topbarLayout.test.ts 原有用例用小写 `{os:"windows"}` 锁定了错误契约（所以此前全绿但真机失效）；改用真实注入契约 `{OS:…}`，并新增 TopBar 平台自动检测的端到端用例（stubGlobal window + 真实注入形态 → 断言拖拽区/no-drag 声明）。
+
+**测试证据**
+
+- 红色闭环：契约测试更正后 3 用例红（windows/darwin 平台检测 + Windows 自动检测端到端）；修复后 `vitest run` 13/13 绿。
+- 全量：`npx tsc --noEmit` 0 错；`npm test` 146/146 通过；`npm run build` 通过。
+- 待人工冒烟（用户执行）：真机拖动顶栏空白区移动窗口、双击顶栏最大化、按钮区不触发拖动。
 
 依据：用户确认三项决策——GitHub 仓库走改名路线保留 issue/release 历史、应用数据目录全新开始（零迁移）、持久状态键直接改名；logo 采用已定稿的火花 A 设计（design/logo/）。执行范围仅本地修改，远端改名与推送由用户单独指令触发。
 

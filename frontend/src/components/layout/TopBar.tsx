@@ -39,7 +39,9 @@ export function TopBar({ layout, ops, centerSlot, endSlot }: TopBarProps) {
     resolveTopbarLayout(
       typeof window === "undefined"
         ? undefined
-        : detectTopbarPlatform((window as unknown as { _wails?: { environment?: { os?: string } } })._wails?.environment),
+        : detectTopbarPlatform(
+            (window as unknown as { _wails?: { environment?: { OS?: string; os?: string } } })._wails?.environment,
+          ),
     );
   const resolvedOps = ops ?? wailsWindowOperations;
   const [isMaximised, setIsMaximised] = useState(false);

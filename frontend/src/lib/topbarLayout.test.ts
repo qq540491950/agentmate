@@ -28,20 +28,23 @@ describe("resolveTopbarLayout", () => {
 });
 
 describe("detectTopbarPlatform", () => {
+  // 真实契约：Wails runtime 注入的是大写字段（internal/runtime/runtime_prod.go:
+  // `window._wails.environment={"OS":…,"Arch":…,"Debug":false}`），@wailsio/runtime
+  // 内部（system.js / drag.js）也按大写读取。
   it("Wails 注入 windows 环境时返回 windows", () => {
-    expect(detectTopbarPlatform({ os: "windows" })).toBe("windows");
+    expect(detectTopbarPlatform({ OS: "windows" })).toBe("windows");
   });
 
   it("Wails 注入 darwin 环境时返回 macos", () => {
-    expect(detectTopbarPlatform({ os: "darwin" })).toBe("macos");
+    expect(detectTopbarPlatform({ OS: "darwin" })).toBe("macos");
   });
 
   it("无 Wails 环境（浏览器 / stub）降级为 browser", () => {
-    expect(detectTopbarPlatform({ os: undefined })).toBe("browser");
+    expect(detectTopbarPlatform({ OS: undefined })).toBe("browser");
     expect(detectTopbarPlatform({})).toBe("browser");
   });
 
   it("Linux 桌面按 browser 降级（v1 无 Linux 自绘 chrome）", () => {
-    expect(detectTopbarPlatform({ os: "linux" })).toBe("browser");
+    expect(detectTopbarPlatform({ OS: "linux" })).toBe("browser");
   });
 });

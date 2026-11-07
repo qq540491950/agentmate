@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TopBar } from "./TopBar";
 import { resolveTopbarLayout } from "@/lib/topbarLayout";
 
@@ -32,5 +32,29 @@ describe("TopBar", () => {
     const html = renderToStaticMarkup(<TopBar layout={resolveTopbarLayout("macos")} />);
     expect(html).not.toContain('data-slot="topbar-window-buttons"');
     expect(html).toContain('data-slot="topbar-traffic-light-inset"');
+  });
+
+  // 端到端 seam：TopBar 不传 layout 时应从 window._wails.environment 自动解析
+  // 平台。真实注入（internal/runtime/runtime_prod.go）是大写 OS 字段——此前
+  // 组件读小写 os 导致平台恒判 browser、拖拽区永不声明（顶栏拖动失效）。
+  describe("平台自动检测（真实 Wails 注入契约）", () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("Windows 环境：顶栏声明拖拽区，按钮区声明 no-drag", () => {
+      vi.stubGlobal("window", {
+        _wails: { environment: { OS: "windows", Arch: "amd64", Debug: false } },
+      });
+      const html = renderToStaticMarkup(<TopBar />);
+      expect(html).toContain("--wails-draggable:drag");
+      expect(html).toContain("--wails-draggable:no-drag");
+    });
+
+    it("macOS 环境：不声明拖拽区（沿用系统标题栏拖动）", () => {
+      vi.stubGlobal("window", {
+        _wails: { environment: { OS: "darwin", Arch: "arm64", Debug: false } },
+      });
+      const html = renderToStaticMarkup(<TopBar />);
+      expect(html).not.toContain("--wails-draggable");
+    });
   });
 });
