@@ -195,7 +195,9 @@ function isProcessEvent(m: UIMessage): boolean {
  * several look-alike blocks (thinking card, empty skeleton, tool card, reply).
  * The turn's last assistant message after the last process event is the only
  * result and stays outside the block. Empty settled assistant shells are
- * dropped, and plan_todos cards / errors stay standalone. A single tool call
+ * dropped; plan_todos cards stay standalone without splitting the run (the
+ * pinned plan must not shred a long turn into several look-alike groups);
+ * errors keep breaking it. A single tool call
  * with no reasoning or narration keeps its existing standalone cards.
  */
 export function groupToolMessages(messages: UIMessage[]): ChatItem[] {
@@ -290,7 +292,14 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
       continue;
     }
     if (!isProcessEvent(m)) {
-      // plan_todos cards and errors stay standalone and break the run.
+      // plan_todos updates render as their own pinned cards but must NOT
+      // split the run: a long turn that refreshes its plan repeatedly used
+      // to shred one execution block into several look-alike groups (each
+      // plan_todos call/result flushed the run). Errors still break the run.
+      if (m.toolName === "plan_todos") {
+        out.push(messageItem(m));
+        continue;
+      }
       flush();
       out.push(messageItem(m));
       continue;

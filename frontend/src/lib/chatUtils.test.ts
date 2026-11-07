@@ -95,7 +95,7 @@ describe("groupToolMessages", () => {
     expect(groupToolMessages(msgs).map((i) => i.kind)).toEqual(["message", "message"]);
   });
 
-  it("keeps narration inside the turn block and splits at plan_todos cards and author changes", () => {
+  it("keeps narration inside the turn block and splits at author changes; plan_todos cards stay pinned without splitting", () => {
     const msgs: UIMessage[] = [
       msg({ id: "c1", kind: "tool_call", toolName: "read" }),
       msg({ id: "r1", kind: "tool_result", toolName: "read" }),
@@ -111,17 +111,48 @@ describe("groupToolMessages", () => {
       msg({ id: "r5", kind: "tool_result", toolName: "grep", author: "sub-agent" }),
     ];
     const items = groupToolMessages(msgs);
-    // Narration between tool batches no longer breaks the run; plan_todos
-    // still renders pinned and an author change still starts a new block.
+    // Narration between tool batches no longer breaks the run; the plan_todos
+    // card stays standalone and floats above the block it used to split (the
+    // author change at c4 still starts a new block).
     expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "group:c1", "todos", "group:c4",
+      "todos", "group:c1", "group:c4",
     ]);
-    const first = items[0];
-    if (first.kind !== "tool_group") throw new Error("expected a tool group");
+    const first = items.find((i) => i.kind === "tool_group" && i.id === "c1");
+    if (!first || first.kind !== "tool_group") throw new Error("expected a tool group");
     expect(first.messages.map((m) => m.id)).toEqual(["c1", "r1", "mid", "c2", "r2", "c3", "r3"]);
-    const third = items[2];
-    if (third.kind !== "tool_group") throw new Error("expected a tool group");
+    const third = items.find((i) => i.kind === "tool_group" && i.author === "sub-agent");
+    if (!third || third.kind !== "tool_group") throw new Error("expected a tool group");
     expect(third.author).toBe("sub-agent");
+  });
+
+  it("keeps one execution block across repeated plan_todos updates", () => {
+    // The reported render: a long analysis turn that refreshed its plan three
+    // times was shredded into six look-alike failed groups — every plan_todos
+    // call/result used to flush the run. The block must span the whole turn;
+    // the todo cards stay standalone (pinned-plan semantics).
+    const msgs: UIMessage[] = [
+      msg({ id: "t1", kind: "thinking", text: "先看结构" }),
+      msg({ id: "p1c", kind: "tool_call", toolName: "plan_todos" }),
+      msg({ id: "p1r", kind: "tool_result", toolName: "plan_todos", toolResp: { todos: [{ content: "梳理问题", status: "in_progress" }] } }),
+      msg({ id: "c1", kind: "tool_call", toolName: "run_command" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "run_command" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "read" }),
+      msg({ id: "p2c", kind: "tool_call", toolName: "plan_todos" }),
+      msg({ id: "p2r", kind: "tool_result", toolName: "plan_todos", toolResp: { todos: [{ content: "梳理问题", status: "completed" }] } }),
+      msg({ id: "c3", kind: "tool_call", toolName: "run_command" }),
+      msg({ id: "r3", kind: "tool_result", toolName: "run_command" }),
+      msg({ id: "a", kind: "assistant", text: "结论" }),
+    ];
+    const items = groupToolMessages(msgs);
+    const groups = items.filter((i) => i.kind === "tool_group");
+    expect(groups).toHaveLength(1);
+    if (groups[0].kind !== "tool_group") throw new Error("expected a tool group");
+    expect(groups[0].messages.map((m) => m.id)).toEqual(["t1", "c1", "r1", "c2", "r2", "c3", "r3"]);
+    const todoCardIds = items
+      .filter((i) => i.kind === "message" && i.message.toolName === "plan_todos")
+      .map((i) => (i.kind === "message" ? i.message.id : ""));
+    expect(todoCardIds).toEqual(["p1c", "p1r", "p2c", "p2r"]);
   });
 
   it("folds an empty skeleton and inter-tool narration into one turn block", () => {
