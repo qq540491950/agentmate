@@ -6,12 +6,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 	"google.golang.org/adk/v2/session"
 	"google.golang.org/adk/v2/session/database"
 	"google.golang.org/adk/v2/tool/loadmemorytool"
@@ -158,6 +160,11 @@ func main() {
 			// the tray menu.
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
+		// Windows 兜底（#77）：最后一个窗口关闭不退出进程，防止任何未拦截
+		// 的关闭路径意外退出；Mac 上由上方 MacOptions 的对应字段承担。
+		Windows: application.WindowsOptions{
+			DisableQuitOnLastWindowClosed: true,
+		},
 		OnShutdown: func() {
 			services.StopUpdates(updSvc) // stop the background update poll
 			// Wails runs OnShutdown synchronously inside Quit(). The in-app
@@ -183,6 +190,10 @@ func main() {
 		Height:    820,
 		MinWidth:  960,
 		MinHeight: 600,
+		// Windows 启用无边框（#77）：自绘顶栏成为唯一窗口 chrome，保留
+		// 无边框装饰（系统阴影/圆角/Aero Snap/边缘缩放）。macOS 不启用，
+		// 继续使用隐藏标题栏 + 红绿灯配置。
+		Frameless: runtime.GOOS == "windows",
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
@@ -192,6 +203,21 @@ func main() {
 		URL:              "/",
 	})
 	mainWindow.Store(window)
+
+	// 关闭语义统一为「隐藏到托盘」（#77）：拦截 WindowClosing（Alt+F4 /
+	// 系统关闭 / Close 调用），非退出流程取消原生关闭并只隐藏窗口。隐藏后
+	// 由托盘左键或全局唤起快捷键唤回；托盘「退出」先置 quitting 再 Quit，
+	// 让真正的退出穿透钩子。上游测试覆盖了 Cancel 拦截路径。
+	var quitting atomic.Bool
+	window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		if quitting.Load() {
+			return
+		}
+		e.Cancel()
+		window.Hide()
+		// Alt+F4 路径前端不可见，经事件让前端弹一次性「已隐藏到托盘」提示。
+		app.Event.Emit("shell:hidden-to-tray")
+	})
 
 	// A2A server auto-start (publish a local agent for remote A2A clients).
 	if svcSettings := store.Get().Settings; svcSettings.A2AAutoStart && svcSettings.A2AAgentID != "" {
@@ -219,7 +245,7 @@ func main() {
 		}
 	}()
 
-	setupSystemTray(app, window)
+	setupSystemTray(app, window, &quitting)
 	// Global summon shortcut; a conflicting registration (another app owns
 	// it) must not block startup.
 	if err := app.GlobalShortcut.Register("shift+cmd+space", func() {
@@ -269,7 +295,7 @@ func shutdownBounded(name string, timeout time.Duration, fn func()) {
 
 // setupSystemTray adds a menu bar tray: click toggles the window, the menu
 // offers show/hide and quit (常驻托盘入口).
-func setupSystemTray(app *application.App, window *application.WebviewWindow) {
+func setupSystemTray(app *application.App, window *application.WebviewWindow, quitting *atomic.Bool) {
 	tray := app.SystemTray.New()
 	tray.SetIcon(trayIcon)
 	tray.SetTooltip("AgentMate")
@@ -285,7 +311,11 @@ func setupSystemTray(app *application.App, window *application.WebviewWindow) {
 			window.Focus()
 		}
 	})
-	menu.Add("退出").OnClick(func(*application.Context) { app.Quit() })
+	menu.Add("退出").OnClick(func(*application.Context) {
+		// 先置退出标记再 Quit：WindowClosing 钩子据此放行真正的退出（#77）。
+		quitting.Store(true)
+		app.Quit()
+	})
 	tray.SetMenu(menu)
 }
 

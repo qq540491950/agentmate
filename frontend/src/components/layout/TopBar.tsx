@@ -4,6 +4,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Copy, Minus, Sparkles, Square, X } from "lucide-react";
 import { Events } from "@wailsio/runtime";
+import { toast } from "sonner";
 import { resolveTopbarLayout, detectTopbarPlatform, type TopbarLayout } from "@/lib/topbarLayout";
 import { resolveMaximiseIcon, wailsWindowOperations, type WindowOperations } from "@/lib/topbarWindow";
 
@@ -16,6 +17,20 @@ interface TopBarProps {
   centerSlot?: ReactNode;
   /** 右侧扩展槽位（v1 为空）。 */
   endSlot?: ReactNode;
+}
+
+// 首次隐藏到托盘的一次性提示（#77）：本地标记去重，自绘关闭按钮与
+// Alt+F4（Go 关闭钩子经 shell:hidden-to-tray 事件）两条路径共用。
+function toastHiddenToTrayOnce() {
+  try {
+    if (localStorage.getItem("wb-hidden-to-tray-once")) return;
+    localStorage.setItem("wb-hidden-to-tray-once", "1");
+  } catch {
+    return;
+  }
+  toast.info("AgentMate 已隐藏到托盘", {
+    description: "应用仍在托盘运行：点托盘图标或全局快捷键可唤回，退出请用托盘菜单。",
+  });
 }
 
 export function TopBar({ layout, ops, centerSlot, endSlot }: TopBarProps) {
@@ -41,6 +56,8 @@ export function TopBar({ layout, ops, centerSlot, endSlot }: TopBarProps) {
       Events.On("common:WindowRestore", () => setIsMaximised(false)),
       Events.On("common:WindowFullscreen", () => setIsFullscreen(true)),
       Events.On("common:WindowUnFullscreen", () => setIsFullscreen(false)),
+      // Alt+F4 / 系统关闭被 Go 钩子拦截隐藏时，前端经此事件弹一次性提示。
+      Events.On("shell:hidden-to-tray", () => toastHiddenToTrayOnce()),
     ];
     return () => {
       disposed = true;
@@ -109,7 +126,10 @@ export function TopBar({ layout, ops, centerSlot, endSlot }: TopBarProps) {
                 type="button"
                 title="关闭"
                 aria-label="关闭"
-                onClick={resolvedOps.hide}
+                onClick={() => {
+                  resolvedOps.hide();
+                  toastHiddenToTrayOnce();
+                }}
                 className="flex h-10 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
               >
                 <X className="h-4 w-4" />
