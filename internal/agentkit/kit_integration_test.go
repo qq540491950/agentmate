@@ -23,6 +23,7 @@ func newTestKit(t *testing.T) (*Kit, *config.Store) {
 	kit := NewKit(store, mcpmgr.New())
 	// Keep discovery hermetic: never read the developer's real ~/.agents/skills.
 	kit.globalSkillRoot = t.TempDir()
+	kit.globalAgentsFile = "" // never read the developer's real ~/.agents/AGENTS.md
 	return kit, store
 }
 

@@ -4,6 +4,22 @@
 
 ## 视觉测试与体验设计
 
+### 第二百二十二轮迭代：运行时代理自动加载 AGENTS.md 工程指南（已实施）
+
+依据：人工会话按 implement 技能实现 issue #79 与 ADR-0003（非自动修复流水线，故直接在主 checkout 追加本记录）。用户在项目根写的 AGENTS.md 此前对运行时代理完全不生效——系统指令唯一来源是用户配置的 SystemPrompt，后端与前端对 AGENTS.md 零命中；同一份文件在 Codex 等编码代理里却被自动遵循。设计经拷问会话定稿：全局 `~/.agents/AGENTS.md` 与有效工作区根两份叠加、冲突以后文为准、不做嵌套发现（ADR 记录的有意简化）、全文注入不截断、单份超 48KB 追加警告、缺失即跳过。
+
+**实现要点**
+
+- **解析函数**：新增 `config.GlobalAgentsFile`（`~/.agents/AGENTS.md`，Windows 走 `USERPROFILE`）与 `config.EffectiveAgentGuides(workspace, globalFile)`——全局在前、工作区在后；原文全文注入（不裁剪首尾），单份超过 48KB（与 `@文件` 单文件上限同源阈值，警告文案复用同一常量）在块末追加中文体积警告（KB 向上取整）；缺失、不可读、二进制/非法 UTF-8、空白文件一律跳过，不阻塞会话。
+- **注入点**：Kit 构造时捕获 `globalAgentsFile`；新增 `Kit.appendAgentGuides`，`llmConfig` 在基础指令（含空回退）后叠加，团队自动协调员指令同样叠加——装配顺序为角色提示词 → 工程指南 → 技能正文（`skillAwareInstruction` 仍在其后追加）。团队负责人与成员经 `llmConfig` 自动生效；远程 A2A 客户端无本地指令提供方，结构性排除。
+- **无前端改动**：不改页面、不生成绑定、无设置项（豁免方式为删除或重命名文件）。
+
+**测试证据**
+
+- 低缝：`internal/config/agents_guides_test.go` 六例（仅工作区、双份顺序、超限不截断+警告、缺失/不可读/二进制/空白跳过、空工作区保留全局、`GlobalAgentsFile` 路径）。
+- 最高缝：`internal/services/chatservice_agents_guide_test.go` 七例——假模型服务器捕获请求：配置 Agent 双份注入且断言「角色提示词 → 全局 → 工作区」顺序、仅工作区、直连助手注入全局、180KB 文件内容逐字完整且带 176KB 警告与挤占提示、指南先于 `/skill` 正文、移除文件后请求不含任何指南内容而角色提示词仍在、远程 A2A 请求不含本地指南。
+- 红→绿：解析器与端到端均先红后绿；`go test ./internal/... -count=1` 全绿（agentkit / config / mcpmgr / memory / services），`go vet ./internal/... .` 干净。
+
 ### 第二百二十一轮迭代：对话栏宽三档——按窗口比例自适应（已实施）
 
 依据：用户反馈聊天输出列宽固定、宽屏留白过多，希望提供「窄 / 中 / 宽」三档，并明确要求三档随窗口自适应变化，而不是写死像素值。

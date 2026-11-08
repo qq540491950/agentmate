@@ -87,11 +87,15 @@ type Kit struct {
 	// (~/.agents/skills). Captured at construction; tests override it so agent
 	// builds never depend on the developer's real home directory.
 	globalSkillRoot string
+	// globalAgentsFile is the user-level engineering guide
+	// (~/.agents/AGENTS.md). Captured at construction, so tests seed it
+	// through the home-dir environment before building the Kit.
+	globalAgentsFile string
 }
 
 // NewKit creates a Kit.
 func NewKit(store *config.Store, mcp *mcpmgr.Manager) *Kit {
-	return &Kit{store: store, mcp: mcp, globalSkillRoot: config.GlobalSkillRoot()}
+	return &Kit{store: store, mcp: mcp, globalSkillRoot: config.GlobalSkillRoot(), globalAgentsFile: config.GlobalAgentsFile()}
 }
 
 // SetMemoryTool attaches the long-term memory search tool.
@@ -305,6 +309,7 @@ func (k *Kit) llmConfig(ac config.AgentConfig, m model.LLM, tools []tool.Tool, t
 	if strings.TrimSpace(instruction) == "" {
 		instruction = "You are a helpful assistant."
 	}
+	instruction = k.appendAgentGuides(instruction, workspace)
 	gcc := &genai.GenerateContentConfig{}
 	if ac.Temperature > 0 {
 		t := float32(ac.Temperature)
@@ -326,6 +331,18 @@ func (k *Kit) llmConfig(ac config.AgentConfig, m model.LLM, tools []tool.Tool, t
 		Toolsets:                 toolsets,
 		DisallowTransferToParent: false,
 	}
+}
+
+// appendAgentGuides joins the engineering-guide blocks (global
+// ~/.agents/AGENTS.md first, then the effective workspace root AGENTS.md)
+// onto a base instruction. Guides complement the role prompt and never block
+// a build; the per-turn skill context still appends after them.
+func (k *Kit) appendAgentGuides(instruction, workspace string) string {
+	guides := config.EffectiveAgentGuides(workspace, k.globalAgentsFile)
+	if len(guides) == 0 {
+		return instruction
+	}
+	return instruction + "\n\n" + strings.Join(guides, "\n\n")
 }
 
 // BuildTeam builds the root agent for a team: lead agent with members as
@@ -466,6 +483,7 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string, 
 	coordInstruction = applyPromptVars(coordInstruction, workspace)
 	instruction := fmt.Sprintf("%s\n\nTeam members: %s. Transfer to a member to work on the task, then summarize the result for the user.",
 		coordInstruction, strings.Join(memberNames, ", "))
+	instruction = k.appendAgentGuides(instruction, workspace)
 
 	coord, err := llmagent.New(llmagent.Config{
 		Name:                rootName,
