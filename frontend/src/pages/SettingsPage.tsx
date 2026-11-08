@@ -229,7 +229,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
         <div className="h-full overflow-y-auto p-6">
       {/* 双列网格按列内流式排布（items-start 防止同行矮卡被撑高）；
           单卡片页（知识库/关于）保持单列宽度，避免右半屏空置。 */}
-      <div className={cn("mx-auto", tab === "general" || tab === "data" ? "max-w-5xl" : "max-w-3xl")}>
+      <div className={cn("mx-auto", tab === "general" || tab === "data" ? "max-w-[clamp(64rem,88%,90rem)]" : "max-w-3xl")}>
       <div className={cn(
         tab === "general" || tab === "data"
           ? "grid items-start gap-4 lg:grid-cols-2"

@@ -7,6 +7,21 @@ import ReactDOM from "react-dom/client";
 import App from "../src/App";
 import "../src/index.css";
 
+// ---- method IDs -----------------------------------------------------------
+// Wails routes ByID calls by FNV-1a32 over the Go method's full name. Compute
+// them here instead of hardcoding numbers: regenerating bindings previously
+// rotted every hardcoded numeric key at once.
+function fnv1a32(text: string): string {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(text)) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return String(hash);
+}
+const svc = (service: string, method: string) =>
+  fnv1a32(`agentmate/internal/services.${service}.${method}`);
+
 // ---- seed data ------------------------------------------------------------
 
 const seedConfig = {
@@ -242,40 +257,40 @@ const dialogMode = stubParams.get("dialogMode") === "cancel" ? "cancel" : "selec
 
 const handlers: Record<string, (args: any[]) => any> = {
   // GetConfig
-  "2830209267": () => seedConfig,
+  [svc("ConfigService", "GetConfig")]: () => seedConfig,
   // ListSessions
-  "2944653350": () => {
+  [svc("ChatService", "ListSessions")]: () => {
     (window as any).__lastList = JSON.parse(JSON.stringify(seedConfig.sessions));
     return seedConfig.sessions;
   },
   // GetSessionMessages(sessionID)
-  "252791171": (args) => histories[args[0]] ?? [],
+  [svc("ChatService", "GetSessionMessages")]: (args) => histories[args[0]] ?? [],
   // IsRunning(sessionID)
-  "2185013938": () => false,
+  [svc("ChatService", "IsRunning")]: () => false,
   // SessionStats(sessionID)
-  "4163807688": () => ({ messages: 1, toolCalls: 1, toolFailures: 0, assistantTurns: 0, tokensIn: 120, tokensOut: 80, tokensTotal: 200 }),
+  [svc("ChatService", "SessionStats")]: () => ({ messages: 1, toolCalls: 1, toolFailures: 0, assistantTurns: 0, tokensIn: 120, tokensOut: 80, tokensTotal: 200 }),
   // ArchiveSession(sessionID, archived)
-  "2286215193": (args) => {
+  [svc("ChatService", "ArchiveSession")]: (args) => {
     const sess = seedConfig.sessions.find((s) => s.id === args[0]);
     if (!sess) throw new Error("会话不存在");
     (sess as any).archived = !!args[1];
     return null;
   },
   // PinSession(sessionID, pinned)
-  "3144528906": (args) => {
+  [svc("ChatService", "PinSession")]: (args) => {
     const sess = seedConfig.sessions.find((s) => s.id === args[0]);
     if (!sess) throw new Error("会话不存在");
     (sess as any).pinned = !!args[1];
     return null;
   },
   // DeleteSession(sessionID)
-  "2756846968": (args) => {
+  [svc("ChatService", "DeleteSession")]: (args) => {
     seedConfig.sessions = seedConfig.sessions.filter((s) => s.id !== args[0]);
     delete histories[args[0]];
     return null;
   },
   // SetSessionModel(sessionID, modelID)
-  "359717012": (args) => {
+  [svc("ChatService", "SetSessionModel")]: (args) => {
     for (const sess of seedConfig.sessions) {
       if (sess.id === args[0]) {
         sess.modelOverride = args[1] || "";
@@ -285,14 +300,14 @@ const handlers: Record<string, (args: any[]) => any> = {
     return null;
   },
   // SetSessionReasoningLevel(sessionID, level)
-  "3185250285": (args) => {
+  [svc("ChatService", "SetSessionReasoningLevel")]: (args) => {
     for (const sess of seedConfig.sessions) {
       if (sess.id === args[0]) (sess as any).reasoningLevel = args[1] || "";
     }
     return null;
   },
   // SetSessionExecutionDisplay(sessionID, mode)
-  "164135869": (args) => {
+  [svc("ChatService", "SetSessionExecutionDisplay")]: (args) => {
     for (const sess of seedConfig.sessions) {
       if (sess.id === args[0]) (sess as any).executionDisplayMode = args[1] || "";
     }
@@ -305,7 +320,7 @@ const handlers: Record<string, (args: any[]) => any> = {
     return null;
   },
   // SendWithReasoning(sessionID, text, attachments, reasoningLevel)
-  "1733058623": (args) => {
+  [svc("ChatService", "SendWithReasoning")]: (args) => {
     const [sid, text, , reasoning] = args;
     const stamp = new Date().toISOString();
     pendingAnswer += 1;
@@ -325,7 +340,7 @@ const handlers: Record<string, (args: any[]) => any> = {
     return null;
   },
   // NewSessionWithWorkspace(targetType, targetID, title, workspaceDir)
-  "1384618270": (args) => {
+  [svc("ChatService", "NewSessionWithWorkspace")]: (args) => {
     if (workspaceMockMode === "conflict") throw new Error("工作区已被任务「需要确认的写入」使用：归档或删除该任务即可释放目录，也可以选择其他目录");
     if (workspaceMockMode === "error") throw new Error("工作区不可写");
     const id = `sess_stub_${seedConfig.sessions.length + 1}`;
@@ -343,7 +358,7 @@ const handlers: Record<string, (args: any[]) => any> = {
     return sess;
   },
   // SetSessionWorkspace(sessionID, workspaceDir)
-  "185468012": (args) => {
+  [svc("ChatService", "SetSessionWorkspace")]: (args) => {
     if (workspaceMockMode === "conflict") throw new Error("工作区已被任务「需要确认的写入」使用：归档或删除该任务即可释放目录，也可以选择其他目录");
     if (workspaceMockMode === "error") throw new Error("工作区不可写");
     const sess = seedConfig.sessions.find((s) => s.id === args[0]);
@@ -351,16 +366,16 @@ const handlers: Record<string, (args: any[]) => any> = {
     return null;
   },
   // SessionWorkspace(sessionID)
-  "3713305274": (args) => {
+  [svc("ChatService", "SessionWorkspace")]: (args) => {
     const sess = seedConfig.sessions.find((s) => s.id === args[0]);
     if (!sess) throw new Error("会话不存在");
     const project = seedConfig.projects.find((p: any) => p.id === (sess as any).projectId);
     return sess.workspaceDir || project?.rootDir || seedConfig.settings.workspaceDir;
   },
   // ListProjects
-  "2203540805": () => seedConfig.projects,
+  [svc("ChatService", "ListProjects")]: () => seedConfig.projects,
   // SaveProject(id, name, rootDir)
-  "2762009531": (args) => {
+  [svc("ChatService", "SaveProject")]: (args) => {
     const [id, name, rootDir] = args;
     if (!id) {
       const proj = {
@@ -379,7 +394,7 @@ const handlers: Record<string, (args: any[]) => any> = {
     return proj;
   },
   // DeleteProject(id)
-  "911459121": (args) => {
+  [svc("ChatService", "DeleteProject")]: (args) => {
     seedConfig.projects = seedConfig.projects.filter((p: any) => p.id !== args[0]);
     for (const sess of seedConfig.sessions) {
       if ((sess as any).projectId === args[0]) delete (sess as any).projectId;
@@ -387,7 +402,7 @@ const handlers: Record<string, (args: any[]) => any> = {
     return null;
   },
   // NewSessionWithProject(targetType, targetID, title, projectID)
-  "3614387014": (args) => {
+  [svc("ChatService", "NewSessionWithProject")]: (args) => {
     const id = `sess_stub_${seedConfig.sessions.length + 1}`;
     const sess = {
       id,
@@ -403,7 +418,7 @@ const handlers: Record<string, (args: any[]) => any> = {
     return sess;
   },
   // ArtifactService.TaskWorkspaceSnapshot(sessionID)
-  "2781372891": async (args) => {
+  [svc("ArtifactService", "TaskWorkspaceSnapshot")]: async (args) => {
     if (taskSnapshotMode === "slow") {
       await new Promise((resolve) => setTimeout(resolve, 700));
     }
@@ -460,7 +475,7 @@ const handlers: Record<string, (args: any[]) => any> = {
     };
   },
   // ArtifactService.OpenForSession(sessionID, path)
-  "3670798310": (args) => ({
+  [svc("ArtifactService", "OpenForSession")]: (args) => ({
     name: String(args[1]).split("/").pop(),
     path: args[1],
     kind: args[1].endsWith(".png") ? "image" : "markdown",
@@ -469,7 +484,7 @@ const handlers: Record<string, (args: any[]) => any> = {
     text: args[1].endsWith(".png") ? undefined : "# 周报\n\n任务文件预览。",
   }),
   // ArtifactService.FileDiff(sessionID, relPath) — 与种子变更列表对应的夹具。
-  "1773899386": (args) => {
+  [svc("ArtifactService", "FileDiff")]: (args) => {
     const path = String(args[1]);
     if (path === "archive.zip") {
       return { sessionId: args[0], path, status: "modified", unsupported: "二进制文件不支持 diff", hunks: [] };
@@ -530,20 +545,20 @@ const handlers: Record<string, (args: any[]) => any> = {
     };
   },
   // AppInfo
-  "2925845021": () => ({ name: "AgentMate", version: "stub", adk: "google adk-go v2" }),
+  [svc("AppService", "AppInfo")]: () => ({ name: "AgentMate", version: "stub", adk: "google adk-go v2" }),
   // AppService.RevealWorkspaceFile(sessionID, relPath) — 桩仅记录调用
-  "2394507974": (args) => {
+  [svc("AppService", "RevealWorkspaceFile")]: (args) => {
     (window).__revealed = ((window).__revealed ?? []).concat(args[1]);
     return null;
   },
   // ChatService.DeleteArchivedSessions() — 清空种子里的归档会话
-  "3028356991": () => {
+  [svc("ChatService", "DeleteArchivedSessions")]: () => {
     const before = seedConfig.sessions.length;
     seedConfig.sessions = seedConfig.sessions.filter((x: any) => !x.archived);
     return before - seedConfig.sessions.length;
   },
   // ConfirmToolCall(sessionID, callID, approved)
-  "3242111371": (args) => {
+  [svc("ChatService", "ConfirmToolCall")]: (args) => {
     pendingAnswer++;
     const approved = args[2] === true;
     histories[args[0]] = [
@@ -575,10 +590,10 @@ const handlers: Record<string, (args: any[]) => any> = {
   // ChatService.EffectiveSkills(sessionID, projectID) — composer "/" menu.
   // Numeric key = generated binding's ByID route; the ByName key keeps older
   // snapshots working.
-  "624882946": () => seedConfig.skills,
+  [svc("ChatService", "EffectiveSkills")]: () => seedConfig.skills,
   "agentmate/internal/services.ChatService.EffectiveSkills": () => seedConfig.skills,
   // ArtifactService.ListContextPaths(sessionID, projectID) — composer "@" menu.
-  "2142600974": () => [
+  [svc("ArtifactService", "ListContextPaths")]: () => [
     { path: "notes", dir: true },
     { path: "notes/weekly.md", dir: false },
     { path: "src", dir: true },
@@ -593,9 +608,9 @@ const handlers: Record<string, (args: any[]) => any> = {
     { path: "README.md", dir: false },
   ],
   // ListProviderModels
-  "729587208": () => ["gpt-5-mini", "gpt-5"],
+  [svc("ConfigService", "ListProviderModels")]: () => ["gpt-5-mini", "gpt-5"],
   // SuggestModels(ids)
-  "1306580425": (args) => (args[0] ?? []).map((id: string) => {
+  [svc("ConfigService", "SuggestModels")]: (args) => (args[0] ?? []).map((id: string) => {
     const hit = seedConfig.providers[0].models.find((m) => m.id === id);
     const base: any = hit ? { ...hit } : { id, displayName: id };
     // Mirror config.suggestReasoning's family fallback: a model saved without
@@ -616,16 +631,16 @@ const handlers: Record<string, (args: any[]) => any> = {
     return base;
   }),
   // ConfigService.KnowledgeIndexStats
-  "2250008310": () => ({ files: 3, chunks: 12, model: "text-embedding-3-small" }),
+  [svc("ConfigService", "KnowledgeIndexStats")]: () => ({ files: 3, chunks: 12, model: "text-embedding-3-small" }),
   // ConfigService.ListKnowledgeFiles
-  "3858202904": () => [
+  [svc("ConfigService", "ListKnowledgeFiles")]: () => [
     { name: "k8s.md", sizeBytes: 4096, modTime: "2026-09-18 01:00" },
     { name: "weekly.md", sizeBytes: 2048, modTime: "2026-09-17 18:30" },
   ],
   // AppService.StorageStats
-  "1091222926": () => ({ sessionsDbBytes: 524288, knowledgeDbBytes: 65536 }),
+  [svc("AppService", "StorageStats")]: () => ({ sessionsDbBytes: 524288, knowledgeDbBytes: 65536 }),
   // AppService.MemoryStats
-  "1364444048": () => ({ count: 7 }),
+  [svc("AppService", "MemoryStats")]: () => ({ count: 7 }),
 };
 
 (window as any).__lastCalls = [];
