@@ -24,6 +24,9 @@ import { cn } from "@/lib/utils";
 import { SettingRow } from "@/components/layout/PageShell";
 import { buildIssueReportURL } from "@/lib/issue";
 import { ACCENTS, FONT_SCALES, applyTheme, cacheTheme, type ThemePrefs } from "@/lib/theme";
+import {
+  EXECUTION_DISPLAY_OPTIONS, normalizeExecutionDisplayMode,
+} from "@/lib/executionDisplay";
 import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
 import { Chat, App, A2A, Config, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
 
@@ -284,6 +287,25 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                 ))}
               </div>
             </div>
+
+            <SettingRow
+              label="执行过程显示"
+              description="自动按状态展开；简洁只留摘要；详细保持展开；无隐藏过程（确认与错误仍显示）"
+            >
+              <Select
+                value={normalizeExecutionDisplayMode(settings.executionDisplayMode)}
+                onValueChange={(v) => update({ executionDisplayMode: v })}
+              >
+                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {EXECUTION_DISPLAY_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </SettingRow>
 
             <SettingRow label="自动朗读回复" description="助手回复完成后使用语音朗读（TTS）">
               <Switch

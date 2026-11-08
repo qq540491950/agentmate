@@ -364,6 +364,47 @@ type MCPOAuthToken struct {
 	TokenURL     string    `json:"tokenUrl,omitempty"`
 }
 
+// Execution display modes control how much of a turn's thinking and tool
+// process the chat renders. They are display preferences only: the underlying
+// events stay persisted so switching modes never loses history.
+const (
+	ExecutionDisplayAuto     = "auto"
+	ExecutionDisplayConcise  = "concise"
+	ExecutionDisplayDetailed = "detailed"
+	ExecutionDisplayNone     = "none"
+)
+
+// NormalizeExecutionDisplayMode clamps a stored global preference to a known
+// mode. Empty and stale values fall back to auto so an old config never hides
+// the execution block by accident.
+func NormalizeExecutionDisplayMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case ExecutionDisplayConcise:
+		return ExecutionDisplayConcise
+	case ExecutionDisplayDetailed:
+		return ExecutionDisplayDetailed
+	case ExecutionDisplayNone:
+		return ExecutionDisplayNone
+	default:
+		return ExecutionDisplayAuto
+	}
+}
+
+// NormalizeExecutionDisplayOverride validates a per-session override. An empty
+// value clears the override; an unknown value is rejected so callers do not
+// silently persist a typo.
+func NormalizeExecutionDisplayOverride(mode string) (string, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(mode))
+	switch normalized {
+	case "":
+		return "", true
+	case ExecutionDisplayAuto, ExecutionDisplayConcise, ExecutionDisplayDetailed, ExecutionDisplayNone:
+		return normalized, true
+	default:
+		return "", false
+	}
+}
+
 // Settings holds global application settings.
 type Settings struct {
 	WorkspaceDir string `json:"workspaceDir"`
@@ -405,6 +446,10 @@ type Settings struct {
 	// SidebarGrouping selects the conversation-list grouping: "time" (default)
 	// or "project" (sessions grouped by their workspace root directory).
 	SidebarGrouping string `json:"sidebarGrouping,omitempty"`
+	// ExecutionDisplayMode controls the default rendering density for a turn's
+	// thinking and tool process: "auto" | "concise" | "detailed" | "none".
+	// Empty normalizes to auto.
+	ExecutionDisplayMode string `json:"executionDisplayMode,omitempty"`
 	// AutoCheckUpdate runs a silent update check shortly after startup and
 	// then every 24h. Opt-out (nil = on) because an app that only ever updates
 	// through a settings-page button effectively never updates.
@@ -428,6 +473,17 @@ func (s Settings) UpdateAutoCheckEnabled() bool {
 	return s.AutoCheckUpdate == nil || *s.AutoCheckUpdate
 }
 
+// EffectiveExecutionDisplayMode resolves a chat's process-display preference:
+// an explicit session override wins, otherwise the global setting applies.
+func (s ChatSession) EffectiveExecutionDisplayMode(global string) string {
+	if mode := strings.TrimSpace(s.ExecutionDisplayMode); mode != "" {
+		if normalized, ok := NormalizeExecutionDisplayOverride(mode); ok {
+			return normalized
+		}
+	}
+	return NormalizeExecutionDisplayMode(global)
+}
+
 // normalize fills zero values (older config files) with defaults.
 func (s *Settings) normalize() {
 	if s.ThemeMode == "" {
@@ -442,6 +498,7 @@ func (s *Settings) normalize() {
 	if s.SidebarGrouping != "project" {
 		s.SidebarGrouping = "time"
 	}
+	s.ExecutionDisplayMode = NormalizeExecutionDisplayMode(s.ExecutionDisplayMode)
 }
 
 // Config is the root configuration document persisted to disk.
@@ -489,6 +546,9 @@ type ChatSession struct {
 	// effective model's Reasoning table; empty = the model's default level).
 	// It is a per-chat UI choice and never writes back to provider config.
 	ReasoningLevel string `json:"reasoningLevel,omitempty"`
+	// ExecutionDisplayMode overrides the global execution-process display
+	// density for this chat. Empty follows Settings.ExecutionDisplayMode.
+	ExecutionDisplayMode string `json:"executionDisplayMode,omitempty"`
 	// AllowAllTools is this chat's「允许完全访问」permission: while true,
 	// side-effectful builtin tools (workspace writes, run_command) run without
 	// the per-call HITL confirmation prompt. It is session-scoped and
@@ -634,11 +694,12 @@ func defaultWorkspace() string {
 func Default() Config {
 	return Config{
 		Settings: Settings{
-			WorkspaceDir: defaultWorkspace(),
-			Language:     "zh-CN",
-			ThemeMode:    "dark",
-			Accent:       "blue",
-			FontScale:    "md",
+			WorkspaceDir:         defaultWorkspace(),
+			Language:             "zh-CN",
+			ThemeMode:            "dark",
+			Accent:               "blue",
+			FontScale:            "md",
+			ExecutionDisplayMode: ExecutionDisplayAuto,
 		},
 		Skills: []SkillConfig{
 			{

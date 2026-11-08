@@ -19,6 +19,7 @@ const seedConfig = {
     autoSpeak: false,
     embeddingProviderId: "prov_1",
     embeddingModel: "text-embedding-3-small",
+    executionDisplayMode: "auto",
   },
   providers: [
     {
@@ -123,6 +124,7 @@ const seedConfig = {
   ],
   sessions: [
     { id: "sess_confirm", title: "需要确认的写入", targetType: "agent", targetId: "agent_1", createdAt: "2026-09-18T01:00:00Z", updatedAt: "2026-09-18T01:05:00Z", modelOverride: "gpt-5-mini", workspaceDir: "/tmp/agentmate-workspace/tasks/sess_confirm" },
+    { id: "sess_process", title: "执行过程四档演示", targetType: "", targetId: "", createdAt: iso(0, 9), updatedAt: iso(0, 10) },
     { id: "sess_plain", title: "普通对话", targetType: "team", targetId: "team_1", createdAt: "2026-09-17T09:00:00Z", updatedAt: "2026-09-17T09:10:00Z" },
     { id: "sess_direct", title: "我如何选择模型呢？", targetType: "", targetId: "", createdAt: "2026-11-01T00:45:00Z", updatedAt: "2026-11-01T00:48:00Z" },
     // Sidebar-grouping fixtures: dates relative to load time so the time
@@ -169,6 +171,18 @@ const histories: Record<string, any[]> = {
   sess_plain: [
     { id: "n1", kind: "user", author: "user", text: "介绍下你自己", timestamp: "2026-09-17T09:00:00Z" },
     { id: "n2", kind: "assistant", author: "混合团队", text: "我们是本地 + 远程成员组成的团队，可以协作完成写作与研究任务。", timestamp: "2026-09-17T09:01:00Z" },
+  ],
+  sess_process: [
+    { id: "proc-u", kind: "user", author: "user", text: "检查项目并提交修复", timestamp: iso(0, 9) },
+    { id: "proc-t1", kind: "thinking", author: "写手助手", text: "先检查状态，再执行测试，最后提交。", timestamp: iso(0, 9) },
+    { id: "proc-c1", kind: "tool_call", author: "写手助手", text: "", toolName: "run_command", toolArgs: { command: "git status --short" }, timestamp: "2026-11-08T09:00:05Z" },
+    { id: "proc-r1", kind: "tool_result", author: "写手助手", text: "", toolName: "run_command", toolResp: { stdout: " M internal/config/config.go" }, timestamp: "2026-11-08T09:00:06Z" },
+    { id: "proc-n1", kind: "assistant", author: "写手助手", text: "状态检查完成，继续跑测试。", timestamp: "2026-11-08T09:00:07Z" },
+    { id: "proc-c2", kind: "tool_call", author: "写手助手", text: "", toolName: "run_command", toolArgs: { command: "go test ./internal/..." }, timestamp: "2026-11-08T09:00:08Z" },
+    { id: "proc-r2", kind: "tool_result", author: "写手助手", text: "", toolName: "run_command", toolResp: { ok: true }, timestamp: "2026-11-08T09:00:14Z" },
+    { id: "proc-c3", kind: "tool_call", author: "写手助手", text: "", toolName: "write_workspace_file", toolArgs: { path: "notes/weekly.md", content: "# 周报" }, timestamp: "2026-11-08T09:00:15Z" },
+    { id: "proc-r3", kind: "tool_result", author: "写手助手", text: "", toolName: "write_workspace_file", toolResp: { ok: true, bytes: 8 }, timestamp: "2026-11-08T09:00:16Z" },
+    { id: "proc-a", kind: "assistant", author: "写手助手", text: "检查、测试与文件写入均已完成。", timestamp: "2026-11-08T09:00:18Z" },
   ],
   sess_direct: [
     { id: "d1", kind: "user", author: "user", text: "我如何选择模型呢？", timestamp: "2026-11-01T00:46:00Z" },
@@ -273,6 +287,19 @@ const handlers: Record<string, (args: any[]) => any> = {
   "3185250285": (args) => {
     for (const sess of seedConfig.sessions) {
       if (sess.id === args[0]) (sess as any).reasoningLevel = args[1] || "";
+    }
+    return null;
+  },
+  // SetSessionExecutionDisplay(sessionID, mode)
+  "164135869": (args) => {
+    for (const sess of seedConfig.sessions) {
+      if (sess.id === args[0]) (sess as any).executionDisplayMode = args[1] || "";
+    }
+    return null;
+  },
+  "agentmate/internal/services.ChatService.SetSessionExecutionDisplay": (args) => {
+    for (const sess of seedConfig.sessions) {
+      if (sess.id === args[0]) (sess as any).executionDisplayMode = args[1] || "";
     }
     return null;
   },

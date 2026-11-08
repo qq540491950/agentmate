@@ -4,6 +4,23 @@
 
 ## 视觉测试与体验设计
 
+### 第二百二十轮迭代：执行过程四档显示——调用/结果合并与「无」模式安全例外（已实施）
+
+依据：用户对比 Codex 桌面端「推理摘要」四档菜单，反馈 AgentMate 执行过程运行时行数过多；进一步走读确认噪声来自两处：运行中自动展开全部步骤，以及同一工具的 `tool_call` / `tool_result` 各渲染一张卡。Codex 的四档是模型请求参数，AgentMate 本轮先落地同形态的纯展示四档，并保持事件完整持久化。
+
+**实现要点**
+
+- **四档显示策略**：新增 `Settings.ExecutionDisplayMode`（`auto|concise|detailed|none`，默认 `auto`）与 `ChatSession.ExecutionDisplayMode` 覆盖；`SetSessionExecutionDisplay` 走既有 `mutateSession`，空值恢复跟随全局，未知值拒绝。
+- **语义**：自动=运行中展开、完成收起；简洁=只留摘要、运行中不展开、HITL 强制展开；详细=保持展开；无=隐藏执行过程块，但待确认、错误、`plan_todos`、最终回复不受影响。
+- **入口**：设置 → 通用 → 外观增加全局选择；composer 左侧新增当前会话快捷切换，支持「跟随全局设置」。
+- **去重**：新增 `buildToolTrace` 将同名工具的 call/result 按 LIFO 合并为一个逻辑步骤，执行块计数与渲染都按步骤而非事件；单工具轮次也进入执行块，避免一对裸卡。`ToolCallCard` 展开后分「输入 / 输出」两段并提供独立复制。
+
+**测试证据**
+
+- 前端新增 `executionDisplay.test.ts`（归一化、覆盖优先级、四档展开/隐藏、确认例外）与 `buildToolTrace` 配对/顺序/孤儿结果用例；单工具组断言同步更新。vitest 168/168 通过，`npx tsc --noEmit` 0 错，`npm run build` 通过。
+- Go 新增配置归一化与会话覆盖测试；`go test ./internal/config ./internal/services -run "ExecutionDisplay|Normalize|SessionExecution"` 通过，`go test ./internal/...` 全绿；Wails bindings 已重新生成。
+- 视觉回归桩补充多工具样例与会话级设置路由；当前桩的既有方法 ID 早于最新生成绑定，浏览器冒烟暂受该历史问题阻塞。
+
 ### 第二百一十九轮迭代：header 用量降噪——token 消耗移入 composer 悬停气泡（已实施）
 
 依据：用户反馈（截图对比 Codex 桌面端）右上角常驻的「92,503 tokens」与「运行中」徽标属于冗余显示，token 消耗应像 Codex 一样悬停才显示。

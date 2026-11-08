@@ -76,6 +76,10 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
     () => extractArtifactPaths(args, resp),
     [args, resp],
   );
+  const inputJSON = useMemo(() => (args == null ? "" : JSON.stringify(args, null, 2)), [args]);
+  const outputJSON = useMemo(() => (resp == null ? "" : JSON.stringify(resp, null, 2)), [resp]);
+  const showInput = args != null;
+  const showOutput = resp != null;
 
   return (
     <div
@@ -118,14 +122,43 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
         <ChevronRight className={`ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} />
       </button>
       {open && (
-        <div className={cn("relative", flat ? "mt-1 rounded-md bg-background/40" : "border-t border-border")}>
-          <CopyButton
-            text={JSON.stringify(running ? args : (resp ?? args), null, 2)}
-            className="absolute right-2 top-2 z-10 opacity-50 transition-opacity hover:opacity-100"
-          />
-          <pre className="max-h-44 overflow-auto px-3 py-2 text-xs leading-[1.7] text-muted-foreground">
-            {highlightText(JSON.stringify(running ? args : (resp ?? args), null, 2), filterQ ?? "", "bg-brand/25 text-foreground rounded-sm")}
-          </pre>
+        <div className={cn(
+          "space-y-2",
+          flat ? "mt-1 rounded-md bg-background/40 p-2" : "border-t border-border px-3 py-2",
+        )}>
+          {showInput && (
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-2xs font-medium text-muted-foreground">输入</span>
+                <CopyButton
+                  text={inputJSON}
+                  title="复制输入参数"
+                  className="border-0 bg-transparent px-1 py-0 text-3xs opacity-60 hover:opacity-100"
+                />
+              </div>
+              <pre className="max-h-44 overflow-auto rounded bg-background/50 px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
+                {highlightText(inputJSON, filterQ ?? "", "bg-brand/25 text-foreground rounded-sm")}
+              </pre>
+            </div>
+          )}
+          {showOutput && (
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-2xs font-medium text-muted-foreground">输出</span>
+                <CopyButton
+                  text={outputJSON}
+                  title="复制输出结果"
+                  className="border-0 bg-transparent px-1 py-0 text-3xs opacity-60 hover:opacity-100"
+                />
+              </div>
+              <pre className="max-h-44 overflow-auto rounded bg-background/50 px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
+                {highlightText(outputJSON, filterQ ?? "", "bg-brand/25 text-foreground rounded-sm")}
+              </pre>
+            </div>
+          )}
+          {!showInput && !showOutput && (
+            <div className="px-1 text-2xs text-muted-foreground">暂无详细内容</div>
+          )}
         </div>
       )}
       {paths.length > 0 && (

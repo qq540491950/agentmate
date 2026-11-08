@@ -361,6 +361,21 @@ func (c *ChatService) SetSessionReasoningLevel(sessionID, level string) error {
 	return err
 }
 
+// SetSessionExecutionDisplay remembers this chat's execution-process display
+// override. Empty restores the global default; unknown modes are rejected.
+func (c *ChatService) SetSessionExecutionDisplay(sessionID, mode string) error {
+	normalized, ok := config.NormalizeExecutionDisplayOverride(mode)
+	if !ok {
+		return fmt.Errorf("无效的执行过程显示模式 %q", mode)
+	}
+	err := c.mutateSession(sessionID, func(s *config.ChatSession) { s.ExecutionDisplayMode = normalized })
+	if err == nil {
+		c.audit(sessionID, "session_execution_display_set", "user", "session",
+			mustJSON(map[string]string{"mode": normalized}), "")
+	}
+	return err
+}
+
 // SetSessionAllowAllTools grants or revokes this chat's「允许完全访问」
 // permission. While granted, side-effectful builtin tools run without the
 // per-call HITL prompt; the switch is persisted on the session (so switching

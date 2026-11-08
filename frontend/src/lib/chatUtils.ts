@@ -177,6 +177,67 @@ export type ChatItem =
   | { kind: "message"; id: string; message: UIMessage }
   | ToolGroup;
 
+/** ToolStep pairs one tool_call with its matching tool_result. Keeping the
+ *  pair together is what makes an execution block read as N tools instead of
+ *  2N call/result rows. */
+export type ToolStep = {
+  kind: "tool";
+  id: string;
+  name: string;
+  args?: UIMessage["toolArgs"];
+  resp?: UIMessage["toolResp"];
+  call?: UIMessage;
+  result?: UIMessage;
+};
+
+/** ToolTraceItem preserves the turn's event order while folding calls and
+ *  results into logical steps. */
+export type ToolTraceItem =
+  | { kind: "message"; message: UIMessage }
+  | ToolStep;
+
+/** buildToolTrace pairs a call with the most recent unpaired result of the
+ *  same tool name (the same LIFO rule the duration/timer helpers use). A
+ *  result without a retained call still renders as its own step. */
+export function buildToolTrace(messages: UIMessage[]): ToolTraceItem[] {
+  const out: ToolTraceItem[] = [];
+  const pending: ToolStep[] = [];
+  for (const m of messages) {
+    if (m.kind === "tool_call") {
+      const step: ToolStep = {
+        kind: "tool",
+        id: m.id,
+        name: m.toolName ?? "tool",
+        args: m.toolArgs,
+        call: m,
+      };
+      out.push(step);
+      pending.push(step);
+      continue;
+    }
+    if (m.kind === "tool_result") {
+      const name = m.toolName ?? "tool";
+      let pendingIdx = -1;
+      for (let i = pending.length - 1; i >= 0; i--) {
+        if (pending[i].name === name && pending[i].resp == null) {
+          pendingIdx = i;
+          break;
+        }
+      }
+      if (pendingIdx >= 0) {
+        const step = pending.splice(pendingIdx, 1)[0];
+        step.resp = m.toolResp;
+        step.result = m;
+      } else {
+        out.push({ kind: "tool", id: m.id, name, resp: m.toolResp, result: m });
+      }
+      continue;
+    }
+    out.push({ kind: "message", message: m });
+  }
+  return out;
+}
+
 /** isProcessEvent reports messages that belong to one turn's execution run:
  *  thinking entries plus tool calls/results and HITL confirmations. plan_todos
  *  results are pinned UI (the todo list card), so they stay outside groups. */
@@ -197,8 +258,8 @@ function isProcessEvent(m: UIMessage): boolean {
  * result and stays outside the block. Empty settled assistant shells are
  * dropped; plan_todos cards stay standalone without splitting the run (the
  * pinned plan must not shred a long turn into several look-alike groups);
- * errors keep breaking it. A single tool call
- * with no reasoning or narration keeps its existing standalone cards.
+ * errors keep breaking it. A single tool invocation also joins the block so
+ * its call/result pair can render as one logical step.
  */
 export function groupToolMessages(messages: UIMessage[]): ChatItem[] {
   const out: ChatItem[] = [];
@@ -261,14 +322,11 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
   let run: UIMessage[] = [];
   const flush = () => {
     if (run.length === 0) return;
-    const calls = run.filter((m) => m.kind === "tool_call").length;
-    const results = run.filter((m) => m.kind === "tool_result").length;
-    const invocations = Math.max(calls, results);
     const hasProcess = run.some(isProcessEvent);
-    const hasThinking = run.some((m) => m.kind === "thinking");
-    const hasConfirm = run.some((m) => m.kind === "confirm");
-    const hasNarration = run.some((m) => m.kind === "assistant" && !!m.text.trim());
-    if (hasProcess && (invocations >= 2 || hasThinking || hasConfirm || hasNarration)) {
+    // Even one invocation belongs here: its call and result are two events but
+    // one logical step, and rendering them as two standalone cards duplicated
+    // every simple tool call. Thinking/narration-only runs still group too.
+    if (hasProcess) {
       out.push({ kind: "tool_group", id: run[0].id, author: run[0].author, messages: run, endTs, answered, errored });
     } else {
       for (const m of run) out.push(messageItem(m));
@@ -349,17 +407,10 @@ export function toolGroupStatus(group: ToolGroup, runningTools: Set<string>, liv
   return "done";
 }
 
-/** toolGroupInvocationCount counts tool invocations in a run: call and result
- *  messages pair up, so the larger count is the round's tool count (a running
- *  parallel round has calls before results). */
+/** toolGroupInvocationCount counts logical tool steps after pairing calls with
+ *  their results, so one invocation is one step rather than two rows. */
 export function toolGroupInvocationCount(messages: UIMessage[]): number {
-  let calls = 0;
-  let results = 0;
-  for (const m of messages) {
-    if (m.kind === "tool_call") calls++;
-    else if (m.kind === "tool_result") results++;
-  }
-  return Math.max(calls, results);
+  return buildToolTrace(messages).filter((item) => item.kind === "tool").length;
 }
 
 /** toolGroupDurationMs sums the completed tools' runtimes. Per-tool durations

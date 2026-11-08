@@ -9,6 +9,7 @@ import {
   ChevronRight, ChevronDown,
   Settings as SettingsIcon, CircleHelp, Sun, Moon,
   Boxes, Coins, LockOpen,
+  ListTree,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
 } from "lucide-react";
@@ -67,6 +68,11 @@ import {
   allowAllRiskAlreadyAcknowledged, allowAllToggleHint, allowAllToggleLabel,
   rememberAllowAllRiskAcknowledged, type AllowAllSource,
 } from "@/lib/allowAll";
+import {
+  effectiveExecutionDisplayMode, executionDisplayLabel,
+  normalizeExecutionDisplayMode, EXECUTION_DISPLAY_OPTIONS,
+  type ExecutionDisplayMode,
+} from "@/lib/executionDisplay";
 
 let mid = 0;
 const nextId = () => `m${++mid}`;
@@ -171,6 +177,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   const [statsOpen, setStatsOpen] = useState(false);
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [autoSpeak, setAutoSpeak] = useState(false);
+  const [globalExecutionDisplay, setGlobalExecutionDisplay] = useState<ExecutionDisplayMode>("auto");
   const [globalWorkspace, setGlobalWorkspace] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() =>
@@ -238,6 +245,10 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   }, []);
 
   const active = sessions.find((s) => s.id === activeID);
+  const executionDisplayMode = effectiveExecutionDisplayMode(
+    globalExecutionDisplay,
+    active?.executionDisplayMode,
+  );
 
   // fireQueued pops the session's queued message and auto-sends it (used both
   // when a turn settles and when the user returns to a settled session). A
@@ -299,6 +310,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
         setProviderCount((c.providers ?? []).length);
         setProviderList(c.providers ?? []);
         setAutoSpeak(!!c.settings?.autoSpeak);
+        setGlobalExecutionDisplay(normalizeExecutionDisplayMode(c.settings?.executionDisplayMode));
         setGlobalWorkspace(c.settings?.workspaceDir ?? "");
         setSidebarCollapsed(!!c.settings?.sidebarCollapsed);
       })
@@ -1746,6 +1758,19 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
     }
   };
 
+  const setSessionExecutionDisplay = async (mode: string) => {
+    if (!activeID) return;
+    try {
+      await Chat.SetSessionExecutionDisplay(activeID, mode);
+      reloadSessions();
+      toast.success(mode === ""
+        ? "执行过程显示已跟随全局设置"
+        : `本会话执行过程：${executionDisplayLabel(normalizeExecutionDisplayMode(mode))}`);
+    } catch (e) {
+      toast.error(`设置执行过程显示失败: ${errText(e)}`);
+    }
+  };
+
   // ⌘F (dispatched by App) opens the in-conversation filter.
   useEffect(() => {
     const onToggle = () => setFilterOpen(true);
@@ -2586,6 +2611,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                         durations={toolDurations}
                         sessionID={activeID}
                         filterQ={filterQ}
+                        displayMode={executionDisplayMode}
                         onConfirm={answerConfirm}
                         onAllowAll={allowAllFromCard}
                         allowAllBusy={allowAllBusy}
@@ -2940,6 +2966,49 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                     <span className="truncate">{allowAllToggleLabel(composerAllowAll)}</span>
                     {composerAllowAll && <X className="h-3 w-3 shrink-0 opacity-70" />}
                   </button>
+                  {active && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-7 min-w-0 max-w-[112px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          title={`执行过程显示：${executionDisplayLabel(executionDisplayMode)}`}
+                          aria-label="选择执行过程显示方式"
+                        >
+                          <ListTree className="h-3.5 w-3.5 shrink-0" />
+                          <span className="hidden truncate sm:inline">{executionDisplayLabel(executionDisplayMode)}</span>
+                          <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-64">
+                        <DropdownMenuLabel>执行过程显示</DropdownMenuLabel>
+                        <DropdownMenuRadioGroup
+                          value={executionDisplayMode}
+                          onValueChange={setSessionExecutionDisplay}
+                        >
+                          {EXECUTION_DISPLAY_OPTIONS.map((option) => (
+                            <DropdownMenuRadioItem key={option.value} value={option.value} className="items-start py-1.5">
+                              <span className="flex flex-col gap-0.5">
+                                <span className="text-xs">{option.label}</span>
+                                <span className="text-3xs text-muted-foreground">{option.description}</span>
+                              </span>
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                        {active.executionDisplayMode && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-xs"
+                              onSelect={() => setSessionExecutionDisplay("")}
+                            >
+                              跟随全局设置
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
                   {(contextUsage || (sessionUsage && sessionUsage.totalTokens > 0)) && (

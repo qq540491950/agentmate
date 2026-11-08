@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations,
+  buildToolTrace, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations,
   dayLabel, effectiveReasoningLevel, fmtTime, formatWorkDuration, groupSessionsByProject,
   groupSessionsByTime, groupToolMessages, isDayChange, mdToSpeech, sessionTargetBadgeLabel,
   toolGroupDurationMs, toolGroupElapsedMs, toolGroupInvocationCount, toolGroupStatus,
@@ -87,12 +87,16 @@ describe("groupToolMessages", () => {
     expect(items[0]).toMatchObject({ kind: "tool_group", id: "c1" });
   });
 
-  it("keeps a single invocation's call/result cards standalone", () => {
+  it("folds a single invocation into one execution block", () => {
     const msgs: UIMessage[] = [
       msg({ id: "c1", kind: "tool_call", toolName: "read" }),
       msg({ id: "r1", kind: "tool_result", toolName: "read" }),
     ];
-    expect(groupToolMessages(msgs).map((i) => i.kind)).toEqual(["message", "message"]);
+    const items = groupToolMessages(msgs);
+    expect(items.map((i) => i.kind)).toEqual(["tool_group"]);
+    const group = items[0];
+    if (group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(toolGroupInvocationCount(group.messages)).toBe(1);
   });
 
   it("keeps narration inside the turn block and splits at author changes; plan_todos cards stay pinned without splitting", () => {
@@ -263,6 +267,54 @@ describe("groupToolMessages", () => {
     ];
     expect(groupToolMessages(msgs).map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
       "group:t1", "group:t2",
+    ]);
+  });
+});
+
+describe("buildToolTrace", () => {
+  it("pairs one call and result into one logical tool step", () => {
+    const trace = buildToolTrace([
+      msg({ id: "c1", kind: "tool_call", toolName: "read", toolArgs: { path: "a.ts" } }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+    ]);
+    expect(trace).toHaveLength(1);
+    expect(trace[0]).toMatchObject({
+      kind: "tool",
+      id: "c1",
+      name: "read",
+      args: { path: "a.ts" },
+      resp: { ok: true },
+    });
+    const step = trace[0];
+    if (step.kind !== "tool") throw new Error("expected a tool step");
+    expect(step.call?.id).toBe("c1");
+    expect(step.result?.id).toBe("r1");
+  });
+
+  it("keeps thinking/narration order around merged tool steps", () => {
+    const trace = buildToolTrace([
+      msg({ id: "t1", kind: "thinking", text: "想" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "mid", kind: "assistant", text: "继续" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "write" }),
+    ]);
+    expect(trace.map((item) => item.kind)).toEqual(["message", "tool", "message", "tool"]);
+    expect(trace.map((item) => (item.kind === "tool" ? item.id : item.message.id))).toEqual([
+      "t1", "c1", "mid", "c2",
+    ]);
+  });
+
+  it("pairs parallel same-name results LIFO and keeps an orphan result", () => {
+    const trace = buildToolTrace([
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "read", toolResp: { n: 2 } }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read", toolResp: { n: 1 } }),
+      msg({ id: "orphan", kind: "tool_result", toolName: "grep", toolResp: { ok: true } }),
+    ]);
+    expect(trace.map((item) => (item.kind === "tool" ? `${item.id}:${item.resp?.n ?? "orphan"}` : item.message.id))).toEqual([
+      "c1:1", "c2:2", "orphan:orphan",
     ]);
   });
 });

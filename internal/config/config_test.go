@@ -388,3 +388,44 @@ func TestResolveAgentModelInheritsDefault(t *testing.T) {
 		t.Fatalf("empty config should resolve to empty, got %q/%q", providerID, modelID)
 	}
 }
+
+func TestExecutionDisplayModeNormalization(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want string
+	}{
+		{"", ExecutionDisplayAuto},
+		{" AUTO ", ExecutionDisplayAuto},
+		{"concise", ExecutionDisplayConcise},
+		{"Detailed", ExecutionDisplayDetailed},
+		{"none", ExecutionDisplayNone},
+		{"stale", ExecutionDisplayAuto},
+	} {
+		if got := NormalizeExecutionDisplayMode(tc.in); got != tc.want {
+			t.Fatalf("NormalizeExecutionDisplayMode(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+
+	if got, ok := NormalizeExecutionDisplayOverride("none"); !ok || got != ExecutionDisplayNone {
+		t.Fatalf("valid override = (%q,%v)", got, ok)
+	}
+	if got, ok := NormalizeExecutionDisplayOverride(""); !ok || got != "" {
+		t.Fatalf("empty override = (%q,%v), want clear", got, ok)
+	}
+	if _, ok := NormalizeExecutionDisplayOverride("stale"); ok {
+		t.Fatal("unknown override must be rejected")
+	}
+
+	session := ChatSession{ExecutionDisplayMode: "detailed"}
+	if got := session.EffectiveExecutionDisplayMode("concise"); got != ExecutionDisplayDetailed {
+		t.Fatalf("session override lost: %q", got)
+	}
+	session.ExecutionDisplayMode = ""
+	if got := session.EffectiveExecutionDisplayMode("concise"); got != ExecutionDisplayConcise {
+		t.Fatalf("global fallback lost: %q", got)
+	}
+	session.ExecutionDisplayMode = "stale"
+	if got := session.EffectiveExecutionDisplayMode("concise"); got != ExecutionDisplayConcise {
+		t.Fatalf("stale session override should fall back to global: %q", got)
+	}
+}
