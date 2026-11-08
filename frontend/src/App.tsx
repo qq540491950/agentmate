@@ -85,6 +85,7 @@ export default function App() {
           themeMode: s.themeMode || "dark",
           accent: s.accent || "blue",
           fontScale: s.fontScale || "md",
+          chatWidth: s.chatWidth || "medium",
         };
         localStorage.setItem("wb-theme-prefs", JSON.stringify(next));
         setPrefs(next);

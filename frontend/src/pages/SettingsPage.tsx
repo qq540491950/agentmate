@@ -23,7 +23,7 @@ import { UpdateCard } from "@/components/UpdateCard";
 import { cn } from "@/lib/utils";
 import { SettingRow } from "@/components/layout/PageShell";
 import { buildIssueReportURL } from "@/lib/issue";
-import { ACCENTS, FONT_SCALES, applyTheme, cacheTheme, type ThemePrefs } from "@/lib/theme";
+import { ACCENTS, CHAT_WIDTHS, FONT_SCALES, applyTheme, cacheTheme, type ThemePrefs } from "@/lib/theme";
 import {
   EXECUTION_DISPLAY_OPTIONS, normalizeExecutionDisplayMode,
 } from "@/lib/executionDisplay";
@@ -116,9 +116,10 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
     const next = { ...settings, ...patch };
     setSettings(next);
     // Live-apply appearance changes without waiting for save.
-    if ("themeMode" in patch || "accent" in patch || "fontScale" in patch) {
+    if ("themeMode" in patch || "accent" in patch || "fontScale" in patch || "chatWidth" in patch) {
       const prefs: ThemePrefs = {
         themeMode: next.themeMode, accent: next.accent, fontScale: next.fontScale,
+        chatWidth: next.chatWidth || "medium",
       };
       cacheTheme(next);
       applyTheme(prefs);
@@ -164,7 +165,12 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
       await Config.SaveSettings(settings);
       savedRef.current = settings;
       cacheTheme(settings);
-      applyTheme({ themeMode: settings.themeMode, accent: settings.accent, fontScale: settings.fontScale });
+      applyTheme({
+        themeMode: settings.themeMode,
+        accent: settings.accent,
+        fontScale: settings.fontScale,
+        chatWidth: settings.chatWidth || "medium",
+      });
       toast.success("设置已保存");
     } catch (e) {
       toast.error(`保存失败: ${errText(e)}`);
@@ -283,6 +289,23 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                     onClick={() => update({ fontScale: key })}
                   >
                     {f.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label>对话栏宽</Label>
+              <div className="flex gap-2">
+                {Object.entries(CHAT_WIDTHS).map(([key, w]) => (
+                  <Button
+                    key={key}
+                    variant={(settings.chatWidth || "medium") === key ? "default" : "outline"}
+                    size="sm"
+                    className="w-16"
+                    onClick={() => update({ chatWidth: key })}
+                  >
+                    {w.label}
                   </Button>
                 ))}
               </div>

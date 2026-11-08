@@ -429,3 +429,20 @@ func TestExecutionDisplayModeNormalization(t *testing.T) {
 		t.Fatalf("stale session override should fall back to global: %q", got)
 	}
 }
+
+func TestChatWidthNormalization(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"narrow", ChatWidthNarrow},
+		{" WIDE ", ChatWidthWide},
+		{"medium", ChatWidthMedium},
+		{"", ChatWidthMedium},
+		{"stale", ChatWidthMedium},
+	} {
+		if got := NormalizeChatWidth(tc.in); got != tc.want {
+			t.Fatalf("NormalizeChatWidth(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	if got := Default().Settings.ChatWidth; got != ChatWidthMedium {
+		t.Fatalf("default chat width = %q, want %q", got, ChatWidthMedium)
+	}
+}

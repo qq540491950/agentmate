@@ -2535,7 +2535,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
             </button>
           )}
           <ScrollArea className="flex-1" viewportRef={scrollRef} aria-label="会话消息">
-            <div className="mx-auto max-w-3xl space-y-4 px-5 py-6">
+            <div className="mx-auto max-w-[var(--chat-col-width)] space-y-4 px-5 py-6">
               {(() => {
                 if (omittedItems <= 0) return null;
                 return (
@@ -2663,14 +2663,14 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
         <div className="sr-only" role="status" aria-live="polite">
           {running ? "助手正在回复…" : messages[messages.length - 1]?.kind === "error" ? "本轮回复出错，可点击重试本轮" : ""}
         </div>
-        <div className="shrink-0 border-t p-3">
+        <div className="shrink-0 border-t py-3">
           {activePlan && (
-            <div className="mx-auto mb-2 max-w-3xl">
+            <div className="mx-auto mb-2 max-w-[var(--chat-col-width)] px-3">
               <PlanStrip todos={activePlan} />
             </div>
           )}
           {(queued[activeID] ?? []).map((q, qi) => (
-            <div key={qi} className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-3 py-1.5 text-xs">
+            <div key={qi} className="mx-auto mb-2 flex max-w-[var(--chat-col-width)] items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-3 py-1.5 text-xs">
               <span className="shrink-0 text-muted-foreground">{qi === 0 ? "已排队" : `排队 #${qi + 1}`}</span>
               <span className="min-w-0 flex-1 truncate">{q.text}</span>
               {q.reasoning && (
@@ -2689,7 +2689,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               </button>
             </div>
           ))}
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto max-w-[var(--chat-col-width)] px-3">
             {editing && (
               <div className="mb-2 flex items-center justify-between rounded-md border border-brand/40 bg-brand/5 px-3 py-1.5 text-xs text-muted-foreground">
                 <span>正在编辑最后一条消息，发送后将替换该轮对话</span>
@@ -2699,7 +2699,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               </div>
             )}
           </div>
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto max-w-[var(--chat-col-width)] px-3">
             {pendingAtts.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
                 {pendingAtts.map((a, i) => (
@@ -2717,7 +2717,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               </div>
             )}
           </div>
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto max-w-[var(--chat-col-width)] px-3">
             <div
               className={cn(
                 "rounded-2xl border border-border bg-card shadow-card transition-colors focus-within:border-brand/40 focus-within:ring-4 focus-within:ring-brand/10",

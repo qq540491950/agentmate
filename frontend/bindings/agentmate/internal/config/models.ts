@@ -423,6 +423,13 @@ export interface Settings {
     "themeMode": string;
     "accent": string;
     "fontScale": string;
+
+    /**
+     * ChatWidth selects the chat column width: "narrow" | "medium" | "wide".
+     * Widths are percentages of the chat pane, so the column follows window
+     * resizing instead of a fixed pixel cap. Empty normalizes to medium.
+     */
+    "chatWidth"?: string;
     "autoSpeak": boolean;
 
     /**

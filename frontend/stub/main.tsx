@@ -16,6 +16,7 @@ const seedConfig = {
     themeMode: "dark",
     accent: "blue",
     fontScale: "md",
+    chatWidth: "medium",
     autoSpeak: false,
     embeddingProviderId: "prov_1",
     embeddingModel: "text-embedding-3-small",

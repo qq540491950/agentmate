@@ -144,6 +144,9 @@
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
+    /* Chat column width as a pane percentage: narrow/medium/wide modes
+       rewrite this variable at runtime, so it follows window resizing. */
+    --chat-col-width: 72%;
 
     --sidebar: oklch(0.968 0.003 265);
     --sidebar-foreground: oklch(0.21 0.006 265);

@@ -5,6 +5,7 @@ export interface ThemePrefs {
   themeMode: string;
   accent: string;
   fontScale: string;
+  chatWidth: string;
 }
 
 export const ACCENTS: Record<string, { label: string; color: string }> = {
@@ -22,6 +23,14 @@ export const FONT_SCALES: Record<string, { label: string; root: string }> = {
   lg: { label: "大", root: "112.5%" },
 };
 
+// Chat column widths are pane percentages, not fixed pixel caps, so the
+// column follows window resizing at every mode.
+export const CHAT_WIDTHS: Record<string, { label: string; width: string }> = {
+  narrow: { label: "窄", width: "56%" },
+  medium: { label: "中", width: "72%" },
+  wide: { label: "宽", width: "88%" },
+};
+
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 
 /** applyTheme applies mode/accent/font-scale to the document. */
@@ -30,6 +39,10 @@ export function applyTheme(prefs: ThemePrefs): boolean {
     prefs.themeMode === "dark" || (prefs.themeMode === "system" && media.matches);
   document.documentElement.classList.toggle("dark", dark);
   document.documentElement.style.fontSize = (FONT_SCALES[prefs.fontScale] ?? FONT_SCALES.md).root;
+  document.documentElement.style.setProperty(
+    "--chat-col-width",
+    (CHAT_WIDTHS[prefs.chatWidth] ?? CHAT_WIDTHS.medium).width,
+  );
 
   const accent = ACCENTS[prefs.accent] ?? ACCENTS.blue;
   const root = document.documentElement.style;
@@ -69,7 +82,12 @@ function readableForeground(hex: string): string {
 export function cacheTheme(s: Settings) {
   localStorage.setItem(
     "wb-theme-prefs",
-    JSON.stringify({ themeMode: s.themeMode, accent: s.accent, fontScale: s.fontScale }),
+    JSON.stringify({
+      themeMode: s.themeMode,
+      accent: s.accent,
+      fontScale: s.fontScale,
+      chatWidth: s.chatWidth || "medium",
+    }),
   );
 }
 
@@ -77,9 +95,12 @@ export function cacheTheme(s: Settings) {
 export function cachedTheme(): ThemePrefs {
   try {
     const raw = localStorage.getItem("wb-theme-prefs");
-    if (raw) return JSON.parse(raw) as ThemePrefs;
+    if (raw) {
+      const prefs = JSON.parse(raw) as ThemePrefs;
+      return { ...prefs, chatWidth: prefs.chatWidth || "medium" };
+    }
   } catch { /* ignore */ }
-  return { themeMode: "dark", accent: "blue", fontScale: "md" };
+  return { themeMode: "dark", accent: "blue", fontScale: "md", chatWidth: "medium" };
 }
 
 /** syncThemeFromBackend loads settings from the backend, caches and applies them. */

@@ -4,6 +4,23 @@
 
 ## 视觉测试与体验设计
 
+### 第二百二十一轮迭代：对话栏宽三档——按窗口比例自适应（已实施）
+
+依据：用户反馈聊天输出列宽固定、宽屏留白过多，希望提供「窄 / 中 / 宽」三档，并明确要求三档随窗口自适应变化，而不是写死像素值。
+
+**实现要点**
+
+- **配置**：新增 `Settings.ChatWidth`（`narrow|medium|wide`，默认 `medium`），`NormalizeChatWidth` 将空值与未知值回退为中档；默认配置与旧配置归一化同步补齐。
+- **自适应比例**：前端 `CHAT_WIDTHS` 将三档定义为聊天面板宽度的 `56% / 72% / 88%`，由 `applyTheme` 写入根级 CSS 变量 `--chat-col-width`（`:root` 默认 `72%`），窗口缩放时列宽自动跟随，不设像素上限。
+- **统一列**：`ChatPage` 消息流、plan 条、排队提示、编辑横幅、附件条与 composer 全部改用 `max-w-[var(--chat-col-width)]`；composer 外层水平内边距移入各列容器，保证百分比基准与消息区一致、左右边缘对齐。
+- **设置入口**：设置 → 通用 → 外观新增「对话栏宽」三按钮，沿用字号档位的交互；改动实时应用到根变量，保存后随 `ThemePrefs` 一并缓存，启动即生效。
+
+**测试证据**
+
+- Go 新增 `TestChatWidthNormalization`（三档、大小写/空白、空值与未知值回退、默认值）；`go test ./internal/config/...` 通过。
+- 前端 `npx tsc --noEmit` 0 错、`vitest` 168/168 通过、`npm run build` 通过；产物 CSS 已确认生成 `max-width:var(--chat-col-width)` 与 `--chat-col-width:72%`。
+- Wails bindings 已按新 `Settings` 字段重新生成。
+
 ### 第二百二十轮迭代：执行过程四档显示——调用/结果合并与「无」模式安全例外（已实施）
 
 依据：用户对比 Codex 桌面端「推理摘要」四档菜单，反馈 AgentMate 执行过程运行时行数过多；进一步走读确认噪声来自两处：运行中自动展开全部步骤，以及同一工具的 `tool_call` / `tool_result` 各渲染一张卡。Codex 的四档是模型请求参数，AgentMate 本轮先落地同形态的纯展示四档，并保持事件完整持久化。

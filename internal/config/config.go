@@ -414,6 +414,10 @@ type Settings struct {
 	ThemeMode string `json:"themeMode"`
 	Accent    string `json:"accent"`
 	FontScale string `json:"fontScale"`
+	// ChatWidth selects the chat column width: "narrow" | "medium" | "wide".
+	// Widths are percentages of the chat pane, so the column follows window
+	// resizing instead of a fixed pixel cap. Empty normalizes to medium.
+	ChatWidth string `json:"chatWidth,omitempty"`
 	AutoSpeak bool   `json:"autoSpeak"`
 	// Semantic knowledge search: an OpenAI-compatible provider id + embedding
 	// model. Empty keeps keyword-only search.
@@ -466,6 +470,27 @@ func (s *Settings) AutoTitleEnabled() bool {
 	return s.AutoTitle != nil && *s.AutoTitle
 }
 
+// Chat column width modes. Each maps to a percentage of the chat pane in the
+// frontend theme layer, keeping the column adaptive to window resizing.
+const (
+	ChatWidthNarrow = "narrow"
+	ChatWidthMedium = "medium"
+	ChatWidthWide   = "wide"
+)
+
+// NormalizeChatWidth clamps a stored width preference to a known mode.
+// Empty and stale values fall back to medium.
+func NormalizeChatWidth(width string) string {
+	switch strings.ToLower(strings.TrimSpace(width)) {
+	case ChatWidthNarrow:
+		return ChatWidthNarrow
+	case ChatWidthWide:
+		return ChatWidthWide
+	default:
+		return ChatWidthMedium
+	}
+}
+
 // UpdateAutoCheckEnabled reports whether the silent update check runs.
 // Unset means on: an opt-in default would leave most installs stuck on the
 // version they installed.
@@ -499,6 +524,7 @@ func (s *Settings) normalize() {
 		s.SidebarGrouping = "time"
 	}
 	s.ExecutionDisplayMode = NormalizeExecutionDisplayMode(s.ExecutionDisplayMode)
+	s.ChatWidth = NormalizeChatWidth(s.ChatWidth)
 }
 
 // Config is the root configuration document persisted to disk.
@@ -699,6 +725,7 @@ func Default() Config {
 			ThemeMode:            "dark",
 			Accent:               "blue",
 			FontScale:            "md",
+			ChatWidth:            ChatWidthMedium,
 			ExecutionDisplayMode: ExecutionDisplayAuto,
 		},
 		Skills: []SkillConfig{
