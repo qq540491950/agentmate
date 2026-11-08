@@ -1642,14 +1642,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
     return resolveAgentModel(agent, providerList).provider?.models ?? [];
   }, [active, agents, providerList]);
 
-  // The composer chip shows the effective choice: the resolved model's display
-  // name, or the target's own default label when no model metadata is known.
-  const currentModelLabel = target.model
-    ? modelLabel(target.model)
-    : active
-      ? active.modelOverride || (active.targetType === "agent" ? "Agent 默认模型" : "默认模型")
-      : "";
-
   // Draft composer (issue #64): before the first send there is no session row
   // to read, so the picker resolves against the default provider the new chat
   // will use and the pick lives in component state until send() persists it.
@@ -1661,19 +1653,19 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   );
   const draftModels = draftProvider?.models ?? [];
   const draftModel = draftModelFor(draftModels, draftModelOverride);
-  const draftModelLabel = draftModel ? modelLabel(draftModel) : "默认模型";
   // One set of values feeds the toolbar for both states, so the draft and the
   // saved chat render exactly the same control.
   const composerModels = active ? sessionModels : draftModels;
-  const composerModelValue = active
-    ? (active.modelOverride || "__default")
-    : (draftModelOverride || "__default");
-  const composerModelLabel = active ? currentModelLabel : draftModelLabel;
+  // The picker has no synthetic "default model" row. Its checked value is the
+  // model that will actually run; an unset override resolves to a real model
+  // (direct chats: the provider's first; agents: their configured model).
+  const composerModel = active ? (target.model ?? composerModels[0] ?? null) : draftModel;
+  const composerModelValue = composerModel?.id ?? "";
+  const composerModelLabel = composerModel ? modelLabel(composerModel) : "";
   const composerProviderName = active ? (target.provider?.name ?? "") : (draftProvider?.name ?? "");
-  const composerDefaultLabel = active?.targetType === "agent" ? "Agent 默认模型" : "默认模型";
   const chooseComposerModel = (value: string) => {
     if (!active) {
-      setDraftModelOverride(value === "__default" ? "" : value);
+      setDraftModelOverride(value);
       return;
     }
     void setSessionModel(value);
@@ -1688,7 +1680,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   // Composer model: a draft resolves exactly like the first send will
   // (draftModelFor), so the thinking picker is selectable before the session
   // row exists — same model, same level table, no drift at send time.
-  const composerModel = active ? target.model : draftModel;
   const modelHasReasoningTable = !!composerModel?.reasoning;
   const composerModelID = composerModel?.id ?? "";
   const [suggestedReasoning, setSuggestedReasoning] = useState<{ id: string; info: ModelInfo } | null>(null);
@@ -1738,9 +1729,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
     const picked = sessionModels.find((m) => m.id === modelID);
     const label = picked ? modelLabel(picked) : modelID;
     try {
-      await Chat.SetSessionModel(activeID, modelID === "__default" ? "" : modelID);
+      await Chat.SetSessionModel(activeID, modelID);
       reloadSessions();
-      toast.success(modelID === "__default" ? "已恢复默认模型" : `本会话已切换到 ${label}`);
+      toast.success(`本会话已切换到 ${label}`);
     } catch (e) {
       toast.error(`切换模型失败: ${errText(e)}`);
     }
@@ -3097,9 +3088,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                           value={composerModelValue}
                           onValueChange={chooseComposerModel}
                         >
-                          <DropdownMenuRadioItem value="__default">
-                            {composerDefaultLabel}
-                          </DropdownMenuRadioItem>
                           {composerModels.map((m) => (
                             <DropdownMenuRadioItem key={m.id} value={m.id} className="text-xs">
                               <span className="truncate" title={`${modelLabel(m)} · ${m.id}`}>{modelLabel(m)}</span>
