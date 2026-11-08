@@ -27,6 +27,39 @@ export function resolveContextUsage(
   return { pct, color, win: contextWindow, label, used: contextTokens, estimated };
 }
 
+/** SessionUsageSummary is the cumulative-billing subset the tooltip appends. */
+export interface SessionUsageSummary {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * contextTooltipLines renders the hover bubble under the composer's context
+ * ring (Codex desktop style): real occupancy first, cumulative billed usage
+ * last. Pure so the bubble wording stays unit-tested.
+ */
+export function contextTooltipLines(
+  usage: ContextUsageView | null,
+  sessionUsage: SessionUsageSummary | null | undefined,
+  cost?: string,
+): string[] {
+  const lines: string[] = [];
+  if (usage) {
+    const remain = Math.max(0, 100 - Math.min(100, usage.pct));
+    lines.push("上下文窗口");
+    lines.push(`${usage.label} 已用（剩余 ${remain.toFixed(0)}%）`);
+    lines.push(`已用 ${usage.used.toLocaleString()}，共 ${usage.win.toLocaleString()} tokens`);
+    if (usage.estimated) lines.push("按会话内容估算——当前模型未返回用量");
+  }
+  if (sessionUsage && sessionUsage.totalTokens > 0) {
+    const costPart = cost ? ` · ${cost}` : "";
+    lines.push(`累计 ${sessionUsage.totalTokens.toLocaleString()} tokens${costPart}`);
+    lines.push(`输入 ${sessionUsage.promptTokens.toLocaleString()} · 输出 ${sessionUsage.completionTokens.toLocaleString()}`);
+  }
+  return lines;
+}
+
 /** EstimateMessage is the per-message subset the estimator reads. */
 export type EstimateMessage = {
   kind: string;

@@ -8,7 +8,7 @@ import {
   PanelRightOpen,
   ChevronRight, ChevronDown,
   Settings as SettingsIcon, CircleHelp, Sun, Moon,
-  Boxes, LockOpen,
+  Boxes, Coins, LockOpen,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
 } from "lucide-react";
@@ -49,6 +49,7 @@ import { resolveAgentModel } from "@/lib/agentModel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
 import { ContextRing } from "@/components/chat/ContextRing";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
 import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
@@ -60,7 +61,7 @@ import {
   type RemoteAgentConfig, type UsageInfo, type ModelProvider, type ModelInfo, type SessionStats,
   type Project, type SkillConfig, type WorkspaceEntry,
 } from "@/lib/api";
-import { estimateContextTokens, resolveContextUsage } from "@/lib/contextUsage";
+import { contextTooltipLines, estimateContextTokens, resolveContextUsage } from "@/lib/contextUsage";
 import {
   ALLOW_ALL_RISK_DESCRIPTION, ALLOW_ALL_RISK_TITLE,
   allowAllRiskAlreadyAcknowledged, allowAllToggleHint, allowAllToggleLabel,
@@ -2395,14 +2396,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {sessionUsage && sessionUsage.totalTokens > 0 && (
-              <span
-                className="text-2xs tabular-nums text-muted-foreground"
-                title={`输入 ${sessionUsage.promptTokens.toLocaleString()} + 输出 ${sessionUsage.completionTokens.toLocaleString()} tokens`}
-              >
-                {sessionUsage.totalTokens.toLocaleString()} tokens{costOf(sessionUsage) && ` · ${costOf(sessionUsage)}`}
-              </span>
-            )}
             {realContextUsage && realContextUsage.pct >= 80 && (
               <span className="shrink-0 rounded-md bg-destructive/10 px-1.5 py-0.5 text-2xs text-destructive">
                 上下文即将耗尽（{realContextUsage.pct.toFixed(0)}%）
@@ -2455,11 +2448,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   <PanelRightOpen className="h-4 w-4" />
                 </Button>
               </>
-            )}
-            {running && (
-              <span className="flex shrink-0 items-center gap-1 rounded-md bg-brand/10 px-1.5 py-0.5 text-2xs text-brand">
-                <Loader2 className="h-3 w-3 animate-spin" /> 运行中
-              </span>
             )}
           </div>
         </div>
@@ -2954,15 +2942,23 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   </button>
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
-                  {contextUsage && (
-                    <div
-                      className="hidden shrink-0 items-center px-1 sm:flex"
-                      title={contextUsage.estimated
-                        ? `上下文窗口：≈已用 ${contextUsage.used.toLocaleString()} / ${contextUsage.win.toLocaleString()} tokens（${contextUsage.label}，按会话内容估算——当前模型未返回用量）`
-                        : `上下文窗口：已用 ${contextUsage.used.toLocaleString()} / ${contextUsage.win.toLocaleString()} tokens（${contextUsage.label}，剩余 ${(100 - contextUsage.pct).toFixed(0)}%）`}
-                    >
-                      <ContextRing usage={contextUsage} />
-                    </div>
+                  {(contextUsage || (sessionUsage && sessionUsage.totalTokens > 0)) && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="hidden shrink-0 items-center px-1 sm:flex">
+                            {contextUsage
+                              ? <ContextRing usage={contextUsage} />
+                              : <Coins className="h-3.5 w-3.5 text-muted-foreground" />}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="flex-col items-start gap-0.5">
+                          {contextTooltipLines(contextUsage, sessionUsage, costOf(sessionUsage)).map((line) => (
+                            <span key={line}>{line}</span>
+                          ))}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
                   {availableLevels.length > 0 && (
                     <DropdownMenu>

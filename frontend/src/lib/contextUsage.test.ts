@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateContextTokens, resolveContextUsage } from "./contextUsage";
+import { contextTooltipLines, estimateContextTokens, resolveContextUsage, type ContextUsageView } from "./contextUsage";
 
 // 口径回归：分子必须是「最后一次调用的 prompt tokens」（真实上下文），
 // 不是历次调用的累计 totalTokens——后者在工具循环里重复计入共享前缀，
@@ -61,5 +61,42 @@ describe("estimateContextTokens", () => {
 
   it("空消息列表为 0（新会话不显示圆环）", () => {
     expect(estimateContextTokens([])).toBe(0);
+  });
+});
+
+// 悬停气泡（Codex 桌面端样式）：占用在前、累计计费在后，纯函数保证文案口径。
+describe("contextTooltipLines", () => {
+  const usage: ContextUsageView = {
+    pct: 17, color: "bg-success", win: 950_000, label: "17%", used: 157_000, estimated: false,
+  };
+
+  it("占用 + 累计用量 + 费用齐全", () => {
+    expect(contextTooltipLines(usage, { promptTokens: 150_000, completionTokens: 7_000, totalTokens: 157_000 }, "¥0.31"))
+      .toEqual([
+        "上下文窗口",
+        "17% 已用（剩余 83%）",
+        "已用 157,000，共 950,000 tokens",
+        "累计 157,000 tokens · ¥0.31",
+        "输入 150,000 · 输出 7,000",
+      ]);
+  });
+
+  it("估算视图带 ≈ 标注与口径说明", () => {
+    const est: ContextUsageView = { ...usage, label: "≈17%", estimated: true };
+    const lines = contextTooltipLines(est, null);
+    expect(lines[1]).toBe("≈17% 已用（剩余 83%）");
+    expect(lines).toContain("按会话内容估算——当前模型未返回用量");
+  });
+
+  it("窗口未知时只保留累计用量（Coins 兜底图标）", () => {
+    expect(contextTooltipLines(null, { promptTokens: 120, completionTokens: 80, totalTokens: 200 }))
+      .toEqual(["累计 200 tokens", "输入 120 · 输出 80"]);
+  });
+
+  it("无数据不渲染、费用为空时省略、零用量省略", () => {
+    expect(contextTooltipLines(null, null)).toEqual([]);
+    expect(contextTooltipLines(null, { promptTokens: 0, completionTokens: 0, totalTokens: 0 })).toEqual([]);
+    expect(contextTooltipLines(usage, { promptTokens: 1, completionTokens: 2, totalTokens: 3 }))
+      .toEqual(["上下文窗口", "17% 已用（剩余 83%）", "已用 157,000，共 950,000 tokens", "累计 3 tokens", "输入 1 · 输出 2"]);
   });
 });

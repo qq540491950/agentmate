@@ -4,6 +4,22 @@
 
 ## 视觉测试与体验设计
 
+### 第二百一十九轮迭代：header 用量降噪——token 消耗移入 composer 悬停气泡（已实施）
+
+依据：用户反馈（截图对比 Codex 桌面端）右上角常驻的「92,503 tokens」与「运行中」徽标属于冗余显示，token 消耗应像 Codex 一样悬停才显示。
+
+**实现要点**
+
+- **ChatPage header**：删除常驻 token/cost 文本与「运行中」徽标。运行状态仍由会话列表 spinner、composer 停止按钮与「回到底部」呼吸点表达；≥80% 的「上下文即将耗尽」告警徽标保留（告警态非常驻冗余）。
+- **composer 悬停气泡**：ContextRing 的原生 `title` 换成项目 radix Tooltip（深色气泡，对齐图二样式）；新增 `contextTooltipLines` 纯函数统一文案——上下文窗口占用 %（含剩余）、已用/共 tokens、≈ 估算口径说明（延续 218 轮）、累计计费 tokens + ¥费用、输入/输出分项。
+- **兜底**：模型未配置 contextWindow 时圆环不渲染，改用 Coins 图标承载同一气泡，保证累计用量仍可悬停查看；窄屏（`hidden sm:flex`）行为不变。MessageBubble 逐条用量与「会话统计」对话框不受影响。
+
+**测试证据**
+
+- 前端回归：contextUsage.test.ts 新增 contextTooltipLines 4 条用例（占用+累计+费用齐全、≈ 估算说明、窗口未知兜底、无数据/零用量/费用为空省略）；vitest 160/160 通过（新增 4 条全绿）。
+- `npx tsc --noEmit` 0 错；`npm run build` 通过（5.4s）。Go 侧未改动。
+- 待人工冒烟：跑一轮对话后右上角不再常驻 token 文本与「运行中」徽标；悬停 composer 右下角圆环出现深色多行气泡（百分比/剩余/已用与窗口/累计+费用）；无 contextWindow 的模型悬停 Coins 图标只显示累计用量。
+
 ### 第二百一十八轮迭代：思考强度标注移除与上下文占用圆环——未报用量模型的 ≈ 估算兜底（已实施）
 
 依据：用户报告①用户消息上方的「思考强度：最高」标注没有必要显示；②上下文占用「又不显示了」，希望按 Codex 桌面端的圆圈样式实现。实证定位（本机 config + sessions.db + 对上游的最小 curl 实测）：占用条一直存在（composer 工具条），但天气会话 `sess_b020eba68fd2f49f`（catpaw/deepseek-v4.1-flash 路由）32 条事件 0 条 usage 元数据——该路由即使显式携带 `stream_options.include_usage` 也从不返回 usage 块（curl 实测 99 个 data 行无一含 usage），`resolveContextUsage` 收到空数据按「不猜测」原则返回 null，整个指示器随之消失；minimax 路由则正常返回 usage 块。
