@@ -28,7 +28,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupSessionsByProject, groupSessionsByTime, groupToolMessages, isDayChange, mdToSpeech, sessionTargetBadgeLabel, type UIMessage } from "@/lib/chatUtils";
+import { chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupSessionsByProject, groupSessionsByTime, groupToolMessages, groupTurns, isDayChange, mdToSpeech, sessionTargetBadgeLabel, type ChatItem, type UIMessage } from "@/lib/chatUtils";
 import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
 import {
   SIDEBAR_KEYBOARD_STEP, SIDEBAR_MIN_WIDTH,
@@ -48,6 +48,8 @@ import { isDialogCancelError } from "@/lib/workspace";
 import { composerReasoningModel, levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
 import { resolveAgentModel } from "@/lib/agentModel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
+import { TurnCard, type TurnBodyOpts } from "@/components/chat/TurnCard";
+import { TurnRail, type RailTurn } from "@/components/chat/TurnRail";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
 import { ContextRing } from "@/components/chat/ContextRing";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -444,6 +446,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
     // next history loads is a correctness-level wrongness (stale flash).
     setMessages([]);
     setRenderLimit(RENDER_LIMIT);
+    setActiveTurnId(null);
     setHistoryLoading(true);
     Chat.GetSessionMessages(activeID)
       .then((ms) => {
@@ -812,14 +815,36 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   const [renderLimit, setRenderLimit] = useState(RENDER_LIMIT);
   // Reader position: off-bottom state drives the「回到底部」floater.
   const [atBottom, setAtBottom] = useState(true);
+  // Turn rail position: the turn the reader is currently at (scroll-followed;
+  // rail clicks override it and the next scroll event re-syncs).
+  const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const onScroll = () => {
-      setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120);
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      setAtBottom(nearBottom);
+      // The last turn header above the upper viewport edge is "current".
+      const elTop = el.getBoundingClientRect().top;
+      let current: string | null = null;
+      const nodes = el.querySelectorAll<HTMLElement>("[data-turn-anchor]");
+      for (const node of nodes) {
+        if (node.getBoundingClientRect().top - elTop > 200) break;
+        current = node.dataset.turnAnchor ?? current;
+      }
+      // At the bottom the reader is on the latest turn even when its header
+      // sits below the 200px scan line on a short viewport.
+      if (nearBottom && nodes.length > 0) current = nodes[nodes.length - 1].dataset.turnAnchor ?? current;
+      if (current == null && nodes.length > 0) current = nodes[0].dataset.turnAnchor ?? null;
+      setActiveTurnId(current);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+  // Rail / quote click: scroll the turn into view and mark it active.
+  const selectTurn = useCallback((msgId: string) => {
+    setActiveTurnId(msgId);
+    document.getElementById(`turn-${msgId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
   // History fetch in flight after a session switch: render skeletons instead
   // of an empty-looking conversation.
@@ -1818,28 +1843,86 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   // Collapse consecutive tool events into execution blocks before slicing:
   // the render limit then caps rendered entries (blocks included), and a run
   // is never split across the truncation boundary.
-  const renderItems = useMemo(() => groupToolMessages(renderSource), [renderSource]);
+  const renderItems = useMemo(() => groupTurns(groupToolMessages(renderSource)), [renderSource]);
   const visibleItems = useMemo(() => renderItems.slice(-renderLimit), [renderItems, renderLimit]);
   const omittedItems = Math.max(0, renderItems.length - visibleItems.length);
-  // Execution groups after the last user message belong to the live turn:
-  // their whole-turn clock keeps ticking until that turn settles.
+  // The last turn owns the live clock: its execution blocks keep ticking
+  // until the turn settles.
   const firstVisibleIdx = renderItems.length - visibleItems.length;
-  const lastUserItemIdx = useMemo(() => {
+  const lastTurnIdx = useMemo(() => {
     for (let k = renderItems.length - 1; k >= 0; k--) {
-      const it = renderItems[k];
-      if (it.kind === "message" && it.message.kind === "user") return k;
+      if (renderItems[k].kind === "turn") return k;
     }
     return -1;
   }, [renderItems]);
-  // The banner counts hidden MESSAGES (a collapsed block covers many), while
-  // the paging button reveals whole entries in RENDER_LIMIT steps.
+  // The banner counts hidden MESSAGES (a collapsed block or turn covers
+  // many), while the paging button reveals whole entries in RENDER_LIMIT steps.
   const omittedMessages = useMemo(() => {
     let n = 0;
     for (const it of renderItems.slice(0, omittedItems)) {
-      n += it.kind === "tool_group" ? it.messages.length : 1;
+      if (it.kind === "tool_group") n += it.messages.length;
+      else if (it.kind === "turn") {
+        n += 1;
+        for (const b of it.body) n += b.kind === "tool_group" ? b.messages.length : 1;
+      } else n += 1;
     }
     return n;
   }, [renderItems, omittedItems]);
+  // Rail entries mirror what is rendered: paged-out turns are not navigable.
+  const railTurns = useMemo(() => {
+    const turns: RailTurn[] = [];
+    for (const it of visibleItems) {
+      if (it.kind !== "turn") continue;
+      const text = it.header.text.trim() || "（仅附件）";
+      turns.push({ id: it.header.id, text: text.length > 160 ? `${text.slice(0, 160)}…` : text });
+    }
+    return turns;
+  }, [visibleItems]);
+  // Seed / repair the active bar when no scroll event has fired yet (a short
+  // session never scrolls) or the active turn got filtered/paged out.
+  useEffect(() => {
+    if (railTurns.length === 0) return;
+    if (activeTurnId && railTurns.some((t) => t.id === activeTurnId)) return;
+    setActiveTurnId(railTurns[railTurns.length - 1].id);
+  }, [railTurns, activeTurnId]);
+  // TurnCard bodies reuse the exact prop wiring the flat list used.
+  const renderBodyItem = (item: ChatItem, opts: TurnBodyOpts) => {
+    if (item.kind === "tool_group") {
+      return (
+        <ToolCallGroup
+          group={item}
+          live={opts.liveGroup}
+          runningTools={runningToolsSet}
+          durations={toolDurations}
+          sessionID={activeID}
+          filterQ={filterQ}
+          displayMode={executionDisplayMode}
+          onConfirm={answerConfirm}
+          onAllowAll={allowAllFromCard}
+          allowAllBusy={allowAllBusy}
+        />
+      );
+    }
+    return (
+      <MessageBubble
+        m={item.message}
+        isLastAssistant={opts.isLastAssistant}
+        onRegenerate={regenerate}
+        canRegenerate={!running && !!activeID}
+        toolRunning={item.message.kind === "tool_call" ? runningToolsSet.has(item.message.id) : false}
+        durationMs={toolDurations.get(item.message.id)}
+        onSpeak={speakMessage}
+        costOf={costOf}
+        onEdit={startEdit}
+        canEdit={editFlags.get(item.message.id) === true && !running && !!activeID}
+        onConfirm={answerConfirm}
+        onAllowAll={allowAllFromCard}
+        allowAllBusy={allowAllBusy}
+        sessionID={activeID}
+        filterQ={filterQ}
+      />
+    );
+  };
 
   const filterOpenRef = useRef(false);
   const toggleFilter = useCallback(() => {
@@ -2525,6 +2608,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               />
             </button>
           )}
+          <TurnRail turns={railTurns} activeId={activeTurnId} onSelect={selectTurn} />
           <ScrollArea className="flex-1" viewportRef={scrollRef} aria-label="会话消息">
             <div className="mx-auto max-w-[var(--chat-col-width)] space-y-4 px-5 py-6">
               {(() => {
@@ -2591,40 +2675,31 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   ? (omittedItems > 0 ? chatItemEndTs(renderItems[renderItems.length - visibleItems.length - 1]) : undefined)
                   : chatItemEndTs(arr[i - 1]);
                 const dayChanged = isDayChange(prevTs, ts);
+                const renderIdx = firstVisibleIdx + i;
                 return (
                   <Fragment key={item.id}>
                     {dayChanged && <DaySeparator ts={ts} />}
-                    {item.kind === "tool_group" ? (
-                      <ToolCallGroup
-                        group={item}
-                        live={running && firstVisibleIdx + i > lastUserItemIdx}
-                        runningTools={runningToolsSet}
-                        durations={toolDurations}
-                        sessionID={activeID}
+                    {item.kind === "turn" ? (
+                      <TurnCard
+                        turn={item}
+                        active={item.header.id === activeTurnId}
+                        live={running && renderIdx === lastTurnIdx}
+                        isLastTurn={renderIdx === renderItems.length - 1}
+                        onSelectTurn={selectTurn}
+                        onEdit={startEdit}
+                        canEdit={editFlags.get(item.header.id) === true && !running && !!activeID}
                         filterQ={filterQ}
-                        displayMode={executionDisplayMode}
-                        onConfirm={answerConfirm}
-                        onAllowAll={allowAllFromCard}
-                        allowAllBusy={allowAllBusy}
+                        renderBodyItem={renderBodyItem}
                       />
                     ) : (
-                      <MessageBubble
-                        m={item.message}
-                        isLastAssistant={item.message.kind === "assistant" && i === arr.length - 1}
-                        onRegenerate={regenerate}
-                        canRegenerate={!running && !!activeID}
-                        toolRunning={item.message.kind === "tool_call" ? runningToolsSet.has(item.message.id) : false}
-                        durationMs={toolDurations.get(item.message.id)}
-                        onSpeak={speakMessage}
-                        costOf={costOf}
-                        onEdit={startEdit}
-                        canEdit={editFlags.get(item.message.id) === true && !running && !!activeID}
-                        onConfirm={answerConfirm}
-                        onAllowAll={allowAllFromCard}
-                        allowAllBusy={allowAllBusy}
-                        sessionID={activeID}
-                        filterQ={filterQ}
-                      />
+                      // Orphans precede the first user message: no live turn,
+                      // and the shared wiring keeps one prop-passing site.
+                      renderBodyItem(item, {
+                        isLastAssistant: item.kind === "message"
+                          && item.message.kind === "assistant"
+                          && renderIdx === renderItems.length - 1,
+                        liveGroup: false,
+                      })
                     )}
                   </Fragment>
                 );

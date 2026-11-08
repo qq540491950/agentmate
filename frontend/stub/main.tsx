@@ -201,7 +201,7 @@ const histories: Record<string, any[]> = {
     { id: "proc-a", kind: "assistant", author: "写手助手", text: "检查、测试与文件写入均已完成。", timestamp: "2026-11-08T09:00:18Z" },
   ],
   sess_direct: [
-    { id: "d1", kind: "user", author: "user", text: "我如何选择模型呢？", timestamp: "2026-11-01T00:46:00Z" },
+    { id: "d1", kind: "user", author: "user", text: "Q9 可以参考其他的 agent 的工具是如何处理的？比如单文件 48KB 上限、单轮 96KB、二进制检测这些阈值，各家 CLI 是静默截断还是显式报错，社区有没有已经形成的共识做法？", timestamp: "2026-11-01T00:46:00Z" },
     {
       id: "d2", kind: "assistant", author: "助手", timestamp: "2026-11-01T00:46:20Z",
       text: [
@@ -234,6 +234,16 @@ const histories: Record<string, any[]> = {
         "- 复杂分析、方案设计、疑难排错 → 大模型",
         "- 先由小模型处理，检测到困难后再升级",
         "如果你告诉我具体用途，例如写作、编程、客服、图片识别或批量数据处理，我可以直接给你一个模型选择方案。",
+      ].join("\n"),
+    },
+    { id: "d3", kind: "user", author: "user", text: "按这个调研结论，给出我们 chat_context.go 的调整清单与回归测试点", timestamp: "2026-11-01T00:50:00Z" },
+    {
+      id: "d4", kind: "assistant", author: "助手", timestamp: "2026-11-01T00:50:30Z",
+      text: [
+        "结合调研结论，建议分三步调整：",
+        "- **阈值对齐**：单文件上限对齐主流的 32KB，超出时显式提示而不是静默截断。",
+        "- **预算提示**：单轮接近 96KB 时在输入区给出剩余额度。",
+        "- **回归测试**：覆盖越界文件、二进制文件、引号路径三类用例。",
       ].join("\n"),
     },
   ],

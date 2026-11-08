@@ -177,6 +177,45 @@ export type ChatItem =
   | { kind: "message"; id: string; message: UIMessage }
   | ToolGroup;
 
+/** TurnItem wraps one conversation turn: the user message as its quote
+ *  header plus every entry the run produced until the next user message.
+ *  The turn rail and the turn card both key off the header's id. */
+export type TurnItem = {
+  kind: "turn";
+  id: string;
+  header: UIMessage;
+  body: ChatItem[];
+};
+
+/** RenderItem is one top-level entry in the message pane: a turn card, or an
+ *  orphan entry that precedes the first user message. */
+export type RenderItem = ChatItem | TurnItem;
+
+/** groupTurns folds the flat item list into turn cards keyed by user
+ *  messages. Orphan entries before the first user message (error bubbles a
+ *  failed send can leave behind) render standalone so they never vanish. */
+export function groupTurns(items: ChatItem[]): RenderItem[] {
+  const out: RenderItem[] = [];
+  let header: UIMessage | null = null;
+  let body: ChatItem[] = [];
+  const flush = () => {
+    if (header) out.push({ kind: "turn", id: header.id, header, body });
+    else out.push(...body);
+    header = null;
+    body = [];
+  };
+  for (const item of items) {
+    if (item.kind === "message" && item.message.kind === "user") {
+      flush();
+      header = item.message;
+      continue;
+    }
+    body.push(item);
+  }
+  flush();
+  return out;
+}
+
 /** ToolStep pairs one tool_call with its matching tool_result. Keeping the
  *  pair together is what makes an execution block read as N tools instead of
  *  2N call/result rows. */
@@ -468,15 +507,21 @@ export function formatWorkDuration(ms: number): string {
 
 /** chatItemStartTs / chatItemEndTs expose an item's visible time span so day
  *  separators compare against the real previous entry (a group spans from its
- *  first event to its last). */
-export function chatItemStartTs(item: ChatItem): string | undefined {
-  return item.kind === "tool_group" ? item.messages[0]?.timestamp : item.message.timestamp;
+ *  first event to its last; a turn spans from its user header to its last
+ *  body entry). */
+export function chatItemStartTs(item: RenderItem): string | undefined {
+  if (item.kind === "tool_group") return item.messages[0]?.timestamp;
+  if (item.kind === "turn") return item.header.timestamp ?? chatItemStartTs(item.body[0]);
+  return item.message.timestamp;
 }
 
-export function chatItemEndTs(item: ChatItem): string | undefined {
-  return item.kind === "tool_group"
-    ? item.messages[item.messages.length - 1]?.timestamp
-    : item.message.timestamp;
+export function chatItemEndTs(item: RenderItem): string | undefined {
+  if (item.kind === "tool_group") return item.messages[item.messages.length - 1]?.timestamp;
+  if (item.kind === "turn") {
+    const last = item.body[item.body.length - 1];
+    return last ? chatItemEndTs(last) : item.header.timestamp;
+  }
+  return item.message.timestamp;
 }
 
 /**

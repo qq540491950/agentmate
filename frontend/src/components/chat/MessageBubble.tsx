@@ -156,6 +156,91 @@ export function DaySeparator({ ts }: { ts: string | undefined }) {
   );
 }
 
+/** UserQuote renders a user input as the compact quote header of its turn
+ *  card: single-line by default (full text expands on click), copy always
+ *  reachable, edit-and-resend on hover. The turn rail anchors on the same
+ *  element (data-turn-anchor) to scroll the conversation to this turn. */
+export function UserQuote({ m, active, onSelectTurn, onEdit, canEdit, filterQ }: {
+  m: UIMessage;
+  active?: boolean;
+  onSelectTurn?: (msgId: string) => void;
+  onEdit?: (text: string) => void;
+  canEdit?: boolean;
+  filterQ: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const toggle = () => {
+    setExpanded((v) => !v);
+    onSelectTurn?.(m.id);
+  };
+  return (
+    <div id={`turn-${m.id}`} data-turn-anchor={m.id} className="group wb-message-in">
+      {(m.attachments?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap gap-1.5 pb-1.5">
+          {m.attachments!.map((a, i) => (
+            <button
+              key={i}
+              type="button"
+              title={`查看 ${a.name} 大图`}
+              onClick={() => setLightbox(a.dataUrl)}
+            >
+              <img src={a.dataUrl} alt={a.name} className="h-20 cursor-zoom-in rounded-lg border object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+      {m.text && (
+        <div className="flex items-center gap-1">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={toggle}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              toggle();
+            }}
+            title={expanded ? fmtTime(m.timestamp) : `${fmtTime(m.timestamp)}（点击展开全文）`}
+            className={cn(
+              "min-w-0 flex-1 cursor-pointer rounded-lg px-3 py-2 text-sm leading-relaxed text-foreground/90 outline-none transition-colors focus-visible:ring-1 focus-visible:ring-brand/40",
+              active ? "bg-brand/10 ring-1 ring-brand/30" : "bg-muted/40 ring-1 ring-transparent hover:bg-muted/70",
+              expanded ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate",
+            )}
+          >
+            {highlightText(m.text, filterQ, "bg-brand/25 text-foreground rounded-sm")}
+          </div>
+          <CopyButton
+            text={m.text}
+            iconOnly
+            title="复制这条消息"
+            className="h-6 w-6 shrink-0 justify-center rounded border-0 bg-transparent p-0"
+          />
+          {canEdit && onEdit && (
+            <button
+              type="button"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+              title="编辑并重发这条消息"
+              aria-label="编辑并重发这条消息"
+              onClick={() => onEdit(m.text)}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+      <Dialog open={!!lightbox} onOpenChange={(v) => !v && setLightbox(null)}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogTitle className="sr-only">附件图片</DialogTitle>
+          {lightbox && (
+            <img src={lightbox} alt="附件大图" className="max-h-[80vh] w-full rounded object-contain" />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // MessageBubble is memoized: streaming appends a new message object for the
 // last bubble each token, and every other bubble must keep the same props to
 // skip re-rendering. Callers therefore pass stable callbacks and precomputed
@@ -178,7 +263,6 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   sessionID: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const [lightbox, setLightbox] = useState<string | null>(null);
   const copyMsg = async () => {
     try {
       await navigator.clipboard.writeText(m.text);
@@ -186,67 +270,6 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
       setTimeout(() => setCopied(false), 1500);
     } catch { /* ignore */ }
   };
-  if (m.kind === "user") {
-    return (
-      <div className="group wb-message-in flex justify-end">
-        <div className="flex max-w-[85%] flex-col items-end gap-1.5 sm:max-w-[640px]">
-          {(m.attachments?.length ?? 0) > 0 && (
-            <div className="flex flex-wrap justify-end gap-1.5">
-              {m.attachments!.map((a, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  title={`查看 ${a.name} 大图`}
-                  onClick={() => setLightbox(a.dataUrl)}
-                >
-                  <img src={a.dataUrl} alt={a.name} className="h-20 cursor-zoom-in rounded-lg border object-cover" />
-                </button>
-              ))}
-            </div>
-          )}
-          {m.text && (
-          <div className="flex flex-col items-end gap-1">
-            <div
-              className="whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl rounded-br-md bg-brand/10 px-4 py-2.5 text-md leading-[1.65] text-foreground ring-1 ring-brand/15"
-              title={fmtTime(m.timestamp)}
-            >
-              {highlightText(m.text, filterQ, "bg-brand/25 text-foreground rounded-sm")}
-            </div>
-            {/* Row actions sit in the block's bottom-right corner, icon-only,
-                and appear only while the row is hovered or keyboard-focused. */}
-            <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-              {canEdit && (
-                <button
-                  type="button"
-                  className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  title="编辑并重发这条消息"
-                  aria-label="编辑并重发这条消息"
-                  onClick={() => onEdit(m.text)}
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              )}
-              <CopyButton
-                text={m.text}
-                iconOnly
-                title="复制这条消息"
-                className="h-5 w-5 justify-center rounded border-0 bg-transparent p-0"
-              />
-            </div>
-          </div>
-          )}
-        </div>
-        <Dialog open={!!lightbox} onOpenChange={(v) => !v && setLightbox(null)}>
-          <DialogContent className="sm:max-w-4xl">
-            <DialogTitle className="sr-only">附件图片</DialogTitle>
-            {lightbox && (
-              <img src={lightbox} alt="附件大图" className="max-h-[80vh] w-full rounded object-contain" />
-            )}
-          </DialogContent>
-        </Dialog>
-      </div>
-    );
-  }
   if (m.kind === "error") {
     return (
       <div className="wb-message-in rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">

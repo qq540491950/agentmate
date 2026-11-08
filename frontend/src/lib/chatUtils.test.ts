@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildToolTrace, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations,
   dayLabel, effectiveReasoningLevel, fmtTime, formatWorkDuration, groupSessionsByProject,
-  groupSessionsByTime, groupToolMessages, isDayChange, mdToSpeech, sessionTargetBadgeLabel,
+  groupSessionsByTime, groupToolMessages, groupTurns, isDayChange, mdToSpeech, sessionTargetBadgeLabel,
   toolGroupDurationMs, toolGroupElapsedMs, toolGroupInvocationCount, toolGroupStatus,
-  toolResultFailed, type ToolGroup, type UIMessage,
+  toolResultFailed, type ToolGroup, type TurnItem, type UIMessage,
 } from "./chatUtils";
 import type { ChatSession, Project } from "@/lib/api";
 
@@ -14,6 +14,49 @@ const msg = (over: Partial<UIMessage>): UIMessage => ({
   author: "bot",
   text: "",
   ...over,
+});
+
+describe("groupTurns", () => {
+  it("wraps each user message and its run into one turn", () => {
+    const items = groupToolMessages([
+      msg({ id: "u1", kind: "user", author: "user", text: "q1", timestamp: "2026-11-08T01:00:00Z" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "run_command", timestamp: "2026-11-08T01:00:05Z" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "run_command", toolResp: { ok: true }, timestamp: "2026-11-08T01:00:06Z" }),
+      msg({ id: "a1", kind: "assistant", text: "done", timestamp: "2026-11-08T01:00:10Z" }),
+      msg({ id: "u2", kind: "user", author: "user", text: "q2", timestamp: "2026-11-08T01:01:00Z" }),
+      msg({ id: "a2", kind: "assistant", text: "ok", timestamp: "2026-11-08T01:01:05Z" }),
+    ]);
+    const turns = groupTurns(items);
+    expect(turns.map((t) => t.kind)).toEqual(["turn", "turn"]);
+    const t0 = turns[0] as TurnItem;
+    expect(t0.id).toBe("u1");
+    expect(t0.body.map((b) => b.kind)).toEqual(["tool_group", "message"]);
+    const t1 = turns[1] as TurnItem;
+    expect(t1.id).toBe("u2");
+    expect(t1.body).toHaveLength(1);
+  });
+
+  it("renders orphan entries before the first user message standalone", () => {
+    const items = groupToolMessages([
+      msg({ id: "e1", kind: "error", text: "boom" }),
+      msg({ id: "u1", kind: "user", author: "user", text: "q" }),
+      msg({ id: "a1", kind: "assistant", text: "hi" }),
+    ]);
+    const rendered = groupTurns(items);
+    expect(rendered[0].kind).toBe("message");
+    expect(rendered[1].kind).toBe("turn");
+  });
+
+  it("spans a turn from its header to the last body entry for day separators", () => {
+    const rendered = groupTurns(groupToolMessages([
+      msg({ id: "u1", kind: "user", author: "user", text: "q", timestamp: "2026-11-08T01:00:00Z" }),
+      msg({ id: "a1", kind: "assistant", text: "hi", timestamp: "2026-11-08T03:00:00Z" }),
+    ]));
+    const turn = rendered[0] as TurnItem;
+    expect(chatItemStartTs(turn)).toBe("2026-11-08T01:00:00Z");
+    expect(chatItemEndTs(turn)).toBe("2026-11-08T03:00:00Z");
+    expect(chatItemEndTs({ ...turn, body: [] })).toBe("2026-11-08T01:00:00Z");
+  });
 });
 
 describe("computeToolDurations", () => {
