@@ -28,7 +28,10 @@ strip_prefix() {
 
 range_notes() {
 	local range="$1" limit="${2:-}" feat=() fix=() other=() s kind
-	local log_args=(--no-merges --pretty=format:%s)
+	# tformat (not format) terminates the last commit too: `while read` drops a
+	# final line without a trailing newline, which silently lost the oldest
+	# commit in the range from every generated release note.
+	local log_args=(--no-merges --pretty=tformat:%s)
 	if [ -n "$limit" ]; then
 		log_args=(-n "$limit" "${log_args[@]}")
 	fi
@@ -99,7 +102,7 @@ if [ "${1:-}" = "--next" ]; then
 		feat*:*) has_feat=1 ;;
 		fix*:* | perf*:*) has_fix=1 ;;
 		esac
-	done < <(git log "$range" --no-merges --pretty=format:'%s')
+	done < <(git log "$range" --no-merges --pretty=tformat:'%s')
 	if [ "$has_feat" = 1 ]; then
 		minor=$((minor + 1))
 		patch=0
