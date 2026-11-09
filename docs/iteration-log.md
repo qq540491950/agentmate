@@ -4,6 +4,73 @@
 
 ## 视觉测试与体验设计
 
+### 第二百三十八轮迭代：移除会话「重新提炼标题」菜单项（已实施）
+
+依据：用户截图指出会话操作菜单中的「重新提炼标题」项冗余，要求移除。
+
+**实现要点**
+
+- 删除会话行操作菜单与当前会话「更多操作」菜单中的「重新提炼标题」入口，避免两处重复。
+- 移除对应的前端 `refineSessionTitle` 回调与不再使用的 `Sparkles` 图标导入；后端 `ChatService.RefineSessionTitle` 保留，不改变既有 API 与自动标题逻辑。
+
+**测试证据**
+
+- `npx tsc --noEmit`、`npm test`（26 个测试文件、200 个用例）与 `npm run build` 全绿。
+
+### 第二百三十七轮迭代：侧栏字体、项目折叠与切会话闪动修复（已实施）
+
+依据：用户反馈左侧栏与右侧正文的字体观感不一致、项目目录点击后无法折叠、切换会话时出现明显闪动，要求修复这三种体验问题。
+
+**实现要点**
+
+- **字体根因**：`cn` 合并会把自定义 `text-ui` 当成文本颜色并在同时出现 `text-muted-foreground` 时丢弃，导致侧栏会话回退到默认 16px。项目行、会话行、新对话与搜索统一改为显式 `text-[0.8125rem] leading-5`，侧栏根节点显式 `font-sans`；实测侧栏 13px 与右侧共用同一 Geist 字体栈。
+- **折叠结构**：项目头从可点击 `div` 改为独立的项目按钮，按钮承担 `aria-expanded` 与点击/键盘切换；开合状态改用 `data-project-state`，避免与操作簇的 `data-state=open` 选择器冲突导致 `+ / …` 常驻。展开使用 `FolderOpen`，收起使用 `Folder`。
+- **切换闪动**：移除消息、工具组与等待状态上的 `wb-message-in` 入场动画；最近 8 个会话的历史保存在内存缓存中，切回时用 `useLayoutEffect` 在首帧前绘制缓存；骨架屏延后 160ms 才出现，快速读取不再闪现占位。
+
+**测试证据**
+
+- 浏览器桩实测：项目 `cloud` 点击后展开状态从 `true` 变为 `false`，会话行数从 15 降到 11；项目操作簇保持 `display:none`，字体计算值为同一 Geist 栈、13px/20px；页面 `.wb-message-in` 数量为 0。
+- `npx tsc --noEmit`、`npm test`（26 个测试文件、200 个用例）、`npm run build` 全绿。
+- 截图证据：`design/update-entry/implementation-project-collapse.png`。
+
+### 第二百三十六轮迭代：项目树点击折叠与开合图标（已实施）
+
+依据：用户提供项目树截图，指出 `cloud` 与 `agentmate` 两个项目图标分别对应收起与展开状态，要求项目行按该方式支持收起/展开。
+
+**实现要点**
+
+- **点击整行切换**：项目行可点击、可聚焦，Enter/Space 同样切换；`aria-expanded` 与读屏标签同步为「已展开 / 已收起」。
+- **双图标状态**：项目展开使用 `FolderOpen`，收起使用 `Folder`；默认对话组仍使用消息图标，但同样支持折叠。
+- **状态协作**：折叠与原有「五条预览」互不干扰；切换活动会话时只自动展开一次所属项目，用户手动收起当前项目不会被后续渲染立刻撑开；从项目「+」新建对话会主动展开目标项目。
+- **操作不误触**：项目行内的新建会话与项目菜单按钮阻止冒泡，折叠只响应行本身。
+
+**测试证据**
+
+- 视觉桩（1280 宽、240px 侧栏）实测：点击 `cloud` 后 `aria-expanded=false`、图标切为闭合文件夹，其会话全部隐藏；`agentmate` 保持 `aria-expanded=true` 与展开文件夹图标。
+- `npx tsc --noEmit`、`npm test`（26 个测试文件、200 个用例）与 `npm run build` 全绿。
+- 截图证据：`design/update-entry/implementation-project-collapse.png`。
+
+### 第二百三十五轮迭代：侧栏更新入口与项目树视觉收敛（已实施）
+
+依据：用户提供侧栏底部截图，圈出「AgentMate v0.6.3」与设置图标之间的空白，要求新版本更新直接在该处显示并可更新，不需要进入设置检查；下载过程展示进度，完成后询问是否重启。用户随后确认左侧项目、新对话等也按示意稿一并调整。
+
+**实现要点**
+
+- **更新入口**：新增 `SidebarFooter`，在版本号右侧按需渲染 21px 高的胶囊；仅 `available / downloading / verifying / installing / ready / error` 且存在可用版本时出现，无更新时不占位。
+- **浮层与进度**：点击胶囊打开 300px 浮层，展示当前/可用版本、更新说明与主操作；下载中显示百分比、大小、速度、后台继续提示，校验/安装阶段显示阶段文案。
+- **重启确认**：更新就绪后自动弹出「更新已准备就绪」，显示 100% 已校验进度条，提供「稍后重启 / 立即重启」；稍后关闭后胶囊保留为「重启」，可再次打开。
+- **服务复用**：复用现有 `UpdateService` 的 `Status / InstallUpdate / ApplyUpdate / Skip / OpenDownloadPage` 与 updater 事件，没有新增 Go 接口；设置页关于卡片保持可用。
+- **进度事件修复**：Wails `Events.On` 回调收到的是 `WailsEvent { name, data }`，原 `UpdateCard` 直接读取 `event.written`，进度条会停在 0。新增 `updateProgressFromEvent` 统一解包 `event.data`，设置页与侧栏共用。
+- **项目树**：顶部改为「项目」小标题 + 添加项目入口，右侧「新对话」胶囊替代整行大按钮；项目行、会话行压缩为 12px 文本与项目色点，当前项目/会话使用低对比整行底色；搜索框与折叠按钮保留。
+- **视觉桩**：stub 增加 `?update=hidden|available|downloading|ready|error|notify` 六种更新状态与模拟下载进度事件；默认 `available`，可浏览器独立走查。
+
+**测试证据**
+
+- `updateUi.test.ts` 覆盖侧栏入口显隐、紧凑胶囊文案、下载阶段、百分比夹取、字节格式化、事件信封解包与阶段标题；`SidebarFooter.test.tsx` 断言版本号与设置/帮助/主题入口保留。
+- `npx tsc --noEmit`、`npm test`（26 个测试文件、200 个用例）与 `npm run build` 全绿；`go test ./internal/... .`、`go vet ./internal/... .` 全绿。
+- 视觉桩（1280 宽、深色、240px 侧栏）实测：项目树显示「项目」标题、新对话胶囊、项目行与会话色点；底部 `AgentMate v0.6.3` 与 `更新 / 8% / 重启` 胶囊均不截断；点击更新展开浮层，下载中显示 8% 进度，完成后自动弹出重启确认框。
+- 截图证据：`design/update-entry/implementation-sidebar.png`、`implementation-update-available.png`、`implementation-update-progress.png`、`implementation-update-ready.png`。
+
 ### 第二百三十四轮迭代：轮次导航条改为右侧轻标签（已实施）
 
 依据：用户截图指出当前轮次导航条的悬停预览卡过重（整段正文 + 复制按钮，覆盖输出区）；期望改为选中横杠向右延长，标签贴在横杠右侧并悬浮在输出框上方，避免用大卡片打断阅读。

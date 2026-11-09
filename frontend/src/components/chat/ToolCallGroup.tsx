@@ -97,7 +97,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
 
   return (
     <div
-      className="wb-message-in rounded-xl border border-border bg-card/40 text-sm"
+      className="rounded-xl border border-border bg-card/40 text-sm"
       data-toolgroup
       data-state={status}
       data-display-mode={displayMode}

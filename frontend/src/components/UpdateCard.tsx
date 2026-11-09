@@ -5,25 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Update, errText, type UpdateStatus } from "@/lib/api";
-
-// Every lifecycle event the Wails updater emits. We re-read the service
-// snapshot on each one instead of reconstructing state from payloads: the
-// updater owns the state machine, and mirroring it in the page is how the two
-// end up disagreeing.
-const UPDATE_EVENTS = [
-  "wails:updater:check-started",
-  "wails:updater:update-available",
-  "wails:updater:no-update",
-  "wails:updater:download-started",
-  "wails:updater:download-progress",
-  "wails:updater:download-complete",
-  "wails:updater:verifying",
-  "wails:updater:installing",
-  "wails:updater:update-ready",
-  "wails:updater:error",
-] as const;
-
-type Progress = { written: number; total: number; rate: number };
+import { UPDATE_EVENTS } from "@/lib/updateEvents";
+import { formatUpdateBytes, updateProgressFromEvent, type UpdateProgress } from "@/lib/updateUi";
 
 function stateLabel(s: UpdateStatus): string {
   switch (s.state) {
@@ -50,18 +33,6 @@ function stateLabel(s: UpdateStatus): string {
   }
 }
 
-function formatBytes(n: number): string {
-  if (!n) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let v = n;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i += 1;
-  }
-  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
 /**
  * UpdateCard renders the in-app updater inside 设置 → 关于.
  *
@@ -72,7 +43,7 @@ function formatBytes(n: number): string {
 export function UpdateCard({ version }: { version?: string }) {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<Progress | null>(null);
+  const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const mounted = useRef(true);
 
@@ -90,7 +61,8 @@ export function UpdateCard({ version }: { version?: string }) {
     const offs = UPDATE_EVENTS.map((name) =>
       Events.On(name, (e: any) => {
         if (name === "wails:updater:download-progress") {
-          if (e && typeof e.written === "number") setProgress(e as Progress);
+          const payload = updateProgressFromEvent(e);
+          if (payload) setProgress(payload);
           return;
         }
         if (name === "wails:updater:update-available") setNotesOpen(false);
@@ -222,8 +194,8 @@ export function UpdateCard({ version }: { version?: string }) {
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {progress
-              ? `${formatBytes(progress.written)} / ${progress.total ? formatBytes(progress.total) : "未知大小"}${
-                  progress.rate ? ` · ${formatBytes(progress.rate)}/s` : ""
+              ? `${formatUpdateBytes(progress.written)} / ${progress.total ? formatUpdateBytes(progress.total) : "未知大小"}${
+                  progress.rate ? ` · ${formatUpdateBytes(progress.rate)}/s` : ""
                 }`
               : "开始下载…"}
           </div>

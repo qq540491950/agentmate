@@ -31,7 +31,7 @@ export function TurnStatus({ label = "正在思考", className }: {
     <div
       data-slot="turn-status"
       aria-hidden="true"
-      className={cn("wb-message-in flex min-h-6 items-center gap-2 text-ui text-muted-foreground", className)}
+      className={cn("flex min-h-6 items-center gap-2 text-ui text-muted-foreground", className)}
     >
       <span className="wb-thinking-shimmer font-medium">{label}</span>
       <span className="flex items-center gap-1">

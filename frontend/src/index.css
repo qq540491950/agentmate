@@ -303,21 +303,6 @@
   animation: wb-text-shimmer 1.8s linear infinite;
 }
 
-/* 消息进场：新挂载的消息/执行组轻推入位（reduced-motion 全局归零）。 */
-@keyframes wb-message-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.wb-message-in {
-  animation: wb-message-in 180ms var(--ease-standard) both;
-}
-
 /* Raw <button>s（会话行、图标按钮、chips）没有自带的 focus 样式；shadcn
    组件在自己的基类里管理 outline，不受这条元素级规则影响。 */
 button:focus-visible {

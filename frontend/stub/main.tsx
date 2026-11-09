@@ -294,6 +294,31 @@ const workspaceMockMode = stubParams.get("workspaceMode") === "conflict"
   ? "conflict"
   : stubParams.get("workspaceMode") === "error" ? "error" : "success";
 const dialogMode = stubParams.get("dialogMode") === "cancel" ? "cancel" : "select";
+// Update flow fixtures: ?update=hidden|available|downloading|ready|error|notify
+const requestedUpdateMode = stubParams.get("update") ?? "available";
+const updateModes = ["hidden", "available", "downloading", "ready", "error", "notify"] as const;
+type UpdateMode = (typeof updateModes)[number];
+let updateMode: UpdateMode = (updateModes as readonly string[]).includes(requestedUpdateMode)
+  ? (requestedUpdateMode as UpdateMode)
+  : "available";
+let updateState = updateMode === "hidden" ? "up-to-date" : updateMode === "notify" ? "available" : updateMode;
+let updateProgress = { written: 12_400_000, total: 29_800_000, rate: 3_100_000 };
+
+function stubUpdateStatus() {
+  return {
+    currentVersion: "0.6.3",
+    state: updateState,
+    mode: updateMode === "notify" ? "notify-only" : "auto-install",
+    reason: updateMode === "notify" ? "当前安装方式无法自动替换应用，请打开发布页下载。" : "",
+    availableVersion: updateState === "up-to-date" ? "" : "0.6.4",
+    notes: "• 侧栏直接显示更新进度，完成后可一键重启\n• 改进长会话滚动定位与工具调用展示\n• 修复托盘恢复、代理连接等 12 项问题",
+    autoCheck: true,
+    skippedVersion: "",
+    error: updateState === "error" ? "连接更新服务器失败，请检查网络后重试。" : "",
+    downloadUrl: "https://github.com/qq540491950/agentmate/releases",
+    canAutoInstall: updateMode !== "notify",
+  };
+}
 
 const handlers: Record<string, (args: any[]) => any> = {
   // GetConfig
@@ -593,7 +618,49 @@ const handlers: Record<string, (args: any[]) => any> = {
     };
   },
   // AppInfo
-  [svc("AppService", "AppInfo")]: () => ({ name: "AgentMate", version: "stub", adk: "google adk-go v2" }),
+  [svc("AppService", "AppInfo")]: () => ({ name: "AgentMate", version: "0.6.3", adk: "google adk-go v2" }),
+  // UpdateService — the browser walk can start from any updater state via
+  // ?update=hidden|available|downloading|ready|error|notify.
+  [svc("UpdateService", "Status")]: () => stubUpdateStatus(),
+  [svc("UpdateService", "CheckNow")]: () => stubUpdateStatus(),
+  [svc("UpdateService", "InstallUpdate")]: async () => {
+    updateMode = "downloading";
+    updateState = "downloading";
+    (window as any).__emit?.("wails:updater:download-started", null);
+    for (const ratio of [0.08, 0.21, 0.42, 0.67, 0.88, 1]) {
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      updateProgress = {
+        written: Math.round(updateProgress.total * ratio),
+        total: updateProgress.total,
+        rate: 3_100_000,
+      };
+      (window as any).__emit?.("wails:updater:download-progress", updateProgress);
+    }
+    updateState = "verifying";
+    (window as any).__emit?.("wails:updater:verifying", null);
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    updateState = "installing";
+    (window as any).__emit?.("wails:updater:installing", null);
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    updateState = "ready";
+    (window as any).__emit?.("wails:updater:update-ready", null);
+    return stubUpdateStatus();
+  },
+  [svc("UpdateService", "ApplyUpdate")]: () => {
+    (window as any).__updateApplied = true;
+    return null;
+  },
+  [svc("UpdateService", "OpenDownloadPage")]: () => {
+    (window as any).__openedReleasePage = true;
+    return null;
+  },
+  [svc("UpdateService", "Skip")]: () => {
+    updateMode = "hidden";
+    updateState = "up-to-date";
+    (window as any).__emit?.("wails:updater:no-update", null);
+    return null;
+  },
+  [svc("UpdateService", "SetAutoCheck")]: () => null,
   // AppService.RevealWorkspaceFile(sessionID, relPath) — 桩仅记录调用
   [svc("AppService", "RevealWorkspaceFile")]: (args) => {
     (window).__revealed = ((window).__revealed ?? []).concat(args[1]);
@@ -751,3 +818,20 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <App />
   </React.StrictMode>,
 );
+
+// Visual-regression helper: ?collapse=<project> exercises the closed project
+// row (folder icon, hidden children) without a manual click.
+const collapseProject = stubParams.get("collapse");
+if (collapseProject) {
+  let attempts = 0;
+  const collapseWhenReady = () => {
+    const button = [...document.querySelectorAll<HTMLButtonElement>("button[aria-label^='项目「']")]
+      .find((candidate) => candidate.getAttribute("aria-label")?.includes(`项目「${collapseProject}」`));
+    if (button) {
+      button.click();
+      return;
+    }
+    if (attempts++ < 40) window.setTimeout(collapseWhenReady, 100);
+  };
+  window.setTimeout(collapseWhenReady, 400);
+}

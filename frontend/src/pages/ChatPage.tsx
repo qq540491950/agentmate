@@ -1,16 +1,14 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Dialogs, Events } from "@wailsio/runtime";
 import {
   Plus, Square, Trash2, Pencil, MessageSquare, Bot, Users, Loader2, ArrowUp, ArrowDown,
   Search, Download,
   X, BarChart3, Brain, Network, GitFork, Pin, PinOff, FileCode2, Archive, ClipboardCopy,
-  Folder, FileText,
+  Folder, FolderOpen, FileText,
   PanelRightOpen,
   ChevronRight, ChevronDown,
-  Settings as SettingsIcon, CircleHelp, Sun, Moon,
   Boxes, Coins, LockOpen,
   ListTree,
-  Sparkles,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
 } from "lucide-react";
@@ -58,6 +56,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
 import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
+import { SidebarFooter } from "@/components/SidebarFooter";
 import type { SettingsTab } from "@/pages/SettingsPage";
 import {
   Chat, Config, errText, sessionAllowAllTools, setSessionAllowAllTools,
@@ -87,6 +86,19 @@ type QueuedMessage = { text: string; reasoning: string };
 
 // RENDER_LIMIT caps how many messages render at once for smooth long sessions.
 const RENDER_LIMIT = 200;
+// Keep the last few opened conversations in memory so switching back does not
+// flash an empty/skeleton pane before the local SQLite read returns.
+const HISTORY_CACHE_LIMIT = 8;
+
+function rememberHistory(cache: Map<string, UIMessage[]>, sessionID: string, messages: UIMessage[]) {
+  cache.delete(sessionID);
+  cache.set(sessionID, messages);
+  while (cache.size > HISTORY_CACHE_LIMIT) {
+    const oldest = cache.keys().next().value;
+    if (oldest == null) break;
+    cache.delete(oldest);
+  }
+}
 
 // The sidebar width lives in localStorage rather than config.json: it is a
 // per-window view preference, and the config schema round-trips through Go
@@ -190,6 +202,10 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   // Project keys whose「展开显示」has been opened. The first 5 chats of every
   // other project stay visible without turning the sidebar into an accordion.
   const [expandedProjectKeys, setExpandedProjectKeys] = useState<Set<string>>(() => new Set());
+  // Project rows remember their collapsed state independently from the
+  // five-session preview above: clicking a row closes the whole subtree.
+  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<Set<string>>(() => new Set());
+  const expandedOwnerRef = useRef("");
   const [resolvedWorkspace, setResolvedWorkspace] = useState("");
   const [workspaceError, setWorkspaceError] = useState("");
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(false);
@@ -300,7 +316,16 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   const createDirectSession = useCallback(() => openNewChatDraft(""), [openNewChatDraft]);
   createDirectSessionRef.current = createDirectSession;
   const createProjectSession = useCallback(
-    (projectID: string) => openNewChatDraft(projectID),
+    (projectID: string) => {
+      setCollapsedGroupKeys((prev) => {
+        const key = `proj:${projectID}`;
+        if (!prev.has(key)) return prev;
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      openNewChatDraft(projectID);
+    },
     [openNewChatDraft],
   );
   useEffect(() => {
@@ -422,8 +447,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
     });
   }, [activeID]);
 
-  // Load history when switching sessions.
-  useEffect(() => {
+  // Load history when switching sessions. Layout effect keeps the old
+  // conversation from painting under the new title for one frame.
+  useLayoutEffect(() => {
     if (!activeID) return;
     // Guards against A->B fast switches: a slow response for the previous
     // session must not paint its messages under the new one.
@@ -444,12 +470,17 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
     tbuf.timer = null;
     thinkingStreamedRef.current = null;
     thinkingOpenRef.current = null;
-    // Clear immediately: showing the previous session's messages while the
-    // next history loads is a correctness-level wrongness (stale flash).
-    setMessages([]);
+    // Returning sessions paint their cached snapshot instantly. A first visit
+    // starts empty and only shows a skeleton if the local fetch is slow.
+    const cached = historyCacheRef.current.get(activeID);
+    setMessages(cached ?? []);
+    setHistoryLoading(!cached);
+    setShowHistorySkeleton(false);
     setRenderLimit(RENDER_LIMIT);
     setActiveTurnId(null);
-    setHistoryLoading(true);
+    const skeletonTimer = cached
+      ? null
+      : window.setTimeout(() => setShowHistorySkeleton(true), 160);
     Chat.GetSessionMessages(activeID)
       .then((ms) => {
         if (cancelled) return;
@@ -461,25 +492,25 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
             answered.set(m.callId, m.toolResp?.confirmed === true);
           }
         }
-        setMessages(
-          (ms ?? [])
-            .filter((m) => m.kind !== "confirm_result")
-            .map((m) => ({
-              id: m.id,
-              kind: (m.kind === "user" ? "user" : m.kind === "thinking" ? "thinking" : m.kind === "tool_call" ? "tool_call" : m.kind === "tool_result" ? "tool_result" : m.kind === "confirm_request" ? "confirm" : "assistant") as UIMessage["kind"],
-              author: m.author,
-              text: m.text,
-              toolName: m.toolName,
-              toolArgs: m.toolArgs,
-              toolResp: m.toolResp,
-              callId: m.callId,
-              hint: m.hint,
-              confirmStatus: m.kind === "confirm_request" ? (answered.has(m.callId!) ? (answered.get(m.callId!) ? "approved" : "rejected") : "pending") as UIMessage["confirmStatus"] : undefined,
-              timestamp: m.timestamp,
-              attachments: m.attachments ?? null,
-              reasoning: m.reasoning,
-            })),
-        );
+        const nextMessages = (ms ?? [])
+          .filter((m) => m.kind !== "confirm_result")
+          .map((m) => ({
+            id: m.id,
+            kind: (m.kind === "user" ? "user" : m.kind === "thinking" ? "thinking" : m.kind === "tool_call" ? "tool_call" : m.kind === "tool_result" ? "tool_result" : m.kind === "confirm_request" ? "confirm" : "assistant") as UIMessage["kind"],
+            author: m.author,
+            text: m.text,
+            toolName: m.toolName,
+            toolArgs: m.toolArgs,
+            toolResp: m.toolResp,
+            callId: m.callId,
+            hint: m.hint,
+            confirmStatus: m.kind === "confirm_request" ? (answered.has(m.callId!) ? (answered.get(m.callId!) ? "approved" : "rejected") : "pending") as UIMessage["confirmStatus"] : undefined,
+            timestamp: m.timestamp,
+            attachments: m.attachments ?? null,
+            reasoning: m.reasoning,
+          }));
+        rememberHistory(historyCacheRef.current, activeID, nextMessages);
+        setMessages(nextMessages);
         // Entering a session always lands on its newest message — the shared
         // ScrollArea keeps the previous session's scrollTop otherwise, which
         // could open a long history at its oldest message.
@@ -489,7 +520,11 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
         if (!cancelled) toast.error(`加载历史失败: ${errText(e)}`);
       })
       .finally(() => {
-        if (!cancelled) setHistoryLoading(false);
+        if (skeletonTimer != null) window.clearTimeout(skeletonTimer);
+        if (!cancelled) {
+          setHistoryLoading(false);
+          setShowHistorySkeleton(false);
+        }
       });
     Chat.IsRunning(activeID).then((r) => {
       if (cancelled) return;
@@ -516,7 +551,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
       .catch(() => { /* stats are best-effort */ });
     return () => {
       cancelled = true;
+      if (skeletonTimer != null) window.clearTimeout(skeletonTimer);
       setHistoryLoading(false);
+      setShowHistorySkeleton(false);
     };
   }, [activeID]);
 
@@ -862,9 +899,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
     setActiveTurnId(msgId);
     document.getElementById(`turn-${msgId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
-  // History fetch in flight after a session switch: render skeletons instead
-  // of an empty-looking conversation.
+  // History fetch in flight after a session switch. Fast local reads should
+  // not flash a skeleton, so it only appears after a short grace period.
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [showHistorySkeleton, setShowHistorySkeleton] = useState(false);
+  // Returning to an already-opened session paints its last snapshot before
+  // the fresh fetch lands; this removes the empty/skeleton frame on switches.
+  const historyCacheRef = useRef<Map<string, UIMessage[]>>(new Map());
   // Shared destructive-confirmation dialog (replaces window.confirm).
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
 
@@ -1375,16 +1416,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
     }
   };
 
-  const refineSessionTitle = async (s: ChatSession) => {
-    try {
-      const title = await Chat.RefineSessionTitle(s.id);
-      toast.success(`标题已提炼为「${title}」`);
-      reloadSessions();
-    } catch (e) {
-      toast.error(`提炼标题失败: ${errText(e)}`);
-    }
-  };
-
   const removeSession = (s: ChatSession) => {
     setConfirmRequest({
       title: `删除会话「${s.title}」？`,
@@ -1582,7 +1613,20 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   useEffect(() => {
     if (!activeID) return;
     const owner = sidebarGroups.find((g) => g.sessions.some((s) => s.id === activeID));
-    if (!owner || !shouldExpandProjectForSession(owner.sessions, activeID)) return;
+    if (!owner) return;
+    // Reveal the active project once per active session. Do not depend on
+    // collapsedGroupKeys here: otherwise an intentional collapse of the
+    // active project would immediately undo itself.
+    if (expandedOwnerRef.current !== activeID) {
+      expandedOwnerRef.current = activeID;
+      setCollapsedGroupKeys((prev) => {
+        if (!prev.has(owner.key)) return prev;
+        const next = new Set(prev);
+        next.delete(owner.key);
+        return next;
+      });
+    }
+    if (!shouldExpandProjectForSession(owner.sessions, activeID)) return;
     setExpandedProjectKeys((prev) => {
       if (prev.has(owner.key)) return prev;
       const next = new Set(prev);
@@ -2095,10 +2139,10 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
       aria-current={s.id === activeID ? "page" : undefined}
       data-session-id={s.id}
       className={cn(
-        "group relative flex cursor-pointer items-center gap-2 rounded-md py-1 text-ui",
-        indented ? "pl-8 pr-2" : "px-2.5",
+        "group relative flex cursor-pointer items-center gap-1.5 rounded-md py-[3px] text-[0.8125rem] leading-5 transition-colors",
+        indented ? "pl-7 pr-1.5" : "px-2.5",
         s.id === activeID
-          ? "font-medium text-foreground hover:bg-accent/40"
+          ? "bg-accent/50 font-medium text-foreground hover:bg-accent/60"
           : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
       )}
       onClick={() => setActiveID(s.id)}
@@ -2109,6 +2153,15 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
         }
       }}
     >
+      {indented && (
+        <span
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute left-[13px] top-1/2 h-[3px] w-[3px] -translate-y-1/2 rounded-full",
+            s.id === activeID ? "bg-brand" : "bg-muted-foreground/40 group-hover:bg-foreground/50",
+          )}
+        />
+      )}
       <span className="min-w-0 flex-1">
         <SessionRowLabel
           title={s.title}
@@ -2167,9 +2220,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
             <DropdownMenuItem onClick={() => { setRenaming(s); setRenameText(s.title); }}>
               <Pencil className="mr-2 h-3.5 w-3.5" /> 重命名
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => refineSessionTitle(s)}>
-              <Sparkles className="mr-2 h-3.5 w-3.5" /> 重新提炼标题
-            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeSession(s)}>
               <Trash2 className="mr-2 h-3.5 w-3.5" /> 删除会话…
@@ -2185,39 +2235,45 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
       {/* Sessions */}
       {!sidebarCollapsed && (
       <>
-      <div className="flex shrink-0 flex-col border-r border-border bg-surface-1" style={{ width: sidebarWidth }}>
-        <div className="flex items-center justify-between px-3 pb-1 pt-3">
+      <div className="flex shrink-0 flex-col border-r border-border bg-surface-1 font-sans" style={{ width: sidebarWidth }}>
+        <div className="flex items-center gap-1 px-3 pb-2 pt-3">
+          <span className="text-3xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+            项目
+          </span>
           <button
             title="添加项目（选择一个目录）"
             aria-label="添加项目"
             onClick={addProject}
-            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
-            <FolderPlus className="h-4 w-4" />
+            <FolderPlus className="h-3.5 w-3.5" />
           </button>
-          <button
-            title="折叠对话列表（⌘B）"
-            aria-label="折叠对话列表"
-            aria-expanded={!sidebarCollapsed}
-            onClick={toggleSidebar}
-            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <PanelLeftClose className="h-4 w-4" />
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              title="新建对话（⌘N）"
+              aria-label="新建对话"
+              onClick={createDirectSession}
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background/30 px-2 text-[0.8125rem] leading-5 font-medium text-foreground shadow-card transition-colors hover:bg-accent"
+            >
+              <SquarePen className="h-3 w-3" />
+              新对话
+            </button>
+            <button
+              title="折叠对话列表（⌘B）"
+              aria-label="折叠对话列表"
+              aria-expanded={!sidebarCollapsed}
+              onClick={toggleSidebar}
+              className="flex h-7 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-        <div className="grid gap-2 px-3 pb-3 pt-2">
-          <Button
-            className="w-full justify-start gap-1.5 border-border bg-transparent text-ui"
-            size="sm"
-            variant="outline"
-            onClick={createDirectSession}
-          >
-            <SquarePen className="h-3.5 w-3.5" /> 新聊天
-          </Button>
+        <div className="px-3 pb-3">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="h-8 bg-background/40 pl-8 text-ui"
+              className="h-7 rounded-md border-border/70 bg-background/40 pl-8 text-[0.8125rem] leading-5 placeholder:text-muted-foreground/70"
               placeholder="搜索对话"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -2229,8 +2285,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
             width to its full nowrap length and every row's right-aligned
             actions get clipped outside the sidebar. A block container lets
             `truncate` do its job and keeps hover actions inside the row. */}
-        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2">
-          <div className="grid grid-cols-1 gap-1 pb-3">
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2.5">
+          <div className="grid grid-cols-1 gap-0.5 pb-3">
             {searching ? (
               <>
                 <div className="px-2 pb-0.5 pt-2 text-xs font-medium text-muted-foreground">搜索结果（{searchResults.length}）</div>
@@ -2243,26 +2299,47 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               <>
                 {sidebarGroups.map((g) => {
                   const expanded = expandedProjectKeys.has(g.key);
+                  const collapsed = collapsedGroupKeys.has(g.key);
                   const sessionWindow = projectSessionWindow(g.sessions, expanded);
                   const project = g.projectId ? projects.find((p) => p.id === g.projectId) : undefined;
                   const isDefault = g.key === "default";
                   const hasActions = !!project || (!isDefault && !!g.path);
                   return (
-                    <div key={g.key} className="mb-2">
+                    <div key={g.key} className="mb-2 last:mb-0">
                       <div
                         role="group"
-                        tabIndex={hasActions ? 0 : undefined}
-                        aria-label={isDefault ? "对话分组" : `项目「${g.label}」`}
-                        title={g.path ?? g.label}
                         className={cn(
-                          "group flex items-center gap-2 rounded-lg px-2 py-1.5 text-ui text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-                          activeProjectKey === g.key ? "bg-accent/60" : "hover:bg-accent/40",
+                          "group flex items-center rounded-md pr-1 text-muted-foreground transition-colors",
+                          activeProjectKey === g.key
+                            ? "bg-accent/60 text-foreground"
+                            : "hover:bg-accent/40 hover:text-foreground",
                         )}
                       >
-                        {isDefault
-                          ? <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                          : <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-                        <span className="min-w-0 flex-1 truncate font-medium">{g.label}</span>
+                        <button
+                          type="button"
+                          aria-expanded={!collapsed}
+                          aria-label={
+                            isDefault
+                              ? `对话分组，${collapsed ? "已收起" : "已展开"}`
+                              : `项目「${g.label}」，${collapsed ? "已收起" : "已展开"}`
+                          }
+                          title={collapsed ? `展开「${g.label}」` : `收起「${g.label}」`}
+                          data-project-state={collapsed ? "closed" : "open"}
+                          onClick={() => setCollapsedGroupKeys((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(g.key)) next.delete(g.key);
+                            else next.add(g.key);
+                            return next;
+                          })}
+                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-[0.8125rem] leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                        >
+                          {isDefault
+                            ? <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                            : collapsed
+                              ? <Folder className="h-4 w-4 shrink-0 opacity-70" />
+                              : <FolderOpen className="h-4 w-4 shrink-0 opacity-70" />}
+                          <span className="min-w-0 flex-1 truncate font-medium">{g.label}</span>
+                        </button>
                         {hasActions && (
                           <span className={SESSION_ROW_ACTIONS_CLASS} data-slot="project-row-actions">
                             {project && (
@@ -2270,7 +2347,10 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                                 className="rounded p-0.5 hover:bg-foreground/10"
                                 title="在此项目中新建对话"
                                 aria-label={`在项目「${g.label}」中新建对话`}
-                                onClick={() => createProjectSession(project.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  createProjectSession(project.id);
+                                }}
                               >
                                 <Plus className="h-3.5 w-3.5" />
                               </button>
@@ -2281,6 +2361,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                                   title={project ? "管理项目" : "目录操作"}
                                   aria-label={project ? `管理项目「${g.label}」` : `目录「${g.label}」操作`}
                                   className="rounded p-0.5 hover:bg-foreground/10"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
                                   <MoreHorizontal className="h-3.5 w-3.5" />
                                 </button>
@@ -2326,12 +2407,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                           </span>
                         )}
                       </div>
-                      {g.sessions.length > 0 && (
+                      {!collapsed && g.sessions.length > 0 && (
                         <div className="mt-0.5 grid grid-cols-1 gap-0.5">
                           {sessionWindow.visible.map((s) => renderSessionRow(s))}
                           {g.sessions.length > PROJECT_SESSION_LIMIT && (
                             <button
-                              className="flex w-full items-center rounded-md py-1 pl-8 pr-2 text-left text-xs text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+                              className="flex w-full items-center rounded-md py-1 pl-7 pr-2 text-left text-3xs text-muted-foreground hover:bg-accent/40 hover:text-foreground"
                               aria-expanded={expanded}
                               aria-label={expanded
                                 ? `收起「${g.label}」的全部对话`
@@ -2352,7 +2433,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   );
                 })}
                 {sidebarGroups.length === 0 && archivedSessions.length === 0 && (
-                  <div className="px-2 py-4 text-center text-xs text-muted-foreground">还没有对话，点击上方「新聊天」开始</div>
+                  <div className="px-2 py-4 text-center text-xs text-muted-foreground">还没有对话，点击上方「新对话」开始</div>
                 )}
                 {archivedSessions.length > 0 && (
                   showArchived ? (
@@ -2398,20 +2479,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
             )}
           </div>
         </div>
-        <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
-          <span className="truncate" title="基于 Google ADK Go v2 · Wails v3">{version ? `AgentMate v${version}` : "AgentMate"}</span>
-          <span className="flex shrink-0 items-center gap-1">
-            <button title="设置（⌘,）" onClick={() => onOpenSettings()} className="rounded p-1 hover:bg-accent hover:text-foreground">
-              <SettingsIcon className="h-3.5 w-3.5" />
-            </button>
-            <button title="快捷键与命令" onClick={onOpenHelp} className="rounded p-1 hover:bg-accent hover:text-foreground">
-              <CircleHelp className="h-3.5 w-3.5" />
-            </button>
-            <button title="切换深色/浅色主题" onClick={onToggleTheme} className="rounded p-1 hover:bg-accent hover:text-foreground">
-              {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-            </button>
-          </span>
-        </div>
+        <SidebarFooter
+          version={version}
+          isDark={isDark}
+          onOpenSettings={() => onOpenSettings()}
+          onOpenHelp={onOpenHelp}
+          onToggleTheme={onToggleTheme}
+        />
       </div>
       {/* Resize handle: a 6px strip on the sidebar border. Pointer capture
           keeps the drag alive outside the strip; the keyboard path keeps the
@@ -2531,9 +2605,6 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={openStats}>
                       <BarChart3 className="h-4 w-4" /> 会话统计
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => refineSessionTitle(active)}>
-                      <Sparkles className="h-4 w-4" /> 重新提炼标题
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={async () => {
@@ -2728,7 +2799,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   <TurnStatus />
                 </div>
               )}
-              {historyLoading && messages.length === 0 && (
+              {historyLoading && showHistorySkeleton && messages.length === 0 && (
                 <div className="space-y-3" aria-hidden>
                   {[80, 60, 70].map((w, i) => (
                     <div key={i} className={cn("flex", i % 2 ? "justify-end" : "justify-start")}>

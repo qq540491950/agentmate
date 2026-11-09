@@ -30,7 +30,7 @@ export function ConfirmCard({ m, onConfirm, onAllowAll, allowAllBusy }: {
   const status = m.confirmStatus ?? "pending";
   return (
     <div className={cn(
-      "wb-message-in rounded-lg border border-l-2 px-4 py-3",
+      "rounded-lg border border-l-2 px-4 py-3",
       status === "pending" && "border-warning/25 border-l-warning bg-warning/10",
       status === "approved" && "border-success/25 border-l-success bg-success/5",
       status === "rejected" && "border-destructive/25 border-l-destructive bg-destructive/5",
@@ -172,7 +172,7 @@ export function UserQuote({ m, active, onEdit, canEdit, filterQ }: {
       id={`turn-${m.id}`}
       data-turn-anchor={m.id}
       data-slot="user-bubble"
-      className="wb-message-in flex justify-end"
+      className="flex justify-end"
     >
       <div className="group flex max-w-[85%] flex-col items-end gap-1.5 sm:max-w-[640px]">
         {(m.attachments?.length ?? 0) > 0 && (
@@ -266,7 +266,7 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   };
   if (m.kind === "error") {
     return (
-      <div className="wb-message-in rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+      <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
         {highlightText(m.text, filterQ, "bg-destructive/25 text-destructive rounded-sm")}
         {canRegenerate && (
           <div className="mt-2">
@@ -306,7 +306,7 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   }
   if (m.kind === "thinking") {
     return (
-      <div className="wb-message-in flex justify-start">
+      <div className="flex justify-start">
         <div className="w-full">
           <ThinkingBlock m={m} />
         </div>
@@ -314,7 +314,7 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
     );
   }
   return (
-    <div className="group wb-message-in flex justify-start">
+    <div className="group flex justify-start">
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">
