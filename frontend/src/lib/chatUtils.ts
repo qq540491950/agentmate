@@ -589,6 +589,14 @@ export interface ProjectGroup {
   sessions: ChatSession[];
 }
 
+/** How many chats a project shows before「展开显示」. */
+export const PROJECT_SESSION_LIMIT = 5;
+
+export interface ProjectSessionWindow {
+  visible: ChatSession[];
+  hiddenCount: number;
+}
+
 const SESSION_GROUP_LABELS: Record<SessionGroupKey, string> = {
   pinned: "置顶",
   today: "今天",
@@ -687,4 +695,70 @@ export function groupSessionsByProject(sessions: ChatSession[], projects: Projec
   return [...groups.values()]
     .sort((a, b) => (a.key === "archived" ? 1 : b.key === "archived" ? -1 : newest(b).localeCompare(newest(a))))
     .map((g) => ({ ...g, sessions: g.sessions.sort(byRecency) }));
+}
+
+/** sortSidebarSessions keeps pinned chats at the top of their project, then
+ * orders the rest by recent activity. */
+function sortSidebarSessions(sessions: ChatSession[]): ChatSession[] {
+  return [...sessions].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    return byRecency(a, b);
+  });
+}
+
+/** buildSidebarProjectGroups turns the raw workspace grouping into the stable
+ * tree used by the compact sidebar:
+ *   default chats → registered projects (including empty ones, in project
+ *   order) → ad-hoc workspace folders → (archived is rendered separately).
+ * Registered projects keep their creation order instead of jumping around
+ * whenever one of their chats receives a new message. */
+export function buildSidebarProjectGroups(sessions: ChatSession[], projects: Project[], globalWorkspace: string): ProjectGroup[] {
+  const grouped = groupSessionsByProject(sessions, projects, globalWorkspace);
+  const byKey = new Map(grouped.map((g) => [g.key, g]));
+  const out: ProjectGroup[] = [];
+
+  const defaultGroup = byKey.get("default");
+  if (defaultGroup) out.push({ ...defaultGroup, label: "对话" });
+
+  for (const p of projects) {
+    const group = byKey.get(`proj:${p.id}`);
+    out.push(group
+      ? { ...group, label: p.name, path: p.rootDir, projectId: p.id }
+      : { key: `proj:${p.id}`, label: p.name, path: p.rootDir, projectId: p.id, sessions: [] });
+  }
+
+  for (const group of grouped) {
+    if (group.key === "default" || group.key === "archived" || group.projectId) continue;
+    out.push(group);
+  }
+
+  return out.map((group) => ({ ...group, sessions: sortSidebarSessions(group.sessions) }));
+}
+
+/** projectSessionWindow returns the compact preview for one project. Expanded
+ * groups show every chat; collapsed groups stop at `limit` and report how many
+ * rows「展开显示」will reveal. */
+export function projectSessionWindow(
+  sessions: ChatSession[],
+  expanded: boolean,
+  limit = PROJECT_SESSION_LIMIT,
+): ProjectSessionWindow {
+  if (expanded) return { visible: sessions, hiddenCount: 0 };
+  const count = Math.max(0, Math.floor(limit));
+  return {
+    visible: sessions.slice(0, count),
+    hiddenCount: Math.max(0, sessions.length - count),
+  };
+}
+
+/** shouldExpandProjectForSession keeps the active chat visible when it sits
+ * beyond a project's five-row preview. Unknown IDs stay collapsed. */
+export function shouldExpandProjectForSession(
+  sessions: ChatSession[],
+  activeID: string,
+  limit = PROJECT_SESSION_LIMIT,
+): boolean {
+  if (!activeID) return false;
+  const index = sessions.findIndex((s) => s.id === activeID);
+  return index >= Math.max(0, Math.floor(limit));
 }

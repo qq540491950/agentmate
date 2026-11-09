@@ -148,10 +148,23 @@ const seedConfig = {
     },
   ],
   projects: [
-    { id: "proj_alpha", name: "proj-alpha", rootDir: "/tmp/proj-alpha", createdAt: "2026-10-01T00:00:00Z" },
+    { id: "proj_alpha", name: "cloud", rootDir: "/tmp/proj-alpha", createdAt: "2026-10-01T00:00:00Z" },
     { id: "proj_beta", name: "agentmate", rootDir: "D:/projects/agentmate", createdAt: "2026-10-20T00:00:00Z" },
   ],
   sessions: [
+    // Compact project-tree fixtures: the first project has fewer than the
+    // five-row preview, the second overflows into「展开显示」.
+    { id: "sess_pm_flash", title: "设计模型等待回复的闪烁状态", targetType: "", targetId: "", createdAt: iso(0, 16), updatedAt: iso(0, 16), projectId: "proj_beta" },
+    { id: "sess_cloud_443", title: "我来比对两个配置中的 443 端口节点", targetType: "", targetId: "", createdAt: iso(0, 11), updatedAt: iso(0, 11), projectId: "proj_alpha" },
+    { id: "sess_cloud_pull1", title: "拉取最新的代码", targetType: "", targetId: "", createdAt: iso(0, 10), updatedAt: iso(0, 10), projectId: "proj_alpha" },
+    { id: "sess_cloud_pull2", title: "** 拉取最新代码", targetType: "", targetId: "", createdAt: iso(-1, 18), updatedAt: iso(-1, 18), projectId: "proj_alpha" },
+    { id: "sess_cloud_pull3", title: "拉取最新代码", targetType: "", targetId: "", createdAt: iso(-1, 17), updatedAt: iso(-1, 17), projectId: "proj_alpha" },
+    { id: "sess_pm_title", title: "优化左侧会话标题提炼与单行显示", targetType: "", targetId: "", createdAt: iso(0, 15), updatedAt: iso(0, 15), projectId: "proj_beta" },
+    { id: "sess_pm_scroll", title: "修复滚动到底后箭头仍显示", targetType: "", targetId: "", createdAt: iso(0, 14), updatedAt: iso(0, 14), projectId: "proj_beta" },
+    { id: "sess_pm_release", title: "推送代码并触发远端打包", targetType: "", targetId: "", createdAt: iso(0, 13), updatedAt: iso(0, 13), projectId: "proj_beta" },
+    { id: "sess_pm_tray", title: "修复托盘恢复窗口未居中", targetType: "", targetId: "", createdAt: iso(0, 12), updatedAt: iso(0, 12), projectId: "proj_beta" },
+    { id: "sess_pm_compact", title: "让侧栏项目与对话更紧凑", targetType: "", targetId: "", createdAt: iso(-1, 16), updatedAt: iso(-1, 16), projectId: "proj_beta" },
+    { id: "sess_pm_regression", title: "补充项目树视觉回归", targetType: "", targetId: "", createdAt: iso(-1, 15), updatedAt: iso(-1, 15), projectId: "proj_beta" },
     { id: "sess_confirm", title: "需要确认的写入", targetType: "agent", targetId: "agent_1", createdAt: "2026-09-18T01:00:00Z", updatedAt: "2026-09-18T01:05:00Z", modelOverride: "gpt-5-mini", workspaceDir: "/tmp/agentmate-workspace/tasks/sess_confirm" },
     { id: "sess_process", title: "执行过程四档演示", preview: "检查、测试与文件写入均已完成。", targetType: "", targetId: "", createdAt: iso(0, 9), updatedAt: iso(0, 10) },
     { id: "sess_plain", title: "普通对话", targetType: "team", targetId: "team_1", createdAt: "2026-09-17T09:00:00Z", updatedAt: "2026-09-17T09:10:00Z" },
@@ -163,7 +176,7 @@ const seedConfig = {
     { id: "sess_week", title: "分析导出数据", targetType: "agent", targetId: "agent_1", createdAt: iso(-3, 10), updatedAt: iso(-3, 11) },
     { id: "sess_earlier", title: "重构登录流程", targetType: "", targetId: "", createdAt: iso(-15, 9), updatedAt: iso(-15, 10) },
     { id: "sess_archived", title: "旧版方案讨论", targetType: "", targetId: "", createdAt: iso(-30, 9), updatedAt: iso(-30, 10), archived: true },
-    { id: "sess_project", title: "跨目录：独立项目任务", targetType: "agent", targetId: "agent_1", createdAt: iso(0, 8), updatedAt: iso(0, 9), workspaceDir: "/tmp/proj-alpha" },
+    { id: "sess_project", title: "跨目录：独立项目任务", targetType: "agent", targetId: "agent_1", createdAt: iso(0, 8), updatedAt: iso(0, 9), workspaceDir: "/tmp/agentmate-workspace/tasks/sess_project" },
     { id: "sess_projchat", title: "项目内对话：绑定 proj-beta", targetType: "", targetId: "", createdAt: iso(0, 7), updatedAt: iso(0, 7), projectId: "proj_beta" },
     { id: "sess_adhoc", title: "临时目录：未注册工作区", targetType: "", targetId: "", createdAt: iso(0, 6), updatedAt: iso(0, 6), workspaceDir: "/tmp/independent-tools" },
   ],
@@ -178,6 +191,10 @@ function iso(dayOffset: number, hour: number): string {
 }
 
 const histories: Record<string, any[]> = {
+  sess_pm_flash: [
+    { id: "flash-u", kind: "user", author: "user", text: "模型首包前显示一个闪动的思考状态。", timestamp: iso(0, 16) },
+    { id: "flash-a", kind: "assistant", author: "助手", text: "已接入运行态等待行，并随首包到达自动退出。", timestamp: iso(0, 16) },
+  ],
   sess_project: [
     { id: "p1", kind: "user", author: "user", text: "帮我检查这个独立项目的构建产物", timestamp: iso(0, 8) },
     { id: "p2", kind: "assistant", author: "写手助手", text: "这是独立工作区的演示会话（项目分组）。", timestamp: iso(0, 9) },

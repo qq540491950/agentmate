@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildToolTrace, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations,
-  dayLabel, effectiveReasoningLevel, fmtTime, formatWorkDuration, groupSessionsByProject,
-  groupSessionsByTime, groupToolMessages, groupTurns, isAwaitingReply, isDayChange, mdToSpeech, sessionTargetBadgeLabel,
+  buildSidebarProjectGroups, buildToolTrace, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools,
+  computeToolDurations, dayLabel, effectiveReasoningLevel, fmtTime, formatWorkDuration, groupSessionsByProject,
+  groupSessionsByTime, groupToolMessages, groupTurns, isAwaitingReply, isDayChange, mdToSpeech,
+  projectSessionWindow, sessionTargetBadgeLabel, shouldExpandProjectForSession,
   toolGroupDurationMs, toolGroupElapsedMs, toolGroupInvocationCount, toolGroupStatus,
   toolResultFailed, type ToolGroup, type TurnItem, type UIMessage,
 } from "./chatUtils";
@@ -735,6 +736,107 @@ describe('groupSessionsByProject', () => {
       WS,
     );
     expect(groups.map((g) => g.label)).toEqual(['b', 'a', '已归档']);
+  });
+});
+
+describe('buildSidebarProjectGroups', () => {
+  const proj = (over: Partial<Project>): Project => ({
+    id: over.id ?? 'proj_x',
+    name: over.name ?? 'alpha',
+    rootDir: over.rootDir ?? 'D:/proj/alpha',
+    createdAt: '2026-01-01T00:00:00Z',
+    ...over,
+  });
+  const sess = (over: Partial<ChatSession>): ChatSession => ({
+    id: over.id ?? Math.random().toString(),
+    title: over.title ?? '会话',
+    targetType: '',
+    targetId: '',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-11-01T08:00:00',
+    ...over,
+  });
+  const WS = 'C:/ws';
+
+  it('orders the compact tree as default, project order, ad-hoc dirs; archived is excluded', () => {
+    const groups = buildSidebarProjectGroups(
+      [
+        sess({ id: 'direct', updatedAt: '2026-11-01T10:00:00' }),
+        sess({ id: 'beta', projectId: 'proj_b', updatedAt: '2026-11-01T09:00:00' }),
+        sess({ id: 'adhoc', workspaceDir: 'E:/standalone', updatedAt: '2026-11-01T08:00:00' }),
+        sess({ id: 'gone', archived: true }),
+      ],
+      [
+        proj({ id: 'proj_empty', name: '空项目', rootDir: 'D:/proj/empty' }),
+        proj({ id: 'proj_b', name: 'agentmate', rootDir: 'D:/proj/beta' }),
+      ],
+      WS,
+    );
+
+    expect(groups.map((g) => [g.key, g.label, g.sessions.map((s) => s.id)])).toEqual([
+      ['default', '对话', ['direct']],
+      ['proj:proj_empty', '空项目', []],
+      ['proj:proj_b', 'agentmate', ['beta']],
+      ['E:/standalone', 'standalone', ['adhoc']],
+    ]);
+  });
+
+  it('keeps pinned chats first inside each project and then sorts by recency', () => {
+    const groups = buildSidebarProjectGroups(
+      [
+        sess({ id: 'old-pinned', projectId: 'proj_a', pinned: true, updatedAt: '2026-10-01T00:00:00' }),
+        sess({ id: 'newest', projectId: 'proj_a', updatedAt: '2026-11-01T10:00:00' }),
+        sess({ id: 'middle', projectId: 'proj_a', updatedAt: '2026-10-15T00:00:00' }),
+      ],
+      [proj({ id: 'proj_a', name: 'alpha', rootDir: 'D:/proj/alpha' })],
+      WS,
+    );
+
+    expect(groups[0].sessions.map((s) => s.id)).toEqual(['old-pinned', 'newest', 'middle']);
+  });
+});
+
+describe('projectSessionWindow', () => {
+  const sess = (id: string): ChatSession => ({
+    id,
+    title: id,
+    targetType: '',
+    targetId: '',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-11-01T08:00:00',
+  });
+
+  it('shows five recent chats and reports the hidden tail', () => {
+    const sessions = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(sess);
+    const window = projectSessionWindow(sessions, false);
+    expect(window.visible.map((s) => s.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(window.hiddenCount).toBe(2);
+  });
+
+  it('shows every chat once expanded and handles a zero limit', () => {
+    const sessions = ['a', 'b', 'c', 'd', 'e', 'f'].map(sess);
+    expect(projectSessionWindow(sessions, true).visible).toHaveLength(6);
+    expect(projectSessionWindow(sessions, true).hiddenCount).toBe(0);
+    expect(projectSessionWindow(sessions, false, 0).visible).toHaveLength(0);
+    expect(projectSessionWindow(sessions, false, 0).hiddenCount).toBe(6);
+  });
+});
+
+describe('shouldExpandProjectForSession', () => {
+  const sessions = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id): ChatSession => ({
+    id,
+    title: id,
+    targetType: '',
+    targetId: '',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-11-01T08:00:00',
+  }));
+
+  it('expands only when the active chat is beyond the preview', () => {
+    expect(shouldExpandProjectForSession(sessions, 'e')).toBe(false);
+    expect(shouldExpandProjectForSession(sessions, 'f')).toBe(true);
+    expect(shouldExpandProjectForSession(sessions, 'missing')).toBe(false);
+    expect(shouldExpandProjectForSession(sessions, '')).toBe(false);
   });
 });
 

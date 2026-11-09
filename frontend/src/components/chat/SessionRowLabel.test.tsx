@@ -24,11 +24,14 @@ describe("SessionRowLabel", () => {
         title="修复侧栏"
         preview="已改为单行标题。"
         forkedFromTitle="统计排查"
+        typeLabel="Agent"
       />,
     );
 
+    expect(html).toContain("Agent");
     expect(html).toContain("分叉自「统计排查」");
     expect(html).toContain("已改为单行标题");
     expect(html).toContain("修复侧栏");
+    expect(html.replace(/<[^>]*>/g, "")).toBe("修复侧栏");
   });
 });
