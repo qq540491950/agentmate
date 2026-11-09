@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildToolTrace, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations,
   dayLabel, effectiveReasoningLevel, fmtTime, formatWorkDuration, groupSessionsByProject,
-  groupSessionsByTime, groupToolMessages, groupTurns, isDayChange, mdToSpeech, sessionTargetBadgeLabel,
+  groupSessionsByTime, groupToolMessages, groupTurns, isAwaitingReply, isDayChange, mdToSpeech, sessionTargetBadgeLabel,
   toolGroupDurationMs, toolGroupElapsedMs, toolGroupInvocationCount, toolGroupStatus,
   toolResultFailed, type ToolGroup, type TurnItem, type UIMessage,
 } from "./chatUtils";
@@ -56,6 +56,24 @@ describe("groupTurns", () => {
     expect(chatItemStartTs(turn)).toBe("2026-11-08T01:00:00Z");
     expect(chatItemEndTs(turn)).toBe("2026-11-08T03:00:00Z");
     expect(chatItemEndTs({ ...turn, body: [] })).toBe("2026-11-08T01:00:00Z");
+  });
+});
+
+describe("isAwaitingReply", () => {
+  it("只在本轮最后一条仍是用户消息时显示首包等待态", () => {
+    const user = msg({ id: "u1", kind: "user", author: "user", text: "开始" });
+    expect(isAwaitingReply([], true)).toBe(true);
+    expect(isAwaitingReply([user], true)).toBe(true);
+    expect(isAwaitingReply([user], false)).toBe(false);
+  });
+
+  it("思考流、正文、工具或确认卡一到就交给各自的行内状态", () => {
+    const user = msg({ id: "u1", kind: "user", author: "user", text: "开始" });
+    expect(isAwaitingReply([user, msg({ id: "t1", kind: "thinking", streaming: true })], true)).toBe(false);
+    expect(isAwaitingReply([user, msg({ id: "a1", kind: "assistant", streaming: true })], true)).toBe(false);
+    expect(isAwaitingReply([user, msg({ id: "c1", kind: "tool_call", toolName: "read" })], true)).toBe(false);
+    expect(isAwaitingReply([user, msg({ id: "r1", kind: "tool_result", toolName: "read" })], true)).toBe(false);
+    expect(isAwaitingReply([user, msg({ id: "cf", kind: "confirm", toolName: "write" })], true)).toBe(false);
   });
 });
 

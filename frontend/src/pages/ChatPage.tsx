@@ -29,7 +29,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupSessionsByProject, groupSessionsByTime, groupToolMessages, groupTurns, isDayChange, mdToSpeech, sessionTargetBadgeLabel, type ChatItem, type UIMessage } from "@/lib/chatUtils";
+import { chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupSessionsByProject, groupSessionsByTime, groupToolMessages, groupTurns, isAwaitingReply, isDayChange, mdToSpeech, sessionTargetBadgeLabel, type ChatItem, type UIMessage } from "@/lib/chatUtils";
 import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
 import {
   SIDEBAR_KEYBOARD_STEP, SIDEBAR_MIN_WIDTH,
@@ -50,6 +50,7 @@ import { composerReasoningModel, levelLabel, modelLabel, reasoningLevels } from 
 import { resolveAgentModel } from "@/lib/agentModel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { TurnBlock, type TurnBodyOpts } from "@/components/chat/TurnBlock";
+import { TurnStatus } from "@/components/chat/TurnStatus";
 import { TurnRail, type RailTurn } from "@/components/chat/TurnRail";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
 import { SessionRowLabel } from "@/components/chat/SessionRowLabel";
@@ -755,7 +756,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
       scrollFrame.current = null;
       bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
     });
-  }, [messages]);
+  }, [messages, running]);
 
   useEffect(() => () => {
     if (scrollFrame.current != null) cancelAnimationFrame(scrollFrame.current);
@@ -1874,6 +1875,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   // is never split across the truncation boundary.
   const renderItems = useMemo(() => groupTurns(groupToolMessages(renderSource)), [renderSource]);
   const visibleItems = useMemo(() => renderItems.slice(-renderLimit), [renderItems, renderLimit]);
+  // The pre-first-token gap: running, but the latest raw message is still the
+  // user's. The status must key off the message id (not merely the last turn)
+  // so an active message filter cannot misplace it under an older turn.
+  const awaitingReply = !historyLoading && isAwaitingReply(messages, running);
+  const awaitingTurnId = awaitingReply && messages.length > 0
+    ? messages[messages.length - 1].id
+    : null;
   const omittedItems = Math.max(0, renderItems.length - visibleItems.length);
   // The last turn owns the live clock: its execution blocks keep ticking
   // until the turn settles.
@@ -2703,7 +2711,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   </p>
                 </div>
               )}
-              {messages.length === 0 && active && (
+              {messages.length === 0 && active && !awaitingReply && !historyLoading && (
                 <div className="flex min-h-[55vh] flex-col items-center justify-center gap-3 text-center">
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand/10 text-brand">
                     <MessageSquare className="h-6 w-6" />
@@ -2734,6 +2742,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                         active={item.header.id === activeTurnId}
                         live={running && renderIdx === lastTurnIdx}
                         isLastTurn={renderIdx === renderItems.length - 1}
+                        waiting={item.header.id === awaitingTurnId}
                         onEdit={startEdit}
                         canEdit={editFlags.get(item.header.id) === true && !running && !!activeID}
                         filterQ={filterQ}
@@ -2752,6 +2761,11 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   </Fragment>
                 );
               })}
+              {awaitingReply && messages.length === 0 && (
+                <div className="flex justify-start">
+                  <TurnStatus />
+                </div>
+              )}
               {historyLoading && messages.length === 0 && (
                 <div className="space-y-3" aria-hidden>
                   {[80, 60, 70].map((w, i) => (

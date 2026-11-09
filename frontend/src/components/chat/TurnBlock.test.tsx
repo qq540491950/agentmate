@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import type { ComponentProps } from "react";
 import { describe, expect, it } from "vitest";
 import { TurnBlock } from "./TurnBlock";
 import type { TurnItem } from "@/lib/chatUtils";
@@ -26,7 +27,7 @@ const turn: TurnItem = {
   }],
 };
 
-function render(active = false) {
+function render(active = false, overrides: Partial<ComponentProps<typeof TurnBlock>> = {}) {
   return renderToStaticMarkup(
     <TurnBlock
       turn={turn}
@@ -37,6 +38,7 @@ function render(active = false) {
       canEdit={false}
       filterQ=""
       renderBodyItem={() => <div data-body-item="a1" />}
+      {...overrides}
     />,
   );
 }
@@ -67,5 +69,16 @@ describe("TurnBlock", () => {
     expect(bubbleTag).toContain("bg-brand/15");
     expect(bubbleTag).toContain("ring-brand/35");
     expect(blockTag).not.toContain("ring-brand");
+  });
+
+  it("首包前在用户气泡下方显示思考状态，且不新增消息正文", () => {
+    const html = render(false, {
+      turn: { ...turn, body: [] },
+      waiting: true,
+    });
+
+    expect(html).toContain('data-slot="turn-status"');
+    expect(html).toContain("正在思考");
+    expect(html).not.toContain('data-slot="turn-body"');
   });
 });

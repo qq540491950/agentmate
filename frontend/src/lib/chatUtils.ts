@@ -216,6 +216,17 @@ export function groupTurns(items: ChatItem[]): RenderItem[] {
   return out;
 }
 
+/**
+ * isAwaitingReply reports the silent gap after the user's message and before
+ * the model's first streamed event. The reply bubble only exists once a delta
+ * arrives, so this is the only signal that the turn is still starting.
+ */
+export function isAwaitingReply(messages: UIMessage[], running: boolean): boolean {
+  if (!running) return false;
+  const tail = messages[messages.length - 1];
+  return !tail || tail.kind === "user";
+}
+
 /** ToolStep pairs one tool_call with its matching tool_result. Keeping the
  *  pair together is what makes an execution block read as N tools instead of
  *  2N call/result rows. */

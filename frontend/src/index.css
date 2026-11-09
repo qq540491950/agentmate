@@ -280,6 +280,29 @@
   animation: wb-dot-pulse 1.2s ease-in-out infinite;
 }
 
+/* 模型首包前的状态文字：微光扫过，避免整段等待只剩一个转圈。 */
+@keyframes wb-text-shimmer {
+  0% {
+    background-position: 180% 0;
+  }
+  100% {
+    background-position: -80% 0;
+  }
+}
+.wb-thinking-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    var(--muted-foreground) 35%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 65%
+  );
+  background-size: 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: wb-text-shimmer 1.8s linear infinite;
+}
+
 /* 消息进场：新挂载的消息/执行组轻推入位（reduced-motion 全局归零）。 */
 @keyframes wb-message-in {
   from {
@@ -322,6 +345,10 @@ button:focus-visible {
 
 /* honour the OS motion preference for every transition, not just the pulse. */
 @media (prefers-reduced-motion: reduce) {
+  .wb-thinking-shimmer {
+    background: none;
+    color: var(--muted-foreground);
+  }
   *,
   *::before,
   *::after {
