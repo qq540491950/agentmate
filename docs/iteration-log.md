@@ -4,6 +4,24 @@
 
 ## 视觉测试与体验设计
 
+### 第二百三十轮迭代：会话标题默认提炼与侧栏单行化（已实施）
+
+依据：用户截图反馈左侧会话行显示 `/stats` 原样标题，第二行回复摘要让列表显得臃肿；期望标题由主模型提炼，或可指定标题模型，并且只占一行。
+
+**实现要点**
+
+- **根因**：`Settings.AutoTitle` 原先默认关闭，用户配置没有该键时完全不会发起标题侧调用；旧侧调用还复用会话目标模型，弱模型或远程目标会进一步降低标题质量。第二行是 `ChatSession.Preview` 的常驻渲染，与标题共同撑高行高。
+- **默认与模型解析**：`AutoTitleEnabled` 改为未配置即开启（显式 `false` 才关闭）；新增 `Settings.TitleProviderID/TitleModel`，未指定时回落全局默认供应商的首个模型（主模型），不受会话 `ModelOverride` 或远程目标影响。
+- **标题质量**：提示词明确要求一行、≤12 个汉字、不得把斜杠命令/代码原样作为标题；输出取首行并清理引号、书名号、Markdown 标记，斜杠开头视为无效并保留兜底，最终上限 16 字。
+- **历史会话**：新增 `ChatService.RefineSessionTitle`，读取会话首条用户消息与最近助手回复重新提炼；会话行菜单与当前会话「更多操作」均提供「重新提炼标题」。
+- **侧栏单行**：抽出门面组件 `SessionRowLabel` 只渲染标题，回复摘要仅保留在原生悬停提示中；设置页新增「标题提炼模型」选择器，默认「跟随主模型」。
+
+**测试证据**
+
+- 红灯→绿灯：`TestAutoTitleUsesMainModelByDefault` 修复前 2 秒后标题仍为 `/stats`；修复后请求主模型并替换为「会话统计命令」。
+- `TestAutoTitleGeneratesTitle` 断言显式标题模型优先于会话覆盖模型；`TestRefineSessionTitleCleansExistingFallback` 覆盖历史 `/stats` 会话重提炼；`TestAutoTitleDisabledKeepsFallback` 保留显式关闭契约；`TestAutoTitleDefaultsOn` 锁定默认开启与 false 持久化。
+- `SessionRowLabel.test.tsx` 断言可见文本只有标题、预览仅存在于 tooltip；`npm test` 23 文件 182 用例、`npx tsc --noEmit`、`go test ./internal/services`、`go test ./internal/config` 全绿。
+
 ### 第二百二十九轮迭代：已到底时自动隐藏「回到底部」浮钮（已实施）
 
 依据：用户截图反馈，消息已经滚动到底部时向下箭头仍然常驻，让人误以为尚未到底。

@@ -28,6 +28,7 @@ import {
   EXECUTION_DISPLAY_OPTIONS, normalizeExecutionDisplayMode,
 } from "@/lib/executionDisplay";
 import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
+import { modelLabel } from "@/lib/modelLabel";
 import { Chat, App, A2A, Config, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
 
 const SETTINGS_TABS = [
@@ -190,6 +191,10 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
     );
   }
 
+  const titleModelValue = settings.titleProviderId && settings.titleModel
+    ? `${settings.titleProviderId}\t${settings.titleModel}`
+    : "main";
+
   return (
     <div className="flex h-full">
       <aside className="flex w-48 shrink-0 flex-col border-r bg-sidebar py-4 text-sidebar-foreground">
@@ -336,9 +341,9 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
           onCheckedChange={(v) => update({ autoSpeak: v })}
           />
             </SettingRow>
-            <SettingRow label="智能会话命名" description="首轮对话后由模型生成简短标题（关闭则截取首条消息前 30 字）">
+            <SettingRow label="智能会话命名" description="首轮对话后由主模型生成单行简短标题（关闭则截取首条消息前 30 字）">
               <Switch
-          checked={settings.autoTitle == null ? false : settings.autoTitle}
+          checked={settings.autoTitle !== false}
           onCheckedChange={(v) => {
           // Persist only this flag from the last-saved snapshot, like
           // autoRemember — never flush half-typed fields.
@@ -349,6 +354,30 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
           .catch((e) => toast.error(`保存失败: ${errText(e)}`));
           }}
           />
+            </SettingRow>
+            <SettingRow label="标题提炼模型" description="默认跟随主模型；也可指定更快或更省的模型（仅在智能会话命名开启时生效）">
+              <Select
+                value={titleModelValue}
+                disabled={settings.autoTitle === false}
+                onValueChange={(v) => {
+                  if (v === "main") {
+                    update({ titleProviderId: "", titleModel: "" });
+                    return;
+                  }
+                  const [providerId, modelId] = v.split("\t");
+                  update({ titleProviderId: providerId, titleModel: modelId });
+                }}
+              >
+                <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="main">跟随主模型</SelectItem>
+                  {providers.flatMap((p) => (p.models ?? []).map((m) => (
+                    <SelectItem key={`${p.id}\t${m.id}`} value={`${p.id}\t${m.id}`}>
+                      {p.name} · {modelLabel(m)}
+                    </SelectItem>
+                  )))}
+                </SelectContent>
+              </Select>
             </SettingRow>
             <SettingRow label="工具调用审计日志" description="将每次工具调用/结果以 JSONL 追加到应用日志目录（tools-audit.jsonl）">
               <Switch

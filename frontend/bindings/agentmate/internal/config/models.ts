@@ -460,10 +460,18 @@ export interface Settings {
 
     /**
      * AutoTitle generates a short conversation title with the model after the
-     * first exchange. Opt-in (nil/false = off): the side model call would
-     * otherwise surprise every scripted model integration.
+     * first exchange. On by default (nil = on); an explicit false keeps the
+     * truncated first-message fallback and avoids the side model call.
      */
     "autoTitle"?: boolean | null;
+
+    /**
+     * TitleProviderID/TitleModel select the title-refinement side call.
+     * Empty follows the global default provider's first model ("main model")
+     * so titles stay clean even when a chat runs on a weak or remote target.
+     */
+    "titleProviderId"?: string;
+    "titleModel"?: string;
 
     /**
      * HTTPProxy is a global outbound proxy URL (e.g. http://127.0.0.1:7890)

@@ -182,6 +182,16 @@ export function PinSession(id: string, pinned: boolean): $CancellablePromise<voi
 }
 
 /**
+ * RefineSessionTitle regenerates an existing session's title from its stored
+ * first user message and latest assistant reply. It is the explicit action
+ * for chats created before auto-title existed, or whose fallback was a raw
+ * slash command; new sessions refine automatically after their first turn.
+ */
+export function RefineSessionTitle(sessionID: string): $CancellablePromise<string> {
+    return $Call.ByID(1926260402, sessionID);
+}
+
+/**
  * Regenerate redoes the last user turn: it trims the trailing conversation
  * (from the last user message onward, inclusive) and re-runs the same message
  * with its original attachments.

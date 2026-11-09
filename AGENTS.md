@@ -53,12 +53,12 @@ frontend/bindings/        # wails3 生成绑定（勿手改）
 - **配置读取**：`Store.Get()` 返回深拷贝，可随意改；`Settings()` 用于全局设置热路径。`ExportConfig(false)` 剥离供应商 API Key 与 MCP AuthToken；`MCPTokens` 任何导出都不带。
 - **取消登记**：每轮在 `runs[sessionID]` 登记 `*runHandle`，释放时只在指针仍属于自己时删除。
 - **会话元数据**：Rename / SetModel / Archive / Pin 统一走 `mutateSession`；`DeleteSession` 与 `Regenerate/EditAndResend` 先 `Cancel` 再动历史。
-- **会话级模型覆盖**：`ChatSession.ModelOverride` 经 `agentkit.EffectiveModel` 统一钳制；运行、统计计费、autoTitle 三处共用。
+- **会话级模型覆盖**：`ChatSession.ModelOverride` 经 `agentkit.EffectiveModel` 统一钳制；运行与统计计费共用。标题提炼默认走全局主模型，与会话覆盖解耦。
 - **@ 文件上下文与技能发现**：`@path` / `@"quoted path"` 由 `chat_context.go` 从会话的有效工作区读取，按轮注入（单文件 48KB / 单轮 96KB / ≤8 个，越界与二进制不读）；`/skill` 在 `config.EffectiveSkills`（项目 > 用户 `~/.agents/skills` > 应用）上匹配，`ChatService.EffectiveSkills` 与 `ArtifactService.ListContextPaths` 供前端按会话/草稿项目解析菜单。
 - **任务级工作区**：`NewSession` 与 `NewSessionWithWorkspace` 均创建任务目录；`EffectiveWorkspace` 是文件工具、`{{workspace}}` 与预览的唯一后端解析入口；首轮后锁定，活动任务不能重复占用同一显式目录；发送/确认/改绑共用会话级 workspace 锁。知识库/Skills/导出仍用全局工作区。
 - **任务产物快照**：基线存应用数据目录 `task-snapshots/<sessionID>.json`（版本化、原子写，不进 sessions.db）；按存在性/大小/mtime 算新增、修改、删除；跳过隐藏/VCS/依赖目录与符号链接（5000 文件 / 200 条上限）；删会话清基线但保留任务文件，分叉共享工作区但独立基线。
 - **plan_todos**：状态存 ADK session state 键 `agentmate.todos`，全量替换（省略参数=只读，空数组=清空）；前端从 tool_result 渲染清单卡与置顶条。
-- **autoTitle**：opt-in（`Settings.AutoTitle`）；首轮后异步 30s 侧调用，仅替换自己写的兜底标题；goroutine 自带 recover。
+- **autoTitle**：默认开启（`Settings.AutoTitle` 显式 false 才关闭）；首轮后异步 30s 侧调用，默认用全局主模型，可用 `Settings.TitleProviderID/TitleModel` 指定；仅替换首轮兜底标题，goroutine 自带 recover。历史会话可经 `ChatService.RefineSessionTitle` 手动重提炼。
 - **单轮超时**：未配置 `MaxTurnSeconds` 时默认 600 秒；`runTurn` 的 recover 把 panic 转为 `error` + `done`。
 - **桌面壳**：单实例锁名 = `build/config.yml` 的 `productIdentifier`（不可改），二次启动转发激活后退出。Windows 更新残留 `<exe>.old.*` / `.bak` 由 `updateleftover.go` 在锁后清扫（30 秒内新文件不碰，重试至 10 分钟）。
 

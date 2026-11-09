@@ -434,9 +434,14 @@ type Settings struct {
 	// automatically (best-effort; failures are silent).
 	AutoRemember bool `json:"autoRemember,omitempty"`
 	// AutoTitle generates a short conversation title with the model after the
-	// first exchange. Opt-in (nil/false = off): the side model call would
-	// otherwise surprise every scripted model integration.
+	// first exchange. On by default (nil = on); an explicit false keeps the
+	// truncated first-message fallback and avoids the side model call.
 	AutoTitle *bool `json:"autoTitle,omitempty"`
+	// TitleProviderID/TitleModel select the title-refinement side call.
+	// Empty follows the global default provider's first model ("main model")
+	// so titles stay clean even when a chat runs on a weak or remote target.
+	TitleProviderID string `json:"titleProviderId,omitempty"`
+	TitleModel      string `json:"titleModel,omitempty"`
 	// HTTPProxy is a global outbound proxy URL (e.g. http://127.0.0.1:7890)
 	// applied to model/embedding/MCP requests at startup. Empty = direct.
 	HTTPProxy string `json:"httpProxy,omitempty"`
@@ -466,8 +471,10 @@ type Settings struct {
 }
 
 // AutoTitleEnabled reports whether model-generated titles are wanted.
-func (s *Settings) AutoTitleEnabled() bool {
-	return s.AutoTitle != nil && *s.AutoTitle
+// Unset means on: the reported UX is a refined one-line title by default;
+// users who care about the extra side call can switch it off explicitly.
+func (s Settings) AutoTitleEnabled() bool {
+	return s.AutoTitle == nil || *s.AutoTitle
 }
 
 // Chat column width modes. Each maps to a percentage of the chat pane in the

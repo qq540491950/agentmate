@@ -33,6 +33,7 @@ const seedConfig = {
     fontScale: "md",
     chatWidth: "medium",
     autoSpeak: false,
+    autoTitle: true,
     embeddingProviderId: "prov_1",
     embeddingModel: "text-embedding-3-small",
     executionDisplayMode: "auto",
@@ -152,7 +153,7 @@ const seedConfig = {
   ],
   sessions: [
     { id: "sess_confirm", title: "需要确认的写入", targetType: "agent", targetId: "agent_1", createdAt: "2026-09-18T01:00:00Z", updatedAt: "2026-09-18T01:05:00Z", modelOverride: "gpt-5-mini", workspaceDir: "/tmp/agentmate-workspace/tasks/sess_confirm" },
-    { id: "sess_process", title: "执行过程四档演示", targetType: "", targetId: "", createdAt: iso(0, 9), updatedAt: iso(0, 10) },
+    { id: "sess_process", title: "执行过程四档演示", preview: "检查、测试与文件写入均已完成。", targetType: "", targetId: "", createdAt: iso(0, 9), updatedAt: iso(0, 10) },
     { id: "sess_plain", title: "普通对话", targetType: "team", targetId: "team_1", createdAt: "2026-09-17T09:00:00Z", updatedAt: "2026-09-17T09:10:00Z" },
     { id: "sess_direct", title: "我如何选择模型呢？", targetType: "", targetId: "", createdAt: "2026-11-01T00:45:00Z", updatedAt: "2026-11-01T00:48:00Z" },
     // Sidebar-grouping fixtures: dates relative to load time so the time
@@ -304,6 +305,14 @@ const handlers: Record<string, (args: any[]) => any> = {
     if (!sess) throw new Error("会话不存在");
     (sess as any).pinned = !!args[1];
     return null;
+  },
+  // RefineSessionTitle(sessionID)
+  [svc("ChatService", "RefineSessionTitle")]: (args) => {
+    const sess = seedConfig.sessions.find((s) => s.id === args[0]);
+    if (!sess) throw new Error("会话不存在");
+    const title = "提炼后的会话标题";
+    (sess as any).title = title;
+    return title;
   },
   // DeleteSession(sessionID)
   [svc("ChatService", "DeleteSession")]: (args) => {

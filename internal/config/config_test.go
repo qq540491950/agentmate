@@ -339,6 +339,33 @@ func TestUpdateAutoCheckDefaultsOn(t *testing.T) {
 	}
 }
 
+// Smart session naming is opt-out: existing configs without an autoTitle key
+// must refine titles instead of leaving a raw first message such as "/stats".
+func TestAutoTitleDefaultsOn(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Settings().AutoTitleEnabled() {
+		t.Fatal("auto-title must default to on when unset")
+	}
+	off := false
+	if err := s.Update(func(cfg *Config) { cfg.Settings.AutoTitle = &off }); err != nil {
+		t.Fatal(err)
+	}
+	if s.Settings().AutoTitleEnabled() {
+		t.Fatal("auto-title must report off when the stored pointer is false")
+	}
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Settings().AutoTitleEnabled() {
+		t.Fatal("explicit false must survive a config round trip")
+	}
+}
+
 // TestResolveAgentModelInheritsDefault pins the #39 contract: an agent defined
 // by name + description + prompt alone follows the global default provider and
 // its first model, while explicit choices are never silently rewritten.

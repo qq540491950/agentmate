@@ -683,14 +683,14 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	// The goroutine carries its own recover: it runs outside runTurn's
 	// deferred recoverRun, and a panic here would take the whole process down.
 	if autoFallback != "" && cfg.Settings.AutoTitleEnabled() {
-		go func() {
+		autoTitleStart(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("autoTitle panicked (kept fallback title): %v", r)
 				}
 			}()
 			c.autoTitle(sessionID, cfg, autoFallback, titleFromText, lastReply)
-		}()
+		})
 	}
 	return nil
 }
@@ -806,68 +806,44 @@ func eventReasoning(ev *session.Event) string {
 	return ""
 }
 
-// autoTitle asks the session's model for a short conversation title and
-// replaces the truncated-text fallback. Failures keep the fallback silently.
-func (c *ChatService) autoTitle(sessionID string, cfg config.Config, fallback, userText, reply string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	target := c.resolveSessionTarget(cfg, sessionID)
-	if target == nil {
-		return
-	}
-	ac := c.targetAgentConfig(cfg, target)
-	if ac == nil && target.TargetType == "" {
-		if d, derr := directAgentConfig(cfg); derr == nil {
-			ac = &d
-		}
-	}
-	if ac == nil {
-		return
-	}
-	// An agent with a blank provider/model follows the global default, the
-	// same resolution the run itself uses (#39).
-	providerID, resolvedModel := cfg.ResolveAgentModel(*ac)
-	provider := cfg.FindProvider(providerID)
-	if provider == nil {
-		return
-	}
-	// The side call must respect the per-session model override — the same
-	// clamp as BuildAgentWithModel. The custom adapters build the client from
-	// the constructor's model, so the override has to happen here.
-	modelID := agentkit.EffectiveModel(cfg, providerID, resolvedModel, target.ModelOverride)
-	m, err := agentkit.NewModelFromProvider(*provider, modelID)
-	if err != nil {
-		return
-	}
-	// Guardrail the quoted user content just like a normal turn.
-	prompt := "根据下面的对话开头，起一个不超过 12 个字的中文标题。只输出标题本身，不要引号、句号或任何解释。\n\n用户: " +
-		agentkit.ApplyOutputGuardrail(truncateRunes(userText, 200)) +
-		"\n助手: " + agentkit.ApplyOutputGuardrail(truncateRunes(reply, 200))
-	req := &adkmodel.LLMRequest{
-		Contents: []*genai.Content{
-			genai.NewContentFromText(prompt, genai.RoleUser),
-		},
-		Config: &genai.GenerateContentConfig{MaxOutputTokens: 40, Temperature: ptrFloat32(0.3)},
-	}
-	var title strings.Builder
-	for resp, err := range m.GenerateContent(ctx, req, false) {
-		if err != nil || ctx.Err() != nil {
-			return
-		}
-		if resp != nil && resp.Content != nil {
-			for _, p := range resp.Content.Parts {
-				if p != nil && p.Text != "" {
-					title.WriteString(p.Text)
-				}
+// autoTitleStart schedules the best-effort title side call. Tests replace it
+// with a synchronous runner so scripted fake-model expectations stay stable.
+var autoTitleStart = func(run func()) { go run() }
+
+// autoTitleModel resolves the provider/model used for title refinement:
+// explicit title settings first, then the global default provider's first
+// model ("main model"). The conversation target and its model override are
+// intentionally ignored: a weak agent model or a remote target must not
+// degrade the sidebar title.
+func autoTitleModel(cfg config.Config) (config.ModelProvider, string, bool) {
+	titleProviderID := strings.TrimSpace(cfg.Settings.TitleProviderID)
+	titleModel := strings.TrimSpace(cfg.Settings.TitleModel)
+	if titleProviderID != "" && titleModel != "" {
+		if provider := cfg.FindProvider(titleProviderID); provider != nil {
+			if _, ok := provider.FindModel(titleModel); ok {
+				return *provider, titleModel, true
 			}
 		}
 	}
-	clean := strings.TrimSpace(strings.Trim(title.String(), " \"'「」『』。.!？?\n\t"))
-	clean = truncateRunes(clean, 30)
-	if clean == "" || strings.HasPrefix(clean, "{") {
-		return // empty or non-text payload: keep the fallback
+	provider := cfg.DefaultProvider()
+	if provider == nil {
+		return config.ModelProvider{}, "", false
 	}
-	err = c.S.Store.Update(func(cfg2 *config.Config) {
+	if len(provider.Models) == 0 {
+		return config.ModelProvider{}, "", false
+	}
+	return *provider, provider.Models[0].ID, true
+}
+
+// autoTitle asks the configured title model for a short conversation title
+// and replaces the truncated-text fallback. Failures keep the fallback
+// silently.
+func (c *ChatService) autoTitle(sessionID string, cfg config.Config, fallback, userText, reply string) {
+	clean, ok := c.generateTitle(cfg, userText, reply)
+	if !ok {
+		return
+	}
+	err := c.S.Store.Update(func(cfg2 *config.Config) {
 		for i := range cfg2.Sessions {
 			// Only replace OUR fallback: a manual rename in between wins.
 			if cfg2.Sessions[i].ID == sessionID && cfg2.Sessions[i].Title == fallback {
@@ -883,6 +859,101 @@ func (c *ChatService) autoTitle(sessionID string, cfg config.Config, fallback, u
 	if app := application.Get(); app != nil {
 		app.Event.Emit("sessions:updated", sessionID)
 	}
+}
+
+// generateTitle performs the non-streaming title side call. It returns false
+// when no usable title model is configured or the model produced no usable
+// text, so callers can keep their existing title/fallback.
+func (c *ChatService) generateTitle(cfg config.Config, userText, reply string) (string, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	provider, modelID, ok := autoTitleModel(cfg)
+	if !ok {
+		return "", false
+	}
+	m, err := agentkit.NewModelFromProvider(provider, modelID)
+	if err != nil {
+		return "", false
+	}
+	// Guardrail the quoted user content just like a normal turn.
+	prompt := "根据下面的对话开头，概括一个不超过 12 个汉字的中文标题。只输出标题本身，一行，不要引号、书名号、句号、Markdown 或任何解释；不要把用户消息里的斜杠命令或代码原样作为标题。\n\n用户: " +
+		agentkit.ApplyOutputGuardrail(truncateRunes(userText, 200)) +
+		"\n助手: " + agentkit.ApplyOutputGuardrail(truncateRunes(reply, 200))
+	req := &adkmodel.LLMRequest{
+		Contents: []*genai.Content{
+			genai.NewContentFromText(prompt, genai.RoleUser),
+		},
+		Config: &genai.GenerateContentConfig{MaxOutputTokens: 40, Temperature: ptrFloat32(0.3)},
+	}
+	var title strings.Builder
+	for resp, err := range m.GenerateContent(ctx, req, false) {
+		if err != nil || ctx.Err() != nil {
+			return "", false
+		}
+		if resp != nil && resp.Content != nil {
+			for _, p := range resp.Content.Parts {
+				if p != nil && p.Text != "" {
+					title.WriteString(p.Text)
+				}
+			}
+		}
+	}
+	clean := strings.TrimSpace(title.String())
+	if i := strings.IndexAny(clean, "\r\n"); i >= 0 {
+		clean = clean[:i]
+	}
+	clean = strings.TrimSpace(strings.Trim(clean, " \"'「」『』`#。.!？?\t"))
+	for _, prefix := range []string{"会话标题：", "会话标题:", "标题：", "标题:"} {
+		clean = strings.TrimSpace(strings.TrimPrefix(clean, prefix))
+	}
+	clean = truncateRunes(clean, 16)
+	if clean == "" || strings.HasPrefix(clean, "{") || strings.HasPrefix(clean, "/") {
+		return "", false // empty, non-text, or raw command output
+	}
+	return clean, true
+}
+
+// RefineSessionTitle regenerates an existing session's title from its stored
+// first user message and latest assistant reply. It is the explicit action
+// for chats created before auto-title existed, or whose fallback was a raw
+// slash command; new sessions refine automatically after their first turn.
+func (c *ChatService) RefineSessionTitle(sessionID string) (string, error) {
+	cfg := c.S.Store.Get()
+	if c.resolveSessionTarget(cfg, sessionID) == nil {
+		return "", fmt.Errorf("会话 %q 不存在", sessionID)
+	}
+	msgs, err := c.GetSessionMessages(sessionID)
+	if err != nil {
+		return "", fmt.Errorf("读取会话历史失败: %w", err)
+	}
+	var userText, reply string
+	for _, m := range msgs {
+		switch m.Kind {
+		case "user":
+			if userText == "" {
+				userText = strings.TrimSpace(m.Text)
+			}
+		case "assistant":
+			if strings.TrimSpace(m.Text) != "" {
+				reply = strings.TrimSpace(m.Text)
+			}
+		}
+	}
+	if userText == "" {
+		return "", fmt.Errorf("会话还没有用户消息，无法提炼标题")
+	}
+	title, ok := c.generateTitle(cfg, userText, reply)
+	if !ok {
+		return "", fmt.Errorf("标题提炼失败，请检查标题模型配置后重试")
+	}
+	if err := c.mutateSession(sessionID, func(s *config.ChatSession) { s.Title = title }); err != nil {
+		return "", err
+	}
+	c.audit(sessionID, "session_title_refined", "user", "session", mustJSON(map[string]string{"title": title}), "")
+	if app := application.Get(); app != nil {
+		app.Event.Emit("sessions:updated", sessionID)
+	}
+	return title, nil
 }
 
 // truncateRunes caps a string at maxRunes without splitting a UTF-8 rune.

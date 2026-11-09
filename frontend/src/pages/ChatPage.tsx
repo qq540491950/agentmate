@@ -10,6 +10,7 @@ import {
   Settings as SettingsIcon, CircleHelp, Sun, Moon,
   Boxes, Coins, LockOpen,
   ListTree,
+  Sparkles,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
 } from "lucide-react";
@@ -51,6 +52,7 @@ import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { TurnBlock, type TurnBodyOpts } from "@/components/chat/TurnBlock";
 import { TurnRail, type RailTurn } from "@/components/chat/TurnRail";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
+import { SessionRowLabel } from "@/components/chat/SessionRowLabel";
 import { ContextRing } from "@/components/chat/ContextRing";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
@@ -1373,6 +1375,16 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
     }
   };
 
+  const refineSessionTitle = async (s: ChatSession) => {
+    try {
+      const title = await Chat.RefineSessionTitle(s.id);
+      toast.success(`标题已提炼为「${title}」`);
+      reloadSessions();
+    } catch (e) {
+      toast.error(`提炼标题失败: ${errText(e)}`);
+    }
+  };
+
   const removeSession = (s: ChatSession) => {
     setConfirmRequest({
       title: `删除会话「${s.title}」？`,
@@ -2086,7 +2098,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
       key={s.id}
       role="button"
       tabIndex={0}
-      title={s.title}
+      title={s.preview ? `${s.title}\n${s.preview}` : s.title}
       className={cn(
         "group relative flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-ui",
         s.id === activeID ? "bg-brand/10 text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
@@ -2107,11 +2119,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
           : s.targetType === "" ? <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             : <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
       <span className="min-w-0 flex-1">
-        <span className="block truncate" title={s.forkedFrom ? `分叉自「${sessions.find((x) => x.id === s.forkedFrom)?.title ?? s.forkedFrom}」` : s.title}>
-          {s.forkedFrom && <GitFork className="mr-1 inline h-3 w-3 text-muted-foreground" />}
-          {s.title}
-        </span>
-        {s.preview && <span className="block truncate text-xs text-muted-foreground/80">{s.preview}</span>}
+        <SessionRowLabel
+          title={s.title}
+          preview={s.preview}
+          forkedFromTitle={s.forkedFrom
+            ? sessions.find((x) => x.id === s.forkedFrom)?.title ?? s.forkedFrom
+            : ""}
+        />
       </span>
       {s.pinned && <Pin className="h-3 w-3 shrink-0 text-brand" aria-label="已置顶" />}
       {s.archived && <Badge variant="outline" className="shrink-0 px-1 py-0 text-2xs text-muted-foreground">归档</Badge>}
@@ -2161,6 +2175,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => { setRenaming(s); setRenameText(s.title); }}>
               <Pencil className="mr-2 h-3.5 w-3.5" /> 重命名
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => refineSessionTitle(s)}>
+              <Sparkles className="mr-2 h-3.5 w-3.5" /> 重新提炼标题
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeSession(s)}>
@@ -2544,6 +2561,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={openStats}>
                       <BarChart3 className="h-4 w-4" /> 会话统计
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => refineSessionTitle(active)}>
+                      <Sparkles className="h-4 w-4" /> 重新提炼标题
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={async () => {
