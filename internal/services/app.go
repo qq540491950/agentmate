@@ -38,13 +38,18 @@ type AppService struct {
 // SetLogPath points the diagnostics log reader at the app log file.
 func (a *AppService) SetLogPath(path string) { a.logPath = path }
 
-// SetStoragePaths records the database file locations for storage stats.
-func (a *AppService) SetStoragePaths(sessionsDB, knowledgeDB string, gormDB *gorm.DB) {
-	a.sessionsDB, a.knowledgeDB, a.gormDB = sessionsDB, knowledgeDB, gormDB
+// NewAppService creates the service. Storage handles stay in the constructor
+// instead of an exported setter: every exported method is exposed as a Wails
+// RPC, and a *gorm.DB parameter would drag the whole GORM type graph into the
+// frontend bindings.
+func NewAppService(s *Services, sessionsDB, knowledgeDB string, gormDB *gorm.DB) *AppService {
+	return &AppService{
+		S:           s,
+		sessionsDB:  sessionsDB,
+		knowledgeDB: knowledgeDB,
+		gormDB:      gormDB,
+	}
 }
-
-// NewAppService creates the service.
-func NewAppService(s *Services) *AppService { return &AppService{S: s} }
 
 // AppVersion is injected by main (single source of truth).
 var AppVersion = "dev"

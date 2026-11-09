@@ -9,7 +9,7 @@ import (
 func TestAppInfoReportsInjectedVersion(t *testing.T) {
 	AppVersion = "9.9.9-test"
 	defer func() { AppVersion = "dev" }()
-	a := NewAppService(&Services{})
+	a := NewAppService(&Services{}, "", "", nil)
 	info := a.AppInfo()
 	if info["version"] != "9.9.9-test" || info["name"] != "AgentMate" {
 		t.Fatalf("AppInfo = %v", info)

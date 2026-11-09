@@ -63,8 +63,7 @@ func TestStorageStatsAndVacuum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := &AppService{S: &Services{}}
-	app.SetStoragePaths(dbPath, kPath, db)
+	app := NewAppService(&Services{}, dbPath, kPath, db)
 
 	info := app.StorageStats()
 	if info.SessionsDBBytes <= 0 {

@@ -114,10 +114,12 @@ func main() {
 
 	chatSvc := services.NewChatService(svc, sessions, gormDB)
 	chatSvc.SetToolAuditPath(filepath.Join(cfgDir, "logs", "tools-audit.jsonl"))
-	logSvc := services.NewAppService(svc)
+	logSvc := services.NewAppService(svc,
+		filepath.Join(cfgDir, "sessions.db"),
+		filepath.Join(cfgDir, "knowledge.index.db"),
+		gormDB)
 	logSvc.SetLogPath(filepath.Join(cfgDir, "logs", "app.log"))
 	logSvc.SetToolAuditPath(filepath.Join(cfgDir, "logs", "tools-audit.jsonl"))
-	logSvc.SetStoragePaths(filepath.Join(cfgDir, "sessions.db"), filepath.Join(cfgDir, "knowledge.index.db"), gormDB)
 	// Update checks run against GitHub Releases (see updateservice.go). The
 	// service is registered before the app exists, so the updater itself is
 	// configured by Bind below.

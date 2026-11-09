@@ -51,7 +51,7 @@ func testMemoryStatsAndClear(t *testing.T, autoRemember bool) {
 		t.Fatal(err)
 	}
 	svc := &Services{Store: store, Kit: agentkit.NewKit(store, mcpmgr.New()), MCP: mcpmgr.New(), Memory: memSvc}
-	app := NewAppService(svc)
+	app := NewAppService(svc, "", "", nil)
 	chat := NewChatService(svc, sessions, db)
 	if err := store.Update(func(cfg *config.Config) { cfg.Settings.AutoRemember = autoRemember }); err != nil {
 		t.Fatal(err)

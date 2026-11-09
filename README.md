@@ -59,6 +59,10 @@
 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
 ```
 
+升级 Go 工具链后要重新执行上面的安装命令：`wails3` 内置的 `go/types`
+必须与当前 Go 版本一致，否则 `wails3 dev/build` 会把新版标准库的语法或
+build tag 误报成 warning。
+
 macOS 需要 Xcode Command Line Tools；Linux 需要 GTK / WebKit 开发包。
 
 ### 开发运行

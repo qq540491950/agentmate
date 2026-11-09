@@ -13,9 +13,6 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as config$0 from "../config/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as gorm$0 from "../../../gorm.io/gorm/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -125,13 +122,6 @@ export function RevealWorkspaceFile(sessionID: string, relPath: string): $Cancel
  */
 export function SetLogPath(path: string): $CancellablePromise<void> {
     return $Call.ByID(922981997, path);
-}
-
-/**
- * SetStoragePaths records the database file locations for storage stats.
- */
-export function SetStoragePaths(sessionsDB: string, knowledgeDB: string, gormDB: gorm$0.DB | null): $CancellablePromise<void> {
-    return $Call.ByID(3287806759, sessionsDB, knowledgeDB, gormDB);
 }
 
 /**

@@ -36,7 +36,7 @@ func newBackupTestService(t *testing.T) (*AppService, *config.Store, string) {
 		t.Fatal(err)
 	}
 	svc := &Services{Store: store, Kit: agentkit.NewKit(store, mcpmgr.New()), MCP: mcpmgr.New()}
-	return NewAppService(svc), store, workspace
+	return NewAppService(svc, "", "", nil), store, workspace
 }
 
 func TestConfigBackupRoundTrip(t *testing.T) {
