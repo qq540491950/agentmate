@@ -59,7 +59,7 @@ frontend/bindings/        # wails3 生成绑定（勿手改）
 - **任务产物快照**：基线存应用数据目录 `task-snapshots/<sessionID>.json`（版本化、原子写，不进 sessions.db）；按存在性/大小/mtime 算新增、修改、删除；跳过隐藏/VCS/依赖目录与符号链接（5000 文件 / 200 条上限）；删会话清基线但保留任务文件，分叉共享工作区但独立基线。
 - **plan_todos**：状态存 ADK session state 键 `agentmate.todos`，全量替换（省略参数=只读，空数组=清空）；前端从 tool_result 渲染清单卡与置顶条。
 - **autoTitle**：默认开启（`Settings.AutoTitle` 显式 false 才关闭）；首轮后异步 30s 侧调用，默认用全局主模型，可用 `Settings.TitleProviderID/TitleModel` 指定；仅替换首轮兜底标题，goroutine 自带 recover。历史会话可经 `ChatService.RefineSessionTitle` 手动重提炼。
-- **单轮超时**：未配置 `MaxTurnSeconds` 时默认 600 秒；`runTurn` 的 recover 把 panic 转为 `error` + `done`。
+- **单轮不限时与重试**：所有回合默认不设整轮墙钟上限，`MaxTurnSeconds` 已从配置和界面移除；模型流静默由 `agentkit.streamIdleTimeout` 兜底，供应商网络/429/502/503/504 默认最多重试 5 次，均不暴露用户设置；`runTurn` 的 recover 把 panic 转为 `error` + `done`。
 - **桌面壳**：单实例锁名 = `build/config.yml` 的 `productIdentifier`（不可改），二次启动转发激活后退出。Windows 更新残留 `<exe>.old.*` / `.bak` 由 `updateleftover.go` 在锁后清扫（30 秒内新文件不碰，重试至 10 分钟）。
 
 ## Issue 自动修复流水线

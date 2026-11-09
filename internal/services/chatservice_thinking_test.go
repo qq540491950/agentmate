@@ -11,7 +11,7 @@ import (
 // reasoning (DeepSeek's reasoning_content) must produce a streamed thinking
 // block, then a durable history message before the answer.
 func TestThinkingStreamsAndPersists(t *testing.T) {
-	chat, events, _ := newGuardrailTestChat(t, 0, 0, func(w http.ResponseWriter, r *http.Request) {
+	chat, events, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"reasoning_content":"先分析问题"}}]}` + "\n\n"))
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"reasoning_content":"，再给出结论。"}}]}` + "\n\n"))

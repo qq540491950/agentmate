@@ -11,7 +11,7 @@
 | 模块 | 说明 |
 | --- | --- |
 | 模型配置 | 支持 OpenAI 兼容协议（OpenAI / DeepSeek / Kimi / Qwen / Ollama / vLLM…）、Anthropic（Claude）、Google Gemini 三种协议；可配 Base URL、API Key、模型列表（多模态/上下文窗口/价格元数据，可从 /models 拉取）、默认供应商，并一键测试连通性 |
-| Agents | 自定义名称、描述、系统提示词、Temperature / MaxTokens / 停止序列，挂载 Skills、MCP 工具与内置工具（时间查询、工作区文件读写、知识库检索、长期记忆、任务计划 plan_todos、终端命令 run_command）；安全护栏（密钥脱敏/注入检测）；运行护栏（单轮超时/工具调用上限）；写入文件与执行终端命令的 HITL 人工确认；单个导出/导入分享 |
+| Agents | 自定义名称、描述、系统提示词、Temperature / MaxTokens / 停止序列，挂载 Skills、MCP 工具与内置工具（时间查询、工作区文件读写、知识库检索、长期记忆、任务计划 plan_todos、终端命令 run_command）；安全护栏（密钥脱敏/注入检测）；运行护栏（工具调用上限、供应商请求自动重试）；写入文件与执行终端命令的 HITL 人工确认；单个导出/导入分享 |
 | 远程 Agent | A2A 协议（官方 a2a-go）：连接远程 Agent 直接对话（Agent Card 自动发现 + 连通性检查），也可作为团队成员参与协作；本应用亦可作为 A2A 服务端对外发布本地 Agent |
 | Agent 团队 | 多 Agent 协作：自动协调员模式（系统合成协调员分派任务）或指定负责人模式；基于 ADK 的 agent 转移机制（transfer）实现委派；支持远程 A2A 成员 |
 | Skills | 可复用技能指令包，保存为标准 SKILL.md（YAML frontmatter + Markdown），由 ADK Skill Toolset 以渐进式披露方式供模型按需加载；支持从工作区 skills/ 目录批量导入；自动发现项目/用户 `.agents/skills`（只读），`/` 菜单按当前会话工作区列出并可调用 |
@@ -185,7 +185,7 @@ git push origin v0.5.0     # 触发 .github/workflows/release.yml
 - 清单签名：`updatePublicKeyB64`（`internal/services/updateservice.go`）钉公钥后**强制**校验签名；私钥放 CI secret `UPDATER_SIGNING_KEY`。未钉公钥时退化为仅校验清单摘要
 
 ### 稳定性与自愈
-- 单轮默认 10 分钟超时兜底（Agent 可自定义 `MaxTurnSeconds`），供应商无响应不会永久挂起
+- 所有回合默认不限制时长，长任务不会被整轮墙钟时间误杀；模型流持续无数据由空闲看门狗中断，供应商网络/429/502/503/504 自动重试 5 次
 - 运行期 panic 被 recover 并转为界面错误事件，应用不崩溃
 - 会话数据库损坏时启动自动备份（`sessions.db.corrupt-<时间戳>`）并重建，保证可启动
 - 全部后端路径有单测覆盖，`internal/...` 通过 `-race`

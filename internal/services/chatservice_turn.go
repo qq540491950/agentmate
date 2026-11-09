@@ -353,17 +353,15 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	if mi, ok := c.effectiveTurnModel(cfg, target); ok {
 		applyLevel, recordedLevel = resolveTurnReasoning(mi, turnReasoning, target.ReasoningLevel)
 	}
-	// Per-agent run guardrails (0 = unlimited); teams fall back to unlimited.
-	maxTurnSeconds, maxToolCalls := 0, 0
+	// Per-agent tool guardrail (0 = unlimited). Turns have no wall-clock
+	// deadline: long agent tasks are allowed to run until they finish, fail,
+	// or are cancelled. A stalled model stream is bounded separately by the
+	// LLM adapter's idle watchdog.
+	maxToolCalls := 0
 	var maxSessionTokens int64
 	if agentCfg := c.targetAgentConfig(cfg, target); agentCfg != nil {
-		maxTurnSeconds, maxToolCalls = agentCfg.MaxTurnSeconds, agentCfg.MaxToolCalls
+		maxToolCalls = agentCfg.MaxToolCalls
 		maxSessionTokens = agentCfg.MaxSessionTokens
-	}
-	// Safety net: a stalled provider (no bytes, no EOF) would otherwise hang
-	// the run forever and the Wails call would never return.
-	if maxTurnSeconds <= 0 {
-		maxTurnSeconds = defaultTurnTimeoutSeconds
 	}
 	var budgetBaseline int64
 	budgetExceeded := false
@@ -497,11 +495,6 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	if maxTurnSeconds > 0 {
-		var cancelTimeout context.CancelFunc
-		ctx, cancelTimeout = context.WithTimeout(ctx, time.Duration(maxTurnSeconds)*time.Second)
-		defer cancelTimeout()
-	}
 	defer cancel()
 	release := c.registerRun(sessionID, cancel)
 	defer release()
@@ -514,11 +507,6 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		StreamingMode: agent.StreamingModeSSE,
 	}, runOpts...) {
 		if ctx.Err() != nil {
-			if ctx.Err() == context.DeadlineExceeded {
-				msg := fmt.Sprintf("本轮已达最长运行时间（%d 秒），已停止。", maxTurnSeconds)
-				emit(ChatStreamEvent{Kind: "error", Text: msg})
-				return fmt.Errorf("%s", msg)
-			}
 			emit(ChatStreamEvent{Kind: "error", Text: "已取消"})
 			return context.Canceled
 		}

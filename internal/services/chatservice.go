@@ -123,9 +123,6 @@ const turnReasoningStateKey = "agentmate.reasoning_level"
 const (
 	maxAttachmentBytes = 6 << 20 // 6 MB decoded per file
 	maxAttachments     = 4
-	// defaultTurnTimeoutSeconds bounds a single turn when the agent sets no
-	// explicit MaxTurnSeconds. Without it a stalled HTTP stream hangs forever.
-	defaultTurnTimeoutSeconds = 10 * 60
 )
 
 // directAssistantName is the display name of the implicit direct-chat agent.

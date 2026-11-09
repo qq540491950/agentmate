@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"agentmate/internal/agentkit"
 	"agentmate/internal/config"
@@ -18,7 +17,7 @@ import (
 
 // newGuardrailTestChat wires a ChatService against a scripted model server
 // with an agent carrying the given run guardrails.
-func newGuardrailTestChat(t *testing.T, maxTurnSeconds, maxToolCalls int, handler http.HandlerFunc) (*ChatService, *[]ChatStreamEvent, string) {
+func newGuardrailTestChat(t *testing.T, maxToolCalls int, handler http.HandlerFunc) (*ChatService, *[]ChatStreamEvent, string) {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -35,9 +34,8 @@ func newGuardrailTestChat(t *testing.T, maxTurnSeconds, maxToolCalls int, handle
 		})
 		cfg.Agents = append(cfg.Agents, config.AgentConfig{
 			ID: "a1", Name: "助手", ProviderID: "p1", Model: "m",
-			BuiltinTools:   []string{"time"},
-			MaxTurnSeconds: maxTurnSeconds,
-			MaxToolCalls:   maxToolCalls,
+			BuiltinTools: []string{"time"},
+			MaxToolCalls: maxToolCalls,
 		})
 	})
 	if err != nil {
@@ -60,7 +58,7 @@ func newGuardrailTestChat(t *testing.T, maxTurnSeconds, maxToolCalls int, handle
 // tool calls instead of letting the model loop forever.
 func TestGuardrailMaxToolCalls(t *testing.T) {
 	var calls atomic.Int64
-	chat, events, _ := newGuardrailTestChat(t, 0, 2, func(w http.ResponseWriter, r *http.Request) {
+	chat, events, _ := newGuardrailTestChat(t, 2, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		if calls.Add(1) <= 4 {
 			// Keep requesting the time tool: rounds 1..4 alternate
@@ -93,35 +91,9 @@ func TestGuardrailMaxToolCalls(t *testing.T) {
 	}
 }
 
-// TestGuardrailMaxTurnSeconds aborts a hung model response at the deadline.
-func TestGuardrailMaxTurnSeconds(t *testing.T) {
-	chat, events, _ := newGuardrailTestChat(t, 1, 0, func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(3 * time.Second)
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte(sseText("太迟了") + sseDone))
-	})
-
-	sess, err := chat.newLegacySession("agent", "a1", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := chat.Send(sess.ID, "慢慢回答", nil); err == nil {
-		t.Fatal("timed-out turn must report an error to the caller")
-	}
-	var sawTimeout bool
-	for _, ev := range *events {
-		if ev.Kind == "error" && strings.Contains(ev.Text, "最长运行时间") {
-			sawTimeout = true
-		}
-	}
-	if !sawTimeout {
-		t.Fatalf("timeout guardrail missing: %+v", *events)
-	}
-}
-
-// TestGuardrailUnlimitedKeepsOldBehavior: zero values mean no guardrail.
+// TestGuardrailUnlimitedKeepsOldBehavior: zero means no tool-call guardrail.
 func TestGuardrailUnlimitedKeepsOldBehavior(t *testing.T) {
-	chat, events, _ := newGuardrailTestChat(t, 0, 0, func(w http.ResponseWriter, r *http.Request) {
+	chat, events, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(sseText("直接回答") + sseDone))
 	})
@@ -153,7 +125,7 @@ func TestGuardrailUnlimitedKeepsOldBehavior(t *testing.T) {
 // allowed to finish the crossing turn, then new user turns are refused.
 func TestGuardrailSessionTokenBudget(t *testing.T) {
 	var modelCalls atomic.Int64
-	chat, events, _ := newGuardrailTestChat(t, 0, 0, func(w http.ResponseWriter, r *http.Request) {
+	chat, events, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
 		modelCalls.Add(1)
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"choices":[],"usage":{"prompt_tokens":300,"completion_tokens":200,"total_tokens":500}}` + "\n\n"))
@@ -215,7 +187,7 @@ func TestGuardrailSessionTokenBudget(t *testing.T) {
 func TestToolAuditTrail(t *testing.T) {
 	auditPath := filepath.Join(t.TempDir(), "tools-audit.jsonl")
 	turn := 0
-	chat, _, _ := newGuardrailTestChat(t, 0, 0, func(w http.ResponseWriter, r *http.Request) {
+	chat, _, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		turn++
 		if turn == 1 {
@@ -263,7 +235,7 @@ func TestToolAuditTrail(t *testing.T) {
 // runner performs an extra summarization model call after the turn.
 func TestCompactionIntervalSummarizes(t *testing.T) {
 	var modelCalls atomic.Int64
-	chat, events, _ := newGuardrailTestChat(t, 0, 0, func(w http.ResponseWriter, r *http.Request) {
+	chat, events, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
 		modelCalls.Add(1)
 		// The compaction summarizer calls the model non-streamingly.
 		if strings.Contains(readAll(r), `"stream":false`) {
@@ -321,7 +293,7 @@ func TestCompactionIntervalSummarizes(t *testing.T) {
 // history contains the query even when the title does not.
 func TestSearchSessionsMatchesContent(t *testing.T) {
 	turn := 0
-	chat, _, _ := newGuardrailTestChat(t, 0, 0, func(w http.ResponseWriter, r *http.Request) {
+	chat, _, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		turn++
 		if turn == 1 {
@@ -356,7 +328,7 @@ func TestSearchSessionsMatchesContent(t *testing.T) {
 func TestToolAuditRotation(t *testing.T) {
 	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
 	turn := 0
-	chat, _, _ := newGuardrailTestChat(t, 0, 0, func(w http.ResponseWriter, r *http.Request) {
+	chat, _, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		turn++
 		if turn == 1 {

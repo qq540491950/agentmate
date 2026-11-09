@@ -216,9 +216,10 @@ type AgentConfig struct {
 	// write_workspace_file; "shell" gates every run_command call. Empty =
 	// never ask.
 	ConfirmTools []string `json:"confirmTools,omitempty"`
-	// Run guardrails against runaway loops/cost. 0 = unlimited.
-	MaxTurnSeconds int `json:"maxTurnSeconds,omitempty"`
-	MaxToolCalls   int `json:"maxToolCalls,omitempty"`
+	// MaxToolCalls stops a runaway tool loop. 0 = unlimited. Turn duration
+	// is intentionally unbounded: long agent tasks must not be killed by a
+	// wall-clock cap.
+	MaxToolCalls int `json:"maxToolCalls,omitempty"`
 	// MaxSessionTokens caps cumulative tokens across the whole session
 	// (0 = unlimited). The turn that crosses the budget still completes,
 	// the next one is refused.

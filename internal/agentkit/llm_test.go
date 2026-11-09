@@ -530,6 +530,38 @@ func TestPostWithRetryRetries429(t *testing.T) {
 	}
 }
 
+// TestPostWithRetryUsesFiveRetries locks the built-in retry budget: five
+// retries after the initial attempt, with no user-facing configuration.
+func TestPostWithRetryUsesFiveRetries(t *testing.T) {
+	if maxProviderRetries != 5 || len(retryDelays) != maxProviderRetries {
+		t.Fatalf("retry budget = %d, delays = %d, want 5", maxProviderRetries, len(retryDelays))
+	}
+	oldDelays := retryDelays
+	retryDelays = make([]time.Duration, maxProviderRetries)
+	t.Cleanup(func() { retryDelays = oldDelays })
+
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts <= maxProviderRetries {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	build := func() (*http.Request, error) { return http.NewRequest(http.MethodPost, srv.URL, nil) }
+	resp, err := postWithRetry(context.Background(), build, "m", "test")
+	if err != nil {
+		t.Fatalf("postWithRetry: %v", err)
+	}
+	defer resp.Body.Close()
+	if attempts != maxProviderRetries+1 {
+		t.Fatalf("attempts = %d, want %d (initial + five retries)", attempts, maxProviderRetries+1)
+	}
+}
+
 func TestRetryAfterDelayCap(t *testing.T) {
 	if got := retryAfterDelay(""); got != 0 {
 		t.Fatalf("empty header = %v", got)

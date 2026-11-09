@@ -1280,11 +1280,22 @@ func (a *anthropicLLM) post(ctx context.Context, body anRequest) (*http.Response
 	return resp, nil
 }
 
-// retryDelays are the fixed waits between transient-failure retries.
-var retryDelays = []time.Duration{500 * time.Millisecond, 1500 * time.Millisecond}
+// maxProviderRetries is the built-in retry budget for transient provider
+// failures. It is intentionally not user-configurable: five retries cover
+// short network flaps and gateway restarts without requiring a settings UI.
+const maxProviderRetries = 5
+
+// retryDelays are the waits between transient-failure retries.
+var retryDelays = []time.Duration{
+	500 * time.Millisecond,
+	1 * time.Second,
+	2 * time.Second,
+	4 * time.Second,
+	8 * time.Second,
+}
 
 // maxRetryAfter caps a server-provided Retry-After wait: honouring a huge
-// value verbatim would eat the whole turn timeout budget.
+// value verbatim would stall a retry for an unreasonable amount of time.
 const maxRetryAfter = 8 * time.Second
 
 // retryAfterDelay parses a Retry-After header (seconds form); 0 when absent
@@ -1304,10 +1315,10 @@ func retryAfterDelay(h string) time.Duration {
 }
 
 // postWithRetry executes the request built by build, retrying transient
-// failures (network errors, 429 rate limiting and 502/503/504) up to
-// len(retryDelays) extra times with backoff. A 429 with a Retry-After header
-// waits at least that long (capped). Retries only happen when no response
-// bytes have been consumed, so streaming output is never duplicated.
+// failures (network errors, 429 rate limiting and 502/503/504) up to five
+// extra times with backoff. A 429 with a Retry-After header waits at least
+// that long (capped). Retries only happen when no response bytes have been
+// consumed, so streaming output is never duplicated.
 func postWithRetry(ctx context.Context, build func() (*http.Request, error), model, kind string) (*http.Response, error) {
 	var lastErr error
 	for attempt := 0; ; attempt++ {

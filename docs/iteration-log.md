@@ -23,6 +23,22 @@
 - 视觉桩（240px，深色）实测：cloud 显示 4 条、agentmate 显示 5 条并出现「展开显示」；点击后显示全部 8 条并变为「收起」；当前 agentmate 项目整行高亮，搜索「托盘」跨项目命中 1 条。
 - `npx tsc --noEmit`、`npm test`（24 个测试文件、192 个用例）、`npm run build`、`go test ./internal/... .`、`go test -race ./internal/...`、`go vet ./internal/... .` 全绿；本轮无后端与绑定改动。
 
+### 第二百三十二轮迭代：长任务不限时与内置重试 5 次（已实施）
+
+依据：用户反馈长任务执行到 9 分 56 秒、109 次工具后被「本轮已达最长运行时间（600 秒）」中止；明确要求所有任务默认不限制时长，网络等原因的自动重试次数默认 5 次，且不给用户增加配置项。
+
+**实现要点**
+
+- **所有回合不限时**：移除 `AgentConfig.MaxTurnSeconds`、运行时 deadline 与「最长运行时间」分支；直聊、Agent、团队均不再受整轮墙钟限制。
+- **不增加设置项**：Agent 编辑器删除「单轮最长运行秒数」，用户无需也不应配置时长。
+- **默认重试 5 次**：`maxProviderRetries = 5`，网络错误、429、502/503/504 在尚未消费响应字节时按 0.5s/1s/2s/4s/8s 退避重试；`Retry-After` 仍封顶 8 秒。重试为内置策略，不提供界面。
+- **挂起保护不丢**：供应商流持续无数据仍由 `agentkit.streamIdleTimeout`（2 分钟）中断，手动取消与命令自身超时不变。
+
+**测试证据**
+
+- `TestPostWithRetryUsesFiveRetries` 锁定初始请求 + 5 次重试（第 6 次成功）；`TestPostWithRetryRetries429` 与 `TestRetryAfterDelayCap` 继续覆盖 429 和 Retry-After 上限；`TestGuardrailMaxToolCalls` 覆盖工具上限仍独立生效。
+- `go test ./internal/...`、`go test -race ./internal/services`、`go vet ./internal/... .`、`npx tsc --noEmit`、`npm test`（24 个文件、192 个用例）与 `npm run build` 全绿。
+
 ### 第二百三十一轮迭代：模型首包前显示闪动思考状态（已实施）
 
 依据：用户反馈发出消息后、模型首个事件到达前，消息区没有任何显示，只是侧栏转圈，难以判断任务是否仍在执行；期望参考 Codex 桌面端，在回复起始位置显示闪动的运行状态。
