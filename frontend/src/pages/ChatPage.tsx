@@ -818,12 +818,26 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   // Turn rail position: the turn the reader is currently at (scroll-followed;
   // rail clicks override it and the next scroll event re-syncs).
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
+  // The bottom sentinel is the source of truth for the floater. A scroll
+  // listener alone misses layout changes (window/sidebar resize, a growing or
+  // collapsing composer, filtering/paging, Markdown reflow) that move the end
+  // of the transcript without emitting a scroll event.
+  useEffect(() => {
+    const root = scrollRef.current;
+    const target = bottomRef.current;
+    if (!root || !target || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setAtBottom(entry.isIntersecting),
+      { root, rootMargin: "0px 0px 120px 0px", threshold: 0 },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const onScroll = () => {
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-      setAtBottom(nearBottom);
       // The last turn header above the upper viewport edge is "current".
       const elTop = el.getBoundingClientRect().top;
       let current: string | null = null;
