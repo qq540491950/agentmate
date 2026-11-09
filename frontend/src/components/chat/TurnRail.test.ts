@@ -1,41 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { railPreviewGeometry, railPreviewTitle } from "./TurnRail";
+import { railBarWidth, railLabelGeometry, railLabelText } from "./TurnRail";
 
-describe("railPreviewTitle", () => {
-  it("多行输入取短首行作为标题", () => {
-    expect(railPreviewTitle("继续\nI'll continue the read-only check.", 1)).toBe("继续");
-  });
-
-  it("单行输入回退到轮次编号，避免标题重复正文", () => {
-    expect(railPreviewTitle("请检查项目并提交修复", 1)).toBe("第 2 轮");
-  });
-
-  it("首行过长或为空时回退到轮次编号", () => {
-    expect(railPreviewTitle(`${"a".repeat(61)}\n正文`, 0)).toBe("第 1 轮");
-    expect(railPreviewTitle("", 2)).toBe("第 3 轮");
+describe("railBarWidth", () => {
+  it("悬停/聚焦横杠使用固定 w-10 档位，其余保留文本长度档位", () => {
+    expect(railBarWidth("短", true)).toBe("w-10");
+    expect(railBarWidth("短", false)).toBe("w-3");
+    expect(railBarWidth("a".repeat(360), false)).toBe("w-7");
   });
 });
 
-describe("railPreviewGeometry", () => {
-  it("右侧沟槽不足时，预览卡翻到横杠左侧", () => {
-    const geometry = railPreviewGeometry(367, 390, 900, 387);
-    expect(geometry).toEqual({ top: 382, left: 35, width: 320, side: "left" });
-    expect(geometry!.left + geometry!.width).toBeLessThanOrEqual(367 - 12);
-    expect(geometry!.left).toBeGreaterThanOrEqual(16);
+describe("railLabelText", () => {
+  it("多行输入取短首行作为标签", () => {
+    expect(railLabelText("继续\nI'll continue the read-only check.", 1)).toBe("继续");
   });
 
-  it("右侧沟槽充足时，预览卡停在输出区左侧", () => {
-    const geometry = railPreviewGeometry(8, 390, 900, 269);
-    expect(geometry).toEqual({ top: 382, left: 20, width: 233, side: "right" });
-    expect(geometry!.left + geometry!.width).toBeLessThanOrEqual(269);
+  it("单行输入直接使用文本，不再退化为轮次编号", () => {
+    expect(railLabelText("请检查项目并提交修复", 1)).toBe("请检查项目并提交修复");
   });
 
-  it("两侧空间都不足时返回 null，避免覆盖输出区", () => {
-    expect(railPreviewGeometry(159, 390, 900, 176)).toBeNull();
+  it("首行过长时截断，空输入回退到轮次编号", () => {
+    expect(railLabelText(`${"a".repeat(61)}\n正文`, 0)).toBe(`${"a".repeat(60)}…`);
+    expect(railLabelText("", 2)).toBe("第 3 轮");
+  });
+});
+
+describe("railLabelGeometry", () => {
+  it("标签始终贴在横杠右侧并与横杠垂直居中", () => {
+    const geometry = railLabelGeometry(40, 390, 1280, 900);
+    expect(geometry).toEqual({ top: 378, left: 48, maxWidth: 280 });
   });
 
   it("顶部和底部位置会钳制在视口内", () => {
-    expect(railPreviewGeometry(367, 5, 900, 387)?.top).toBe(16);
-    expect(railPreviewGeometry(367, 890, 900, 387)?.top).toBe(680);
+    expect(railLabelGeometry(40, 5, 1280, 900)?.top).toBe(8);
+    expect(railLabelGeometry(40, 890, 1280, 900)?.top).toBe(864);
+  });
+
+  it("宽度受视口右边界约束", () => {
+    expect(railLabelGeometry(1000, 390, 1280, 900).maxWidth).toBe(256);
+    expect(railLabelGeometry(1100, 390, 1280, 900).maxWidth).toBe(156);
   });
 });
