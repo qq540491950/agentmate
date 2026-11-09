@@ -1,5 +1,4 @@
 import { Fragment, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
 import { UserQuote } from "./MessageBubble";
 import type { ChatItem, TurnItem } from "@/lib/chatUtils";
 
@@ -12,16 +11,15 @@ export type TurnBodyOpts = {
   liveGroup: boolean;
 };
 
-/** TurnCard renders one conversation turn as a single card: the user input
- *  as a compact quote header on top, the run's output below. The turn the
- *  reader is currently at (rail selection or scroll position) gets the brand
- *  highlight. */
-export function TurnCard({ turn, active, live, isLastTurn, onSelectTurn, onEdit, canEdit, filterQ, renderBodyItem }: {
+/** TurnBlock renders one conversation turn as two independent blocks: the
+ *  user input as a right-aligned bubble, and the run's output as a separate
+ *  left-aligned body. Inputs and replies never share an outer card; the turn
+ *  the reader is currently at highlights only the user bubble. */
+export function TurnBlock({ turn, active, live, isLastTurn, onEdit, canEdit, filterQ, renderBodyItem }: {
   turn: TurnItem;
   active: boolean;
   live: boolean;
   isLastTurn: boolean;
-  onSelectTurn: (msgId: string) => void;
   onEdit: (text: string) => void;
   canEdit: boolean;
   filterQ: string;
@@ -29,22 +27,16 @@ export function TurnCard({ turn, active, live, isLastTurn, onSelectTurn, onEdit,
 }) {
   const lastBody = turn.body[turn.body.length - 1];
   return (
-    <div
-      className={cn(
-        "wb-message-in rounded-2xl px-3 py-2.5 ring-1 transition-colors",
-        active ? "bg-brand/5 ring-brand/30" : "bg-muted/30 ring-border",
-      )}
-    >
+    <div data-slot="turn-block" className="space-y-3">
       <UserQuote
         m={turn.header}
         active={active}
-        onSelectTurn={onSelectTurn}
         onEdit={onEdit}
         canEdit={canEdit}
         filterQ={filterQ}
       />
       {turn.body.length > 0 && (
-        <div className="mt-1.5 space-y-2">
+        <div data-slot="turn-body" className="space-y-2">
           {turn.body.map((item) => (
             <Fragment key={item.id}>
               {renderBodyItem(item, {

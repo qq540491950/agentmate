@@ -48,7 +48,7 @@ import { isDialogCancelError } from "@/lib/workspace";
 import { composerReasoningModel, levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
 import { resolveAgentModel } from "@/lib/agentModel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
-import { TurnCard, type TurnBodyOpts } from "@/components/chat/TurnCard";
+import { TurnBlock, type TurnBodyOpts } from "@/components/chat/TurnBlock";
 import { TurnRail, type RailTurn } from "@/components/chat/TurnRail";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
 import { ContextRing } from "@/components/chat/ContextRing";
@@ -1431,6 +1431,9 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
   const toggleSidebar = useCallback(() => {
     const next = !sidebarCollapsed;
     persistSidebarPrefs(next);
+    // The rail's fixed preview is positioned from the pre-toggle geometry;
+    // close it so it cannot float over the newly widened chat pane.
+    window.dispatchEvent(new CustomEvent("wb-sidebar-toggled"));
   }, [sidebarCollapsed]);
   // ⌘B is a shell-level shortcut like ⌘N: App dispatches the custom event so
   // it keeps working across view switches.
@@ -1873,8 +1876,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
     const turns: RailTurn[] = [];
     for (const it of visibleItems) {
       if (it.kind !== "turn") continue;
-      const text = it.header.text.trim() || "（仅附件）";
-      turns.push({ id: it.header.id, text: text.length > 160 ? `${text.slice(0, 160)}…` : text });
+      const fullText = it.header.text.trim() || "（仅附件）";
+      const text = fullText.length > 160 ? `${fullText.slice(0, 160)}…` : fullText;
+      turns.push({
+        id: it.header.id,
+        text,
+        fullText,
+      });
     }
     return turns;
   }, [visibleItems]);
@@ -1885,7 +1893,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
     if (activeTurnId && railTurns.some((t) => t.id === activeTurnId)) return;
     setActiveTurnId(railTurns[railTurns.length - 1].id);
   }, [railTurns, activeTurnId]);
-  // TurnCard bodies reuse the exact prop wiring the flat list used.
+  // TurnBlock bodies reuse the exact prop wiring the flat list used.
   const renderBodyItem = (item: ChatItem, opts: TurnBodyOpts) => {
     if (item.kind === "tool_group") {
       return (
@@ -2608,9 +2616,16 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               />
             </button>
           )}
-          <TurnRail turns={railTurns} activeId={activeTurnId} onSelect={selectTurn} />
+          <div className="pointer-events-none absolute inset-0 z-10 hidden md:block">
+            <TurnRail
+              turns={railTurns}
+              activeId={activeTurnId}
+              onSelect={selectTurn}
+              className="pointer-events-auto absolute left-2 top-1/2 -translate-y-1/2"
+            />
+          </div>
           <ScrollArea className="flex-1" viewportRef={scrollRef} aria-label="会话消息">
-            <div className="mx-auto max-w-[var(--chat-col-width)] space-y-4 px-5 py-6">
+            <div data-slot="message-column" className="mx-auto chat-col space-y-4 px-5 py-6">
               {(() => {
                 if (omittedItems <= 0) return null;
                 return (
@@ -2680,12 +2695,11 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   <Fragment key={item.id}>
                     {dayChanged && <DaySeparator ts={ts} />}
                     {item.kind === "turn" ? (
-                      <TurnCard
+                      <TurnBlock
                         turn={item}
                         active={item.header.id === activeTurnId}
                         live={running && renderIdx === lastTurnIdx}
                         isLastTurn={renderIdx === renderItems.length - 1}
-                        onSelectTurn={selectTurn}
                         onEdit={startEdit}
                         canEdit={editFlags.get(item.header.id) === true && !running && !!activeID}
                         filterQ={filterQ}
@@ -2731,12 +2745,12 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
         </div>
         <div className="shrink-0 border-t py-3">
           {activePlan && (
-            <div className="mx-auto mb-2 max-w-[var(--chat-col-width)] px-3">
+            <div className="mx-auto mb-2 chat-col px-3">
               <PlanStrip todos={activePlan} />
             </div>
           )}
           {(queued[activeID] ?? []).map((q, qi) => (
-            <div key={qi} className="mx-auto mb-2 flex max-w-[var(--chat-col-width)] items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-3 py-1.5 text-xs">
+            <div key={qi} className="mx-auto mb-2 flex chat-col items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-3 py-1.5 text-xs">
               <span className="shrink-0 text-muted-foreground">{qi === 0 ? "已排队" : `排队 #${qi + 1}`}</span>
               <span className="min-w-0 flex-1 truncate">{q.text}</span>
               {q.reasoning && (
@@ -2755,7 +2769,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               </button>
             </div>
           ))}
-          <div className="mx-auto max-w-[var(--chat-col-width)] px-3">
+          <div className="mx-auto chat-col px-3">
             {editing && (
               <div className="mb-2 flex items-center justify-between rounded-md border border-brand/40 bg-brand/5 px-3 py-1.5 text-xs text-muted-foreground">
                 <span>正在编辑最后一条消息，发送后将替换该轮对话</span>
@@ -2765,7 +2779,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               </div>
             )}
           </div>
-          <div className="mx-auto max-w-[var(--chat-col-width)] px-3">
+          <div className="mx-auto chat-col px-3">
             {pendingAtts.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
                 {pendingAtts.map((a, i) => (
@@ -2783,7 +2797,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               </div>
             )}
           </div>
-          <div className="mx-auto max-w-[var(--chat-col-width)] px-3">
+          <div className="mx-auto chat-col px-3">
             <div
               className={cn(
                 "rounded-2xl border border-border bg-card shadow-card transition-colors focus-within:border-brand/40 focus-within:ring-4 focus-within:ring-brand/10",

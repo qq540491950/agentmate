@@ -101,6 +101,19 @@
     box-shadow: var(--shadow-dialog);
 }
 
+/* Chat column width. On desktop the column also keeps a 60px gutter on each
+   side, so the turn rail and its preview never sit on top of the output. */
+.chat-col {
+    width: 100%;
+    max-width: var(--chat-col-width);
+}
+
+@media (min-width: 48rem) {
+    .chat-col {
+        max-width: min(var(--chat-col-width), calc(100% - 120px));
+    }
+}
+
 :root {
     /* Surfaces: canvas / sidebar / card / floating layer */
     --background: oklch(0.985 0.002 265);
