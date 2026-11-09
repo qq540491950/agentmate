@@ -47,9 +47,10 @@ export interface AgentConfig {
     "confirmTools"?: string[] | null;
 
     /**
-     * Run guardrails against runaway loops/cost. 0 = unlimited.
+     * MaxToolCalls stops a runaway tool loop. 0 = unlimited. Turn duration
+     * is intentionally unbounded: long agent tasks must not be killed by a
+     * wall-clock cap.
      */
-    "maxTurnSeconds"?: number;
     "maxToolCalls"?: number;
 
     /**
