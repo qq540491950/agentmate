@@ -1,0 +1,33 @@
+# This repository is edited from both Windows and Linux. Keep the index and
+# every checkout LF so a Windows global autocrlf setting cannot turn every
+# file into a whole-file diff.
+* text=auto eol=lf
+
+# Existing Windows launchers are stored with CRLF in this repository; leave
+# their bytes alone rather than forcing a one-time renormalization diff.
+*.bat -text
+*.cmd -text
+
+# Binary assets must never be line-ending normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.bin binary

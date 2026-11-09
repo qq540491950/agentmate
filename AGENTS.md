@@ -76,6 +76,7 @@ frontend/bindings/        # wails3 生成绑定（勿手改）
 
 - 测试与被测代码同包同目录（`*_test.go`）；e2e 用 `httptest` 假服务器（fake SSE 模型 / 假授权服务器 / 内存 A2A），不依赖外网。
 - UI 文案中文；错误经 `errText()` 透传到 toast。
+- 换行符统一 LF：根目录 `.gitattributes` 管控文本文件，本机使用 `core.autocrlf=false`；不要提交 CRLF-only diff，`.bat` / `.cmd` 保持原字节。
 - 每轮功能迭代在 `docs/iteration-log.md` 顶层「视觉测试与体验设计」章节顶部追加记录（含依据、实现要点、测试证据）；README 只保留概览与「质量与验证」。
 - 提交信息用约定式前缀 + scope（如 `feat(chat): 主题 — 要点`），正文列实现与测试清单。
 
