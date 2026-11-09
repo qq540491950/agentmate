@@ -1,6 +1,9 @@
 package main
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +12,87 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
+
+// TestSystemTrayNeverAttachesWindow pins the fix for the "summon jumps to the
+// bottom-right corner" bug. Wails' AttachWindow calls PositionWindow on every
+// show, which docks the window beside the taskbar tray icon instead of
+// restoring its previous (initially centered) position. The tray only needs
+// click-to-toggle, so wiring that explicitly must stay independent of
+// AttachWindow/WindowOffset.
+//
+// Wails exposes no way to synthesize a tray click in-process, so this AST
+// guard is the narrowest regression seam for the dependency behavior that
+// caused the bug.
+func TestSystemTrayNeverAttachesWindow(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		switch selector.Sel.Name {
+		case "AttachWindow", "WindowOffset":
+			t.Errorf("setup must not call tray.%s: Wails repositions the window at the tray corner on every show", selector.Sel.Name)
+		}
+		return true
+	})
+}
+
+type fakeMainWindow struct {
+	visible   bool
+	minimised bool
+	calls     []string
+}
+
+func (w *fakeMainWindow) IsVisible() bool   { return w.visible }
+func (w *fakeMainWindow) IsMinimised() bool { return w.minimised }
+func (w *fakeMainWindow) UnMinimise()       { w.calls = append(w.calls, "unminimise"); w.minimised = false }
+func (w *fakeMainWindow) Focus()            { w.calls = append(w.calls, "focus") }
+func (w *fakeMainWindow) Hide() application.Window {
+	w.calls = append(w.calls, "hide")
+	w.visible = false
+	return nil
+}
+func (w *fakeMainWindow) Show() application.Window {
+	w.calls = append(w.calls, "show")
+	w.visible = true
+	return nil
+}
+
+// TestToggleMainWindow: every summon path shares the same state machine. A
+// hidden window must be un-minimised/shown/focused without any repositioning,
+// while a visible normal window is hidden. A minimised window is still
+// "visible" on Windows, so it must restore rather than hide.
+func TestToggleMainWindow(t *testing.T) {
+	tests := []struct {
+		name      string
+		visible   bool
+		minimised bool
+		want      string
+	}{
+		{"hidden restores", false, false, "unminimise,show,focus"},
+		{"visible normal hides", true, false, "hide"},
+		{"minimised restores", true, true, "unminimise,show,focus"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			window := &fakeMainWindow{visible: tt.visible, minimised: tt.minimised}
+			toggleMainWindow(window)
+			if got := strings.Join(window.calls, ","); got != tt.want {
+				t.Fatalf("toggle calls = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	toggleMainWindow(nil)
+}
 
 // TestRotatingWriterRotates: exceeding maxBytes moves the file to .old and
 // subsequent writes land in a fresh app.log — long-resident tray apps used to

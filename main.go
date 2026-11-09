@@ -249,12 +249,7 @@ func main() {
 	// Global summon shortcut; a conflicting registration (another app owns
 	// it) must not block startup.
 	if err := app.GlobalShortcut.Register("shift+cmd+space", func() {
-		if window.IsVisible() {
-			window.Hide()
-		} else {
-			window.Show()
-			window.Focus()
-		}
+		toggleMainWindow(window)
 	}); err != nil {
 		log.Printf("全局快捷键注册失败（不影响启动）: %v", err)
 	}
@@ -299,17 +294,14 @@ func setupSystemTray(app *application.App, window *application.WebviewWindow, qu
 	tray := app.SystemTray.New()
 	tray.SetIcon(trayIcon)
 	tray.SetTooltip("AgentMate")
-	// 左键直接切换主窗口显隐（smart default），右键弹出菜单。
-	tray.AttachWindow(window).WindowOffset(8)
+	// 左键直接切换主窗口显隐，右键弹出菜单。不要使用
+	// AttachWindow：Wails 会在每次显示前把窗口贴到托盘所在的右下角，
+	// 破坏窗口原本居中的位置。手写切换保留窗口上次位置。
+	tray.OnClick(func() { toggleMainWindow(window) })
 
 	menu := app.NewMenu()
 	menu.Add("显示/隐藏 AgentMate").OnClick(func(*application.Context) {
-		if window.IsVisible() {
-			window.Hide()
-		} else {
-			window.Show()
-			window.Focus()
-		}
+		toggleMainWindow(window)
 	})
 	menu.Add("退出").OnClick(func(*application.Context) {
 		// 先置退出标记再 Quit：WindowClosing 钩子据此放行真正的退出（#77）。
@@ -317,6 +309,47 @@ func setupSystemTray(app *application.App, window *application.WebviewWindow, qu
 		app.Quit()
 	})
 	tray.SetMenu(menu)
+}
+
+// mainWindowController is the subset of window operations used by the tray,
+// menu and global-shortcut summon paths. Keeping it small lets tests exercise
+// the toggle state machine without a running WebView.
+type mainWindowController interface {
+	IsVisible() bool
+	IsMinimised() bool
+	Hide() application.Window
+	UnMinimise()
+	Show() application.Window
+	Focus()
+}
+
+// toggleMainWindow hides a visible, non-minimised window and restores
+// everything else. A minimised window still reports IsVisible on Windows, so
+// checking IsMinimised here prevents a tray click from hiding a window the
+// user is trying to reopen.
+func toggleMainWindow(window mainWindowController) {
+	if window == nil {
+		return
+	}
+	if window.IsVisible() && !window.IsMinimised() {
+		window.Hide()
+		return
+	}
+	showMainWindow(window)
+}
+
+// showMainWindow restores the window without changing its position. The initial
+// position is already centered by Wails; summon paths must preserve whatever
+// position the user left instead of re-docking next to the tray.
+func showMainWindow(window mainWindowController) {
+	if window == nil {
+		return
+	}
+	// UnMinimise (rather than Restore) keeps a maximised or fullscreen window
+	// exactly as the user left it.
+	window.UnMinimise()
+	window.Show()
+	window.Focus()
 }
 
 // singleInstanceOptions builds the Wails single-instance configuration.
@@ -340,16 +373,12 @@ func singleInstanceOptions(activate func()) *application.SingleInstanceOptions {
 //
 // The callback runs on the first instance when a second launch is detected.
 // A nil window only happens when the second launch beats window creation and
-// the app is about to show it anyway. UnMinimise (rather than Restore) keeps
-// a maximised or fullscreen window exactly as the user left it; Show covers
-// the close-to-tray state.
+// the app is about to show it anyway.
 func activateMainWindow(window *application.WebviewWindow) {
 	if window == nil {
 		return
 	}
-	window.UnMinimise()
-	window.Show()
-	window.Focus()
+	showMainWindow(window)
 }
 
 // setupLogging writes the standard logger to a size-capped rotating file in

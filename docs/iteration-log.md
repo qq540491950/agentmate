@@ -4,6 +4,22 @@
 
 ## 视觉测试与体验设计
 
+### 第二百二十八轮迭代：托盘唤回不再跳到右下角（已实施）
+
+依据：用户反馈窗口从托盘单击打开时会跳到屏幕右下角，而不是保持居中。
+
+**实现要点**
+
+- **根因**：Wails `AttachWindow` 的 smart default 在每次显示窗口前调用 `PositionWindow`；Windows 实现按任务栏托盘位置计算坐标，强制把窗口贴到右下角。
+- **托盘接线**：移除 `AttachWindow` / `WindowOffset`，改用显式 `OnClick` 切换；托盘、菜单、全局快捷键与二次启动统一走 `toggleMainWindow` / `showMainWindow`，只恢复显隐与焦点，不修改窗口位置。
+- **最小化语义**：Windows 上最小化窗口仍报告 `IsVisible`，切换逻辑增加 `IsMinimised` 判断，确保托盘单击恢复窗口而不是再次隐藏。
+
+**测试证据**
+
+- 回归红→绿：新增 AST 守护测试，修复前在 `main.go` 检出 `AttachWindow` / `WindowOffset` 并失败；移除后通过。新增 `TestToggleMainWindow` 覆盖隐藏恢复、普通可见隐藏、最小化恢复与 nil 安全。
+- `go test ./internal/... .`、`go vet ./internal/... .`、`wails3 build` 全绿。
+- 真实 Wails 窗口冒烟（临时源码覆盖，不落库）：初始矩形 `320,106,1280×820`；隐藏后 `IsVisible=false`；再次唤回后仍为 `320,106,1280×820`，未跳到右下角。
+
 ### 第二百二十七轮迭代：MCP 保存即连接并移除冗余入口（已实施）
 
 依据：用户截图反馈 MCP 卡片同时提供「启用」开关与「连接」按钮，语义重复；配置内容保存后不应再要求手动点击连接，期望默认按启用状态自动连接，界面只保留启用/停用、编辑与删除。
