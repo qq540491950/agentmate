@@ -151,7 +151,7 @@ export function SaveAgent(a: config$0.AgentConfig): $CancellablePromise<void> {
  * toolsets by ID forever, so without this the next turn would keep talking to
  * the OLD transport (URL, token, args, env) while the UI shows the new one.
  */
-export function SaveMCPServer(s: config$0.MCPServerConfig): $CancellablePromise<void> {
+export function SaveMCPServer(s: config$0.MCPServerConfig): $CancellablePromise<config$0.MCPServerConfig> {
     return $Call.ByID(3425224335, s);
 }
 

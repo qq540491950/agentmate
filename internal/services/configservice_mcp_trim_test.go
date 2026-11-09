@@ -21,7 +21,7 @@ func TestSaveMCPServerNormalizesWhitespace(t *testing.T) {
 	svc := &Services{Store: store, Kit: agentkit.NewKit(store, mgr), MCP: mgr}
 	cs := NewConfigService(svc)
 
-	err = cs.SaveMCPServer(config.MCPServerConfig{
+	saved, err := cs.SaveMCPServer(config.MCPServerConfig{
 		ID:        "mcp_1",
 		Name:      "  tavily  ",
 		Transport: config.MCPStdio,
@@ -31,6 +31,9 @@ func TestSaveMCPServerNormalizesWhitespace(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if saved.ID != "mcp_1" || saved.Name != "tavily" || saved.Command != "npx" {
+		t.Fatalf("normalized server not returned: id=%q name=%q command=%q", saved.ID, saved.Name, saved.Command)
 	}
 	var got config.MCPServerConfig
 	for _, s := range store.Get().MCPServers {

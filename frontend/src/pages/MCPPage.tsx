@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Events } from "@wailsio/runtime";
-import { Plus, Trash2, Play, RefreshCw, Wrench, Network } from "lucide-react";
+import { Plus, Trash2, Wrench, Network } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
@@ -49,7 +49,6 @@ export function MCPPage() {
   const [editing, setEditing] = useState<MCPServerConfig | null>(null);
   const [argsText, setArgsText] = useState("");
   const [envText, setEnvText] = useState("");
-  const [busy, setBusy] = useState<string>("");
 
   const reload = useCallback(() => {
     Config.GetConfig()
@@ -97,17 +96,20 @@ export function MCPPage() {
       env: parseEnvText(envText),
     };
     try {
-      await Config.SaveMCPServer(s);
+      const saved = await Config.SaveMCPServer(s);
       toast.success("已保存");
       setEditing(null);
-      reload();
+      if (saved.disabled) {
+        reload();
+      } else {
+        void connect(saved);
+      }
     } catch (e) {
       toast.error(`保存失败: ${errText(e)}`);
     }
   };
 
   const connect = async (s: MCPServerConfig) => {
-    setBusy(s.id);
     try {
       const st = await MCP.Connect(s.id);
       if (st.state === "connected") {
@@ -118,7 +120,6 @@ export function MCPPage() {
     } catch (e) {
       toast.error(`${s.name}: ${errText(e)}`);
     } finally {
-      setBusy("");
       setAuthPendingServer(null);
       reload();
     }
@@ -128,9 +129,9 @@ export function MCPPage() {
   // changed 判定自动断开缓存连接）。
   const toggleEnabled = async (s: MCPServerConfig, enabled: boolean) => {
     try {
-      await Config.SaveMCPServer({ ...s, disabled: !enabled });
+      const saved = await Config.SaveMCPServer({ ...s, disabled: !enabled });
       if (enabled) {
-        await connect(s);
+        await connect(saved);
       } else {
         toast.success(`${s.name} 已停用`);
         reload();
@@ -226,14 +227,6 @@ export function MCPPage() {
                       启用
                       <Switch checked={!s.disabled} onCheckedChange={(v) => toggleEnabled(s, v)} />
                     </label>
-                    {!s.disabled && st?.state !== "connected" && (
-                      <Button variant="outline" size="sm" disabled={busy === s.id} onClick={() => connect(s)}>
-                        {busy === s.id
-                          ? <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />
-                          : <Play className="mr-1 h-3.5 w-3.5" />}
-                        连接
-                      </Button>
-                    )}
                     <Button
                       variant="outline" size="sm"
                       onClick={() => {

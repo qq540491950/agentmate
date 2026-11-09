@@ -408,7 +408,7 @@ func (c *ConfigService) DeleteSkill(id string) error {
 // with changed settings drops its cached toolset/connection: the manager keys
 // toolsets by ID forever, so without this the next turn would keep talking to
 // the OLD transport (URL, token, args, env) while the UI shows the new one.
-func (c *ConfigService) SaveMCPServer(s config.MCPServerConfig) error {
+func (c *ConfigService) SaveMCPServer(s config.MCPServerConfig) (config.MCPServerConfig, error) {
 	// Normalize before validation and the changed-check: pasted whitespace
 	// ("npx ") would persist verbatim and break stdio exec at connect time.
 	s.Name = strings.TrimSpace(s.Name)
@@ -425,7 +425,7 @@ func (c *ConfigService) SaveMCPServer(s config.MCPServerConfig) error {
 	}
 	s.Args = args
 	if s.Name == "" {
-		return fmt.Errorf("请填写服务器名称")
+		return config.MCPServerConfig{}, fmt.Errorf("请填写服务器名称")
 	}
 	if s.ID == "" {
 		s.ID = newID("mcp_")
@@ -442,7 +442,7 @@ func (c *ConfigService) SaveMCPServer(s config.MCPServerConfig) error {
 	if changed {
 		c.S.MCP.Disconnect(s.ID)
 	}
-	return c.S.Store.Update(func(cfg *config.Config) {
+	if err := c.S.Store.Update(func(cfg *config.Config) {
 		replaced := false
 		for i := range cfg.MCPServers {
 			if cfg.MCPServers[i].ID == s.ID {
@@ -454,7 +454,10 @@ func (c *ConfigService) SaveMCPServer(s config.MCPServerConfig) error {
 		if !replaced {
 			cfg.MCPServers = append(cfg.MCPServers, s)
 		}
-	})
+	}); err != nil {
+		return config.MCPServerConfig{}, err
+	}
+	return s, nil
 }
 
 // DeleteMCPServer removes an MCP server and detaches it from agents.

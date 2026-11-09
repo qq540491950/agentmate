@@ -133,7 +133,19 @@ const seedConfig = {
       createdAt: "2026-09-18T01:00:00Z",
     },
   ],
-  mcpServers: [],
+  mcpServers: [
+    {
+      id: "mcp_context7",
+      name: "context7",
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "@upstash/context7-mcp"],
+      env: {},
+      url: "",
+      headers: {},
+      disabled: false,
+    },
+  ],
   projects: [
     { id: "proj_alpha", name: "proj-alpha", rootDir: "/tmp/proj-alpha", createdAt: "2026-10-01T00:00:00Z" },
     { id: "proj_beta", name: "agentmate", rootDir: "D:/projects/agentmate", createdAt: "2026-10-20T00:00:00Z" },
@@ -619,6 +631,27 @@ const handlers: Record<string, (args: any[]) => any> = {
   ],
   // ListProviderModels
   [svc("ConfigService", "ListProviderModels")]: () => ["gpt-5-mini", "gpt-5"],
+  // SaveMCPServer mirrors the normalized saved-server contract so the MCP
+  // page can immediately apply the enabled/disabled desired state.
+  [svc("ConfigService", "SaveMCPServer")]: (args) => {
+    const saved = args[0];
+    const index = seedConfig.mcpServers.findIndex((s: any) => s.id === saved.id);
+    if (index >= 0) seedConfig.mcpServers[index] = saved;
+    else seedConfig.mcpServers.push(saved);
+    return saved;
+  },
+  [svc("MCPService", "Status")]: () => [{
+    id: "mcp_context7",
+    name: "context7",
+    state: "connected",
+    tools: [{ name: "resolve-library-id", description: "Resolve a library ID" }],
+  }],
+  [svc("MCPService", "Connect")]: (args) => ({
+    id: args[0],
+    name: "context7",
+    state: "connected",
+    tools: [{ name: "resolve-library-id", description: "Resolve a library ID" }],
+  }),
   // SuggestModels(ids)
   [svc("ConfigService", "SuggestModels")]: (args) => (args[0] ?? []).map((id: string) => {
     const hit = seedConfig.providers[0].models.find((m) => m.id === id);

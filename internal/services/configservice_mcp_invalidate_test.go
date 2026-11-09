@@ -22,7 +22,7 @@ func TestSaveMCPServerInvalidatesStaleConnection(t *testing.T) {
 	cs := NewConfigService(svc)
 
 	orig := config.MCPServerConfig{ID: "mcp_1", Name: "S", Transport: config.MCPStdio, Command: "/bin/cat"}
-	if err := cs.SaveMCPServer(orig); err != nil {
+	if _, err := cs.SaveMCPServer(orig); err != nil {
 		t.Fatal(err)
 	}
 	ts1, err := mgr.Toolset(orig)
@@ -31,7 +31,7 @@ func TestSaveMCPServerInvalidatesStaleConnection(t *testing.T) {
 	}
 
 	// Unchanged save: the cached toolset survives.
-	if err := cs.SaveMCPServer(orig); err != nil {
+	if _, err := cs.SaveMCPServer(orig); err != nil {
 		t.Fatal(err)
 	}
 	ts2, err := mgr.Toolset(orig)
@@ -45,7 +45,7 @@ func TestSaveMCPServerInvalidatesStaleConnection(t *testing.T) {
 	// Changed settings: the stale toolset must be dropped.
 	changed := orig
 	changed.Args = []string{"-u"}
-	if err := cs.SaveMCPServer(changed); err != nil {
+	if _, err := cs.SaveMCPServer(changed); err != nil {
 		t.Fatal(err)
 	}
 	ts3, err := mgr.Toolset(changed)
