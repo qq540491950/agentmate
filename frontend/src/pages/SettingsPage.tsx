@@ -284,6 +284,8 @@ export function SettingsPage({
     ? `${settings.titleProviderId}\t${settings.titleModel}`
     : "main";
   const previewDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+  const showConfigSaveBar = isConfigSettingsTab(tab);
+  const configContentWidth = tab === "knowledge" || tab === "about" ? "max-w-3xl" : "max-w-4xl";
 
   return (
     <div className="flex h-full bg-canvas">
@@ -346,10 +348,11 @@ export function SettingsPage({
         {tab === "mcp" && <MCPPage />}
         {tab === "models" && <ModelsPage />}
         {(isConfigSettingsTab(tab) || tab === "about") && (
-        <div className="h-full overflow-y-auto bg-canvas p-6">
+        <div className="flex h-full flex-col bg-canvas">
+        <div className={cn("min-h-0 flex-1 overflow-y-auto p-6", showConfigSaveBar && "pb-0")}>
       {/* Config pages read in one stable column; Knowledge/About keep their
           narrower single-column width. */}
-      <div className={cn("mx-auto", tab === "knowledge" || tab === "about" ? "max-w-3xl" : "max-w-4xl")}>
+      <div className={cn("mx-auto", configContentWidth)}>
       <div className="grid gap-4">
         {tab === "appearance" && (
         <Card>
@@ -1063,18 +1066,20 @@ export function SettingsPage({
         </Card>
         )}
       </div>
-
-        {isConfigSettingsTab(tab) && (
-        <div className="sticky bottom-0 mt-4 flex justify-end bg-canvas/90 px-3 py-3 backdrop-blur">
-          <Button onClick={() => void save()} disabled={saving || !dirty}>
-            {saving ? "保存中…" : "保存设置"}
-          </Button>
-        </div>
-        )}
         {kbPreviewPath && (
           <ArtifactPreview path={kbPreviewPath} onClose={() => setKbPreviewPath(null)} />
         )}
       </div>
+        </div>
+        {showConfigSaveBar && (
+        <div className="shrink-0 bg-canvas px-6 pb-6 pt-4">
+          <div className={cn("mx-auto flex justify-end px-3", configContentWidth)}>
+            <Button onClick={() => void save()} disabled={saving || !dirty}>
+              {saving ? "保存中…" : "保存设置"}
+            </Button>
+          </div>
+        </div>
+        )}
     </div>
         )}
       </div>
