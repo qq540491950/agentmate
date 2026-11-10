@@ -38,6 +38,7 @@
 | `chrome` | `surface-1` / `sidebar` | 顶栏、对话侧栏、设置导航 |
 | `panel` | `card` | 执行组、composer、设置分组、管理列表容器、任务结果面板 |
 | `overlay` | `elevated` / `popover` | 菜单、对话框、toast、浮层 |
+| `control` | `control` | outline 按钮、复选框等可识别控件填充；不用于布局分区 |
 | `accent-soft` | 由 `brand` 派生 | 选中行、候选选中、composer 拖拽、当前轮 |
 | `accent-text` | 由 `brand` 派生 | 强调文字、链接、图标 |
 | `primary` | `primary` | 中性主按钮 |
@@ -63,6 +64,7 @@
 | `chrome` | `#3B4252` | `#E5E9F0` |
 | `panel` | `#434C5E` | `#FFFFFF` |
 | `overlay` | `#4C566A` | `#FFFFFF` |
+| `control` | `#485265` | `#EBEFF4` |
 | `foreground` | `#ECEFF4` | `#2E3440` |
 | `muted-foreground` | `#D8DEE9` | `#4C566A` |
 | `accent`（装饰/底纹） | `#88C0D0` | `#5E81AC` |

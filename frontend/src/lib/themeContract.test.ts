@@ -59,6 +59,16 @@ describe("theme token contract", () => {
         }
       });
 
+      it(`${theme}/${mode} keeps controls distinct from their surface`, () => {
+        const tokens = declarationsFor(theme, mode);
+        expect(tokens.control).toBeDefined();
+        const ratio = contrast(tokens.control, tokens.panel);
+        expect(ratio, "control/panel").toBeGreaterThanOrEqual(1.05);
+        expect(ratio, "control/panel").toBeLessThanOrEqual(1.35);
+        expect(contrast(tokens.control, tokens.accent), "control/accent").toBeGreaterThanOrEqual(1.05);
+        expect(contrast(tokens.foreground, tokens.control), "foreground/control").toBeGreaterThanOrEqual(4.5);
+      });
+
       it(`${theme}/${mode} keeps layout surfaces perceptible but calm`, () => {
         const tokens = declarationsFor(theme, mode);
         for (const [a, b] of [["canvas", "chrome"], ["chrome", "panel"]] as const) {

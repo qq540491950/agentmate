@@ -129,7 +129,7 @@
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: color-mix(in oklab, var(--panel) 72%, var(--canvas));
+    --control: #EBEFF4;
     --foreground: #2E3440;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
@@ -197,7 +197,7 @@
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: color-mix(in oklab, var(--panel) 68%, var(--canvas));
+    --control: #485265;
     --foreground: #ECEFF4;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
@@ -262,7 +262,7 @@
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: color-mix(in oklab, var(--panel) 72%, var(--canvas));
+    --control: #EFF2F7;
     --foreground: #1F232B;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
@@ -327,7 +327,7 @@
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: color-mix(in oklab, var(--panel) 68%, var(--canvas));
+    --control: #2C323F;
     --foreground: #F2F4F7;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
@@ -392,7 +392,7 @@
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: color-mix(in oklab, var(--panel) 72%, var(--canvas));
+    --control: #F4EFE6;
     --foreground: #2C2823;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
@@ -457,7 +457,7 @@
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: color-mix(in oklab, var(--panel) 68%, var(--canvas));
+    --control: #342F2A;
     --foreground: #F2EDE6;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
@@ -522,7 +522,7 @@
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: #FFFFFF;
+    --control: #F0F0F0;
     --foreground: #000000;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
@@ -587,7 +587,7 @@
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: #141414;
+    --control: #1F1F1F;
     --foreground: #FFFFFF;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);

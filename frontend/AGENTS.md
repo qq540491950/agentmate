@@ -28,6 +28,7 @@ Nord 表面契约已落地；历史实现与旧文档只用于参考行为，不
 | 全局 chrome | `chrome` | `surface-1` / `sidebar` | 顶栏、对话侧栏、设置导航 |
 | 内容面板 | `panel` | `card` | 执行组、composer、设置分组、管理列表容器、任务结果面板 |
 | 浮层 | `overlay` | `elevated` / `popover` | 菜单、对话框、toast、hover 浮层 |
+| 控件面 | `control` | `control` | outline 按钮、复选框等可识别控件填充；不用于布局分区 |
 | 强调 | `accent` / `accent-text` / `accent-soft` | `brand` 系列 | 选中、focus、运行态、少量链接 |
 | 中性主操作 | `primary` / `primary-foreground` | 现有 `primary` | 主按钮，保持中性高对比 |
 | 功能线 | `border` / `line` | 现有 `border` | 仅控件与数据结构的必要边界 |
@@ -47,6 +48,7 @@ Nord 使用官方 Polar Night / Snow Storm / Frost / Aurora 作为身份基础�
 | chrome | `#3B4252` | `#E5E9F0` |
 | panel | `#434C5E` | `#FFFFFF` |
 | overlay | `#4C566A` | `#FFFFFF` |
+| control | `#485265` | `#EBEFF4` |
 | foreground | `#ECEFF4` | `#2E3440` |
 | muted foreground | `#D8DEE9` | `#4C566A` |
 | accent | `#88C0D0` | `#5E81AC` |

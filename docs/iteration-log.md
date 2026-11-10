@@ -11,13 +11,13 @@
 **实现要点**
 
 - **根因**：#80 表面迁移时，设置卡片升级为 `panel`，`Button.outline` 也改为 `bg-panel`，同时移除了旧控件边界；静止态从“层级差”退化为完全同色。`--control` 原是透明度混合 token，浅色下与 `panel` 重合，无法提供稳定控件面。
-- **修复**：在四套主题 × 明暗模式中固化 `--control`，暴露为 Tailwind 语义色；`outline` 改用 `bg-control`。 eight 个 `control/panel` 对比度均达到 1.16–1.28，前景文字对比度均超过 6.4:1。Nord 深色实测按钮/面板为 1.169。
+- **修复**：在四套主题 × 明暗模式中固化 `--control`，暴露为 Tailwind 语义色；`outline` 改用 `bg-control`。八套 `control/panel` 对比度为 1.09–1.16，`control/accent` 为 1.06–1.11，前景文字对比度均超过 6.8:1。
 - **回归**：`themeContract.test.ts` 新增控件面契约，防止 `control` 缺失、与 `panel` 重合或正文不可读。`secondary` 维持 `panel` 级语义，本轮不扩大变体视觉变更。
 
 **测试证据**
 
 - 修复前 `npx vitest run src/lib/themeContract.test.ts` 8 个控件契约用例失败；修复后 24/24 通过。
-- 浏览器桩实测 `outline`/`panel` 背景由 1.0 变为 1.169，视觉矩阵截图可见静止态按钮独立于卡片。
+- 浏览器桩实测 `outline`/`panel` 背景由 1.0 变为可见色差，视觉矩阵截图可见静止态按钮独立于卡片。
 
 ### 第二百四十七轮迭代：修复带图片用户消息被拆成多个伪轮次（已实施）
 
