@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, FolderOpen } from "lucide-react";
+import {
+  ArrowLeft, BookOpen, Bot, Boxes, Database, FolderOpen, Info, MessageSquare,
+  Network, Palette, Plug, Sparkles, Users, type LucideIcon,
+} from "lucide-react";
 import { Browser, Dialogs } from "@wailsio/runtime";
 import { toast } from "sonner";
 import { AgentsPage } from "@/pages/AgentsPage";
@@ -10,7 +13,7 @@ import { ModelsPage } from "@/pages/ModelsPage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,38 +41,55 @@ import {
 } from "@/lib/executionDisplay";
 import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
 import { modelLabel } from "@/lib/modelLabel";
+import {
+  SETTINGS_GROUPS,
+  a2aAutoStartError,
+  isConfigSettingsTab,
+  isSettingsDirty,
+  resolveSettingsTab,
+  settingsTabsInGroup,
+  type SettingsLeaveGuard,
+  type SettingsTab,
+} from "@/lib/settingsModel";
 import { Chat, App, A2A, Config, Update, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
 
-const SETTINGS_TABS = [
-  { key: "general", label: "通用" },
-  { key: "models", label: "模型供应商" },
-  { key: "agents", label: "Agents" },
-  { key: "teams", label: "Agent 团队" },
-  { key: "skills", label: "Skills" },
-  { key: "mcp", label: "MCP 服务" },
-  { key: "knowledge", label: "知识库" },
-  { key: "data", label: "数据与存储" },
-  { key: "about", label: "关于" },
-] as const;
+export type { SettingsTab } from "@/lib/settingsModel";
 
-export type SettingsTab = (typeof SETTINGS_TABS)[number]["key"];
+const SETTINGS_ICONS: Record<SettingsTab, LucideIcon> = {
+  appearance: Palette,
+  conversation: MessageSquare,
+  models: Boxes,
+  network: Network,
+  agents: Bot,
+  teams: Users,
+  skills: Sparkles,
+  mcp: Plug,
+  knowledge: BookOpen,
+  data: Database,
+  about: Info,
+};
 
 export function SettingsPage({
   initialTab,
   onClose,
   version,
   onAppearanceChange,
+  onRegisterLeaveGuard,
 }: {
   initialTab?: SettingsTab;
   onClose?: () => void;
   version?: string;
   onAppearanceChange?: (prefs: ThemePrefs) => void;
+  onRegisterLeaveGuard?: (guard: SettingsLeaveGuard | null) => void;
 } = {}) {
-  const [tab, setTab] = useState<SettingsTab>(initialTab ?? "general");
+  const [tab, setTab] = useState<SettingsTab>(() => resolveSettingsTab(initialTab));
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [savedSettings, setSavedSettings] = useState<Settings | null>(null);
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [saving, setSaving] = useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [logText, setLogText] = useState("");
@@ -77,8 +97,6 @@ export function SettingsPage({
   const [storage, setStorage] = useState<StorageInfo | null>(null);
   const [memoryInfo, setMemoryInfo] = useState<MemoryInfo | null>(null);
   const [a2aStatuses, setA2AStatuses] = useState<A2AStatus[]>([]);
-  const [a2aAgent, setA2AAgent] = useState("");
-  const [a2aPort, setA2APort] = useState("8080");
   const [indexStats, setIndexStats] = useState<KnowledgeIndexStats | null>(null);
   const [kbTestQuery, setKbTestQuery] = useState("");
   const [kbTestResult, setKbTestResult] = useState("");
@@ -86,37 +104,19 @@ export function SettingsPage({
   const [kbPreviewPath, setKbPreviewPath] = useState<string | null>(null);
   const [kbNewName, setKbNewName] = useState("");
   const [kbNewContent, setKbNewContent] = useState("");
+  const dirtyRef = useRef(false);
 
   // Deep links (empty state, @ popup, model selector) reopen the hub on a
   // specific tab; keep the active tab in sync when the prop changes.
   useEffect(() => {
-    if (initialTab) setTab(initialTab);
+    if (initialTab) setTab(resolveSettingsTab(initialTab));
   }, [initialTab]);
-  // Esc leaves the hub, but open dialogs (log viewer, artifact preview)
-  // get the first chance to consume it.
-  useEffect(() => {
-    if (!onClose) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (document.querySelector("[role='dialog'][data-state='open']")) return;
-      onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  // Last-saved settings snapshot: flag toggles that persist immediately must
-  // not flush half-typed fields from elsewhere on the page.
-  const savedRef = useRef<Settings | null>(null);
   const reload = useCallback(() => {
     Config.GetConfig()
       .then((c) => {
-        setSettings(c.settings);
-        savedRef.current = c.settings ?? null;
-        // Sync the A2A form with persisted values so the toggle never
-        // overwrites a configured port back to the default.
-        setA2APort(String(c.settings?.a2aPort || 8080));
-        setA2AAgent(c.settings?.a2aAgentId ?? "");
+        const next = c.settings ?? null;
+        setSettings(next);
+        setSavedSettings(next);
         setProviders(c.providers ?? []);
         setAgents(c.agents ?? []);
       })
@@ -135,27 +135,50 @@ export function SettingsPage({
     if (!settings) return;
     const next = { ...settings, ...patch };
     setSettings(next);
-    // Live-apply appearance changes without waiting for save.
+    // Appearance is the only group that previews before save. Persisting and
+    // caching happen in save(); this keeps the saved snapshot authoritative.
     if ("themePreset" in patch || "themeMode" in patch || "fontScale" in patch || "chatWidth" in patch) {
       const prefs = prefsFromSettings(next);
-      cacheTheme(next);
       applyTheme(prefs);
       onAppearanceChange?.(prefs);
-      if ("themePreset" in patch || "themeMode" in patch) {
-        // Theme is a high-frequency, immediately visible preference. Persist
-        // just the theme fields from the last saved snapshot so unrelated
-        // half-typed settings are not flushed by a theme click.
-        const themeOnly = {
-          ...(savedRef.current ?? settings),
-          themePreset: next.themePreset,
-          themeMode: next.themeMode,
-        };
-        void Config.SaveSettings(themeOnly)
-          .then(() => { savedRef.current = themeOnly; })
-          .catch((e) => toast.error(`外观保存失败: ${errText(e)}`));
-      }
     }
   };
+
+  const dirty = isSettingsDirty(savedSettings, settings);
+  dirtyRef.current = dirty;
+
+  const applySavedAppearance = (next: Settings) => {
+    const prefs = prefsFromSettings(next);
+    applyTheme(prefs);
+    onAppearanceChange?.(prefs);
+  };
+
+  const requestLeave = useCallback((after: () => void) => {
+    if (!dirtyRef.current) {
+      after();
+      return;
+    }
+    setPendingLeave(() => after);
+    setLeaveDialogOpen(true);
+  }, []);
+
+  useEffect(() => {
+    onRegisterLeaveGuard?.(requestLeave);
+    return () => onRegisterLeaveGuard?.(null);
+  }, [onRegisterLeaveGuard, requestLeave]);
+
+  // Esc leaves the hub, but open dialogs (log viewer, artifact preview,
+  // leave confirmation) get the first chance to consume it.
+  useEffect(() => {
+    if (!onClose) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector("[role='dialog'][data-state='open']")) return;
+      requestLeave(onClose);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, requestLeave]);
 
   // 反馈入口：版本和平台由应用自动带上，测试机不需要手填。
   const reportIssue = useCallback(async () => {
@@ -189,30 +212,61 @@ export function SettingsPage({
         ButtonText: "选择此文件夹",
       }));
       if (picked) {
-        setSettings((prev) => (prev ? { ...prev, workspaceDir: picked } : prev));
+        update({ workspaceDir: picked });
       }
     } catch (e) {
       if (isDialogCancelError(e)) return;
       toast.error(`选择目录失败: ${errText(e)}`);
     }
-  }, []);
+  }, [update]);
 
-  const save = async () => {
-    if (!settings) return;
+  const save = async (): Promise<boolean> => {
+    if (!settings) return false;
+    const a2aError = a2aAutoStartError(settings);
+    if (a2aError) {
+      toast.error(a2aError);
+      setTab("network");
+      return false;
+    }
     setSaving(true);
     try {
       await Config.SaveSettings(settings);
-      savedRef.current = settings;
+      setSavedSettings(settings);
       cacheTheme(settings);
-      const prefs = prefsFromSettings(settings);
-      applyTheme(prefs);
-      onAppearanceChange?.(prefs);
+      applySavedAppearance(settings);
       toast.success("设置已保存");
+      return true;
     } catch (e) {
       toast.error(`保存失败: ${errText(e)}`);
+      return false;
     } finally {
       setSaving(false);
     }
+  };
+
+  const discardDraft = () => {
+    if (!savedSettings) return;
+    setSettings(savedSettings);
+    applySavedAppearance(savedSettings);
+  };
+
+  const closeLeaveDialog = () => {
+    setLeaveDialogOpen(false);
+    setPendingLeave(null);
+  };
+
+  const discardAndLeave = () => {
+    const after = pendingLeave;
+    discardDraft();
+    closeLeaveDialog();
+    after?.();
+  };
+
+  const saveAndLeave = async () => {
+    const after = pendingLeave;
+    const ok = await save();
+    closeLeaveDialog();
+    if (ok) after?.();
   };
 
   if (!settings) {
@@ -237,25 +291,50 @@ export function SettingsPage({
         <div className="mb-2 flex items-center justify-between px-4">
           <span className="text-sm font-semibold">设置</span>
           {onClose && (
-            <button title="返回对话（Esc）" onClick={onClose} className="rounded p-1 hover:bg-sidebar-accent/60">
+            <button
+              title="返回对话（Esc）"
+              onClick={() => requestLeave(onClose)}
+              className="rounded p-1 hover:bg-sidebar-accent/60"
+            >
               <ArrowLeft className="h-4 w-4" />
             </button>
           )}
         </div>
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2">
-          {SETTINGS_TABS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={cn(
-                "flex items-center rounded-md px-3 py-2 text-sm transition-colors",
-                tab === key
-                  ? "bg-accent-soft font-medium text-accent-text"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
+        <nav aria-label="设置分类" className="flex flex-1 flex-col gap-3 overflow-y-auto px-2 pb-3">
+          {SETTINGS_GROUPS.map((group) => (
+            <div
+              key={group.key}
+              role="group"
+              aria-labelledby={`settings-group-${group.key}`}
+              className="grid gap-1"
             >
-              {label}
-            </button>
+              <div
+                id={`settings-group-${group.key}`}
+                className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground"
+              >
+                {group.label}
+              </div>
+              {settingsTabsInGroup(group.key).map(({ key, label }) => {
+                const Icon = SETTINGS_ICONS[key];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-current={tab === key ? "page" : undefined}
+                    onClick={() => setTab(key)}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors",
+                      tab === key
+                        ? "bg-accent-soft font-medium text-accent-text"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
           ))}
         </nav>
       </aside>
@@ -266,17 +345,13 @@ export function SettingsPage({
         {tab === "skills" && <SkillsPage />}
         {tab === "mcp" && <MCPPage />}
         {tab === "models" && <ModelsPage />}
-        {(tab === "general" || tab === "knowledge" || tab === "data" || tab === "about") && (
+        {(isConfigSettingsTab(tab) || tab === "about") && (
         <div className="h-full overflow-y-auto bg-canvas p-6">
-      {/* 双列网格按列内流式排布（items-start 防止同行矮卡被撑高）；
-          单卡片页（知识库/关于）保持单列宽度，避免右半屏空置。 */}
-      <div className={cn("mx-auto", tab === "general" || tab === "data" ? "max-w-[clamp(64rem,88%,90rem)]" : "max-w-3xl")}>
-      <div className={cn(
-        tab === "general" || tab === "data"
-          ? "grid items-start gap-4 lg:grid-cols-2"
-          : "grid gap-4",
-      )}>
-        {tab === "general" && (
+      {/* Config pages read in one stable column; Knowledge/About keep their
+          narrower single-column width. */}
+      <div className={cn("mx-auto", tab === "knowledge" || tab === "about" ? "max-w-3xl" : "max-w-4xl")}>
+      <div className="grid gap-4">
+        {tab === "appearance" && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">外观</CardTitle>
@@ -382,7 +457,15 @@ export function SettingsPage({
                 ))}
               </div>
             </div>
-
+          </CardContent>
+        </Card>
+        )}
+        {tab === "appearance" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">交互</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2">
             <SettingRow
               label="执行过程显示"
               description="自动按状态展开；简洁只留摘要；详细保持展开；无隐藏过程（确认与错误仍显示）"
@@ -404,22 +487,23 @@ export function SettingsPage({
 
             <SettingRow label="自动朗读回复" description="助手回复完成后使用语音朗读（TTS）">
               <Switch
-          checked={settings.autoSpeak}
+          checked={!!settings.autoSpeak}
           onCheckedChange={(v) => update({ autoSpeak: v })}
           />
             </SettingRow>
+          </CardContent>
+        </Card>
+        )}
+        {tab === "conversation" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">会话</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2">
             <SettingRow label="智能会话命名" description="首轮对话后由主模型生成单行简短标题（关闭则截取首条消息前 30 字）">
               <Switch
           checked={settings.autoTitle !== false}
-          onCheckedChange={(v) => {
-          // Persist only this flag from the last-saved snapshot, like
-          // autoRemember — never flush half-typed fields.
-          update({ autoTitle: v });
-          const next = { ...(savedRef.current ?? settings), autoTitle: v };
-          Config.SaveSettings(next)
-          .then(() => { savedRef.current = next; })
-          .catch((e) => toast.error(`保存失败: ${errText(e)}`));
-          }}
+          onCheckedChange={(v) => update({ autoTitle: v })}
           />
             </SettingRow>
             <SettingRow label="标题提炼模型" description="默认跟随主模型；也可指定更快或更省的模型（仅在智能会话命名开启时生效）">
@@ -446,16 +530,10 @@ export function SettingsPage({
                 </SelectContent>
               </Select>
             </SettingRow>
-            <SettingRow label="工具调用审计日志" description="将每次工具调用/结果以 JSONL 追加到应用日志目录（tools-audit.jsonl）">
-              <Switch
-          checked={settings.toolsAudit}
-          onCheckedChange={(v) => update({ toolsAudit: v })}
-          />
-            </SettingRow>
           </CardContent>
         </Card>
         )}
-        {tab === "general" && (
+        {tab === "data" && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">工作区</CardTitle>
@@ -466,8 +544,8 @@ export function SettingsPage({
               <div className="flex gap-2">
                 <Input
                   className="flex-1"
-                  value={settings.workspaceDir}
-                  onChange={(e) => setSettings({ ...settings, workspaceDir: e.target.value })}
+                  value={settings.workspaceDir ?? ""}
+                  onChange={(e) => update({ workspaceDir: e.target.value })}
                   placeholder="例如：D:\\AgentMateWorkspace"
                 />
                 <Button variant="outline" className="shrink-0" onClick={pickWorkspaceDir}>
@@ -482,7 +560,7 @@ export function SettingsPage({
           </CardContent>
         </Card>
         )}
-        {tab === "general" && (
+        {tab === "network" && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">网络</CardTitle>
@@ -490,8 +568,8 @@ export function SettingsPage({
           <CardContent className="grid gap-1.5">
             <Label>HTTP 代理</Label>
             <Input
-              value={settings.httpProxy}
-              onChange={(e) => setSettings({ ...settings, httpProxy: e.target.value })}
+              value={settings.httpProxy ?? ""}
+              onChange={(e) => update({ httpProxy: e.target.value })}
               placeholder="http://127.0.0.1:7890（留空直连）"
             />
             <p className="text-xs text-muted-foreground">
@@ -524,8 +602,8 @@ export function SettingsPage({
             <div className="grid gap-1.5">
               <Label>Embedding 模型</Label>
               <Input
-                value={settings.embeddingModel}
-                onChange={(e) => setSettings({ ...settings, embeddingModel: e.target.value })}
+                value={settings.embeddingModel ?? ""}
+                onChange={(e) => update({ embeddingModel: e.target.value })}
                 placeholder="text-embedding-3-small / BAAI/bge-large-zh-v1.5"
               />
             </div>
@@ -626,7 +704,7 @@ export function SettingsPage({
           </CardContent>
         </Card>
         )}
-        {tab === "general" && (
+        {tab === "conversation" && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">长会话上下文压缩</CardTitle>
@@ -639,7 +717,7 @@ export function SettingsPage({
                   type="number"
                   min={0}
                   value={settings.compactionInterval || ""}
-                  onChange={(e) => setSettings({ ...settings, compactionInterval: Number(e.target.value) || 0 })}
+                  onChange={(e) => update({ compactionInterval: Number(e.target.value) || 0 })}
                   placeholder="0（关闭）"
                 />
               </div>
@@ -649,7 +727,7 @@ export function SettingsPage({
                   type="number"
                   min={0}
                   value={settings.compactionTokenThreshold || ""}
-                  onChange={(e) => setSettings({ ...settings, compactionTokenThreshold: Number(e.target.value) || 0 })}
+                  onChange={(e) => update({ compactionTokenThreshold: Number(e.target.value) || 0 })}
                   placeholder="0（关闭）"
                 />
               </div>
@@ -660,7 +738,7 @@ export function SettingsPage({
           </CardContent>
         </Card>
         )}
-        {tab === "general" && (
+        {tab === "conversation" && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">长期记忆</CardTitle>
@@ -672,17 +750,8 @@ export function SettingsPage({
                 <div className="text-xs text-muted-foreground">每轮对话结束后自动将该会话存入记忆（含工具调用摘要）</div>
               </div>
               <Switch
-                checked={settings.autoRemember}
-                onCheckedChange={(v) => {
-                  // Persist ONLY this flag: the old whole-settings save would
-                  // flush any half-typed proxy/workspace field the user left
-                  // unsaved elsewhere on the page.
-                  update({ autoRemember: v });
-                  const nextMem = { ...(savedRef.current ?? settings), autoRemember: v };
-                  Config.SaveSettings(nextMem)
-                    .then(() => { savedRef.current = nextMem; })
-                    .catch((e) => toast.error(`保存失败: ${errText(e)}`));
-                }}
+                checked={!!settings.autoRemember}
+                onCheckedChange={(v) => update({ autoRemember: v })}
               />
             </div>
             <div className="flex items-center justify-between gap-2">
@@ -718,6 +787,12 @@ export function SettingsPage({
             <CardTitle className="text-base">诊断</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2">
+            <SettingRow label="工具调用审计日志" description="将每次工具调用/结果以 JSONL 追加到应用日志目录（tools-audit.jsonl）">
+              <Switch
+                checked={!!settings.toolsAudit}
+                onCheckedChange={(v) => update({ toolsAudit: v })}
+              />
+            </SettingRow>
             <Button
               variant="outline"
               onClick={async () => {
@@ -856,7 +931,7 @@ export function SettingsPage({
           </CardContent>
         </Card>
         )}
-        {tab === "general" && (
+        {tab === "network" && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">A2A 服务（对外提供远程 Agent）</CardTitle>
@@ -865,7 +940,10 @@ export function SettingsPage({
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label>发布的 Agent</Label>
-                <Select value={a2aAgent || undefined} onValueChange={setA2AAgent}>
+                <Select
+                  value={settings.a2aAgentId || undefined}
+                  onValueChange={(agentId) => update({ a2aAgentId: agentId })}
+                >
                   <SelectTrigger><SelectValue placeholder="选择 Agent" /></SelectTrigger>
                   <SelectContent>
                     {agents.map((a) => (
@@ -876,20 +954,27 @@ export function SettingsPage({
               </div>
               <div className="grid gap-1.5">
                 <Label>端口</Label>
-                <Input value={a2aPort} onChange={(e) => setA2APort(e.target.value)} placeholder="8080" />
+                <Input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={settings.a2aPort || ""}
+                  onChange={(e) => update({ a2aPort: Number(e.target.value) || 0 })}
+                  placeholder="8080"
+                />
               </div>
             </div>
             <div className="flex items-center gap-2">
               <Button
                 onClick={async () => {
-                  if (!a2aAgent) { toast.error("请选择要发布的 Agent"); return; }
-                  const port = Number(a2aPort);
+                  if (!settings.a2aAgentId) { toast.error("请选择要发布的 Agent"); return; }
+                  const port = Number(settings.a2aPort);
                   if (!Number.isInteger(port) || port < 1 || port > 65535) {
                     toast.error("端口需为 1-65535 的整数");
                     return;
                   }
                   try {
-                    await A2A.Start(a2aAgent, port);
+                    await A2A.Start(settings.a2aAgentId, port);
                     setA2AStatuses((await A2A.Status()) ?? []);
                     toast.success("A2A 服务已启动");
                   } catch (e) {
@@ -924,30 +1009,9 @@ export function SettingsPage({
             )}
             <SettingRow label="开机自动启动 A2A 服务" description="使用上方选择的 Agent 与端口，应用启动时自动发布">
               <Switch
-          checked={settings.a2aAutoStart}
-          onCheckedChange={(v) => {
-          const agentId = v ? (a2aAgent || settings.a2aAgentId) : settings.a2aAgentId;
-          const port = Number(a2aPort);
-          if (v && !agentId) {
-          toast.error("开启自动启动前请先选择要发布的 Agent");
-          return;
-          }
-          if (v && (!Number.isInteger(port) || port < 1 || port > 65535)) {
-          toast.error("端口需为 1-65535 的整数");
-          return;
-          }
-          const next = {
-          ...(savedRef.current ?? settings),
-          a2aAutoStart: v,
-          a2aAgentId: agentId,
-          a2aPort: Number.isInteger(port) ? port : 0,
-          };
-          update(next);
-          Config.SaveSettings(next)
-          .then(() => { savedRef.current = next; })
-          .catch((e) => toast.error(`保存失败: ${errText(e)}`));
-          }}
-          />
+                checked={!!settings.a2aAutoStart}
+                onCheckedChange={(v) => update({ a2aAutoStart: v })}
+              />
             </SettingRow>
             <p className="text-xs text-muted-foreground">
               启动后其他 A2A 客户端可通过该地址发现并调用此 Agent（仅监听本机地址）。
@@ -1000,9 +1064,11 @@ export function SettingsPage({
         )}
       </div>
 
-        {(tab === "general" || tab === "knowledge") && (
+        {isConfigSettingsTab(tab) && (
         <div className="sticky bottom-0 mt-4 flex justify-end bg-canvas/90 px-3 py-3 backdrop-blur">
-          <Button onClick={save} disabled={saving}>保存设置</Button>
+          <Button onClick={() => void save()} disabled={saving || !dirty}>
+            {saving ? "保存中…" : "保存设置"}
+          </Button>
         </div>
         )}
         {kbPreviewPath && (
@@ -1012,6 +1078,27 @@ export function SettingsPage({
     </div>
         )}
       </div>
+      <Dialog open={leaveDialogOpen} onOpenChange={(open) => { if (!open) closeLeaveDialog(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">有未保存的设置</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            离开设置中心前要保存这些修改吗？放弃后，未保存的外观预览也会恢复。
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeLeaveDialog} disabled={saving}>
+              继续编辑
+            </Button>
+            <Button variant="outline" onClick={discardAndLeave} disabled={saving}>
+              放弃修改
+            </Button>
+            <Button onClick={() => void saveAndLeave()} disabled={saving}>
+              {saving ? "保存中…" : "保存并退出"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

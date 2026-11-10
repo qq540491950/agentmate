@@ -46,6 +46,14 @@ const seedConfig = {
     embeddingProviderId: "prov_1",
     embeddingModel: "text-embedding-3-small",
     executionDisplayMode: "auto",
+    httpProxy: "",
+    autoRemember: false,
+    toolsAudit: false,
+    compactionInterval: 0,
+    compactionTokenThreshold: 0,
+    a2aAutoStart: false,
+    a2aAgentId: "",
+    a2aPort: 8080,
   },
   providers: [
     {
@@ -332,6 +340,12 @@ function stubUpdateStatus() {
 const handlers: Record<string, (args: any[]) => any> = {
   // GetConfig
   [svc("ConfigService", "GetConfig")]: () => seedConfig,
+  // SaveSettings: the settings pages share an explicit save path, so the
+  // stub must persist the draft for the dirty state to clear after saving.
+  [svc("ConfigService", "SaveSettings")]: (args) => {
+    seedConfig.settings = args[0];
+    return null;
+  },
   // ListSessions
   [svc("ChatService", "ListSessions")]: () => {
     (window as any).__lastList = JSON.parse(JSON.stringify(seedConfig.sessions));

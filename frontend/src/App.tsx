@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Toaster } from "@/components/ui/sonner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -18,15 +18,24 @@ import { App as AppService, Config } from "@/lib/api";
 // management screens) loads on demand so it never sits in the startup bundle.
 import { ChatPage } from "@/pages/ChatPage";
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
-import type { SettingsTab } from "@/pages/SettingsPage";
+import type { SettingsLeaveGuard, SettingsTab } from "@/lib/settingsModel";
 
 export default function App() {
   const [view, setView] = useState<"chat" | "settings">("chat");
   const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(undefined);
-  const openSettings = (tab?: SettingsTab) => {
+  const settingsLeaveGuard = useRef<SettingsLeaveGuard | null>(null);
+  const openSettings = useCallback((tab?: SettingsTab) => {
     setSettingsTab(tab);
     setView("settings");
-  };
+  }, []);
+  const registerSettingsLeaveGuard = useCallback((guard: SettingsLeaveGuard | null) => {
+    settingsLeaveGuard.current = guard;
+  }, []);
+  const leaveSettings = useCallback((after: () => void) => {
+    const guard = settingsLeaveGuard.current;
+    if (guard) guard(after);
+    else after();
+  }, []);
 
   // Global shortcuts (documented in the help panel on every page): ⌘N starts
   // a chat; ⌘K focuses the composer; ⌘F toggles in-session search; ⌘, opens
@@ -40,40 +49,48 @@ export default function App() {
       // as { / }; compare by code so the shortcut survives layouts).
       if (e.shiftKey && e.code === "BracketLeft") {
         e.preventDefault();
-        setView("chat");
-        setTimeout(() => window.dispatchEvent(new CustomEvent("wb-prev-session")), 50);
+        leaveSettings(() => {
+          setView("chat");
+          setTimeout(() => window.dispatchEvent(new CustomEvent("wb-prev-session")), 50);
+        });
         return;
       }
       if (e.shiftKey && e.code === "BracketRight") {
         e.preventDefault();
-        setView("chat");
-        setTimeout(() => window.dispatchEvent(new CustomEvent("wb-next-session")), 50);
+        leaveSettings(() => {
+          setView("chat");
+          setTimeout(() => window.dispatchEvent(new CustomEvent("wb-next-session")), 50);
+        });
         return;
       }
       const key = e.key.toLowerCase();
       if (key !== "n" && key !== "k" && key !== "f" && key !== "," && key !== "b") return;
       e.preventDefault();
       if (key === "b") {
-        setView("chat");
-        // Deferred like ⌘N: when leaving the settings view, ChatPage mounts
-        // on the next render and only then registers the listener.
-        setTimeout(() => window.dispatchEvent(new CustomEvent("wb-toggle-sidebar")), 50);
+        leaveSettings(() => {
+          setView("chat");
+          // Deferred like ⌘N: when leaving the settings view, ChatPage mounts
+          // on the next render and only then registers the listener.
+          setTimeout(() => window.dispatchEvent(new CustomEvent("wb-toggle-sidebar")), 50);
+        });
         return;
       }
       if (key === ",") {
         openSettings();
         return;
       }
-      setView("chat");
-      // Deferred: when switching from another page, ChatPage mounts on the
-      // next render — a synchronous dispatch would fire before its listener
-      // exists and the action would be lost.
-      const ev = new CustomEvent(key === "k" ? "wb-focus-composer" : key === "f" ? "wb-toggle-filter" : "wb-new-chat");
-      setTimeout(() => window.dispatchEvent(ev), 50);
+      leaveSettings(() => {
+        setView("chat");
+        // Deferred: when switching from another page, ChatPage mounts on the
+        // next render — a synchronous dispatch would fire before its listener
+        // exists and the action would be lost.
+        const ev = new CustomEvent(key === "k" ? "wb-focus-composer" : key === "f" ? "wb-toggle-filter" : "wb-new-chat");
+        setTimeout(() => window.dispatchEvent(ev), 50);
+      });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [leaveSettings, openSettings]);
   const [helpOpen, setHelpOpen] = useState(false);
   const [prefs, setPrefs] = useState<ThemePrefs>(() => cachedTheme());
   const [, forceThemeRender] = useState(0);
@@ -148,6 +165,7 @@ export default function App() {
                   onClose={() => setView("chat")}
                   version={version}
                   onAppearanceChange={onAppearanceChange}
+                  onRegisterLeaveGuard={registerSettingsLeaveGuard}
                 />
               )}
             </Suspense>
