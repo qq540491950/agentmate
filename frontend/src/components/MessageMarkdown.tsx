@@ -7,8 +7,9 @@ import { cn } from "@/lib/utils";
 /* ---------------------------------------------------------------------------
  * Zero-dependency syntax highlighting for fenced code blocks. A combined
  * regex tokenizes comments / strings / numbers / identifiers; identifiers are
- * checked against a shared keyword set. Display-only — the merged text is
- * always the original code, so a tokenizer miss never corrupts output.
+ * checked against a shared keyword set, while non-keywords stay plain text.
+ * Display-only — the merged text is always the original code, so a tokenizer
+ * miss never corrupts output.
  * ------------------------------------------------------------------------- */
 
 const KEYWORDS = new Set([
@@ -47,7 +48,9 @@ function tokenize(code: string): Token[] {
     if (com) out.push({ text: com, kind: "com" });
     else if (str) out.push({ text: str, kind: "str" });
     else if (num) out.push({ text: num, kind: "num" });
-    else if (ident && KEYWORDS.has(ident)) out.push({ text: ident, kind: "kw" });
+    else if (ident) {
+      out.push({ text: ident, kind: KEYWORDS.has(ident) ? "kw" : undefined });
+    }
     last = m.index + m[0].length;
     if (out.length > 4000) break; // safety valve for pathological input
   }

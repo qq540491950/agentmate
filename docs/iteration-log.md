@@ -4,6 +4,22 @@
 
 ## 视觉测试与体验设计
 
+### 第二百四十六轮迭代：修复代码块普通标识符被高亮器吞掉（已实施）
+
+依据：用户截图反馈助手回复中的 `bash` 代码块只剩 `&& -- && &&`。核对 `sessions.db` 中的原始事件，模型输出本身是完整命令 `cd frontend && npx tsc --noEmit && npm test && npm run build`，问题出在前端渲染。
+
+**实现要点**
+
+- **根因**：`MessageMarkdown` 的零依赖高亮器把标识符交给关键字集合判断，只有命中关键字才写入 token；`cd`、`frontend`、`npx`、`tsc`、`npm`、`build` 等普通标识符既不输出，又被 `last` 游标跳过，最终只剩空格与 `&&`、`--` 等符号。这与文件顶部「合并文本始终等于原代码」的注释约定相反。
+- **修复**：非关键字标识符也作为普通 token 输出（`kind` 为空），关键字继续走 `hl-kw`；高亮只影响着色，不再改变可见文本。
+- **回归**：新增 `MessageMarkdown.test.tsx`，用截图中的原始命令断言代码块文本完整，并覆盖关键字、字符串、数字与多语言（ts / bash / yaml）混排场景。
+
+**测试证据**
+
+- 定向回归 `npx vitest run src/components/MessageMarkdown.test.tsx` 2/2 通过；修复前同一命令的 token 拼接结果为 `"  &&   -- &&   &&   "`。
+- `npm test` 31 个文件、234 个用例全绿；`npx vite build --mode production` 通过。
+- `npx tsc --noEmit` 仍被工作区中并行会话未提交的 `frontend/src/lib/chatUtils.ts:216` 类型错误挡住（与本轮改动无关）；本轮涉及文件无新增类型错误。
+
 ### 第二百四十五轮迭代：上下文卡片去箭头、三行精简与缓存命中（已实施）
 
 依据：用户两次截图反馈——① 卡片底部仍有一个菱形指针，要求去掉；② 内容仍然偏长，希望继续精简；③ 如果模型返回了缓存信息，应当显示出来。第一版（本轮上半段）把标题改成「背景信息窗口：」并用 CSS `[&>svg]:hidden` 藏箭头，实测箭头依旧存在：Radix 的 `TooltipPrimitive.Arrow` 是带 `data-slot` 的独立 SVG，选择器只加了类名而类名在 `cn()` 合并后未覆盖到，等于没有生效。
