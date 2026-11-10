@@ -118,12 +118,6 @@ export interface ChatSession {
     "reasoningLevel"?: string;
 
     /**
-     * ExecutionDisplayMode overrides the global execution-process display
-     * density for this chat. Empty follows Settings.ExecutionDisplayMode.
-     */
-    "executionDisplayMode"?: string;
-
-    /**
      * AllowAllTools is this chat's「允许完全访问」permission: while true,
      * side-effectful builtin tools (workspace writes, run_command) run without
      * the per-call HITL confirmation prompt. It is session-scoped and

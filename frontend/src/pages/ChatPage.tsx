@@ -8,7 +8,6 @@ import {
   PanelRightOpen,
   ChevronRight, ChevronDown,
   Boxes, Coins, LockOpen,
-  ListTree,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
 } from "lucide-react";
@@ -72,9 +71,7 @@ import {
   rememberAllowAllRiskAcknowledged, type AllowAllSource,
 } from "@/lib/allowAll";
 import {
-  effectiveExecutionDisplayMode, executionDisplayLabel,
-  normalizeExecutionDisplayMode, EXECUTION_DISPLAY_OPTIONS,
-  type ExecutionDisplayMode,
+  normalizeExecutionDisplayMode, type ExecutionDisplayMode,
 } from "@/lib/executionDisplay";
 
 let mid = 0;
@@ -266,10 +263,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   }, []);
 
   const active = sessions.find((s) => s.id === activeID);
-  const executionDisplayMode = effectiveExecutionDisplayMode(
-    globalExecutionDisplay,
-    active?.executionDisplayMode,
-  );
+  const executionDisplayMode = normalizeExecutionDisplayMode(globalExecutionDisplay);
 
   // fireQueued pops the session's queued message and auto-sends it (used both
   // when a turn settles and when the user returns to a settled session). A
@@ -1835,19 +1829,6 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
   };
 
-  const setSessionExecutionDisplay = async (mode: string) => {
-    if (!activeID) return;
-    try {
-      await Chat.SetSessionExecutionDisplay(activeID, mode);
-      reloadSessions();
-      toast.success(mode === ""
-        ? "执行过程显示已跟随全局设置"
-        : `本会话执行过程：${executionDisplayLabel(normalizeExecutionDisplayMode(mode))}`);
-    } catch (e) {
-      toast.error(`设置执行过程显示失败: ${errText(e)}`);
-    }
-  };
-
   // ⌘F (dispatched by App) opens the in-conversation filter.
   useEffect(() => {
     const onToggle = () => setFilterOpen(true);
@@ -2884,7 +2865,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           <div className="mx-auto chat-col px-3">
             <div
               className={cn(
-                "rounded-2xl bg-panel shadow-composer transition-colors focus-within:ring-2 focus-within:ring-ring/60",
+                "rounded-2xl bg-panel shadow-composer transition-colors",
                 dragOver && "bg-accent-soft",
               )}
               onDragOver={(e) => {
@@ -3130,49 +3111,6 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                     <span className="truncate">{allowAllToggleLabel(composerAllowAll)}</span>
                     {composerAllowAll && <X className="h-3 w-3 shrink-0 opacity-70" />}
                   </button>
-                  {active && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex h-7 min-w-0 max-w-[112px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                          title={`执行过程显示：${executionDisplayLabel(executionDisplayMode)}`}
-                          aria-label="选择执行过程显示方式"
-                        >
-                          <ListTree className="h-3.5 w-3.5 shrink-0" />
-                          <span className="hidden truncate sm:inline">{executionDisplayLabel(executionDisplayMode)}</span>
-                          <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-64">
-                        <DropdownMenuLabel>执行过程显示</DropdownMenuLabel>
-                        <DropdownMenuRadioGroup
-                          value={executionDisplayMode}
-                          onValueChange={setSessionExecutionDisplay}
-                        >
-                          {EXECUTION_DISPLAY_OPTIONS.map((option) => (
-                            <DropdownMenuRadioItem key={option.value} value={option.value} className="items-start py-1.5">
-                              <span className="flex flex-col gap-0.5">
-                                <span className="text-xs">{option.label}</span>
-                                <span className="text-3xs text-muted-foreground">{option.description}</span>
-                              </span>
-                            </DropdownMenuRadioItem>
-                          ))}
-                        </DropdownMenuRadioGroup>
-                        {active.executionDisplayMode && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-xs"
-                              onSelect={() => setSessionExecutionDisplay("")}
-                            >
-                              跟随全局设置
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
                   {(contextUsage || (sessionUsage && sessionUsage.totalTokens > 0)) && (

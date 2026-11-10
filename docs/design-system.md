@@ -130,7 +130,7 @@
 | 执行组 | 单块 `panel`；组头、内容、工具行用底纹/留白/缩进分层；不逐层套框 |
 | 确认卡 | `*-soft` 底 + 状态图标 + 文字；无 border/左色条 |
 | 思考过程 | 低对比底纹 + 图标 + 缩进；无左竖线 |
-| Composer | `panel` 底、16px 圆角、无 border；focus-within 用 2px accent ring；拖拽用 `accent-soft` |
+| Composer | `panel` 底、16px 圆角、无 border；聚焦不显示整块包边/ring，靠文本光标与内部控件自身焦点提示；拖拽用 `accent-soft` |
 | 菜单/Popover/Dialog | overlay 底 + shadow；无 ring/border；选中项 `accent-soft` |
 | 任务结果区 | `chrome` 独立底色；标签、文件行、预览区用底纹/间距；无 `border-l` |
 | 空态 | panel/overlay 底 + 图标 + 标题 + 说明 + 主操作；禁止 dashed border |

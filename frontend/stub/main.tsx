@@ -402,19 +402,6 @@ const handlers: Record<string, (args: any[]) => any> = {
     }
     return null;
   },
-  // SetSessionExecutionDisplay(sessionID, mode)
-  [svc("ChatService", "SetSessionExecutionDisplay")]: (args) => {
-    for (const sess of seedConfig.sessions) {
-      if (sess.id === args[0]) (sess as any).executionDisplayMode = args[1] || "";
-    }
-    return null;
-  },
-  "agentmate/internal/services.ChatService.SetSessionExecutionDisplay": (args) => {
-    for (const sess of seedConfig.sessions) {
-      if (sess.id === args[0]) (sess as any).executionDisplayMode = args[1] || "";
-    }
-    return null;
-  },
   // SendWithReasoning(sessionID, text, attachments, reasoningLevel)
   [svc("ChatService", "SendWithReasoning")]: (args) => {
     const [sid, text, , reasoning] = args;

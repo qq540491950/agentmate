@@ -471,7 +471,7 @@ export function SettingsPage({
           <CardContent className="grid gap-2">
             <SettingRow
               label="执行过程显示"
-              description="自动按状态展开；简洁只留摘要；详细保持展开；无隐藏过程（确认与错误仍显示）"
+              description="全局生效；自动按状态展开；简洁只留摘要；详细保持展开；无隐藏过程（确认与错误仍显示）"
             >
               <Select
                 value={normalizeExecutionDisplayMode(settings.executionDisplayMode)}

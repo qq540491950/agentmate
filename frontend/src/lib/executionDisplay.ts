@@ -27,20 +27,6 @@ export function normalizeExecutionDisplayMode(value: string | null | undefined):
   return parseExecutionDisplayMode(value) ?? "auto";
 }
 
-/** effectiveExecutionDisplayMode applies the session override over the global default. */
-export function effectiveExecutionDisplayMode(
-  globalMode: string | null | undefined,
-  sessionMode: string | null | undefined,
-): ExecutionDisplayMode {
-  return parseExecutionDisplayMode(sessionMode)
-    ?? parseExecutionDisplayMode(globalMode)
-    ?? "auto";
-}
-
-export function executionDisplayLabel(mode: ExecutionDisplayMode): string {
-  return EXECUTION_DISPLAY_OPTIONS.find((o) => o.value === mode)?.label ?? "自动";
-}
-
 /** executionAutoExpanded is the mode's default open/closed policy. */
 export function executionAutoExpanded(mode: ExecutionDisplayMode, status: ToolGroupStatus): boolean {
   switch (mode) {

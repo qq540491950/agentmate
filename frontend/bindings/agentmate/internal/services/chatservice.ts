@@ -291,14 +291,6 @@ export function SetSessionAllowAllTools(sessionID: string, allowAll: boolean, so
 }
 
 /**
- * SetSessionExecutionDisplay remembers this chat's execution-process display
- * override. Empty restores the global default; unknown modes are rejected.
- */
-export function SetSessionExecutionDisplay(sessionID: string, mode: string): $CancellablePromise<void> {
-    return $Call.ByID(164135869, sessionID, mode);
-}
-
-/**
  * SetSessionModel pins a chat to a specific model of its target agent's
  * provider (per-session model override); empty clears the override. The
  * previous thinking level is cleared too: the new model may not offer it.

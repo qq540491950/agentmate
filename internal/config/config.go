@@ -391,21 +391,6 @@ func NormalizeExecutionDisplayMode(mode string) string {
 	}
 }
 
-// NormalizeExecutionDisplayOverride validates a per-session override. An empty
-// value clears the override; an unknown value is rejected so callers do not
-// silently persist a typo.
-func NormalizeExecutionDisplayOverride(mode string) (string, bool) {
-	normalized := strings.ToLower(strings.TrimSpace(mode))
-	switch normalized {
-	case "":
-		return "", true
-	case ExecutionDisplayAuto, ExecutionDisplayConcise, ExecutionDisplayDetailed, ExecutionDisplayNone:
-		return normalized, true
-	default:
-		return "", false
-	}
-}
-
 // Settings holds global application settings.
 type Settings struct {
 	WorkspaceDir string `json:"workspaceDir"`
@@ -510,17 +495,6 @@ func (s Settings) UpdateAutoCheckEnabled() bool {
 	return s.AutoCheckUpdate == nil || *s.AutoCheckUpdate
 }
 
-// EffectiveExecutionDisplayMode resolves a chat's process-display preference:
-// an explicit session override wins, otherwise the global setting applies.
-func (s ChatSession) EffectiveExecutionDisplayMode(global string) string {
-	if mode := strings.TrimSpace(s.ExecutionDisplayMode); mode != "" {
-		if normalized, ok := NormalizeExecutionDisplayOverride(mode); ok {
-			return normalized
-		}
-	}
-	return NormalizeExecutionDisplayMode(global)
-}
-
 // normalize fills zero values (older config files) with defaults.
 func (s *Settings) normalize() {
 	if s.ThemeMode == "" {
@@ -593,9 +567,6 @@ type ChatSession struct {
 	// effective model's Reasoning table; empty = the model's default level).
 	// It is a per-chat UI choice and never writes back to provider config.
 	ReasoningLevel string `json:"reasoningLevel,omitempty"`
-	// ExecutionDisplayMode overrides the global execution-process display
-	// density for this chat. Empty follows Settings.ExecutionDisplayMode.
-	ExecutionDisplayMode string `json:"executionDisplayMode,omitempty"`
 	// AllowAllTools is this chat's「允许完全访问」permission: while true,
 	// side-effectful builtin tools (workspace writes, run_command) run without
 	// the per-call HITL confirmation prompt. It is session-scoped and

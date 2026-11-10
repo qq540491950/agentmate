@@ -4,6 +4,24 @@
 
 ## 视觉测试与体验设计
 
+### 第二百四十四轮迭代：composer 聚焦包边移除与执行过程全局化（已实施）
+
+依据：用户截图指出 composer 顶部的圆角亮线疑似边框；进一步确认后明确要求聚焦时去掉整块包边。同时要求把下侧「执行过程显示」从会话级快捷切换收口到全局设置。
+
+**实现要点**
+
+- 根因确认：亮线是 `focus-within:ring-2 ring-ring/60` 的焦点环，不是布局级 border；贴边的半透明环让 16px 圆角看起来像描边。
+- Composer 圆角保持 16px；移除整块聚焦包边/ring，文本输入保留原生光标，内部按钮继续使用各自的 `focus-visible`；`shadow-composer` 改用 `--tw-shadow` 变量，聚焦状态不再有环与阴影互相覆盖的跳变。
+- 删除 `ChatSession.ExecutionDisplayMode` 会话覆盖、`SetSessionExecutionDisplay` API、composer 下拉入口、前端覆盖计算、stub 路由与对应测试；`ChatPage` 只读取 `Settings.ExecutionDisplayMode`。
+- 全局入口保留在设置 → 外观与交互 → 交互，描述明确标注「全局生效」；composer 保留「允许完全访问」等仍有会话语义的控件。
+- 重新生成 Wails bindings；历史 sessions 中残留的旧字段由 JSON 解码忽略，不需要数据迁移。
+
+**测试证据**
+
+- 浏览器桩 Nord 深色：点击 composer 后不再出现整块外框，文本区聚焦光标可用；composer 仅保留添加附件、完全访问、思考强度、模型和发送。
+- `go test ./internal/config ./internal/services`、`go test ./internal/...` 通过；`go vet ./internal/... .` 0 错。
+- `npx tsc --noEmit` 0 错；`npm test` 30 个测试文件、226 个用例全绿；`npm run build` 通过。
+
 ### 第二百四十三轮迭代：设置保存栏不再覆盖最后一张卡片（已实施）
 
 依据：用户截图反馈「保存设置」下方疑似缺少一块、下层内容穿透。浏览器桩复现：外观与交互页在 1440×900、`scrollTop=0` 时，交互卡片内「自动朗读回复」行 `y=804.5–870`，保存栏 `y=820–876`，覆盖 50px；保存栏 `bg-canvas/90` 让卡片尾部透出。

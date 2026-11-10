@@ -150,7 +150,7 @@ Nord 使用官方 Polar Night / Snow Storm / Frost / Aurora 作为身份基础�
 - 思考过程移除左侧竖线，改为低对比底纹块 + 图标 + 缩进；折叠头保留键盘可达。
 - 日期分隔改为居中元数据文字与上下留白，不再画两条横线。
 - 用户消息使用 accent-soft 气泡，无 ring；当前轮只提高底纹浓度，不加边框。助手消息保持无气泡全宽正文。
-- Composer 使用 panel 底色、16px 圆角、无边框；focus-within 显示 2px accent focus ring 和柔和外扩。拖拽态使用 accent-soft 底色与文字提示，不依赖虚线边框。
+- Composer 使用 panel 底色、16px 圆角、无边框；聚焦时不显示整块包边/ring，由文本光标与内部控件自身焦点提示交互状态。拖拽态使用 accent-soft 底色与文字提示，不依赖虚线边框。
 - @ 提及、斜杠菜单、模型菜单使用 overlay 底色 + 阴影，移除 ring；选中的候选项使用 accent-soft。
 - 错误消息使用 danger-soft 底纹 + danger 图标/文字，不使用高对比红色描边。
 - 代码块使用 panel 底色、无外框、语言标签与复制按钮；diff 使用低对比红/绿行底纹和语义标记，不依赖分隔线。

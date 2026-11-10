@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  effectiveExecutionDisplayMode,
   executionAutoExpanded,
-  executionDisplayLabel,
   executionHidden,
   normalizeExecutionDisplayMode,
 } from "./executionDisplay";
@@ -12,12 +10,6 @@ describe("execution display modes", () => {
     expect(normalizeExecutionDisplayMode("")).toBe("auto");
     expect(normalizeExecutionDisplayMode("stale")).toBe("auto");
     expect(normalizeExecutionDisplayMode(" CONCISE ")).toBe("concise");
-  });
-
-  it("prefers a valid session override but falls back to the global mode", () => {
-    expect(effectiveExecutionDisplayMode("concise", "detailed")).toBe("detailed");
-    expect(effectiveExecutionDisplayMode("concise", "stale")).toBe("concise");
-    expect(effectiveExecutionDisplayMode("stale", "")).toBe("auto");
   });
 
   it("expands according to each mode", () => {
@@ -34,10 +26,5 @@ describe("execution display modes", () => {
     expect(executionHidden("none", "done")).toBe(true);
     expect(executionHidden("none", "confirm")).toBe(false);
     expect(executionHidden("concise", "done")).toBe(false);
-  });
-
-  it("has labels for every mode", () => {
-    expect(executionDisplayLabel("auto")).toBe("自动");
-    expect(executionDisplayLabel("none")).toBe("无");
   });
 });

@@ -107,7 +107,8 @@
     box-shadow: var(--shadow-panel);
 }
 @utility shadow-composer {
-    box-shadow: var(--shadow-composer);
+    --tw-shadow: var(--shadow-composer);
+    box-shadow: var(--tw-shadow);
 }
 @utility shadow-pop {
     box-shadow: var(--shadow-pop);
