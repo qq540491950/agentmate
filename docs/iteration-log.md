@@ -4,6 +4,44 @@
 
 ## 视觉测试与体验设计
 
+### 第二百四十八轮迭代：修复 outline 按钮与承载面板同色（已实施）
+
+依据：用户截图反馈设置「诊断」里的批量导出、审计日志与最近日志按钮完全和背景没区别，且怀疑全站按钮都有该问题。浏览器桩矩阵复测确认：Nord 深色下 `outline` 与所在 `panel` 卡片均为 `#434C5E`，对比度 1.0，且无边框或阴影；按钮共 97 处，其中 `outline` 约 44 处，属于全局组件缺陷。
+
+**实现要点**
+
+- **根因**：#80 表面迁移时，设置卡片升级为 `panel`，`Button.outline` 也改为 `bg-panel`，同时移除了旧控件边界；静止态从“层级差”退化为完全同色。`--control` 原是透明度混合 token，浅色下与 `panel` 重合，无法提供稳定控件面。
+- **修复**：在四套主题 × 明暗模式中固化 `--control`，暴露为 Tailwind 语义色；`outline` 改用 `bg-control`。 eight 个 `control/panel` 对比度均达到 1.16–1.28，前景文字对比度均超过 6.4:1。Nord 深色实测按钮/面板为 1.169。
+- **回归**：`themeContract.test.ts` 新增控件面契约，防止 `control` 缺失、与 `panel` 重合或正文不可读。`secondary` 维持 `panel` 级语义，本轮不扩大变体视觉变更。
+
+**测试证据**
+
+- 修复前 `npx vitest run src/lib/themeContract.test.ts` 8 个控件契约用例失败；修复后 24/24 通过。
+- 浏览器桩实测 `outline`/`panel` 背景由 1.0 变为 1.169，视觉矩阵截图可见静止态按钮独立于卡片。
+
+### 第二百四十七轮迭代：修复带图片用户消息被拆成多个伪轮次（已实施）
+
+依据：用户截图显示同一轮「文字 + 2 张图片」在左侧轮次导航中出现三条横杠，悬停时三条同时变亮、变长；消息区出现重复的 `(仅附件)` 标签，右侧两张图片卡片也各自独立成块。
+
+**根因**
+
+- 后端 `renderEvent` 把同一用户事件中的每个 `InlineData` 都渲染成一条独立的 `kind:"user"` 消息，且所有消息复用 `ev.ID-seq`。文字、图片 1、图片 2 因此变成 3 条同 ID 的用户消息。
+- 前端 `groupTurns` 按每条用户消息切分轮次，轮次导航又直接使用 `header.id` 作为 React key 与 hover/active 匹配键，导致三条导航栏同时命中。
+- 重复 ID 还会产生重复的 `turn-<id>` 锚点，点击导航条时无法唯一定位。
+
+**实现要点**
+
+- 后端聚合：`renderEvent` 在用户事件内累计 `Attachments`，与文字一起由一次 `flushText` 输出为单条用户消息；附件编号从 `attachment-1` 开始，与实时流 `attachmentsOut` 保持一致。纯图片消息同样只生成一条用户消息。
+- 前端防御：`groupTurns` 遇到连续、同 ID 的用户消息时合并文字、附件、reasoning 与时间戳，避免旧历史或其它入口再次制造重复轮次和重复 React key。
+- 不修改数据库：图片仍存于原始 ADK 事件，修复后重新读取历史即可恢复为单轮。
+
+**测试证据**
+
+- 新增 `chatservice_render_test.go`：文字 + 2 图片断言为 1 条用户消息、2 个附件且 ID 唯一；纯图片事件断言为 1 条用户消息。
+- `TestSendWithImageAttachment` 增加断言：文字 + 图片的历史只能有 1 条用户消息，且文字未丢失。
+- `chatUtils.test.ts` 增加同 ID 用户消息合并用例：只产生 1 个 turn，文字与两张附件都保留。
+- `go test ./internal/...`、`go test -race ./internal/... .`、`go vet ./internal/... .` 通过；`npx tsc --noEmit` 0 错；`npm test` 31 个文件 / 234 个用例全绿；`npm run build` 与 `wails3 build` 通过。
+
 ### 第二百四十六轮迭代：修复代码块普通标识符被高亮器吞掉（已实施）
 
 依据：用户截图反馈助手回复中的 `bash` 代码块只剩 `&& -- && &&`。核对 `sessions.db` 中的原始事件，模型输出本身是完整命令 `cd frontend && npx tsc --noEmit && npm test && npm run build`，问题出在前端渲染。

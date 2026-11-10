@@ -32,19 +32,27 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 	}
 	var textBuf strings.Builder
 	var thoughtBuf strings.Builder
+	var attachments []AttachmentOut
 	flushText := func() {
-		if textBuf.Len() > 0 {
-			m := base
-			m.Kind = role
-			m.Text = textBuf.String()
-			if role == "user" {
-				// The level rides on the user message's state delta; older
-				// turns recorded none and simply show none.
-				m.Reasoning = eventReasoning(ev)
-			}
-			out = append(out, m)
-			textBuf.Reset()
+		if textBuf.Len() == 0 && len(attachments) == 0 {
+			return
 		}
+		m := base
+		m.Kind = role
+		m.Text = textBuf.String()
+		if role == "user" {
+			// The level rides on the user message's state delta; older
+			// turns recorded none and simply show none.
+			m.Reasoning = eventReasoning(ev)
+			// Inline images are parts of this same user event. Keep them on
+			// one message: splitting each image into its own user message
+			// duplicated the event ID and made the frontend render phantom
+			// turns that all highlighted together in the turn rail.
+			m.Attachments = attachments
+		}
+		out = append(out, m)
+		textBuf.Reset()
+		attachments = nil
 	}
 	flushThought := func() {
 		if thoughtBuf.Len() > 0 {
@@ -103,16 +111,16 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 			m.ToolResp = p.FunctionResponse.Response
 			out = append(out, m)
 		case p.InlineData != nil && p.InlineData.Data != nil:
-			flushText()
 			if role == "user" {
-				m := base
-				m.Kind = "user"
-				m.Attachments = []AttachmentOut{{
-					Name:    "attachment-" + fmt.Sprint(len(out)+1),
+				attachments = append(attachments, AttachmentOut{
+					Name:    fmt.Sprintf("attachment-%d", len(attachments)+1),
 					MIME:    p.InlineData.MIMEType,
 					DataURL: "data:" + p.InlineData.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(p.InlineData.Data),
-				}}
-				out = append(out, m)
+				})
+			} else {
+				// Assistant inline data is not rendered in chat history; keep
+				// the existing text-boundary behavior for those events.
+				flushText()
 			}
 		case p.Text != "" && !p.Thought:
 			textBuf.WriteString(p.Text)

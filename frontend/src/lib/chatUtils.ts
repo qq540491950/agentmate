@@ -206,6 +206,22 @@ export function groupTurns(items: ChatItem[]): RenderItem[] {
   };
   for (const item of items) {
     if (item.kind === "message" && item.message.kind === "user") {
+      // User events that carried text plus images used to be rendered as
+      // several messages with the same id. Merge those parts instead of
+      // creating phantom turns: duplicate ids also collapse the turn rail's
+      // hover/active matching and React keys.
+      if (header && item.message.id === header.id) {
+        const current = header;
+        const text = [current.text, item.message.text].filter(Boolean).join("\n");
+        header = {
+          ...current,
+          text,
+          attachments: [...(current.attachments ?? []), ...(item.message.attachments ?? [])],
+          reasoning: current.reasoning || item.message.reasoning,
+          timestamp: current.timestamp || item.message.timestamp,
+        };
+        continue;
+      }
       flush();
       header = item.message;
       continue;

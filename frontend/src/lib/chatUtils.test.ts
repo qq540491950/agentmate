@@ -58,6 +58,29 @@ describe("groupTurns", () => {
     expect(chatItemEndTs(turn)).toBe("2026-11-08T03:00:00Z");
     expect(chatItemEndTs({ ...turn, body: [] })).toBe("2026-11-08T01:00:00Z");
   });
+
+  it("merges split user-event parts that carried the same id", () => {
+    const items = groupToolMessages([
+      msg({ id: "u1", kind: "user", author: "user", text: "看这两张图" }),
+      msg({
+        id: "u1", kind: "user", author: "user", text: "",
+        attachments: [{ name: "a.png", mime: "image/png", dataUrl: "data:image/png;base64,AA==" }],
+      }),
+      msg({
+        id: "u1", kind: "user", author: "user", text: "",
+        attachments: [{ name: "b.png", mime: "image/png", dataUrl: "data:image/png;base64,AA==" }],
+      }),
+      msg({ id: "a1", kind: "assistant", text: "收到" }),
+    ]);
+
+    const turns = groupTurns(items);
+    expect(turns).toHaveLength(1);
+    const turn = turns[0] as TurnItem;
+    expect(turn.id).toBe("u1");
+    expect(turn.header.text).toBe("看这两张图");
+    expect(turn.header.attachments?.map((a) => a.name)).toEqual(["a.png", "b.png"]);
+    expect(turn.body).toHaveLength(1);
+  });
 });
 
 describe("isAwaitingReply", () => {

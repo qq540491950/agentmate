@@ -266,8 +266,18 @@ func TestSendWithImageAttachment(t *testing.T) {
 		t.Fatal(err)
 	}
 	var atts []AttachmentOut
+	userMessages := 0
 	for _, m := range msgs {
+		if m.Kind == "user" {
+			userMessages++
+			if m.Text != "这张图里是什么？" {
+				t.Fatalf("user history lost its text: %+v", m)
+			}
+		}
 		atts = append(atts, m.Attachments...)
+	}
+	if userMessages != 1 {
+		t.Fatalf("text + image should render as one user turn, got %d: %+v", userMessages, msgs)
 	}
 	if len(atts) != 1 || atts[0].MIME != "image/png" || !strings.HasPrefix(atts[0].DataURL, "data:image/png;base64,") {
 		t.Fatalf("history attachments = %+v", atts)
