@@ -79,7 +79,7 @@ function CopyButton({ text, className, iconOnly = false, title }: {
   return (
     <button
       className={cn(
-        "inline-flex items-center gap-1 rounded-md border bg-background/80 px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:text-foreground",
+        "inline-flex items-center gap-1 rounded-md bg-panel/80 px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
         className,
       )}
       title={title ?? label}
@@ -120,7 +120,7 @@ function CodeBlock({ children, className, node, ...rest }: any) {
     );
   }
   return (
-    <div className="group/code relative my-3 overflow-hidden rounded-lg bg-muted/40">
+    <div className="group/code relative my-3 overflow-hidden rounded-lg bg-panel/60">
       <div className="flex items-center justify-between px-3 py-1.5">
         <span className="font-mono text-2xs text-muted-foreground">{match?.[1] ?? "text"}</span>
         <CopyButton text={raw} className="border-0 bg-transparent opacity-0 transition-opacity group-hover/code:opacity-100" />
@@ -144,7 +144,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({ content, classNam
           code: CodeBlock,
           pre: ({ children }: any) => <>{children}</>,
           a: ({ href, children }: any) => (
-            <a href={href} target="_blank" rel="noreferrer" className="text-brand underline underline-offset-2">
+            <a href={href} target="_blank" rel="noreferrer" className="text-accent-text underline underline-offset-2">
               {children}
             </a>
           ),
@@ -154,7 +154,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({ content, classNam
           h2: ({ children }: any) => <h2 className="mt-4 text-base font-semibold">{children}</h2>,
           h3: ({ children }: any) => <h3 className="mt-3 text-md font-semibold">{children}</h3>,
           blockquote: ({ children }: any) => (
-            <blockquote className="border-l-2 border-border pl-3 text-muted-foreground">{children}</blockquote>
+            <blockquote className="border-l-2 border-border/60 pl-3 text-muted-foreground">{children}</blockquote>
           ),
           table: ({ children }: any) => (
             <div className="my-3 overflow-x-auto rounded-lg border border-border">

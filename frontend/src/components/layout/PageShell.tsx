@@ -57,8 +57,7 @@ export function Section({ title, description, actions, className, children }: {
 }
 
 /** SettingRow is the label-left / control-right row used across settings.
- *  Bordered like a compact field group so it reads the same inside cards and
- *  standalone. */
+ *  It uses spacing and a hover surface, never a persistent divider. */
 export function SettingRow({ label, description, children, className }: {
   label: string;
   description?: string;
@@ -66,7 +65,7 @@ export function SettingRow({ label, description, children, className }: {
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center justify-between gap-4 rounded-lg border border-border px-3.5 py-3", className)}>
+    <div className={cn("flex items-center justify-between gap-4 rounded-lg px-3.5 py-3 transition-colors hover:bg-accent/60", className)}>
       <div className="min-w-0">
         <div className="text-sm font-medium">{label}</div>
         {description && <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</div>}

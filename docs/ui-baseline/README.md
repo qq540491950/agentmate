@@ -1,27 +1,39 @@
 # UI 截图基线
 
-浏览器 stub（`npm run stub`，:9246/stub/index.html）在 1280×800 视口下的参考截图，用于走查对比。
-这些是**人工对比用的参考图**，不是像素级 diff 基线；改动 UI 后建议重走一遍并对照。
+> 2026-11-10 起以 Nord 表面契约截图为主。旧 JPG 只保留为迁移前历史，不再作为实现对照。
+
+浏览器 stub（`npm run stub`，`:9246/stub/index.html`）在 **1280×800** 视口下的参考截图，用于人工走查。不是像素级 diff 基线。
+
+## Nord 表面契约基线
 
 | 文件 | 内容 |
 |---|---|
-| `chat-dark-1280.jpg` | 对话页（深色）：执行组、确认卡、代码高亮、composer |
-| `chat-light-1280.jpg` | 对话页（浅色）：同场景 |
-| `settings-dark-1280.jpg` | 设置·通用（深色）：双列网格 + SettingRow |
-| `agents-dark-1280.jpg` | 设置·Agents（深色）：PageHeader + 行式列表 |
+| `nord-dark-chat-1280.jpg` | 对话页 / Nord 深色 |
+| `nord-light-chat-1280.jpg` | 对话页 / Nord 浅色 |
+| `settings-nord-dark-1280.jpg` | 设置·通用 / Nord 深色（主题画廊） |
+| `settings-nord-light-1280.jpg` | 设置·通用 / Nord 浅色（主题画廊） |
+| `agents-nord-dark-1280.jpg` | 设置·Agents / Nord 深色（行式列表） |
+| `paper-light-chat-1280.jpg` | 对话页 / 纸墨浅色 |
+| `contrast-dark-chat-1280.jpg` | 对话页 / 高对比深色 |
+
+旧 `chat-dark-1280.jpg`、`chat-light-1280.jpg`、`settings-dark-1280.jpg`、`agents-dark-1280.jpg` 是 Nord 实施前的历史截图。
 
 ## 重新生成
 
-1. `npm run stub`（frontend/），浏览器打开 `http://localhost:9246/stub/index.html`，视口 1280×800。
-2. 会话种子含 HITL 确认卡；如需对话流示例，可向当前会话注入一条 `chat:stream` 的 `message` 事件。
-3. 按上表逐页截图，替换同名文件；深/浅切换用侧栏底部的主题按钮。
+1. `cd frontend && npm run stub`。
+2. 固定视口 `1280×800`，打开 `http://127.0.0.1:9246/stub/index.html?theme=nord&mode=dark`。
+3. `theme` 支持 `nord | graphite | paper | contrast`，`mode` 支持 `light | dark | system`；设置页点击侧栏齿轮进入，Agents 页再从设置左栏进入。
+4. 截图时保持 100% 缩放，不使用浏览器缩放或移动端视口。
+5. 新增/替换截图后同步本表；旧截图不要覆盖，除非明确在做历史清理。
 
-## 走查清单（每轮 UI 改动后）
+## 走查清单
 
-- [ ] 深浅两套主题下分别查看对话页与设置页；
+- [ ] 布局 chrome（顶栏、侧栏、会话头、设置导航）没有常驻 border/ring；
+- [ ] 卡片、设置行、管理列表行、工具组、对话框、popover 没有布局级描边；
+- [ ] 选中态是 `accent-soft` 底纹 + `accent-text`，不是左侧竖条；
+- [ ] `canvas` / `chrome` / `panel` 相邻表面在 100% 亮度下可感知但无明显色块跳变；
 - [ ] 正文 ≥ 14px、元数据 ≥ 12px，字号设置三档均生效；
-- [ ] 消息内嵌套容器 ≤ 2 层，无「框套框」；
-- [ ] 全屏只有一个品牌色焦点（当前会话行 / 发送按钮）；
-- [ ] 图标按钮有 `aria-label`，键盘 Tab 有可见焦点环；
-- [ ] `prefers-reduced-motion` 下无位移动画；
+- [ ] 确认/错误/警告/成功同时有图标或文字，不只靠颜色；
+- [ ] 键盘 Tab 有可见 focus ring，主题画廊可用方向键切换；
+- [ ] `prefers-reduced-motion` 下无长位移动画；
 - [ ] `npx tsc --noEmit && npm test && npm run build` 全绿。

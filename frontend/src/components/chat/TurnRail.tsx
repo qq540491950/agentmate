@@ -171,7 +171,7 @@ export const TurnRail = memo(function TurnRail({ turns, activeId, onSelect, clas
         <div
           data-slot="turn-rail-label"
           aria-hidden="true"
-          className="pointer-events-none fixed z-[80] truncate rounded-md border border-border-strong bg-popover px-2.5 py-1 text-xs font-medium text-popover-foreground shadow-pop animate-in fade-in-0 duration-100"
+          className="pointer-events-none fixed z-[80] truncate rounded-md bg-overlay px-2.5 py-1 text-xs font-medium text-popover-foreground shadow-pop animate-in fade-in-0 duration-100"
           style={{ top: label.top, left: label.left, maxWidth: label.maxWidth }}
         >
           {railLabelText(label.turn.fullText, label.index)}

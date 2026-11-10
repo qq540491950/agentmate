@@ -46,7 +46,7 @@ const statusMeta: Record<WorkspaceChangeStatus, { label: string; className: stri
   [WorkspaceChangeStatus.$zero]: { label: "", className: "" },
   [WorkspaceChangeStatus.ChangeAdded]: { label: "新增", className: "text-success" },
   [WorkspaceChangeStatus.ChangeModified]: { label: "修改", className: "text-warning" },
-  [WorkspaceChangeStatus.ChangeDeleted]: { label: "删除", className: "text-destructive" },
+  [WorkspaceChangeStatus.ChangeDeleted]: { label: "删除", className: "text-danger-text" },
 };
 
 function FileRowBody({ file }: { file: WorkspaceFileInfo }) {
@@ -87,8 +87,8 @@ function FileRow({ file, sessionID, onPreview }: {
   return (
     <div
       className={cn(
-        "flex items-stretch rounded-lg border bg-card/40",
-        canPreview && "transition-colors hover:border-brand/40 hover:bg-accent/40",
+        "flex items-stretch rounded-lg bg-panel/60",
+        canPreview && "transition-colors hover:bg-accent",
       )}
       data-file-path={file.path}
     >
@@ -104,7 +104,7 @@ function FileRow({ file, sessionID, onPreview }: {
       {!canPreview && (
         <button
           type="button"
-          className="flex shrink-0 items-center gap-1 border-l px-2.5 text-2xs text-muted-foreground transition-colors hover:text-foreground"
+          className="flex shrink-0 items-center gap-1 px-2.5 text-2xs text-muted-foreground transition-colors hover:text-foreground"
           aria-label={`在文件管理器中显示 ${file.name}`}
           title="在文件管理器中显示"
           onClick={() => {
@@ -149,23 +149,23 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 border-t px-3 py-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 bg-panel/40 px-3 py-3 text-xs text-muted-foreground">
         <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在计算 diff…
       </div>
     );
   }
   if (error) {
-    return <div className="break-words border-t px-3 py-2 text-xs text-destructive">{error}</div>;
+    return <div className="break-words bg-danger-soft px-3 py-2 text-xs text-danger-text">{error}</div>;
   }
   if (!result) return null;
   if (result.unsupported) {
     return (
-      <div className="border-t bg-muted/30 px-3 py-2 text-2xs text-muted-foreground">{result.unsupported}</div>
+      <div className="bg-panel/40 px-3 py-2 text-2xs text-muted-foreground">{result.unsupported}</div>
     );
   }
   if (!result.hunks?.length) {
     return (
-      <div className="border-t bg-muted/30 px-3 py-2 text-2xs text-muted-foreground">与任务基线一致，无行级变更。</div>
+      <div className="bg-panel/40 px-3 py-2 text-2xs text-muted-foreground">与任务基线一致，无行级变更。</div>
     );
   }
   // Unified patch text for「复制 Patch」— mirrors what a git diff shows.
@@ -180,11 +180,11 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
     .join("\n");
 
   return (
-    <div className="border-t bg-muted/20">
+    <div className="bg-panel/40">
       <div className="max-h-80 overflow-auto font-mono text-2xs leading-4">
         {result.hunks.map((h, hi) => (
           <div key={hi}>
-            <div className="sticky top-0 z-10 bg-muted/90 px-2 py-0.5 text-3xs text-muted-foreground">
+            <div className="sticky top-0 z-10 bg-panel/90 px-2 py-0.5 text-3xs text-muted-foreground">
               @@ -{h.oldStart},{h.oldLines} +{h.newStart},{h.newLines} @@
             </div>
             {(h.lines ?? []).map((l, li) => (
@@ -192,8 +192,8 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
                 key={li}
                 className={cn(
                   "flex",
-                  l.type === "add" && "bg-success/10",
-                  l.type === "del" && "bg-destructive/10",
+                  l.type === "add" && "bg-success-soft",
+                  l.type === "del" && "bg-danger-soft",
                 )}
               >
                 <span className="w-9 shrink-0 select-none pr-1 text-right text-muted-foreground/50">{l.oldNo || ""}</span>
@@ -202,7 +202,7 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
                   className={cn(
                     "min-w-0 flex-1 whitespace-pre-wrap break-all pr-2",
                     l.type === "add" && "text-success",
-                    l.type === "del" && "text-destructive",
+                    l.type === "del" && "text-danger-text",
                   )}
                 >
                   {l.text}
@@ -212,9 +212,9 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-3 border-t px-3 py-1.5 font-mono text-3xs text-muted-foreground">
+      <div className="flex items-center gap-3 bg-panel/50 px-3 py-1.5 font-mono text-3xs text-muted-foreground">
         <span className="text-success">+{result.addedLines}</span>
-        <span className="text-destructive">-{result.removedLines}</span>
+        <span className="text-danger-text">-{result.removedLines}</span>
         {result.truncated && <span className="font-sans">内容过长已截断</span>}
         <CopyButton text={patch} className="ml-auto border-0 bg-transparent" />
       </div>
@@ -233,13 +233,13 @@ function ChangeRow({ file, sessionID, onPreview }: {
   const [diffOpen, setDiffOpen] = useState(false);
   const canPreview = file.previewable && file.status !== WorkspaceChangeStatus.ChangeDeleted;
   return (
-    <div className={cn("rounded-lg border bg-card/40", diffOpen && "border-brand/50")} data-file-path={file.path}>
+    <div className={cn("rounded-lg bg-panel/60", diffOpen && "bg-accent-soft")} data-file-path={file.path}>
       <div className="flex items-stretch">
         <button
           type="button"
           className={cn(
             "flex min-w-0 flex-1 items-start gap-2 px-2.5 py-2 text-left",
-            canPreview && "hover:bg-accent/40",
+            canPreview && "hover:bg-accent",
           )}
           disabled={!canPreview}
           onClick={() => canPreview && onPreview(file.path)}
@@ -249,13 +249,13 @@ function ChangeRow({ file, sessionID, onPreview }: {
         </button>
         <button
           type="button"
-          className="flex shrink-0 items-center gap-1 border-l px-2.5 text-2xs text-muted-foreground transition-colors hover:text-foreground"
+          className="flex shrink-0 items-center gap-1 px-2.5 text-2xs text-muted-foreground transition-colors hover:text-foreground"
           aria-expanded={diffOpen}
           aria-label={diffOpen ? `收起 ${file.name} 的行级 diff` : `查看 ${file.name} 的行级 diff`}
           title={file.status === WorkspaceChangeStatus.ChangeDeleted ? "查看被删除的内容" : "与任务基线对比"}
           onClick={() => setDiffOpen((v) => !v)}
         >
-          <FileDiff className={cn("h-3.5 w-3.5", diffOpen && "text-brand")} />
+          <FileDiff className={cn("h-3.5 w-3.5", diffOpen && "text-accent-text")} />
           Diff
         </button>
       </div>
@@ -347,13 +347,13 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/35 lg:hidden" onClick={onClose} aria-hidden />
+      <div className="fixed inset-0 z-40 bg-[var(--scrim)] lg:hidden" onClick={onClose} aria-hidden />
       <aside
-        className="fixed inset-y-0 right-0 z-50 flex w-[min(92vw,420px)] shrink-0 flex-col border-l bg-background shadow-xl lg:static lg:z-auto lg:h-full lg:w-[380px] lg:shadow-none"
+        className="fixed inset-y-0 right-0 z-50 flex w-[min(92vw,420px)] shrink-0 flex-col bg-chrome shadow-xl lg:static lg:z-auto lg:h-full lg:w-[380px] lg:shadow-none"
         aria-label="任务结果区"
       >
-        <div className="flex items-center gap-2 border-b px-3 py-2.5">
-          <FolderOpen className="h-4 w-4 shrink-0 text-brand" />
+        <div className="flex items-center gap-2 bg-chrome px-3 py-2.5">
+          <FolderOpen className="h-4 w-4 shrink-0 text-accent-text" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 text-sm font-medium">
               任务结果
@@ -382,7 +382,7 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
           </Button>
         </div>
 
-        <div className="grid grid-cols-3 border-b px-2" role="tablist" aria-label="任务结果视图">
+        <div className="grid grid-cols-3 gap-1 bg-chrome px-2 py-1" role="tablist" aria-label="任务结果视图">
           {([
             ["files", "全部文件", files.length],
             ["artifacts", "产物", artifacts.length],
@@ -397,8 +397,8 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
               aria-controls={tab === value ? `task-panel-${value}` : undefined}
               tabIndex={tab === value ? 0 : -1}
               className={cn(
-                "border-b-2 px-1 py-2 text-xs transition-colors",
-                tab === value ? "border-brand font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+                "rounded-md px-1 py-2 text-xs transition-colors",
+                tab === value ? "bg-accent-soft font-medium text-accent-text" : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
               onClick={() => setTab(value)}
               onKeyDown={(e) => onTabKeyDown(e, value)}
@@ -416,7 +416,7 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
           aria-live="polite"
         >
           {tab === "files" && (
-            <div className="border-b p-2">
+            <div className="bg-chrome p-2">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -431,14 +431,14 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
           )}
 
           {activeSnapshot?.truncated && (
-            <div className="flex items-start gap-2 border-b bg-warning/10 px-3 py-2 text-2xs text-warning dark:text-warning">
+            <div className="flex items-start gap-2 bg-warning-soft px-3 py-2 text-2xs text-warning">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               已发现 {activeSnapshot.discovered} 个文件，列表已截断；请缩小工作区范围后刷新。
             </div>
           )}
 
           {tab === "changes" && activeSnapshot && (activeSnapshot.added + activeSnapshot.modified + activeSnapshot.deleted > 0) && (
-            <div className="flex flex-wrap gap-1.5 border-b px-3 py-2" role="group" aria-label="变更筛选">
+            <div className="flex flex-wrap gap-1.5 bg-chrome px-3 py-2" role="group" aria-label="变更筛选">
               {([
                 ["all", "全部", activeSnapshot.added + activeSnapshot.modified + activeSnapshot.deleted],
                 [WorkspaceChangeStatus.ChangeAdded, "新增", activeSnapshot.added],
@@ -450,8 +450,8 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
                   type="button"
                   aria-pressed={changeFilter === value}
                   className={cn(
-                    "rounded-full border px-2 py-0.5 text-3xs transition-colors",
-                    changeFilter === value ? "border-brand bg-brand/10 text-foreground" : "text-muted-foreground hover:text-foreground",
+                    "rounded-full px-2 py-0.5 text-3xs transition-colors",
+                    changeFilter === value ? "bg-accent-soft text-accent-text" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                   onClick={() => setChangeFilter(value)}
                 >
@@ -469,7 +469,7 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
                 </div>
               )}
               {!loading && error && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                <div className="rounded-lg bg-danger-soft p-3 text-xs text-danger-text">
                   <div className="mb-1 font-medium">无法读取任务结果</div>
                   <div className="break-words">{error}</div>
                   <Button size="sm" variant="outline" className="mt-2 h-7" onClick={() => setManualNonce((n) => n + 1)}>
@@ -491,7 +491,7 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
           </ScrollArea>
 
           {activeSnapshot && (
-            <div className="border-t px-3 py-1.5 text-3xs text-muted-foreground">
+            <div className="bg-panel/40 px-3 py-1.5 text-3xs text-muted-foreground">
               已发现 {activeSnapshot.discovered} 个文件 · 基线 {fmtTime(activeSnapshot.baselineAt)} · 刷新于 {fmtTime(activeSnapshot.refreshedAt)}
             </div>
           )}

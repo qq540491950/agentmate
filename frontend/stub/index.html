@@ -4,6 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>AgentMate — IPC Stub</title>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem("wb-theme-prefs");
+          var prefs = raw ? JSON.parse(raw) : {};
+          var presets = ["nord", "graphite", "paper", "contrast"];
+          var modes = ["light", "dark", "system"];
+          var params = new URLSearchParams(window.location.search);
+          if (presets.indexOf(params.get("theme")) >= 0) prefs.themePreset = params.get("theme");
+          if (modes.indexOf(params.get("mode")) >= 0) prefs.themeMode = params.get("mode");
+          var preset = presets.indexOf(prefs.themePreset) >= 0 ? prefs.themePreset : "nord";
+          var mode = modes.indexOf(prefs.themeMode) >= 0 ? prefs.themeMode : "dark";
+          var dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.dataset.theme = preset;
+          document.documentElement.classList.toggle("dark", dark);
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        } catch (error) {
+          document.documentElement.dataset.theme = "nord";
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

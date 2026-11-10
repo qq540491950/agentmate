@@ -66,9 +66,9 @@ describe("TurnBlock", () => {
     const blockTag = openingTag(html, "turn-block");
     const bubbleTag = openingTag(html, "user-bubble-body");
 
-    expect(bubbleTag).toContain("bg-brand/15");
-    expect(bubbleTag).toContain("ring-brand/35");
-    expect(blockTag).not.toContain("ring-brand");
+    expect(bubbleTag).toContain("bg-accent-soft");
+    expect(bubbleTag).not.toContain("ring-");
+    expect(blockTag).not.toContain("ring-");
   });
 
   it("首包前在用户气泡下方显示思考状态，且不新增消息正文", () => {

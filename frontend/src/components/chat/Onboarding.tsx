@@ -7,9 +7,9 @@ export function Onboarding({ onOpenSettings }: { onOpenSettings: (tab?: Settings
     { n: 2, title: "直接开聊", desc: "输入消息立即对话；@ 可指定助手、团队或远程 Agent" },
   ];
   return (
-    <div className="mx-auto mt-12 max-w-md rounded-2xl border border-border bg-card p-6 shadow-card">
+    <div className="mx-auto mt-12 max-w-md rounded-2xl bg-panel p-6">
       <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-text">
           <Sparkles className="h-5 w-5" />
         </span>
         <div className="min-w-0">
@@ -22,9 +22,9 @@ export function Onboarding({ onOpenSettings }: { onOpenSettings: (tab?: Settings
           <button
             key={s.n}
             onClick={s.n === 1 ? () => onOpenSettings("models") : undefined}
-            className="flex w-full items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-brand/40 hover:bg-brand/5"
+            className="flex w-full items-center gap-3 rounded-lg bg-panel/60 p-3 text-left transition-colors hover:bg-accent"
           >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-xs font-semibold text-brand">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent-text">
               {s.n}
             </span>
             <span className="min-w-0 flex-1">

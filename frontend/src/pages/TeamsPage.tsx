@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2, Users } from "lucide-react";
+import { Compass, Crown, Globe2, Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
@@ -34,11 +34,12 @@ function TeamTopology({ team, agentName, remoteName, modelName }: {
     ...(team.remoteMemberIds ?? []).map((id) => ({ id, label: remoteName(id), kind: "remote" as const })),
   ];
   return (
-    <div className="rounded-lg border bg-muted/20 p-3">
+    <div className="rounded-xl bg-panel/60 p-3">
       <div className="flex flex-col items-center gap-2">
-        <div className="rounded-lg border border-brand/40 bg-brand/10 px-3 py-1.5 text-center">
-          <div className="text-xs font-semibold text-brand">
-            {isAuto ? "🧭 自动协调员" : `👑 ${agentName(team.leadAgentId)}`}
+        <div className="rounded-lg bg-accent-soft px-3 py-1.5 text-center">
+          <div className="flex items-center justify-center gap-1 text-xs font-semibold text-accent-text">
+            {isAuto ? <Compass className="h-3 w-3" /> : <Crown className="h-3 w-3" />}
+            {isAuto ? "自动协调员" : agentName(team.leadAgentId)}
           </div>
           <div className="text-3xs text-muted-foreground">
             {isAuto ? modelName(team.model) || "分派任务 · 汇总结果" : "调度成员 · 汇总结果"}
@@ -53,9 +54,11 @@ function TeamTopology({ team, agentName, remoteName, modelName }: {
                 return (
                   <div key={m.id} className="flex flex-col items-center">
                     <div className="h-2 w-px bg-border" />
-                    <div className="rounded-lg border bg-background px-2.5 py-1.5 text-center">
-                      <div className="text-xs font-medium">
-                        {isLead && "👑 "}{m.kind === "remote" && "🌐 "}{m.label}
+                    <div className="rounded-lg bg-panel/70 px-2.5 py-1.5 text-center">
+                      <div className="flex items-center justify-center gap-1 text-xs font-medium">
+                        {isLead && <Crown className="h-3 w-3 text-accent-text" />}
+                        {m.kind === "remote" && <Globe2 className="h-3 w-3 text-muted-foreground" />}
+                        {m.label}
                       </div>
                       <div className="text-3xs text-muted-foreground">
                         {isLead ? "负责人" : m.kind === "remote" ? "远程成员" : "成员"}
@@ -201,8 +204,8 @@ export function TeamsPage() {
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10">
-                    <Users className="h-4 w-4 text-brand" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft">
+                    <Users className="h-4 w-4 text-accent-text" />
                   </div>
                   <div>
                     <div className="font-medium">{t.name}</div>
@@ -254,7 +257,7 @@ export function TeamsPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label>成员 Agent（可多选）</Label>
-                <div className="grid gap-2 rounded-lg border p-3">
+                <div className="grid gap-2 rounded-lg bg-panel/60 p-3">
                   {agents.map((a) => (
                     <label key={a.id} className="flex items-center gap-2 text-sm">
                       <Checkbox
@@ -273,21 +276,23 @@ export function TeamsPage() {
               {remotes.length > 0 && (
                 <div className="grid gap-1.5">
                   <Label>远程成员（A2A，可选）</Label>
-                  <div className="grid gap-2 rounded-lg border p-3">
+                  <div className="grid gap-2 rounded-lg bg-panel/60 p-3">
                     {remotes.map((r) => (
                       <label key={r.id} className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={(editing.remoteMemberIds ?? []).includes(r.id)}
                           onCheckedChange={() => toggleRemoteMember(r.id)}
                         />
-                        <span className="font-medium">🌐 {r.name}</span>
+                        <span className="flex items-center gap-1 font-medium">
+                          <Globe2 className="h-3 w-3 text-muted-foreground" /> {r.name}
+                        </span>
                         <span className="truncate text-muted-foreground">{r.cardUrl}</span>
                       </label>
                     ))}
                   </div>
                 </div>
               )}
-              <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="flex items-center justify-between rounded-lg bg-panel/60 p-3">
                 <div>
                   <div className="text-sm font-medium">自动协调员模式</div>
                   <div className="text-xs text-muted-foreground">

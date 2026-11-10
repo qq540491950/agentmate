@@ -28,7 +28,7 @@ function Field({ label, hint, error, className, children }: {
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {children}
       {error ? (
-        <span className="text-2xs text-destructive">{error}</span>
+        <span className="text-2xs text-danger-text">{error}</span>
       ) : hint ? (
         <span className="text-2xs text-muted-foreground">{hint}</span>
       ) : null}
@@ -127,7 +127,7 @@ export function ModelRowEditor({ model, index, onSuggest, onChange }: ModelRowEd
 
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="输入类型" hint="文本始终可用">
-            <div className="flex h-8 items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-2.5">
+            <div className="flex h-8 items-center justify-between gap-2 rounded-md bg-panel/60 px-2.5">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <ImageIcon className="h-3.5 w-3.5" /> 图片输入
               </span>
@@ -159,7 +159,7 @@ export function ModelRowEditor({ model, index, onSuggest, onChange }: ModelRowEd
 
       {/* Thinking levels */}
       <section
-        className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3"
+        className="grid gap-3 rounded-xl bg-panel/60 p-3"
         aria-labelledby={`reasoning-title-${index}`}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -191,7 +191,7 @@ export function ModelRowEditor({ model, index, onSuggest, onChange }: ModelRowEd
         {r.enabled && (
           <>
             {levels.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
+              <p className="rounded-lg bg-panel/50 px-3 py-4 text-center text-xs text-muted-foreground">
                 暂无档位。点击「自动补全」按模型家族带出默认档位，或手动添加。
               </p>
             ) : (
@@ -231,7 +231,7 @@ export function ModelRowEditor({ model, index, onSuggest, onChange }: ModelRowEd
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-7 text-muted-foreground opacity-40 transition-opacity hover:text-destructive group-hover/level:opacity-100"
+                          className="h-8 w-7 text-muted-foreground opacity-40 transition-opacity hover:text-danger-text group-hover/level:opacity-100"
                           onClick={() => removeLevel(i)}
                           title="删除该档位"
                           aria-label={`删除档位 ${i + 1}`}
@@ -239,7 +239,7 @@ export function ModelRowEditor({ model, index, onSuggest, onChange }: ModelRowEd
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
-                      {err && <p className="pl-0.5 text-2xs text-destructive">{err}</p>}
+                      {err && <p className="pl-0.5 text-2xs text-danger-text">{err}</p>}
                     </div>
                   );
                 })}
@@ -249,7 +249,7 @@ export function ModelRowEditor({ model, index, onSuggest, onChange }: ModelRowEd
               </div>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-panel/40 pt-3">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-muted-foreground">默认档</span>
                 <Select

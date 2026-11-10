@@ -8,7 +8,9 @@ import {
   Download,
   ExternalLink,
   Loader2,
+  Monitor,
   Moon,
+  Palette,
   RefreshCw,
   Settings as SettingsIcon,
   Sun,
@@ -17,6 +19,16 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverAnchor, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +41,7 @@ import {
 import { Update, errText, type UpdateStatus } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { UPDATE_EVENTS } from "@/lib/updateEvents";
+import { THEME_MODES, THEME_OPTIONS } from "@/lib/theme";
 import {
   formatUpdateBytes,
   sidebarUpdateVisible,
@@ -41,18 +54,20 @@ import {
 } from "@/lib/updateUi";
 
 const BADGE_TONE: Record<UpdateBadgeTone, string> = {
-  brand: "border-brand/25 bg-brand/10 text-brand hover:bg-brand/15",
-  progress: "border-brand/20 bg-brand/[0.07] text-brand hover:bg-brand/12",
-  ready: "border-success/25 bg-success/10 text-success hover:bg-success/15",
-  error: "border-destructive/25 bg-destructive/10 text-destructive hover:bg-destructive/15",
+  brand: "bg-accent-soft text-accent-text hover:bg-accent",
+  progress: "bg-accent-soft text-accent-text hover:bg-accent",
+  ready: "bg-success/10 text-success hover:bg-success/15",
+  error: "bg-danger-soft text-danger-text hover:bg-danger/20",
 };
 
 type SidebarFooterProps = {
   version?: string;
-  isDark: boolean;
+  themePreset: string;
+  themeMode: string;
   onOpenSettings: () => void;
   onOpenHelp: () => void;
-  onToggleTheme: () => void;
+  onThemePresetChange: (preset: string) => void;
+  onThemeModeChange: (mode: string) => void;
 };
 
 /**
@@ -62,10 +77,12 @@ type SidebarFooterProps = {
  */
 export function SidebarFooter({
   version,
-  isDark,
+  themePreset,
+  themeMode,
   onOpenSettings,
   onOpenHelp,
-  onToggleTheme,
+  onThemePresetChange,
+  onThemeModeChange,
 }: SidebarFooterProps) {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
@@ -205,7 +222,7 @@ export function SidebarFooter({
   return (
     <Popover open={panelOpen} onOpenChange={onPanelOpenChange}>
       <PopoverAnchor asChild>
-        <div className="relative flex h-9 items-center gap-1 border-t border-border px-3 text-3xs text-muted-foreground">
+        <div className="relative flex h-9 items-center gap-1 bg-chrome px-3 text-3xs text-muted-foreground">
           <span
             className="min-w-0 flex-1 truncate"
             title={
@@ -225,7 +242,7 @@ export function SidebarFooter({
                   availableVersion ? `${badge.label}，${title}，v${availableVersion}` : title
                 }
                 className={cn(
-                  "inline-flex h-[21px] shrink-0 items-center gap-1 rounded-full border px-1.5 text-3xs font-semibold transition-colors",
+                  "inline-flex h-[21px] shrink-0 items-center gap-1 rounded-full px-1.5 text-3xs font-semibold transition-colors",
                   BADGE_TONE[badge.tone],
                 )}
               >
@@ -256,24 +273,52 @@ export function SidebarFooter({
             <button
               title="设置（⌘,）"
               onClick={onOpenSettings}
-              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <SettingsIcon className="h-3.5 w-3.5" />
             </button>
             <button
               title="快捷键与命令"
               onClick={onOpenHelp}
-              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <CircleHelp className="h-3.5 w-3.5" />
             </button>
-            <button
-              title="切换深色/浅色主题"
-              onClick={onToggleTheme}
-              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  title="主题与外观"
+                  aria-label="主题与外观"
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <Palette className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="start" className="w-56">
+                <DropdownMenuLabel>主题</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={themePreset} onValueChange={onThemePresetChange}>
+                  {THEME_OPTIONS.map((theme) => (
+                    <DropdownMenuRadioItem key={theme.value} value={theme.value} className="text-xs">
+                      {theme.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>明暗模式</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={themeMode} onValueChange={onThemeModeChange}>
+                  {THEME_MODES.map((mode) => (
+                    <DropdownMenuRadioItem key={mode.value} value={mode.value} className="text-xs">
+                      {mode.value === "light" ? <Sun /> : mode.value === "dark" ? <Moon /> : <Monitor />}
+                      {mode.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-xs" onSelect={onOpenSettings}>
+                  <SettingsIcon /> 外观设置…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </span>
         </div>
       </PopoverAnchor>
@@ -287,7 +332,7 @@ export function SidebarFooter({
           className="w-[300px] max-w-[calc(100vw-24px)] overflow-hidden p-0"
         >
           <div className="flex items-start gap-2.5 p-3.5 pb-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-brand/20 bg-brand/10 text-brand">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-accent-soft text-accent-text">
               {status.state === "downloading" || status.state === "verifying" || status.state === "installing" ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : status.state === "error" ? (
@@ -297,11 +342,11 @@ export function SidebarFooter({
               )}
             </span>
             <div className="min-w-0 flex-1 pt-px">
-              <div className="text-3xs font-semibold uppercase tracking-[0.12em] text-brand">
+              <div className="text-3xs font-semibold uppercase tracking-[0.12em] text-accent-text">
                 {title}
               </div>
               <div className="mt-0.5 text-ui leading-tight font-semibold tracking-[-0.01em] text-foreground">
-                AgentMate {availableVersion ? <span className="text-brand">v{availableVersion}</span> : ""}
+                AgentMate {availableVersion ? <span className="text-accent-text">v{availableVersion}</span> : ""}
               </div>
               <div className="mt-0.5 text-3xs text-muted-foreground">
                 当前版本 {currentVersion ? `v${currentVersion}` : "未知"}
@@ -319,7 +364,7 @@ export function SidebarFooter({
           </div>
 
           {status.state === "available" && status.notes && (
-            <div className="mx-3.5 mb-3 rounded-lg border border-border bg-muted/30 p-2.5">
+            <div className="mx-3.5 mb-3 rounded-lg bg-muted/50 p-2.5">
               <div className="mb-1 text-3xs font-medium text-foreground/80">本次更新</div>
               <div className="max-h-28 overflow-y-auto whitespace-pre-wrap text-2xs leading-relaxed text-muted-foreground">
                 {status.notes}
@@ -371,14 +416,14 @@ export function SidebarFooter({
           )}
 
           {status.state === "error" && (
-            <div className="mx-3.5 mb-3 rounded-lg border border-destructive/20 bg-destructive/5 p-2.5 text-2xs leading-relaxed text-muted-foreground">
-              <div className="font-medium text-destructive">更新未完成</div>
+            <div className="mx-3.5 mb-3 rounded-lg bg-danger-soft p-2.5 text-2xs leading-relaxed text-muted-foreground">
+              <div className="font-medium text-danger-text">更新未完成</div>
               <div className="mt-0.5">{status.error || "请稍后重试。"}</div>
             </div>
           )}
 
           {status.canAutoInstall === false && status.state === "available" && (
-            <div className="mx-3.5 mb-3 rounded-lg border border-border bg-muted/30 p-2.5 text-2xs leading-relaxed text-muted-foreground">
+            <div className="mx-3.5 mb-3 rounded-lg bg-muted/50 p-2.5 text-2xs leading-relaxed text-muted-foreground">
               {status.reason || "当前安装方式不支持应用内更新，请打开发布页下载。"}
             </div>
           )}
@@ -427,7 +472,7 @@ export function SidebarFooter({
             )}
           </div>
 
-          <div className="flex items-center justify-between border-t border-border px-3.5 py-2 text-3xs text-muted-foreground">
+          <div className="flex items-center justify-between bg-panel/60 px-3.5 py-2 text-3xs text-muted-foreground">
             {status.state === "available" && status.canAutoInstall ? (
               <button type="button" className="hover:text-foreground" onClick={skip}>
                 跳过此版本
@@ -457,7 +502,7 @@ export function SidebarFooter({
       >
         <AlertDialogContent className="max-w-[360px] gap-0 overflow-hidden p-0">
           <div className="flex flex-col items-center px-5 pb-3 pt-5 text-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-success/25 bg-success/10 text-success">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-success">
               <Check className="h-4 w-4" strokeWidth={2.4} />
             </div>
             <AlertDialogTitle className="mt-3 text-base">更新已准备就绪</AlertDialogTitle>
@@ -465,7 +510,7 @@ export function SidebarFooter({
               新版本已下载并完成校验。重启 AgentMate 后即可使用。
             </AlertDialogDescription>
           </div>
-          <div className="mx-5 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+          <div className="mx-5 rounded-lg bg-muted/50 px-3 py-2.5">
             <div className="flex items-center justify-between text-2xs">
               <div className="flex items-center gap-1.5 text-muted-foreground">
                 <span>AgentMate</span>
@@ -484,7 +529,7 @@ export function SidebarFooter({
           <div className="mx-5 mt-3 text-center text-2xs leading-relaxed text-muted-foreground">
             会话与设置会自动保存。若有正在运行的任务，建议先结束再重启。
           </div>
-          <AlertDialogFooter className="mt-4 border-t border-border bg-muted/30 p-3 sm:flex-row">
+          <AlertDialogFooter className="mt-4 bg-muted/40 p-3 sm:flex-row">
             <AlertDialogCancel asChild>
               <Button size="sm" variant="outline" className="flex-1 text-xs" disabled={busy}>
                 稍后重启

@@ -74,7 +74,7 @@ export function TopBar({ layout, ops, centerSlot, endSlot }: TopBarProps) {
   return (
     <header
       data-slot="topbar"
-      className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-surface-1 pr-1.5"
+      className="flex h-10 shrink-0 items-center gap-2 bg-chrome pr-1.5"
       style={dragStyle}
       onDoubleClick={(e) => {
         if (!resolved.dragRegion) return;
@@ -92,7 +92,7 @@ export function TopBar({ layout, ops, centerSlot, endSlot }: TopBarProps) {
         />
       )}
       <div data-slot="topbar-brand" className="flex items-center gap-2 pl-3">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand/15 text-brand">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent-text">
           <Sparkles className="h-3.5 w-3.5" />
         </span>
         <span className="min-w-0 truncate text-ui font-semibold">AgentMate</span>

@@ -20,10 +20,19 @@ import {
 } from "@/components/ui/select";
 import { ArtifactPreview } from "@/components/ToolCallCard";
 import { UpdateCard } from "@/components/UpdateCard";
+import { ThemeGallery } from "@/components/ThemeGallery";
 import { cn } from "@/lib/utils";
 import { SettingRow } from "@/components/layout/PageShell";
 import { buildIssueReportURL } from "@/lib/issue";
-import { ACCENTS, CHAT_WIDTHS, FONT_SCALES, applyTheme, cacheTheme, type ThemePrefs } from "@/lib/theme";
+import {
+  CHAT_WIDTHS,
+  FONT_SCALES,
+  THEME_MODES,
+  applyTheme,
+  cacheTheme,
+  prefsFromSettings,
+  type ThemePrefs,
+} from "@/lib/theme";
 import {
   EXECUTION_DISPLAY_OPTIONS, normalizeExecutionDisplayMode,
 } from "@/lib/executionDisplay";
@@ -45,7 +54,17 @@ const SETTINGS_TABS = [
 
 export type SettingsTab = (typeof SETTINGS_TABS)[number]["key"];
 
-export function SettingsPage({ initialTab, onClose, version }: { initialTab?: SettingsTab; onClose?: () => void; version?: string } = {}) {
+export function SettingsPage({
+  initialTab,
+  onClose,
+  version,
+  onAppearanceChange,
+}: {
+  initialTab?: SettingsTab;
+  onClose?: () => void;
+  version?: string;
+  onAppearanceChange?: (prefs: ThemePrefs) => void;
+} = {}) {
   const [tab, setTab] = useState<SettingsTab>(initialTab ?? "general");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [providers, setProviders] = useState<ModelProvider[]>([]);
@@ -117,13 +136,24 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
     const next = { ...settings, ...patch };
     setSettings(next);
     // Live-apply appearance changes without waiting for save.
-    if ("themeMode" in patch || "accent" in patch || "fontScale" in patch || "chatWidth" in patch) {
-      const prefs: ThemePrefs = {
-        themeMode: next.themeMode, accent: next.accent, fontScale: next.fontScale,
-        chatWidth: next.chatWidth || "medium",
-      };
+    if ("themePreset" in patch || "themeMode" in patch || "fontScale" in patch || "chatWidth" in patch) {
+      const prefs = prefsFromSettings(next);
       cacheTheme(next);
       applyTheme(prefs);
+      onAppearanceChange?.(prefs);
+      if ("themePreset" in patch || "themeMode" in patch) {
+        // Theme is a high-frequency, immediately visible preference. Persist
+        // just the theme fields from the last saved snapshot so unrelated
+        // half-typed settings are not flushed by a theme click.
+        const themeOnly = {
+          ...(savedRef.current ?? settings),
+          themePreset: next.themePreset,
+          themeMode: next.themeMode,
+        };
+        void Config.SaveSettings(themeOnly)
+          .then(() => { savedRef.current = themeOnly; })
+          .catch((e) => toast.error(`外观保存失败: ${errText(e)}`));
+      }
     }
   };
 
@@ -174,12 +204,9 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
       await Config.SaveSettings(settings);
       savedRef.current = settings;
       cacheTheme(settings);
-      applyTheme({
-        themeMode: settings.themeMode,
-        accent: settings.accent,
-        fontScale: settings.fontScale,
-        chatWidth: settings.chatWidth || "medium",
-      });
+      const prefs = prefsFromSettings(settings);
+      applyTheme(prefs);
+      onAppearanceChange?.(prefs);
       toast.success("设置已保存");
     } catch (e) {
       toast.error(`保存失败: ${errText(e)}`);
@@ -202,10 +229,11 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
   const titleModelValue = settings.titleProviderId && settings.titleModel
     ? `${settings.titleProviderId}\t${settings.titleModel}`
     : "main";
+  const previewDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
 
   return (
-    <div className="flex h-full">
-      <aside className="flex w-48 shrink-0 flex-col border-r bg-sidebar py-4 text-sidebar-foreground">
+    <div className="flex h-full bg-canvas">
+      <aside className="flex w-48 shrink-0 flex-col bg-chrome py-4 text-sidebar-foreground">
         <div className="mb-2 flex items-center justify-between px-4">
           <span className="text-sm font-semibold">设置</span>
           {onClose && (
@@ -222,8 +250,8 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
               className={cn(
                 "flex items-center rounded-md px-3 py-2 text-sm transition-colors",
                 tab === key
-                  ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
+                  ? "bg-accent-soft font-medium text-accent-text"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
               {label}
@@ -239,7 +267,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
         {tab === "mcp" && <MCPPage />}
         {tab === "models" && <ModelsPage />}
         {(tab === "general" || tab === "knowledge" || tab === "data" || tab === "about") && (
-        <div className="h-full overflow-y-auto p-6">
+        <div className="h-full overflow-y-auto bg-canvas p-6">
       {/* 双列网格按列内流式排布（items-start 防止同行矮卡被撑高）；
           单卡片页（知识库/关于）保持单列宽度，避免右半屏空置。 */}
       <div className={cn("mx-auto", tab === "general" || tab === "data" ? "max-w-[clamp(64rem,88%,90rem)]" : "max-w-3xl")}>
@@ -254,39 +282,60 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
             <CardTitle className="text-base">外观</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-5">
-            <div className="grid gap-1.5">
-              <Label>主题模式（夜间模式）</Label>
-              <Select value={settings.themeMode || "dark"} onValueChange={(v) => update({ themeMode: v })}>
-                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="light">浅色</SelectItem>
-                  <SelectItem value="dark">深色（夜间）</SelectItem>
-                  <SelectItem value="system">跟随系统</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid gap-2">
+              <Label>主题</Label>
+              <ThemeGallery
+                value={settings.themePreset || "nord"}
+                dark={previewDark}
+                onChange={(themePreset) => update({ themePreset })}
+              />
             </div>
 
-            <div className="grid gap-1.5">
-              <Label>强调色</Label>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(ACCENTS).map(([key, a]) => (
-                  <button
-                    key={key}
-                    title={a.label}
-                    onClick={() => update({ accent: key })}
-                    className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-full border-2 transition-transform hover:scale-105",
-                      (settings.accent || "blue") === key ? "border-foreground" : "border-transparent",
-                    )}
-                  >
-                    <span
-                      className="h-6 w-6 rounded-full border"
-                      style={{
-                        background: a.color || "var(--primary)",
+            <div className="grid gap-2">
+              <Label>明暗模式</Label>
+              <div role="radiogroup" aria-label="明暗模式" className="inline-flex w-fit rounded-lg bg-panel p-1">
+                {THEME_MODES.map((mode) => {
+                  const selected = (settings.themeMode || "dark") === mode.value;
+                  return (
+                    <button
+                      key={mode.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => update({ themeMode: mode.value })}
+                      onKeyDown={(event) => {
+                        const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+                        if (!keys.includes(event.key)) return;
+                        event.preventDefault();
+                        const radios = Array.from(
+                          event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [],
+                        );
+                        const current = radios.indexOf(event.currentTarget);
+                        let next = current;
+                        if (event.key === "Home") next = 0;
+                        else if (event.key === "End") next = radios.length - 1;
+                        else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+                          next = (current - 1 + radios.length) % radios.length;
+                        } else {
+                          next = (current + 1) % radios.length;
+                        }
+                        const nextMode = THEME_MODES[next];
+                        if (nextMode) {
+                          update({ themeMode: nextMode.value });
+                          radios[next]?.focus();
+                        }
                       }}
-                    />
-                  </button>
-                ))}
+                      className={cn(
+                        "h-7 rounded-md px-3 text-xs transition-colors",
+                        selected
+                          ? "bg-accent-soft font-medium text-accent-text"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                      )}
+                    >
+                      {mode.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -294,15 +343,20 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
               <Label>正文字号</Label>
               <div className="flex gap-2">
                 {Object.entries(FONT_SCALES).map(([key, f]) => (
-                  <Button
+                  <button
                     key={key}
-                    variant={(settings.fontScale || "md") === key ? "default" : "outline"}
-                    size="sm"
-                    className="w-16"
+                    type="button"
+                    aria-pressed={(settings.fontScale || "md") === key}
+                    className={cn(
+                      "h-7 w-16 rounded-md text-xs transition-colors",
+                      (settings.fontScale || "md") === key
+                        ? "bg-accent-soft font-medium text-accent-text"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
                     onClick={() => update({ fontScale: key })}
                   >
                     {f.label}
-                  </Button>
+                  </button>
                 ))}
               </div>
             </div>
@@ -311,15 +365,20 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
               <Label>对话栏宽</Label>
               <div className="flex gap-2">
                 {Object.entries(CHAT_WIDTHS).map(([key, w]) => (
-                  <Button
+                  <button
                     key={key}
-                    variant={(settings.chatWidth || "medium") === key ? "default" : "outline"}
-                    size="sm"
-                    className="w-16"
+                    type="button"
+                    aria-pressed={(settings.chatWidth || "medium") === key}
+                    className={cn(
+                      "h-7 w-16 rounded-md text-xs transition-colors",
+                      (settings.chatWidth || "medium") === key
+                        ? "bg-accent-soft font-medium text-accent-text"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
                     onClick={() => update({ chatWidth: key })}
                   >
                     {w.label}
-                  </Button>
+                  </button>
                 ))}
               </div>
             </div>
@@ -470,7 +529,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                 placeholder="text-embedding-3-small / BAAI/bge-large-zh-v1.5"
               />
             </div>
-            <div className="grid gap-1.5 rounded-lg border p-2.5">
+            <div className="grid gap-1.5 rounded-lg bg-panel/60 p-2.5">
               <div className="grid grid-cols-2 gap-2">
                 <Input value={kbNewName} onChange={(e) => setKbNewName(e.target.value)} placeholder="文件名（如 meeting-notes.md）" />
                 <Input value={kbNewContent} onChange={(e) => setKbNewContent(e.target.value)} placeholder="初始内容（必填）" />
@@ -526,7 +585,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                 )}
               </div>
               {kbFiles.length > 0 && (
-                <div className="grid gap-1 rounded-lg border p-2">
+                <div className="grid gap-1 rounded-lg bg-panel/60 p-2">
                   {kbFiles.map((f) => (
                     <div key={f.name} className="flex items-center justify-between gap-2 text-xs">
                       <button
@@ -540,7 +599,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                         {(f.sizeBytes / 1024).toFixed(1)} KB · {f.modTime}
                       </span>
                       <button
-                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive"
+                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-danger-text"
                         title={`删除 ${f.name}`}
                         onClick={async () => {
                           if (!window.confirm(`删除知识文件「${f.name}」？索引将同步移除该文件。`)) return;
@@ -553,7 +612,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                           }
                         }}
                       >
-                        ✕
+                        删除
                       </button>
                     </div>
                   ))}
@@ -607,7 +666,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
             <CardTitle className="text-base">长期记忆</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2">
-            <div className="flex items-center justify-between rounded-lg border p-2.5">
+            <div className="flex items-center justify-between rounded-lg bg-panel/60 p-2.5">
               <div>
                 <div className="text-sm font-medium">自动存入长期记忆</div>
                 <div className="text-xs text-muted-foreground">每轮对话结束后自动将该会话存入记忆（含工具调用摘要）</div>
@@ -842,7 +901,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
               </Button>
             </div>
             {(a2aStatuses.length ?? 0) > 0 && (
-              <div className="grid gap-1.5 rounded-lg border p-2.5">
+              <div className="grid gap-1.5 rounded-lg bg-panel/60 p-2.5">
                 {a2aStatuses.map((st) => (
                   <div key={st.agentId} className="flex items-center justify-between gap-2 text-xs">
                     <span className="truncate">
@@ -908,8 +967,8 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
             </div>
             <div className="mt-1 text-xs text-muted-foreground">本地 AI Agent 桌面应用</div>
             <UpdateCard />
-            <div className="mt-4 divide-y divide-border border-t border-border">
-              <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div className="mt-4 grid gap-1">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-panel/40 px-3 py-3">
                 <div>
                   <div className="text-sm font-medium text-foreground">版本记录</div>
                   <div className="text-xs text-muted-foreground">查看所有版本与更新说明</div>
@@ -918,7 +977,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                   查看
                 </Button>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-panel/40 px-3 py-3">
                 <div>
                   <div className="text-sm font-medium text-foreground">问题反馈</div>
                   <div className="text-xs text-muted-foreground">在浏览器打开 GitHub 表单，自动填入版本与环境</div>
@@ -928,7 +987,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
                 </Button>
               </div>
             </div>
-            <details className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
+            <details className="mt-3 rounded-lg bg-panel/40 p-3 text-xs text-muted-foreground">
               <summary className="cursor-pointer select-none hover:text-foreground">技术信息</summary>
               <div className="mt-2 grid gap-1">
                 <div>运行时：Google ADK Go v2（Runner / LLMAgent / AgentTool）</div>
@@ -942,7 +1001,7 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
       </div>
 
         {(tab === "general" || tab === "knowledge") && (
-        <div className="sticky bottom-0 mt-4 flex justify-end border-t bg-background/90 px-3 py-3 backdrop-blur">
+        <div className="sticky bottom-0 mt-4 flex justify-end bg-canvas/90 px-3 py-3 backdrop-blur">
           <Button onClick={save} disabled={saving}>保存设置</Button>
         </div>
         )}

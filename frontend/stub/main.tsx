@@ -24,11 +24,20 @@ const svc = (service: string, method: string) =>
 
 // ---- seed data ------------------------------------------------------------
 
+const query = new URLSearchParams(window.location.search);
+const queryTheme = ["nord", "graphite", "paper", "contrast"].includes(query.get("theme") ?? "")
+  ? query.get("theme")!
+  : "nord";
+const queryMode = ["light", "dark", "system"].includes(query.get("mode") ?? "")
+  ? query.get("mode")!
+  : "dark";
+
 const seedConfig = {
   settings: {
     workspaceDir: "/tmp/agentmate-workspace",
     language: "zh-CN",
-    themeMode: "dark",
+    themeMode: queryMode,
+    themePreset: queryTheme,
     accent: "blue",
     fontScale: "md",
     chatWidth: "medium",

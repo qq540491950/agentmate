@@ -7,16 +7,18 @@ describe("SidebarFooter", () => {
     const html = renderToStaticMarkup(
       <SidebarFooter
         version="0.6.3"
-        isDark
+        themePreset="nord"
+        themeMode="dark"
         onOpenSettings={vi.fn()}
         onOpenHelp={vi.fn()}
-        onToggleTheme={vi.fn()}
+        onThemePresetChange={vi.fn()}
+        onThemeModeChange={vi.fn()}
       />,
     );
 
     expect(html).toContain("AgentMate v0.6.3");
     expect(html).toContain('title="设置（⌘,）"');
     expect(html).toContain('title="快捷键与命令"');
-    expect(html).toContain('title="切换深色/浅色主题"');
+    expect(html).toContain('title="主题与外观"');
   });
 });

@@ -12,7 +12,7 @@ export function EmptyState({ icon: Icon, title, desc, className }: {
 }) {
   return (
     <div className={cn("flex flex-col items-center justify-center gap-2 px-6 py-12 text-center", className)}>
-      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-accent-text">
         <Icon className="h-5 w-5" aria-hidden />
       </span>
       <div className="text-sm font-medium">{title}</div>

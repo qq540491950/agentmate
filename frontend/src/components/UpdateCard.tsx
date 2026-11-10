@@ -155,7 +155,7 @@ export function UpdateCard() {
       : null;
 
   return (
-    <div className="mt-3 rounded-md border p-3">
+    <div className="mt-3 rounded-xl bg-panel/60 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-foreground">
           {stateLabel(status ?? ({ state: "idle" } as UpdateStatus))}
@@ -216,7 +216,7 @@ export function UpdateCard() {
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 bg-panel/40 pt-2">
         <div className="flex items-center gap-2">
           <Switch
             id="auto-check-update"

@@ -85,7 +85,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
     <div
       className={cn(
         "text-sm transition-colors",
-        flat ? "rounded-lg" : "rounded-xl border border-border bg-card/40",
+        flat ? "rounded-lg" : "rounded-xl bg-panel/60",
       )}
       data-toolcard={name}
     >
@@ -98,9 +98,9 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
       >
         <span className="shrink-0">
           {running ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-accent-text" />
           ) : failed ? (
-            <XCircle className="h-3.5 w-3.5 text-destructive" />
+            <XCircle className="h-3.5 w-3.5 text-danger-text" />
           ) : (
             <CheckCircle2 className="h-3.5 w-3.5 text-success" />
           )}
@@ -114,7 +114,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
         )}
         <span className="hidden min-w-0 flex-1 items-center gap-1 overflow-hidden sm:flex">
           {argChips.map(({ k, text }) => (
-            <span key={k} className="truncate rounded bg-background px-1.5 py-0.5 text-2xs text-muted-foreground" title={`${k}: ${text}`}>
+            <span key={k} className="truncate rounded bg-control px-1.5 py-0.5 text-2xs text-muted-foreground" title={`${k}: ${text}`}>
               {text}
             </span>
           ))}
@@ -124,7 +124,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
       {open && (
         <div className={cn(
           "space-y-2",
-          flat ? "mt-1 rounded-md bg-background/40 p-2" : "border-t border-border px-3 py-2",
+          flat ? "mt-1 rounded-md bg-control/70 p-2" : "bg-panel/40 px-3 py-2",
         )}>
           {showInput && (
             <div>
@@ -136,8 +136,8 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
                   className="border-0 bg-transparent px-1 py-0 text-3xs opacity-60 hover:opacity-100"
                 />
               </div>
-              <pre className="max-h-44 overflow-auto rounded bg-background/50 px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
-                {highlightText(inputJSON, filterQ ?? "", "bg-brand/25 text-foreground rounded-sm")}
+              <pre className="max-h-44 overflow-auto rounded bg-control px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
+                {highlightText(inputJSON, filterQ ?? "", "bg-accent-soft text-foreground rounded-sm")}
               </pre>
             </div>
           )}
@@ -151,8 +151,8 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
                   className="border-0 bg-transparent px-1 py-0 text-3xs opacity-60 hover:opacity-100"
                 />
               </div>
-              <pre className="max-h-44 overflow-auto rounded bg-background/50 px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
-                {highlightText(outputJSON, filterQ ?? "", "bg-brand/25 text-foreground rounded-sm")}
+              <pre className="max-h-44 overflow-auto rounded bg-control px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
+                {highlightText(outputJSON, filterQ ?? "", "bg-accent-soft text-foreground rounded-sm")}
               </pre>
             </div>
           )}
@@ -162,7 +162,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
         </div>
       )}
       {paths.length > 0 && (
-        <div className={cn("flex flex-wrap items-center gap-1.5", flat ? "px-1 pt-2" : "border-t border-border px-3 py-2")}>
+        <div className={cn("flex flex-wrap items-center gap-1.5", flat ? "px-1 pt-2" : "bg-panel/40 px-3 py-2")}>
           <span className="text-2xs text-muted-foreground">产物：</span>
           {paths.map((p) => (
             <ArtifactOpenButton
@@ -254,7 +254,7 @@ export function ArtifactPreview({ path, sessionID, onClose }: { path: string | n
             )}
           </DialogTitle>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-background p-3">
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg bg-control p-3">
           {showDiff && sessionID && path ? (
             <DiffView sessionID={sessionID} path={path} />
           ) : (
@@ -265,7 +265,7 @@ export function ArtifactPreview({ path, sessionID, onClose }: { path: string | n
             </div>
           )}
           {!loading && error && (
-            <div className="text-sm text-destructive">{error}</div>
+            <div className="text-sm text-danger-text">{error}</div>
           )}
           {!loading && !error && art?.kind === "image" && (
             <div className="flex justify-center">

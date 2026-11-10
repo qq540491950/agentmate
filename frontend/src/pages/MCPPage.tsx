@@ -194,7 +194,7 @@ export function MCPPage() {
                         {s.transport === MCPTransport.MCPStdio ? "stdio" : "streamable-http"}
                       </Badge>
                       {authPendingServer === s.name && (
-                        <Badge variant="outline" className="border-warning/50 font-normal text-warning">
+                        <Badge variant="outline" className="bg-warning-soft font-normal text-warning">
                           等待浏览器授权…
                         </Badge>
                       )}
@@ -205,7 +205,7 @@ export function MCPPage() {
                         : s.url}
                     </div>
                     {st?.error && (
-                      <div className="mt-1 line-clamp-2 text-xs text-destructive">{st.error}</div>
+                      <div className="mt-1 line-clamp-2 text-xs text-danger-text">{st.error}</div>
                     )}
                     {(st?.tools?.length ?? 0) > 0 && (
                       <div className="mt-2">
@@ -255,7 +255,7 @@ export function MCPPage() {
           </DialogHeader>
           {editing && (
             <div className="grid gap-4 py-2">
-              <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="flex items-center justify-between rounded-lg bg-panel/60 p-3">
                 <div>
                   <div className="text-sm font-medium">启用</div>
                   <div className="text-xs text-muted-foreground">

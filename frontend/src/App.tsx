@@ -3,7 +3,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Toaster } from "@/components/ui/sonner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TopBar } from "@/components/layout/TopBar";
-import { applyTheme, cachedTheme, onSystemThemeChange, type ThemePrefs } from "@/lib/theme";
+import {
+  applyTheme,
+  cacheTheme,
+  cacheThemePrefs,
+  cachedTheme,
+  onSystemThemeChange,
+  prefsFromSettings,
+  type ThemePrefs,
+} from "@/lib/theme";
 import { App as AppService, Config } from "@/lib/api";
 
 // Chat is the landing view and stays eager; the settings hub (which hosts the
@@ -68,7 +76,7 @@ export default function App() {
   }, []);
   const [helpOpen, setHelpOpen] = useState(false);
   const [prefs, setPrefs] = useState<ThemePrefs>(() => cachedTheme());
-  const [isDark, setIsDark] = useState(() => applyTheme(cachedTheme()));
+  const [, forceThemeRender] = useState(0);
   const [version, setVersion] = useState("");
 
   // Boot: fetch app metadata for the sidebar version label.
@@ -81,34 +89,39 @@ export default function App() {
     Config.GetConfig()
       .then((cfg) => {
         const s = cfg.settings;
-        const next: ThemePrefs = {
-          themeMode: s.themeMode || "dark",
-          accent: s.accent || "blue",
-          fontScale: s.fontScale || "md",
-          chatWidth: s.chatWidth || "medium",
-        };
-        localStorage.setItem("wb-theme-prefs", JSON.stringify(next));
+        const next = prefsFromSettings(s);
+        cacheTheme(s);
         setPrefs(next);
-        setIsDark(applyTheme(next));
+        applyTheme(next);
       })
       .catch(() => {});
   }, []);
 
   // Re-apply when the OS appearance changes (themeMode === "system").
-  useEffect(() => onSystemThemeChange(prefs, setIsDark), [prefs]);
+  useEffect(
+    () => onSystemThemeChange(prefs, () => forceThemeRender((value) => value + 1)),
+    [prefs],
+  );
 
-  // Quick light/dark toggle from the sidebar (persists to backend).
-  const toggleTheme = async () => {
-    const mode = isDark ? "light" : "dark";
-    const next = { ...prefs, themeMode: mode };
+  // Theme preset/mode changes from the sidebar persist immediately; settings
+  // changes stay local until the user presses save.
+  const changeAppearance = async (patch: Partial<ThemePrefs>) => {
+    const next = { ...prefs, ...patch };
     setPrefs(next);
-    setIsDark(applyTheme(next));
-    localStorage.setItem("wb-theme-prefs", JSON.stringify(next));
+    applyTheme(next);
+    cacheThemePrefs(next);
     try {
       const cfg = await Config.GetConfig();
-      cfg.settings.themeMode = mode;
+      cfg.settings.themePreset = next.themePreset;
+      cfg.settings.themeMode = next.themeMode;
+      cacheTheme(cfg.settings);
       await Config.SaveSettings(cfg.settings);
     } catch { /* offline: cache only */ }
+  };
+
+  const onAppearanceChange = (next: ThemePrefs) => {
+    setPrefs(next);
+    applyTheme(next);
   };
 
   return (
@@ -122,14 +135,20 @@ export default function App() {
             <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
               {view === "chat" ? (
                 <ChatPage
-                  isDark={isDark}
-                  onToggleTheme={toggleTheme}
+                  themePreset={prefs.themePreset}
+                  themeMode={prefs.themeMode}
+                  onAppearanceChange={changeAppearance}
                   onOpenHelp={() => setHelpOpen(true)}
                   onOpenSettings={openSettings}
                   version={version}
                 />
               ) : (
-                <SettingsPage initialTab={settingsTab} onClose={() => setView("chat")} version={version} />
+                <SettingsPage
+                  initialTab={settingsTab}
+                  onClose={() => setView("chat")}
+                  version={version}
+                  onAppearanceChange={onAppearanceChange}
+                />
               )}
             </Suspense>
           </ErrorBoundary>
@@ -159,7 +178,7 @@ export default function App() {
                 ["/todos", "查看当前任务计划"],
                 ["/new", "新建对话"],
               ].map(([k, d]) => (
-                <div key={k} className="flex items-center justify-between rounded-lg border px-3 py-1.5">
+                <div key={k} className="flex items-center justify-between rounded-lg bg-panel/60 px-3 py-1.5">
                   <span className="font-mono text-xs">{k}</span>
                   <span className="text-xs text-muted-foreground">{d}</span>
                 </div>

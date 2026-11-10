@@ -1,3 +1,5 @@
+> **历史资料（2026-11-10 起）**：本文的“Tinted Graphite + 自由强调色 + 发丝线”方向已被 [Nord 表面契约](design-system.md) 与 [UI 视觉系统重构规格](specs/ui-surface-redesign.md)（#80）取代。本文只保留为设计演进记录，不得作为实现依据。
+
 # UI 质感重构方案
 
 > 目标：把当前「能用但廉价」的界面升级为线性 / Raycast / Claude Desktop 一档的桌面工具质感。

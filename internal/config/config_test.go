@@ -141,6 +141,51 @@ func TestSidebarSettingsNormalizeAndPersist(t *testing.T) {
 	}
 }
 
+// TestThemePresetNormalizeAndPersist: older config files default to Nord,
+// unknown presets fall back to Nord, and a valid preset survives a reload
+// without disturbing the other appearance preferences.
+func TestThemePresetNormalizeAndPersist(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	raw := `{"settings":{"themeMode":"system","fontScale":"lg","chatWidth":"wide","accent":"violet"},"providers":null,"agents":null,"teams":null,"skills":null,"mcpServers":null,"sessions":null}`
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := s.Get().Settings
+	if got.ThemePreset != "nord" {
+		t.Fatalf("default themePreset = %q, want nord", got.ThemePreset)
+	}
+	if got.ThemeMode != "system" || got.FontScale != "lg" || got.ChatWidth != "wide" {
+		t.Fatalf("appearance preferences changed during migration: %+v", got)
+	}
+
+	if err := s.Update(func(cfg *Config) { cfg.Settings.ThemePreset = "paper" }); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s2.Get().Settings.ThemePreset; got != "paper" {
+		t.Fatalf("themePreset not persisted: %q", got)
+	}
+
+	if err := s2.Update(func(cfg *Config) { cfg.Settings.ThemePreset = "unknown" }); err != nil {
+		t.Fatal(err)
+	}
+	s3, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s3.Get().Settings.ThemePreset; got != "nord" {
+		t.Fatalf("invalid themePreset = %q, want nord fallback", got)
+	}
+}
+
 func TestStoreGetReturnsIndependentCopy(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)

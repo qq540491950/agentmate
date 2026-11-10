@@ -253,7 +253,7 @@ export function AgentsPage() {
         actions={
           <>
             <select
-              className="h-8 rounded-md border border-border bg-transparent px-2 text-xs text-muted-foreground"
+              className="h-8 rounded-md bg-control px-2 text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
               value=""
               onChange={(e) => {
                 const t = agentTemplates.find((x) => x.label === e.target.value);
@@ -304,7 +304,7 @@ export function AgentsPage() {
         }
       />
 
-      <div className="grid gap-2">
+      <div className="grid gap-1.5 rounded-2xl bg-panel/40 p-1.5">
         {agents.length === 0 && (
           <Card>
             <EmptyState icon={Bot} title="还没有 Agent" desc="先到「模型配置」添加供应商，然后创建你的第一个 Agent。" />
@@ -318,9 +318,9 @@ export function AgentsPage() {
           return (
             <div
               key={a.id}
-              className="flex items-start gap-3.5 rounded-xl border border-border bg-card px-4 py-3.5"
+              className="flex items-start gap-3.5 rounded-xl bg-panel/70 px-4 py-3.5"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-text">
                 <Bot className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
@@ -429,7 +429,7 @@ export function AgentsPage() {
           </>
         }
       >
-      <div className="grid gap-2">
+      <div className="grid gap-1.5 rounded-2xl bg-panel/40 p-1.5">
         {remotes.length === 0 && (
           <Card>
             <EmptyState icon={Network} title="还没有远程 Agent" desc="填写对方的 A2A 服务地址即可连接（例如 http://localhost:8080）。" />
@@ -438,9 +438,9 @@ export function AgentsPage() {
         {remotes.map((r) => (
           <div
             key={r.id}
-            className="flex items-start gap-3.5 rounded-xl border border-border bg-card px-4 py-3.5"
+            className="flex items-start gap-3.5 rounded-xl bg-panel/70 px-4 py-3.5"
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-text">
               <Network className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
@@ -512,7 +512,7 @@ export function AgentsPage() {
                 <p className="text-xs text-muted-foreground">从 /.well-known/agent-card.json 自动发现能力，JSON-RPC 调用。</p>
               </div>
               {remoteCheck && (
-                <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                <div className="rounded-lg bg-panel/60 p-3 text-sm">
                   <div className="font-medium">✓ {remoteCheck.name} <span className="text-xs text-muted-foreground">v{remoteCheck.version}</span></div>
                   {remoteCheck.description && <div className="mt-1 text-xs text-muted-foreground">{remoteCheck.description}</div>}
                   <div className="mt-1 text-xs text-muted-foreground">
@@ -540,17 +540,17 @@ export function AgentsPage() {
           {editing && (
             <div className="grid gap-4 py-2">
               <div className="grid gap-1.5">
-                <Label>名称 <span className="text-destructive">*</span></Label>
+                <Label>名称 <span className="text-danger-text">*</span></Label>
                 <Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="例如 周报助手" />
                 <p className="text-xs text-muted-foreground">必填。在会话、团队与 Agent 列表中显示的名字。</p>
               </div>
               <div className="grid gap-1.5">
-                <Label>描述 <span className="text-destructive">*</span></Label>
+                <Label>描述 <span className="text-danger-text">*</span></Label>
                 <Input value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="一句话说明它擅长什么" />
                 <p className="text-xs text-muted-foreground">必填。一句话说明能力，会展示给用户与团队协调员。</p>
               </div>
               <div className="grid gap-1.5">
-                <Label>系统提示词 <span className="text-destructive">*</span></Label>
+                <Label>系统提示词 <span className="text-danger-text">*</span></Label>
                 <Textarea
                   rows={5}
                   value={editing.systemPrompt}
@@ -563,7 +563,7 @@ export function AgentsPage() {
                 type="button"
                 aria-expanded={advancedOpen}
                 onClick={() => setAdvancedOpen((v) => !v)}
-                className="flex w-full items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3 text-left"
+                className="flex w-full items-center justify-between gap-3 rounded-lg bg-panel/60 p-3 text-left"
               >
                 <span className="flex items-center gap-1.5 text-sm font-medium">
                   {advancedOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -574,7 +574,7 @@ export function AgentsPage() {
                 </span>
               </button>
               {advancedOpen && (
-                <div className="grid gap-4 border-l-2 border-muted pl-4">
+                <div className="grid gap-4 rounded-lg bg-panel/30 p-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
                       <Label>供应商</Label>
@@ -650,7 +650,7 @@ export function AgentsPage() {
               <div className="grid gap-1.5">
                 <Label>内置工具</Label>
                 <p className="text-xs text-muted-foreground">可选。默认启用全部内置工具；取消勾选才会限制范围。</p>
-                <div className="flex flex-wrap gap-4 rounded-lg border p-3">
+                <div className="flex flex-wrap gap-4 rounded-lg bg-panel/60 p-3">
                   <label className="flex items-center gap-2 text-sm">
                     <Checkbox
                       checked={effectiveBuiltinTools(editing).includes("time")}
@@ -708,7 +708,7 @@ export function AgentsPage() {
                   </label>
                 </div>
               </div>
-              <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="flex items-center justify-between rounded-lg bg-panel/60 p-3">
                 <div>
                   <div className="text-sm font-medium">安全护栏</div>
                   <div className="text-xs text-muted-foreground">
@@ -743,7 +743,7 @@ export function AgentsPage() {
                 <p className="text-xs text-muted-foreground">超出后本轮停止，防止死循环消耗</p>
               </div>
               {effectiveBuiltinTools(editing).includes("files") && (
-                <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex items-center justify-between rounded-lg bg-panel/60 p-3">
                   <div>
                     <div className="text-sm font-medium">写入文件需人工确认</div>
                     <div className="text-xs text-muted-foreground">
@@ -762,7 +762,7 @@ export function AgentsPage() {
                 </div>
               )}
               {effectiveBuiltinTools(editing).includes("shell") && (
-                <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex items-center justify-between rounded-lg bg-panel/60 p-3">
                   <div>
                     <div className="text-sm font-medium">执行终端命令需人工确认</div>
                     <div className="text-xs text-muted-foreground">
@@ -784,7 +784,7 @@ export function AgentsPage() {
                 <div className="grid gap-1.5">
                   <Label>附加 Skills</Label>
                   <p className="text-xs text-muted-foreground">可选。勾选后 Agent 可按需加载对应技能。</p>
-                  <div className="grid gap-2 rounded-lg border p-3">
+                  <div className="grid gap-2 rounded-lg bg-panel/60 p-3">
                     {skills.map((s) => (
                       <label key={s.id} className="flex items-center gap-2 text-sm">
                         <Checkbox
@@ -802,7 +802,7 @@ export function AgentsPage() {
                 <div className="grid gap-1.5">
                   <Label>MCP 工具服务</Label>
                   <p className="text-xs text-muted-foreground">可选。已启用的服务默认对所有 Agent 可用，这里可额外挂载。</p>
-                  <div className="grid gap-2 rounded-lg border p-3">
+                  <div className="grid gap-2 rounded-lg bg-panel/60 p-3">
                     {servers.map((s) => (
                       <label key={s.id} className="flex items-center gap-2 text-sm">
                         <Checkbox

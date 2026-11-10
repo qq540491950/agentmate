@@ -85,7 +85,7 @@ export function SkillsPage() {
 
       <div className="grid gap-3 md:grid-cols-2">
         {skills.length === 0 && (
-          <div className="col-span-full rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+          <div className="col-span-full rounded-xl bg-panel/40 p-8 text-center text-sm text-muted-foreground">
             <EmptyState icon={ListTodo} title="还没有 Skill" desc="点击「新增 Skill」创建，或从工作区 knowledge 目录导入。" />
           </div>
         )}
@@ -97,8 +97,8 @@ export function SkillsPage() {
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand/10">
-                    <Sparkles className="h-4 w-4 text-brand" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
+                    <Sparkles className="h-4 w-4 text-accent-text" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">

@@ -19,10 +19,10 @@ import { cn } from "@/lib/utils";
 
 /** STATUS_META maps an execution block's state to its header badge. */
 const STATUS_META: Record<ToolGroupStatus, { label: string; icon: ReactNode; cls: string }> = {
-  confirm: { label: "等待确认", icon: <ShieldAlert className="h-3.5 w-3.5 text-warning" />, cls: "border-warning/50 text-warning" },
-  running: { label: "运行中", icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />, cls: "border-brand/40 text-brand" },
-  failed: { label: "失败", icon: <XCircle className="h-3.5 w-3.5 text-destructive" />, cls: "border-destructive/40 text-destructive" },
-  done: { label: "完成", icon: <CheckCircle2 className="h-3.5 w-3.5 text-success" />, cls: "border-success/40 text-success" },
+  confirm: { label: "等待确认", icon: <ShieldAlert className="h-3.5 w-3.5 text-warning" />, cls: "bg-warning-soft text-warning" },
+  running: { label: "运行中", icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-accent-text" />, cls: "bg-accent-soft text-accent-text" },
+  failed: { label: "失败", icon: <XCircle className="h-3.5 w-3.5 text-danger-text" />, cls: "bg-danger-soft text-danger-text" },
+  done: { label: "完成", icon: <CheckCircle2 className="h-3.5 w-3.5 text-success" />, cls: "bg-success-soft text-success" },
 };
 
 /**
@@ -97,7 +97,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
 
   return (
     <div
-      className="rounded-xl border border-border bg-card/40 text-sm"
+      className="rounded-xl bg-panel/70 text-sm"
       data-toolgroup
       data-state={status}
       data-display-mode={displayMode}
@@ -138,7 +138,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
         )}
       >
         <div className="overflow-hidden">
-          <div className="space-y-3 border-t border-border px-3 py-3">
+          <div className="space-y-3 bg-panel/40 px-3 py-3">
             {trace.map((item) => {
               if (item.kind === "tool") {
                 return (

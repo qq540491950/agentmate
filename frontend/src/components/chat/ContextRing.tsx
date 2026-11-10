@@ -2,7 +2,7 @@ import type { ContextUsageView } from "@/lib/contextUsage";
 import { cn } from "@/lib/utils";
 
 const RING_COLOR: Record<ContextUsageView["color"], string> = {
-  "bg-destructive": "text-destructive",
+  "bg-destructive": "text-danger-text",
   "bg-warning": "text-warning",
   "bg-success": "text-success",
 };

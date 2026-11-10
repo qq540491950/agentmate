@@ -1,21 +1,40 @@
-// Theme application: mode (light/dark/system), accent color, font scale.
+// Theme application: a complete theme preset plus an orthogonal light/dark
+// mode. Components consume semantic tokens; this module is the only place
+// that writes theme state to the document.
 import { Config, type Settings } from "@/lib/api";
 
+export type ThemePreset = "nord" | "graphite" | "paper" | "contrast";
+export type ThemeMode = "light" | "dark" | "system";
+
 export interface ThemePrefs {
+  themePreset: string;
   themeMode: string;
-  accent: string;
   fontScale: string;
   chatWidth: string;
 }
 
-export const ACCENTS: Record<string, { label: string; color: string }> = {
-  blue: { label: "默认蓝", color: "" }, // empty = CSS default brand
-  violet: { label: "紫罗兰", color: "#8b5cf6" },
-  emerald: { label: "祖母绿", color: "#10b981" },
-  orange: { label: "暖橙", color: "#f97316" },
-  rose: { label: "玫红", color: "#f43f5e" },
-  cyan: { label: "青蓝", color: "#06b6d4" },
-};
+export interface ResolvedTheme {
+  preset: ThemePreset;
+  mode: "light" | "dark";
+  dark: boolean;
+}
+
+export const THEME_OPTIONS: ReadonlyArray<{
+  value: ThemePreset;
+  label: string;
+  description: string;
+}> = [
+  { value: "nord", label: "Nord", description: "极夜蓝灰与雪原浅色，默认主题" },
+  { value: "graphite", label: "石墨", description: "中性石墨与冷静蓝，接近旧版专业观感" },
+  { value: "paper", label: "纸墨", description: "暖象牙、深墨与琥珀强调，适合白天" },
+  { value: "contrast", label: "高对比", description: "可访问性优先，保留明确控件边界" },
+];
+
+export const THEME_MODES: ReadonlyArray<{ value: ThemeMode; label: string }> = [
+  { value: "light", label: "浅色" },
+  { value: "dark", label: "深色" },
+  { value: "system", label: "跟随系统" },
+];
 
 export const FONT_SCALES: Record<string, { label: string; root: string }> = {
   sm: { label: "小", root: "93.75%" },
@@ -23,92 +42,104 @@ export const FONT_SCALES: Record<string, { label: string; root: string }> = {
   lg: { label: "大", root: "112.5%" },
 };
 
-// Chat column widths are pane percentages, not fixed pixel caps, so the
-// column follows window resizing at every mode.
+// Chat column widths are pane percentages, not fixed pixel caps, so the column
+// follows window resizing at every mode.
 export const CHAT_WIDTHS: Record<string, { label: string; width: string }> = {
   narrow: { label: "窄", width: "56%" },
   medium: { label: "中", width: "72%" },
   wide: { label: "宽", width: "88%" },
 };
 
-const media = window.matchMedia("(prefers-color-scheme: dark)");
+const THEME_PRESETS = new Set<ThemePreset>(["nord", "graphite", "paper", "contrast"]);
+const THEME_MODES_SET = new Set<ThemeMode>(["light", "dark", "system"]);
 
-/** applyTheme applies mode/accent/font-scale to the document. */
+const media =
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-color-scheme: dark)")
+    : null;
+
+export function normalizeThemePreset(value: string | undefined | null): ThemePreset {
+  const normalized = (value ?? "").trim().toLowerCase() as ThemePreset;
+  return THEME_PRESETS.has(normalized) ? normalized : "nord";
+}
+
+export function normalizeThemeMode(value: string | undefined | null): ThemeMode {
+  const normalized = (value ?? "").trim().toLowerCase() as ThemeMode;
+  return THEME_MODES_SET.has(normalized) ? normalized : "dark";
+}
+
+/** resolveTheme is pure so boot, settings and tests agree on one result. */
+export function resolveTheme(
+  prefs: Pick<ThemePrefs, "themePreset" | "themeMode">,
+  systemDark: boolean,
+): ResolvedTheme {
+  const preset = normalizeThemePreset(prefs.themePreset);
+  const mode = normalizeThemeMode(prefs.themeMode);
+  const dark = mode === "dark" || (mode === "system" && systemDark);
+  return { preset, mode: dark ? "dark" : "light", dark };
+}
+
+/** prefsFromSettings is the one mapping from persisted settings to UI prefs. */
+export function prefsFromSettings(s: Settings): ThemePrefs {
+  return {
+    themePreset: normalizeThemePreset(s.themePreset),
+    themeMode: normalizeThemeMode(s.themeMode),
+    fontScale: s.fontScale || "md",
+    chatWidth: s.chatWidth || "medium",
+  };
+}
+
+/** applyTheme writes preset/mode/font/width to the document. */
 export function applyTheme(prefs: ThemePrefs): boolean {
-  const dark =
-    prefs.themeMode === "dark" || (prefs.themeMode === "system" && media.matches);
-  document.documentElement.classList.toggle("dark", dark);
-  document.documentElement.style.fontSize = (FONT_SCALES[prefs.fontScale] ?? FONT_SCALES.md).root;
-  document.documentElement.style.setProperty(
+  const resolved = resolveTheme(prefs, media?.matches ?? false);
+  const root = document.documentElement;
+  root.dataset.theme = resolved.preset;
+  root.classList.toggle("dark", resolved.dark);
+  root.style.colorScheme = resolved.mode;
+  root.style.fontSize = (FONT_SCALES[prefs.fontScale] ?? FONT_SCALES.md).root;
+  root.style.setProperty(
     "--chat-col-width",
     (CHAT_WIDTHS[prefs.chatWidth] ?? CHAT_WIDTHS.medium).width,
   );
-
-  const accent = ACCENTS[prefs.accent] ?? ACCENTS.blue;
-  const root = document.documentElement.style;
-  // The accent drives --brand (highlight/selection/focus/running states) only.
-  // --primary stays a neutral action color, so filled buttons keep their
-  // contrast and the accent never becomes a full-screen paint job.
-  if (accent.color) {
-    root.setProperty("--brand", accent.color);
-    root.setProperty("--brand-foreground", readableForeground(accent.color));
-    root.setProperty("--ring", accent.color);
-  } else {
-    root.removeProperty("--brand");
-    root.removeProperty("--brand-foreground");
-    root.removeProperty("--ring");
-  }
-  return dark;
-}
-
-/** readableForeground picks black or white text for a background hex color by
- * comparing WCAG contrast ratios: fixed white measured ~2.8:1 on the accent
- * colors (orange/cyan/emerald), below the 4.5:1 AA threshold. */
-function readableForeground(hex: string): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return "#ffffff";
-  const n = parseInt(m[1], 16);
-  const lin = (c: number) => {
-    const x = c / 255;
-    return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
-  };
-  const l = 0.2126 * lin((n >> 16) & 0xff) + 0.7152 * lin((n >> 8) & 0xff) + 0.0722 * lin(n & 0xff);
-  const contrastWhite = 1.05 / (l + 0.05);
-  const contrastBlack = (l + 0.05) / 0.05;
-  return contrastWhite >= contrastBlack ? "#ffffff" : "#0b0f14";
+  return resolved.dark;
 }
 
 /** cacheTheme writes prefs to localStorage for instant boot application. */
 export function cacheTheme(s: Settings) {
-  localStorage.setItem(
-    "wb-theme-prefs",
-    JSON.stringify({
-      themeMode: s.themeMode,
-      accent: s.accent,
-      fontScale: s.fontScale,
-      chatWidth: s.chatWidth || "medium",
-    }),
-  );
+  const prefs = prefsFromSettings(s);
+  cacheThemePrefs(prefs);
 }
 
-/** cachedTheme reads the boot cache (falls back to dark defaults). */
+/** cacheThemePrefs persists the exact boot shape used by the inline script. */
+export function cacheThemePrefs(prefs: ThemePrefs) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem("wb-theme-prefs", JSON.stringify(prefs));
+}
+
+/** cachedTheme reads the boot cache (falls back to Nord dark). */
 export function cachedTheme(): ThemePrefs {
   try {
-    const raw = localStorage.getItem("wb-theme-prefs");
-    if (raw) {
-      const prefs = JSON.parse(raw) as ThemePrefs;
-      return { ...prefs, chatWidth: prefs.chatWidth || "medium" };
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem("wb-theme-prefs");
+      if (raw) {
+        const prefs = JSON.parse(raw) as Partial<ThemePrefs>;
+        return {
+          themePreset: normalizeThemePreset(prefs.themePreset),
+          themeMode: normalizeThemeMode(prefs.themeMode),
+          fontScale: prefs.fontScale || "md",
+          chatWidth: prefs.chatWidth || "medium",
+        };
+      }
     }
   } catch { /* ignore */ }
-  return { themeMode: "dark", accent: "blue", fontScale: "md", chatWidth: "medium" };
+  return { themePreset: "nord", themeMode: "dark", fontScale: "md", chatWidth: "medium" };
 }
 
 /** syncThemeFromBackend loads settings from the backend, caches and applies them. */
 export async function syncThemeFromBackend(): Promise<boolean> {
   try {
     const cfg = await Config.GetConfig();
-    const s = cfg.settings;
-    cacheTheme(s);
+    cacheTheme(cfg.settings);
     return applyTheme(cachedTheme());
   } catch {
     return applyTheme(cachedTheme());
@@ -117,8 +148,9 @@ export async function syncThemeFromBackend(): Promise<boolean> {
 
 /** onSystemThemeChange re-applies when the OS appearance changes. */
 export function onSystemThemeChange(prefs: ThemePrefs, fn: (dark: boolean) => void): () => void {
+  if (!media) return () => {};
   const handler = () => {
-    if (prefs.themeMode === "system") fn(applyTheme(prefs));
+    if (normalizeThemeMode(prefs.themeMode) === "system") fn(applyTheme(prefs));
   };
   media.addEventListener("change", handler);
   return () => media.removeEventListener("change", handler);

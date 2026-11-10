@@ -35,9 +35,9 @@ export function TurnStatus({ label = "正在思考", className }: {
     >
       <span className="wb-thinking-shimmer font-medium">{label}</span>
       <span className="flex items-center gap-1">
-        <span className="wb-dot-pulse h-1 w-1 rounded-full bg-brand/70" />
-        <span className="wb-dot-pulse h-1 w-1 rounded-full bg-brand/70 [animation-delay:160ms]" />
-        <span className="wb-dot-pulse h-1 w-1 rounded-full bg-brand/70 [animation-delay:320ms]" />
+        <span className="wb-dot-pulse h-1 w-1 rounded-full bg-accent-text/70" />
+        <span className="wb-dot-pulse h-1 w-1 rounded-full bg-accent-text/70 [animation-delay:160ms]" />
+        <span className="wb-dot-pulse h-1 w-1 rounded-full bg-accent-text/70 [animation-delay:320ms]" />
       </span>
       {elapsedLabel && (
         <span className="tabular-nums text-2xs text-muted-foreground/60">

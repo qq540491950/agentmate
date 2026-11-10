@@ -283,7 +283,7 @@ export function ModelsPage() {
         }
       />
 
-      <div className="grid gap-3">
+      <div className="grid gap-1.5 rounded-2xl bg-panel/40 p-1.5">
         {providers.length === 0 && (
           <Card>
             <CardContent className="p-8 text-center text-sm text-muted-foreground">
@@ -294,9 +294,9 @@ export function ModelsPage() {
         {providers.map((p) => (
           <div
             key={p.id}
-            className="flex items-center gap-3.5 rounded-xl border border-border bg-card px-4 py-3.5"
+            className="flex items-center gap-3.5 rounded-xl bg-panel/70 px-4 py-3.5"
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-text">
               <Boxes className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
@@ -343,7 +343,7 @@ export function ModelsPage() {
 
       <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
         <DialogContent className={PROVIDER_EDITOR_DIALOG_CLASS}>
-          <DialogHeader className="border-b border-border px-6 py-4">
+          <DialogHeader className="px-6 py-4">
             <DialogTitle>{editing?.id ? "编辑供应商" : "新增供应商"}</DialogTitle>
             <DialogDescription className="text-xs">
               连接信息决定请求发往哪里；模型列表决定可选用哪些模型及其能力。
@@ -365,7 +365,7 @@ export function ModelsPage() {
                       onBlur={() => setNameError(editing.name.trim() ? "" : "请填写供应商名称")}
                       placeholder="例如 DeepSeek、OpenAI、本地 Ollama"
                     />
-                    {nameError && <span className="text-2xs text-destructive">{nameError}</span>}
+                    {nameError && <span className="text-2xs text-danger-text">{nameError}</span>}
                   </label>
                   <label className="grid gap-1.5">
                     <span className="text-xs font-medium text-muted-foreground">协议</span>
@@ -405,7 +405,7 @@ export function ModelsPage() {
                     }
                   />
                   {urlError
-                    ? <span className="text-2xs text-destructive">{urlError}</span>
+                    ? <span className="text-2xs text-danger-text">{urlError}</span>
                     : <span className="text-2xs text-muted-foreground">留空则使用该协议的官方地址</span>}
                 </label>
 
@@ -431,7 +431,7 @@ export function ModelsPage() {
                   </div>
                 </label>
 
-                <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                <div className="flex items-center justify-between rounded-lg bg-panel/60 px-3 py-2.5">
                   <div>
                     <div className="text-sm font-medium">设为默认供应商</div>
                     <div className="text-2xs text-muted-foreground">新会话默认使用该供应商的首个模型</div>
@@ -461,7 +461,7 @@ export function ModelsPage() {
                 }
               >
                 {(editing.models ?? []).length === 0 ? (
-                  <div className="flex flex-col items-center gap-1 rounded-xl border border-dashed border-border px-4 py-8 text-center">
+                  <div className="flex flex-col items-center gap-1 rounded-xl bg-panel/50 px-4 py-8 text-center">
                     <Boxes className="h-5 w-5 text-muted-foreground" />
                     <div className="text-sm font-medium">还没有模型</div>
                     <p className="text-xs text-muted-foreground">从供应商接口拉取，或手动添加模型 ID。</p>
@@ -474,8 +474,8 @@ export function ModelsPage() {
                         <div
                           key={i}
                           className={cn(
-                            "overflow-hidden rounded-xl border bg-muted/10 transition-colors",
-                            open ? "border-border-strong" : "border-border",
+                            "overflow-hidden rounded-xl bg-panel/60 transition-colors",
+                            open && "bg-accent-soft",
                           )}
                         >
                           <div className="flex items-center gap-2 px-3 py-2.5">
@@ -508,7 +508,7 @@ export function ModelsPage() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="shrink-0 text-muted-foreground hover:text-destructive"
+                              className="shrink-0 text-muted-foreground hover:text-danger-text"
                               onClick={() => removeModel(i)}
                               title="删除模型"
                               aria-label="删除模型"
@@ -517,7 +517,7 @@ export function ModelsPage() {
                             </Button>
                           </div>
                           {open && (
-                            <div className="border-t border-border px-3 py-4">
+                            <div className="bg-panel/40 px-3 py-4">
                               <ModelRowEditor
                                 model={m}
                                 index={i}
@@ -537,7 +537,7 @@ export function ModelsPage() {
               </Section>
             </div>
           )}
-          <DialogFooter className="mx-0 mb-0 gap-2 rounded-none border-t border-border bg-transparent px-6 py-4">
+          <DialogFooter className="mx-0 mb-0 gap-2 rounded-none bg-transparent px-6 py-4">
             <Button variant="outline" onClick={() => setEditing(null)} disabled={saving}>取消</Button>
             <Button onClick={save} disabled={saving}>
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}

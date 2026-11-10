@@ -418,11 +418,18 @@ export interface Settings {
     "language": string;
 
     /**
-     * Appearance: theme mode "light"|"dark"|"system", accent key, font scale
-     * "sm"|"md"|"lg", and whether to speak assistant replies automatically.
+     * Appearance: theme mode "light"|"dark"|"system", theme preset
+     * "nord"|"graphite"|"paper"|"contrast", font scale "sm"|"md"|"lg",
+     * and whether to speak assistant replies automatically.
      */
     "themeMode": string;
-    "accent": string;
+    "themePreset"?: string;
+
+    /**
+     * Accent is retained only for backwards-compatible config files. The UI
+     * no longer exposes or applies it; themePreset owns the full palette.
+     */
+    "accent"?: string;
     "fontScale": string;
 
     /**

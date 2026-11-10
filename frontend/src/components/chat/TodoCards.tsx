@@ -12,9 +12,9 @@ export function TodoListCard({ resp }: { resp: { [k: string]: any } | null }) {
   if (todos.length === 0) return null;
   const done = todos.filter((t) => t.status === "completed").length;
   return (
-    <div className="rounded-xl border border-border bg-card/40 px-4 py-3">
+    <div className="rounded-xl bg-panel/70 px-4 py-3">
       <div className="mb-2 flex items-center gap-2">
-        <ListTodo className="h-4 w-4 text-brand" />
+        <ListTodo className="h-4 w-4 text-accent-text" />
         <span className="text-sm font-medium">任务计划</span>
         <Badge variant="outline" className="font-normal text-2xs">
           {done}/{todos.length} 完成
@@ -26,9 +26,9 @@ export function TodoListCard({ resp }: { resp: { [k: string]: any } | null }) {
             {t.status === "completed" ? (
               <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
             ) : t.status === "in_progress" ? (
-              <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-brand" />
+              <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-accent-text" />
             ) : (
-              <span className="mt-0.5 inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-muted-foreground/50" />
+              <span className="mt-0.5 inline-block h-3.5 w-3.5 shrink-0 rounded-full bg-muted" />
             )}
             <span className={cn(
               "break-words",
@@ -49,14 +49,14 @@ export function PlanStrip({ todos }: { todos: TodoItem[] }) {
   const done = todos.filter((t) => t.status === "completed").length;
   const current = todos.find((t) => t.status === "in_progress");
   return (
-    <div className="rounded-xl border border-border bg-card/60 px-3 py-2 text-ui">
+    <div className="rounded-xl bg-panel/70 px-3 py-2 text-ui">
       <div className="flex items-center gap-2">
-        <ListTodo className="h-3.5 w-3.5 shrink-0 text-brand" />
+        <ListTodo className="h-3.5 w-3.5 shrink-0 text-accent-text" />
         <span className="shrink-0 font-medium">任务计划</span>
         <span className="shrink-0 text-xs text-muted-foreground">{done}/{todos.length} 完成</span>
         {current && <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">· 当前：{current.content}</span>}
         <div className="ml-auto h-1 w-16 shrink-0 overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${(done / todos.length) * 100}%` }} />
+          <div className="h-full rounded-full bg-accent-text transition-all" style={{ width: `${(done / todos.length) * 100}%` }} />
         </div>
       </div>
     </div>

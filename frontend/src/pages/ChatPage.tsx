@@ -125,9 +125,10 @@ function speak(text: string) {
   window.speechSynthesis.speak(u);
 }
 
-export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, version }: {
-  isDark: boolean;
-  onToggleTheme: () => void;
+export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHelp, onOpenSettings, version }: {
+  themePreset: string;
+  themeMode: string;
+  onAppearanceChange: (patch: { themePreset?: string; themeMode?: string }) => void;
   onOpenHelp: () => void;
   onOpenSettings: (tab?: SettingsTab) => void;
   version?: string;
@@ -2142,8 +2143,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
         "group relative flex cursor-pointer items-center gap-1.5 rounded-md py-[3px] text-[0.8125rem] leading-5 transition-colors",
         indented ? "pl-7 pr-1.5" : "px-2.5",
         s.id === activeID
-          ? "bg-accent/50 font-medium text-foreground hover:bg-accent/60"
-          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+          ? "bg-accent-soft font-medium text-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
       onClick={() => setActiveID(s.id)}
       onKeyDown={(e) => {
@@ -2158,7 +2159,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
           aria-hidden="true"
           className={cn(
             "pointer-events-none absolute left-[13px] top-1/2 h-[3px] w-[3px] -translate-y-1/2 rounded-full",
-            s.id === activeID ? "bg-brand" : "bg-muted-foreground/40 group-hover:bg-foreground/50",
+            s.id === activeID ? "bg-accent-text" : "bg-muted-foreground/40 group-hover:bg-foreground/50",
           )}
         />
       )}
@@ -2172,8 +2173,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
             : ""}
         />
       </span>
-      {s.pinned && <Pin className="h-3 w-3 shrink-0 text-brand" aria-label="已置顶" />}
-      {runningMap[s.id] && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-brand" aria-label="生成中" />}
+      {s.pinned && <Pin className="h-3 w-3 shrink-0 text-accent-text" aria-label="已置顶" />}
+      {runningMap[s.id] && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent-text" aria-label="生成中" />}
       {!runningMap[s.id] && unread[s.id] && <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-label="有新回复未查看" />}
       {/* The cluster hosts the "…" dropdown anchor, so it must keep its layout
           box while the menu is open — see SESSION_ROW_ACTIONS_CLASS (#28). */}
@@ -2221,7 +2222,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               <Pencil className="mr-2 h-3.5 w-3.5" /> 重命名
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeSession(s)}>
+            <DropdownMenuItem className="text-danger-text focus:text-danger-text" onClick={() => removeSession(s)}>
               <Trash2 className="mr-2 h-3.5 w-3.5" /> 删除会话…
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -2235,7 +2236,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
       {/* Sessions */}
       {!sidebarCollapsed && (
       <>
-      <div className="flex shrink-0 flex-col border-r border-border bg-surface-1 font-sans" style={{ width: sidebarWidth }}>
+      <div className="flex shrink-0 flex-col bg-chrome font-sans" style={{ width: sidebarWidth }}>
         <div className="flex items-center gap-1 px-3 pb-2 pt-3">
           <span className="text-3xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
             项目
@@ -2253,7 +2254,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               title="新建对话（⌘N）"
               aria-label="新建对话"
               onClick={createDirectSession}
-              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background/30 px-2 text-[0.8125rem] leading-5 font-medium text-foreground shadow-card transition-colors hover:bg-accent"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-panel/60 px-2 text-[0.8125rem] leading-5 font-medium text-foreground transition-colors hover:bg-accent"
             >
               <SquarePen className="h-3 w-3" />
               新对话
@@ -2273,7 +2274,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="h-7 rounded-md border-border/70 bg-background/40 pl-8 text-[0.8125rem] leading-5 placeholder:text-muted-foreground/70"
+              className="h-7 rounded-md pl-8 text-[0.8125rem] leading-5 placeholder:text-muted-foreground/70"
               placeholder="搜索对话"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -2311,8 +2312,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                         className={cn(
                           "group flex items-center rounded-md pr-1 text-muted-foreground transition-colors",
                           activeProjectKey === g.key
-                            ? "bg-accent/60 text-foreground"
-                            : "hover:bg-accent/40 hover:text-foreground",
+                            ? "bg-accent-soft text-foreground"
+                            : "hover:bg-accent hover:text-foreground",
                         )}
                       >
                         <button
@@ -2385,7 +2386,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                                       更改项目目录…
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem className="text-destructive" onClick={() => deleteProject(project)}>
+                                    <DropdownMenuItem className="text-danger-text" onClick={() => deleteProject(project)}>
                                       删除项目（保留对话与文件）
                                     </DropdownMenuItem>
                                   </>
@@ -2412,7 +2413,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                           {sessionWindow.visible.map((s) => renderSessionRow(s))}
                           {g.sessions.length > PROJECT_SESSION_LIMIT && (
                             <button
-                              className="flex w-full items-center rounded-md py-1 pl-7 pr-2 text-left text-3xs text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+                              className="flex w-full items-center rounded-md py-1 pl-7 pr-2 text-left text-3xs text-muted-foreground hover:bg-accent hover:text-foreground"
                               aria-expanded={expanded}
                               aria-label={expanded
                                 ? `收起「${g.label}」的全部对话`
@@ -2439,13 +2440,13 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   showArchived ? (
                     <>
                       <button
-                        className="mt-1 flex w-full items-center gap-1 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                        className="mt-1 flex w-full items-center gap-1 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                         onClick={() => setShowArchived(false)}
                       >
                         <ChevronDown className="h-3 w-3" /> 已归档会话（{archivedSessions.length}）
                       </button>
                       <button
-                        className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-accent/60 hover:text-destructive"
+                        className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-accent hover:text-danger-text"
                         title="删除全部已归档会话（任务文件保留）"
                         onClick={() => setConfirmRequest({
                           title: `清空全部已归档会话（${archivedSessions.length} 条）？`,
@@ -2468,7 +2469,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                     </>
                   ) : (
                     <button
-                      className="mt-1 flex w-full items-center gap-1 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                      className="mt-1 flex w-full items-center gap-1 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                       onClick={() => setShowArchived(true)}
                     >
                       <ChevronRight className="h-3 w-3" /> 已归档会话（{archivedSessions.length}）
@@ -2481,13 +2482,15 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
         </div>
         <SidebarFooter
           version={version}
-          isDark={isDark}
+          themePreset={themePreset}
+          themeMode={themeMode}
           onOpenSettings={() => onOpenSettings()}
           onOpenHelp={onOpenHelp}
-          onToggleTheme={onToggleTheme}
+          onThemePresetChange={(themePreset) => onAppearanceChange({ themePreset })}
+          onThemeModeChange={(themeMode) => onAppearanceChange({ themeMode })}
         />
       </div>
-      {/* Resize handle: a 6px strip on the sidebar border. Pointer capture
+      {/* Resize handle: a transparent 6px strip between chrome and canvas. Pointer capture
           keeps the drag alive outside the strip; the keyboard path keeps the
           splitter reachable without a mouse. */}
       <div
@@ -2507,8 +2510,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
         onKeyDown={resizeSidebarWithKeyboard}
         className={cn(
           "w-1.5 shrink-0 cursor-col-resize touch-none select-none bg-transparent transition-colors",
-          "hover:bg-brand/40 focus-visible:bg-brand/50 focus-visible:outline-none",
-          resizingSidebar && "bg-brand/50",
+          "hover:bg-ring/50 focus-visible:bg-ring/60 focus-visible:outline-none",
+          resizingSidebar && "bg-ring/60",
         )}
       />
       </>
@@ -2516,7 +2519,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
 
       {/* Chat area */}
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <div className="flex h-12 items-center justify-between border-b border-border px-4">
+        <div className="flex h-12 items-center justify-between bg-canvas px-4">
           <div className="flex min-w-0 items-center gap-2">
             {sidebarCollapsed && (
               <button
@@ -2542,8 +2545,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                 return (
                   <span
                     className={cn(
-                      "shrink-0 rounded-md bg-elevated px-1.5 py-0.5 text-2xs text-muted-foreground ring-1 ring-border",
-                      tab && "cursor-pointer transition-colors hover:text-foreground hover:ring-border-strong",
+                      "shrink-0 rounded-md bg-panel px-1.5 py-0.5 text-2xs text-muted-foreground",
+                      tab && "cursor-pointer transition-colors hover:bg-accent hover:text-foreground",
                     )}
                     title={tab ? "管理此配置" : undefined}
                     onClick={tab ? () => onOpenSettings(tab) : undefined}
@@ -2557,7 +2560,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               <button
                 className={cn(
                   "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                  filterOpen && "bg-accent text-brand",
+                  filterOpen && "bg-accent-soft text-accent-text",
                 )}
                 title="在会话内搜索消息（⌘F）"
                 aria-label="在会话内搜索消息"
@@ -2579,7 +2582,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {realContextUsage && realContextUsage.pct >= 80 && (
-              <span className="shrink-0 rounded-md bg-destructive/10 px-1.5 py-0.5 text-2xs text-destructive">
+              <span className="shrink-0 rounded-md bg-danger-soft px-1.5 py-0.5 text-2xs text-danger-text">
                 上下文即将耗尽（{realContextUsage.pct.toFixed(0)}%）
               </span>
             )}
@@ -2635,7 +2638,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
         </div>
 
         {filterOpen && (
-          <div className="flex items-center gap-2 border-b px-4 py-1.5">
+          <div className="flex items-center gap-2 bg-canvas px-4 py-1.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
               ref={filterInputRef}
@@ -2669,8 +2672,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               aria-label="回到底部"
               onClick={() => bottomRef.current?.scrollIntoView({ block: "end" })}
               className={cn(
-                "group absolute bottom-4 left-1/2 z-20 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-popover text-muted-foreground shadow-pop transition-all duration-200 hover:scale-105 hover:bg-accent hover:text-foreground active:scale-95",
-                running && "border-warning/30",
+                "group absolute bottom-4 left-1/2 z-20 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full bg-overlay text-muted-foreground shadow-pop transition-all duration-200 hover:scale-105 hover:bg-accent hover:text-foreground active:scale-95",
+                running && "bg-warning-soft text-warning",
               )}
             >
               {running && (
@@ -2704,7 +2707,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               {(() => {
                 if (omittedItems <= 0) return null;
                 return (
-                  <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-center text-xs text-muted-foreground">
+                  <div className="rounded-lg bg-panel/60 px-3 py-2 text-center text-xs text-muted-foreground">
                     <div className="flex items-center justify-center gap-2">
                       <span>
                         已省略较早的 {omittedMessages} 条{filterQ ? "匹配" : ""}消息（完整历史已保存，可导出查看）
@@ -2722,7 +2725,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                 );
               })()}
               {realContextUsage && realContextUsage.pct >= 80 && !ctxBannerDismissed && (
-                <div className="flex items-center justify-between rounded-lg border border-warning/50 bg-warning/10 px-4 py-2.5 text-sm">
+                <div className="flex items-center justify-between rounded-lg bg-warning-soft px-4 py-2.5 text-sm">
                   <span>上下文窗口已使用 {realContextUsage.pct.toFixed(0)}%，模型可能开始遗忘早期内容。建议导出会话后开启新对话。</span>
                   <div className="flex shrink-0 gap-2">
                     <Button size="sm" variant="outline" onClick={exportSession}>导出 Markdown</Button>
@@ -2735,7 +2738,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                 // Providers exist but no chat is selected: previously this
                 // rendered an empty pane with no hint about what to do.
                 <div className="flex min-h-[55vh] flex-col items-center justify-center gap-3 text-center">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand/10 text-brand">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent-text">
                     <MessageSquare className="h-6 w-6" />
                   </span>
                   <div className="text-md font-medium">直接开始对话</div>
@@ -2746,7 +2749,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               )}
               {messages.length === 0 && active && !awaitingReply && !historyLoading && (
                 <div className="flex min-h-[55vh] flex-col items-center justify-center gap-3 text-center">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand/10 text-brand">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent-text">
                     <MessageSquare className="h-6 w-6" />
                   </span>
                   <div className="text-md font-medium">发送第一条消息</div>
@@ -2824,14 +2827,14 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
         <div className="sr-only" role="status" aria-live="polite">
           {running ? "助手正在回复…" : messages[messages.length - 1]?.kind === "error" ? "本轮回复出错，可点击重试本轮" : ""}
         </div>
-        <div className="shrink-0 border-t py-3">
+        <div className="shrink-0 bg-canvas py-3">
           {activePlan && (
             <div className="mx-auto mb-2 chat-col px-3">
               <PlanStrip todos={activePlan} />
             </div>
           )}
           {(queued[activeID] ?? []).map((q, qi) => (
-            <div key={qi} className="mx-auto mb-2 flex chat-col items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-3 py-1.5 text-xs">
+            <div key={qi} className="mx-auto mb-2 flex chat-col items-center gap-2 rounded-lg bg-accent-soft px-3 py-1.5 text-xs">
               <span className="shrink-0 text-muted-foreground">{qi === 0 ? "已排队" : `排队 #${qi + 1}`}</span>
               <span className="min-w-0 flex-1 truncate">{q.text}</span>
               {q.reasoning && (
@@ -2852,7 +2855,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
           ))}
           <div className="mx-auto chat-col px-3">
             {editing && (
-              <div className="mb-2 flex items-center justify-between rounded-md border border-brand/40 bg-brand/5 px-3 py-1.5 text-xs text-muted-foreground">
+              <div className="mb-2 flex items-center justify-between rounded-md bg-accent-soft px-3 py-1.5 text-xs text-muted-foreground">
                 <span>正在编辑最后一条消息，发送后将替换该轮对话</span>
                 <button className="underline underline-offset-2 hover:text-foreground" onClick={cancelEdit}>
                   取消编辑
@@ -2864,7 +2867,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
             {pendingAtts.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
                 {pendingAtts.map((a, i) => (
-                  <span key={i} className="group/att relative flex items-center gap-1.5 rounded-md border bg-muted/40 py-1 pl-1 pr-5 text-xs">
+                  <span key={i} className="group/att relative flex items-center gap-1.5 rounded-md bg-panel/80 py-1 pl-1 pr-5 text-xs">
                     <img src={`data:${a.mime};base64,${a.data}`} alt={a.name} className="h-8 w-8 rounded object-cover" />
                     <span className="max-w-[120px] truncate">{a.name}</span>
                     <button
@@ -2881,8 +2884,8 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
           <div className="mx-auto chat-col px-3">
             <div
               className={cn(
-                "rounded-2xl border border-border bg-card shadow-card transition-colors focus-within:border-brand/40 focus-within:ring-4 focus-within:ring-brand/10",
-                dragOver && "border-brand bg-brand/5 ring-4 ring-brand/15",
+                "rounded-2xl bg-panel shadow-composer transition-colors focus-within:ring-2 focus-within:ring-ring/60",
+                dragOver && "bg-accent-soft",
               )}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -2901,7 +2904,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
             >
               <div className="relative">
               {mentionOpen && (
-                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-pop" role="listbox" aria-label="@ 引用候选">
+                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-xl bg-overlay p-1 shadow-pop" role="listbox" aria-label="@ 引用候选">
                   {mentionCandidates.map((c, i) => {
                     const key = isAssistantCandidate(c) ? `${c.kind}-${c.id}` : `${c.kind}-${c.path}`;
                     const label = isAssistantCandidate(c) ? `@${c.name}` : `@${c.path}${c.kind === "directory" ? "/" : ""}`;
@@ -2915,15 +2918,15 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                         aria-selected={i === mentionIdx}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs",
-                          i === mentionIdx ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
+                          i === mentionIdx ? "bg-accent-soft text-accent-text" : "hover:bg-accent",
                         )}
                         onMouseEnter={() => setMentionIdx(i)}
                         onMouseDown={(e) => { e.preventDefault(); applyMention(c); }}
                       >
                         {isAssistantCandidate(c)
-                          ? c.kind === "team" ? <Users className="h-3.5 w-3.5 shrink-0 text-brand" />
-                            : c.kind === "remote" ? <Network className="h-3.5 w-3.5 shrink-0 text-brand" />
-                              : <Bot className="h-3.5 w-3.5 shrink-0 text-brand" />
+                          ? c.kind === "team" ? <Users className="h-3.5 w-3.5 shrink-0 text-accent-text" />
+                            : c.kind === "remote" ? <Network className="h-3.5 w-3.5 shrink-0 text-accent-text" />
+                              : <Bot className="h-3.5 w-3.5 shrink-0 text-accent-text" />
                           : c.kind === "directory" ? <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                         <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -2934,7 +2937,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                   {mentionToken?.leading && (
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2 border-t px-3 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                      className="flex w-full items-center gap-2 bg-panel/50 px-3 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                       onMouseDown={(e) => { e.preventDefault(); onOpenSettings("agents"); }}
                     >
                       <Bot className="h-3.5 w-3.5 shrink-0" /> 管理助手与团队…
@@ -2943,7 +2946,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                 </div>
               )}
               {slashOpen && (
-                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-pop" role="listbox" aria-label="斜杠命令建议">
+                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-xl bg-overlay p-1 shadow-pop" role="listbox" aria-label="斜杠命令建议">
                   {slashSuggestions.map((c, i) => (
                     <button
                       key={c.cmd}
@@ -2951,7 +2954,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                       aria-selected={i === slashIdx}
                       className={cn(
                         "flex w-full flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
-                        i === slashIdx ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
+                        i === slashIdx ? "bg-accent-soft text-accent-text" : "hover:bg-accent",
                       )}
                       onMouseEnter={() => setSlashIdx(i)}
                       onMouseDown={(e) => { e.preventDefault(); applySlash(c.cmd); }}
@@ -2959,7 +2962,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                       <span className="flex w-full items-center gap-2">
                         <span className="font-mono font-medium">{c.cmd}</span>
                         {c.source && c.source !== "builtin" && (
-                          <span className="shrink-0 rounded border px-1 text-3xs font-normal text-muted-foreground">
+                          <span className="shrink-0 rounded bg-panel px-1 text-3xs font-normal text-muted-foreground">
                             {slashSourceLabel(c.source)}
                           </span>
                         )}
@@ -3080,7 +3083,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                 disabled={!active && providerCount === 0}
                 // Cap the growing textarea so a long paste shrinks the message
                 // list instead of squeezing the composer out of the viewport.
-                className="max-h-48 min-h-[64px] resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 text-md leading-[1.65] shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
+                className="max-h-48 min-h-[64px] resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 text-md leading-[1.65] shadow-none focus-visible:border-0 focus-visible:ring-0"
               />
               <input
                 ref={fileRef}
@@ -3337,14 +3340,14 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
                 ["总 tokens", stats.tokensTotal.toLocaleString()],
                 [statsCost ? "估算成本" : "未配置价格", statsCost || "—"],
               ].map(([k, v], i) => (
-                <div key={i} className="rounded-lg border p-2.5">
+                <div key={i} className="rounded-lg bg-panel p-2.5">
                   <div className="text-xs text-muted-foreground">{v}</div>
                   <div className="text-sm font-medium">{k}</div>
                 </div>
               ))}
             </div>
             {(stats.authors?.length ?? 0) > 1 && (
-              <div className="rounded-lg border p-2.5">
+              <div className="rounded-lg bg-panel p-2.5">
                 <div className="mb-1 text-xs text-muted-foreground">成员时间线</div>
                 <table className="w-full text-xs">
                   <thead>
@@ -3369,7 +3372,7 @@ export function ChatPage({ isDark, onToggleTheme, onOpenHelp, onOpenSettings, ve
               </div>
             )}
             {(stats.daily?.length ?? 0) > 0 && (
-              <div className="rounded-lg border p-2.5">
+              <div className="rounded-lg bg-panel p-2.5">
                 <div className="mb-1 text-xs text-muted-foreground">按日明细（成本按当前模型价格估算）</div>
                 <table className="w-full text-xs">
                   <thead>

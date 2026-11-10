@@ -410,10 +410,14 @@ func NormalizeExecutionDisplayOverride(mode string) (string, bool) {
 type Settings struct {
 	WorkspaceDir string `json:"workspaceDir"`
 	Language     string `json:"language"`
-	// Appearance: theme mode "light"|"dark"|"system", accent key, font scale
-	// "sm"|"md"|"lg", and whether to speak assistant replies automatically.
-	ThemeMode string `json:"themeMode"`
-	Accent    string `json:"accent"`
+	// Appearance: theme mode "light"|"dark"|"system", theme preset
+	// "nord"|"graphite"|"paper"|"contrast", font scale "sm"|"md"|"lg",
+	// and whether to speak assistant replies automatically.
+	ThemeMode   string `json:"themeMode"`
+	ThemePreset string `json:"themePreset,omitempty"`
+	// Accent is retained only for backwards-compatible config files. The UI
+	// no longer exposes or applies it; themePreset owns the full palette.
+	Accent    string `json:"accent,omitempty"`
 	FontScale string `json:"fontScale"`
 	// ChatWidth selects the chat column width: "narrow" | "medium" | "wide".
 	// Widths are percentages of the chat pane, so the column follows window
@@ -521,6 +525,15 @@ func (s ChatSession) EffectiveExecutionDisplayMode(global string) string {
 func (s *Settings) normalize() {
 	if s.ThemeMode == "" {
 		s.ThemeMode = "dark"
+	}
+	if s.ThemePreset == "" {
+		s.ThemePreset = "nord"
+	}
+	switch strings.ToLower(strings.TrimSpace(s.ThemePreset)) {
+	case "nord", "graphite", "paper", "contrast":
+		s.ThemePreset = strings.ToLower(strings.TrimSpace(s.ThemePreset))
+	default:
+		s.ThemePreset = "nord"
 	}
 	if s.Accent == "" {
 		s.Accent = "blue"
@@ -731,6 +744,7 @@ func Default() Config {
 			WorkspaceDir:         defaultWorkspace(),
 			Language:             "zh-CN",
 			ThemeMode:            "dark",
+			ThemePreset:          "nord",
 			Accent:               "blue",
 			FontScale:            "md",
 			ChatWidth:            ChatWidthMedium,

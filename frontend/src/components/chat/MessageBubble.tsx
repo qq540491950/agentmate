@@ -30,17 +30,17 @@ export function ConfirmCard({ m, onConfirm, onAllowAll, allowAllBusy }: {
   const status = m.confirmStatus ?? "pending";
   return (
     <div className={cn(
-      "rounded-lg border border-l-2 px-4 py-3",
-      status === "pending" && "border-warning/25 border-l-warning bg-warning/10",
-      status === "approved" && "border-success/25 border-l-success bg-success/5",
-      status === "rejected" && "border-destructive/25 border-l-destructive bg-destructive/5",
+      "rounded-xl px-4 py-3",
+      status === "pending" && "bg-warning-soft",
+      status === "approved" && "bg-success-soft",
+      status === "rejected" && "bg-danger-soft",
     )}>
       <div className="flex items-center gap-2">
         <ShieldAlert className={cn(
           "h-4 w-4 shrink-0",
           status === "pending" && "text-warning",
           status === "approved" && "text-success",
-          status === "rejected" && "text-destructive",
+        status === "rejected" && "text-danger-text",
         )} />
         <span className="text-sm font-medium">
           {status === "pending" ? "工具执行确认" : status === "approved" ? "已批准执行" : "已拒绝"}
@@ -49,7 +49,7 @@ export function ConfirmCard({ m, onConfirm, onAllowAll, allowAllBusy }: {
       </div>
       {m.hint && <div className="mt-1.5 text-xs text-muted-foreground">{m.hint}</div>}
       {m.toolArgs && Object.keys(m.toolArgs).length > 0 && (
-        <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-background/40 p-2 font-mono text-2xs leading-relaxed text-muted-foreground">
+        <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-control p-2 font-mono text-2xs leading-relaxed text-muted-foreground">
           {JSON.stringify(m.toolArgs, null, 2)}
         </pre>
       )}
@@ -75,7 +75,7 @@ export function ConfirmCard({ m, onConfirm, onAllowAll, allowAllBusy }: {
       ) : (
         <div className={cn(
           "mt-2 text-xs",
-          status === "approved" ? "text-success" : "text-destructive",
+          status === "approved" ? "text-success" : "text-danger-text",
         )}>
           {status === "approved" ? "模型已继续执行该工具调用" : "模型已收到拒绝结果"}
         </div>
@@ -98,7 +98,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
   }, [m.streaming]);
   if (inline) {
     return (
-      <div className="border-l-2 border-border pl-3">
+      <div className="rounded-lg bg-panel/60 px-3 py-2">
         <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
           <Brain className="h-3.5 w-3.5 shrink-0" />
           <span className="font-medium">思考过程</span>
@@ -111,7 +111,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
     );
   }
   return (
-    <div className="border-l-2 border-border pl-3">
+    <div className="rounded-lg bg-panel/60 px-3 py-2">
       <button
         type="button"
         className="flex w-full items-center gap-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
@@ -148,10 +148,8 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
 /** DaySeparator marks calendar-day boundaries in long conversations. */
 export function DaySeparator({ ts }: { ts: string | undefined }) {
   return (
-    <div role="separator" aria-label={dayLabel(ts)} className="flex items-center gap-3 py-2">
-      <div className="h-px flex-1 bg-border" aria-hidden />
+    <div role="separator" aria-label={dayLabel(ts)} className="flex items-center justify-center py-2">
       <span className="shrink-0 px-2 text-xs text-muted-foreground">{dayLabel(ts)}</span>
-      <div className="h-px flex-1 bg-border" aria-hidden />
     </div>
   );
 }
@@ -184,7 +182,7 @@ export function UserQuote({ m, active, onEdit, canEdit, filterQ }: {
                 title={`查看 ${a.name} 大图`}
                 onClick={() => setLightbox(a.dataUrl)}
               >
-                <img src={a.dataUrl} alt={a.name} className="h-20 cursor-zoom-in rounded-lg border object-cover" />
+                <img src={a.dataUrl} alt={a.name} className="h-20 cursor-zoom-in rounded-lg object-cover" />
               </button>
             ))}
           </div>
@@ -195,11 +193,11 @@ export function UserQuote({ m, active, onEdit, canEdit, filterQ }: {
               data-slot="user-bubble-body"
               title={fmtTime(m.timestamp)}
               className={cn(
-                "whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl rounded-br-md px-4 py-2.5 text-md leading-[1.65] text-foreground ring-1 transition-colors",
-                active ? "bg-brand/15 ring-brand/35" : "bg-brand/10 ring-brand/15",
+                "whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl rounded-br-md px-4 py-2.5 text-md leading-[1.65] text-foreground transition-colors",
+                active ? "bg-accent-soft" : "bg-accent-soft/70",
               )}
             >
-              {highlightText(m.text, filterQ, "bg-brand/25 text-foreground rounded-sm")}
+              {highlightText(m.text, filterQ, "bg-accent-soft text-foreground rounded-sm")}
             </div>
             <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
               {canEdit && onEdit && (
@@ -266,8 +264,8 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   };
   if (m.kind === "error") {
     return (
-      <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
-        {highlightText(m.text, filterQ, "bg-destructive/25 text-destructive rounded-sm")}
+      <div className="rounded-xl bg-danger-soft px-4 py-2.5 text-sm text-danger-text">
+        {highlightText(m.text, filterQ, "bg-danger-soft text-danger-text rounded-sm")}
         {canRegenerate && (
           <div className="mt-2">
             <Button

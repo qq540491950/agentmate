@@ -4,6 +4,27 @@
 
 ## 视觉测试与体验设计
 
+### 第二百四十轮迭代：Nord 表面契约与多主题 UI 整改（已实施）
+
+依据：用户要求按 `frontend/AGENTS.md` 与 `docs/design-system.md` 的 Nord/表面契约执行 UI 整改，消除明显的线条分区与框套框，并让 agent 后续实现不偏离。规格见 `docs/specs/ui-surface-redesign.md`（#80）。
+
+**实现要点**
+
+- 主题模型新增 `themePreset`（`nord | graphite | paper | contrast`）并与 `themeMode`（`light | dark | system`）分离；配置缺失/未知值回退 Nord，保留旧字号码/栏宽偏好；重新生成 Wails 绑定。
+- 令牌层改为 `canvas / chrome / panel / overlay` 四类表面，Nord 使用官方 Polar Night / Snow Storm / Frost / Aurora，并为状态文字增加 AA 可读变体；Graphite、Paper、Contrast 各自提供完整 light/dark 令牌。
+- 壳层与对话区移除布局级 border/ring：顶栏/侧栏/设置导航共享 chrome，卡片/执行组/composer 使用 panel，浮层使用 overlay + shadow；选中态统一 accent-soft + accent-text，不再使用左侧竖条。
+- 设置页外观改为真实组件的四主题画廊 + 明暗模式单选组，主题实时应用并持久化；侧栏底部增加主题快速菜单；启动前由缓存脚本应用主题，避免闪白/闪黑。
+- 统一 shadcn 基元：Card/Dialog/Popover/Dropdown/Select/Input/Textarea/Button/Badge/Alert/Tabs 改为无布局描边、控制面填充与 2px focus ring；Agents/Models/Teams/Skills/MCP 列表改为连续行式面板。
+- 补齐 `frontend/AGENTS.md` 硬约束、`docs/design-system.md` Nord 手册、旧 UI 文档历史标记，并生成 Nord/Paper/Contrast 新截图基线。
+
+**测试证据**
+
+- 后端：`go test ./internal/...` 全绿；`go vet ./internal/... .` 0 错；`internal/config` 新增主题预设迁移/持久化用例。
+- 前端：`npx tsc --noEmit` 0 错；`npm test` 29 个测试文件、221 个用例全绿；`npm run build` 与 `wails3 build` 生产构建通过。
+- 主题契约：`themeContract.test.ts` 覆盖 4 主题 × 2 模式，正文/状态/主按钮 ≥ 4.5:1、focus ring ≥ 3:1、canvas/chrome/panel 相邻表面 1.05–1.30。
+- 视觉桩 1280×800 走查：Nord 深/浅、Paper 浅、Contrast 深；Agents 列表、编辑对话框、展开执行组、任务结果区均无布局级常驻线条；主题画廊与快速切换可用。
+- 新基线：`docs/ui-baseline/nord-dark-chat-1280.jpg`、`nord-light-chat-1280.jpg`、`settings-nord-dark-1280.jpg`、`settings-nord-light-1280.jpg`、`agents-nord-dark-1280.jpg`、`paper-light-chat-1280.jpg`、`contrast-dark-chat-1280.jpg`。
+
 ### 第二百三十九轮迭代：关于页信息层级调整（已实施）
 
 依据：用户指出「关于」页首屏展示 ADK Runner / SQLite / MCP Toolset 等技术架构，不符合常规 About 页“版本 + 更新 + 反馈”的信息层级，要求调整。
