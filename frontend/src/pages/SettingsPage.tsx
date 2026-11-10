@@ -29,7 +29,7 @@ import {
 } from "@/lib/executionDisplay";
 import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
 import { modelLabel } from "@/lib/modelLabel";
-import { Chat, App, A2A, Config, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
+import { Chat, App, A2A, Config, Update, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
 
 const SETTINGS_TABS = [
   { key: "general", label: "通用" },
@@ -137,6 +137,14 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
       toast.error(`打开浏览器失败: ${errText(e)}`);
     }
   }, [version]);
+
+  const openReleases = useCallback(async () => {
+    try {
+      await Update.OpenDownloadPage();
+    } catch (e) {
+      toast.error(`打开浏览器失败: ${errText(e)}`);
+    }
+  }, []);
 
   // 工作区目录：与对话页的「添加项目」共用原生目录选择器，Windows/macOS
   // 都能弹窗选择，不再要求用户手输路径。取消选择不是错误，保持原值。
@@ -894,21 +902,40 @@ export function SettingsPage({ initialTab, onClose, version }: { initialTab?: Se
             <CardTitle className="text-base">关于</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            <div>AgentMate{version ? ` · v${version}` : ""} · 基于 Google ADK Go v2 构建</div>
-            <div className="mt-1">
-              Agent 运行时：ADK Runner / LLMAgent / AgentTool；会话存储：SQLite（ADK Database Session Service）；
-              工具：ADK FunctionTool、MCP Toolset（go-sdk）、Skill Toolset（agentskills.io 规范）。
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-base font-medium text-foreground">AgentMate</span>
+              {version && <span className="text-xs text-muted-foreground">v{version}</span>}
             </div>
-            <UpdateCard version={version} />
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-              <div>
-                <div className="text-sm font-medium text-foreground">问题反馈</div>
-                <div className="text-xs text-muted-foreground">在浏览器打开 GitHub 表单，自动填入版本与环境</div>
+            <div className="mt-1 text-xs text-muted-foreground">本地 AI Agent 桌面应用</div>
+            <UpdateCard />
+            <div className="mt-4 divide-y divide-border border-t border-border">
+              <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div>
+                  <div className="text-sm font-medium text-foreground">版本记录</div>
+                  <div className="text-xs text-muted-foreground">查看所有版本与更新说明</div>
+                </div>
+                <Button size="sm" variant="outline" onClick={openReleases}>
+                  查看
+                </Button>
               </div>
-              <Button size="sm" variant="outline" onClick={reportIssue}>
-                打开表单
-              </Button>
+              <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div>
+                  <div className="text-sm font-medium text-foreground">问题反馈</div>
+                  <div className="text-xs text-muted-foreground">在浏览器打开 GitHub 表单，自动填入版本与环境</div>
+                </div>
+                <Button size="sm" variant="outline" onClick={reportIssue}>
+                  打开表单
+                </Button>
+              </div>
             </div>
+            <details className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
+              <summary className="cursor-pointer select-none hover:text-foreground">技术信息</summary>
+              <div className="mt-2 grid gap-1">
+                <div>运行时：Google ADK Go v2（Runner / LLMAgent / AgentTool）</div>
+                <div>会话存储：SQLite（ADK Database Session Service）</div>
+                <div>工具：ADK FunctionTool、MCP Toolset（go-sdk）、Skill Toolset（agentskills.io 规范）</div>
+              </div>
+            </details>
           </CardContent>
         </Card>
         )}

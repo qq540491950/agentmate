@@ -40,7 +40,7 @@ function stateLabel(s: UpdateStatus): string {
  * window: the surrounding settings page already owns version display,
  * persistence and toast conventions here.
  */
-export function UpdateCard({ version }: { version?: string }) {
+export function UpdateCard() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
@@ -83,9 +83,7 @@ export function UpdateCard({ version }: { version?: string }) {
       const s = await Update.CheckNow();
       setStatus(s);
       if (s.state === "up-to-date") {
-        toast.success(
-          s.skippedVersion ? `已是最新（已忽略 v${s.skippedVersion}）` : "已是最新版本",
-        );
+        toast.success("已是最新版本");
       } else if (s.availableVersion) {
         toast.success(`发现新版本 v${s.availableVersion}`);
       }
@@ -148,7 +146,6 @@ export function UpdateCard({ version }: { version?: string }) {
     }
   };
 
-  const current = status?.currentVersion || version || "";
   const available = status?.state === "available" || status?.state === "ready";
   const downloaded = status?.state === "ready";
   const downloading = status?.state === "downloading";
@@ -231,9 +228,6 @@ export function UpdateCard({ version }: { version?: string }) {
           </Label>
         </div>
         <div className="flex items-center gap-3 text-xs">
-          {status?.skippedVersion && (
-            <span className="text-muted-foreground">已忽略 v{status.skippedVersion}</span>
-          )}
           {available && status?.availableVersion && (
             <button
               type="button"
@@ -243,16 +237,8 @@ export function UpdateCard({ version }: { version?: string }) {
               跳过此版本
             </button>
           )}
-          <button
-            type="button"
-            className="text-muted-foreground underline-offset-2 hover:underline"
-            onClick={openDownloadPage}
-          >
-            所有版本
-          </button>
         </div>
       </div>
-      {current && <div className="mt-1 text-xs text-muted-foreground">当前版本 v{current}</div>}
     </div>
   );
 }
