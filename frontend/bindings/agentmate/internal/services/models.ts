@@ -267,6 +267,12 @@ export interface SessionStats {
     "contextTokens"?: number;
 
     /**
+     * CachedTokens is the cached share of ContextTokens on the last model
+     * call (0 when the provider does not report prompt caching).
+     */
+    "cachedTokens"?: number;
+
+    /**
      * per-day token/cost breakdown
      */
     "daily"?: StatDay[] | null;
@@ -350,6 +356,14 @@ export interface UsageInfo {
     "completionTokens": number;
     "totalTokens": number;
     "contextTokens"?: number;
+
+    /**
+     * CachedTokens is the part of the last prompt that the provider served
+     * from its prompt cache (Anthropic cache_read_input_tokens, OpenAI-style
+     * prompt_tokens_details.cached_tokens). Zero means "no caching reported",
+     * never "cache miss" — several gateways simply omit the field.
+     */
+    "cachedTokens"?: number;
 }
 
 /**

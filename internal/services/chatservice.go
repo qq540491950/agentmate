@@ -52,6 +52,11 @@ type UsageInfo struct {
 	CompletionTokens int64 `json:"completionTokens"`
 	TotalTokens      int64 `json:"totalTokens"`
 	ContextTokens    int64 `json:"contextTokens,omitempty"`
+	// CachedTokens is the part of the last prompt that the provider served
+	// from its prompt cache (Anthropic cache_read_input_tokens, OpenAI-style
+	// prompt_tokens_details.cached_tokens). Zero means "no caching reported",
+	// never "cache miss" — several gateways simply omit the field.
+	CachedTokens int64 `json:"cachedTokens,omitempty"`
 }
 
 // ChatStreamEvent is streamed to the frontend while a run progresses.
@@ -93,6 +98,7 @@ func usageOf(ev *session.Event) *UsageInfo {
 		CompletionTokens: int64(u.CandidatesTokenCount),
 		TotalTokens:      int64(u.TotalTokenCount),
 		ContextTokens:    int64(u.PromptTokenCount),
+		CachedTokens:     int64(u.CachedContentTokenCount),
 	}
 }
 

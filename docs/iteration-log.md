@@ -4,6 +4,35 @@
 
 ## 视觉测试与体验设计
 
+### 第二百四十五轮迭代：上下文卡片去箭头、三行精简与缓存命中（已实施）
+
+依据：用户两次截图反馈——① 卡片底部仍有一个菱形指针，要求去掉；② 内容仍然偏长，希望继续精简；③ 如果模型返回了缓存信息，应当显示出来。第一版（本轮上半段）把标题改成「背景信息窗口：」并用 CSS `[&>svg]:hidden` 藏箭头，实测箭头依旧存在：Radix 的 `TooltipPrimitive.Arrow` 是带 `data-slot` 的独立 SVG，选择器只加了类名而类名在 `cn()` 合并后未覆盖到，等于没有生效。
+
+**实现要点**
+
+- **箭头改为组件契约**：`ui/tooltip.tsx` 的 `TooltipContent` 新增 `hideArrow?: boolean`，为真时不渲染 `TooltipPrimitive.Arrow`。不再靠类名隐藏——那是样式层打补丁，换个主题或合并顺序就会复现。卡片改用 `hideArrow`，同时删掉无效的 `[&>svg]:hidden`。
+- **三行收敛**：气泡固定为「标题 + 占用两行」，把「输入 / 输出」分项整行删掉（信息在会话统计里），累计计费合并成一行且只在有数据时出现：
+  - `背景信息窗口：`
+  - `11% 已用（剩余 89%）`
+  - `已用 109k 标记，共 996k`
+  - `缓存命中 96k 标记`（有命中才出现）
+  - `累计 157k tokens · ¥0.31`（有计费才出现）
+- **数字缩写**：新增 `compactTokens`（`265000 → 265k`、`996000 → 996k`、`1_000_000 → 1M`，`<1000` 原样，小数仅在有效时保留，负数/NaN 归零）。千分位全写在一张约 200px 的卡片里会折行。
+- **缓存信息全链路**：
+  - `agentkit.llm`：OpenAI 兼容解析 `prompt_tokens_details.cached_tokens` 与扁平 `cached_tokens`（网关两种写法都有）；Anthropic 解析 `cache_read_input_tokens` / `cache_creation_input_tokens`，且 `message_start` 与 `message_delta` 两处都收（代理会折叠）。两者都写入 `genai.UsageMetadata.CachedContentTokenCount`。
+  - `UsageInfo.CachedTokens`：由 `usageOf` 从 usage metadata 取出；`addUsage` 对缓存**覆盖而不累加**（和 `ContextTokens` 同口径——它描述当前上下文，累加会报出不存在的命中量）。
+  - `SessionStats.CachedTokens`：按事件顺序取最后一次 usage，重开会话无需等下一轮即可看到。
+  - 前端 `SessionUsageSummary.cachedTokens` 只在 >0 时渲染，模型不报缓存不会多出一行「0」。
+- **可访问性**：圆环触发元改为 `button` 并带 `aria-label`（把标题与各行拼成一句），Radix 在 focus 时展开卡片；卡片文案纯函数可测。
+
+**测试证据**
+
+- `agentkit`：新增 `TestOpenAICompatCacheUsageExtraction`（nested / flat 两种 JSON 形态，断言缓存值且 prompt 总数不被改写）、`TestAnthropicCacheUsageExtraction`（缓存计数在 message_start / message_delta 两条路径，prompt 仍为 1000）；`TestOpenAICompatUsageExtraction` 增加「无缓存字段必须为 0」断言。
+- `services`：新增 `TestTurnUsageCarriesCachedTokens`——工具循环两次调用分别命中 8 / 90，断言 message/done 与 `SessionStats.CachedTokens` 都是 90（不是 98），同时计费口径仍累加到 154。
+- 前端：`contextUsage.test.ts` 18 条，覆盖三行文案、「无缓存不加行」、「窗口未知只剩缓存+累计」；`npx tsc --noEmit` 0 错；`npm test` 30 文件 / 231 用例全绿；`npm run build` 通过。
+- 浏览器桩：`SessionStats` 返回 `contextTokens: 109000` / `cachedTokens: 96000`，`gpt-5-mini` 窗口 996000，悬停即复现「11% 已用（剩余 89%）/ 已用 109k 标记，共 996k / 缓存命中 96k 标记」。桩服务器实测 `ChatPage.tsx`、`tooltip.tsx` 均 200 且包含 `hideArrow`，转译无错误。
+- Wails bindings 已用 `-f "-tags=production" -clean=true -ts` 重新生成，仅 `services/models.ts` 新增两个 `cachedTokens` 字段。
+
 ### 第二百四十四轮迭代：composer 聚焦包边移除与执行过程全局化（已实施）
 
 依据：用户截图指出 composer 顶部的圆角亮线疑似边框；进一步确认后明确要求聚焦时去掉整块包边。同时要求把下侧「执行过程显示」从会话级快捷切换收口到全局设置。

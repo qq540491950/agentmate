@@ -39,22 +39,25 @@ func (c *ChatService) RememberSession(sessionID string) (int, error) {
 
 // SessionStats aggregates observability metrics for one conversation.
 type SessionStats struct {
-	Messages       int          `json:"messages"`
-	ToolCalls      int          `json:"toolCalls"`
-	ToolFailures   int          `json:"toolFailures"`
-	AssistantTurns int          `json:"assistantTurns"`
-	TokensIn       int64        `json:"tokensIn"`
-	TokensOut      int64        `json:"tokensOut"`
-	TokensTotal    int64        `json:"tokensTotal"`
+	Messages       int   `json:"messages"`
+	ToolCalls      int   `json:"toolCalls"`
+	ToolFailures   int   `json:"toolFailures"`
+	AssistantTurns int   `json:"assistantTurns"`
+	TokensIn       int64 `json:"tokensIn"`
+	TokensOut      int64 `json:"tokensOut"`
+	TokensTotal    int64 `json:"tokensTotal"`
 	// ContextTokens is the CURRENT context occupancy (the last model call's
 	// prompt size), not the cumulative TokensTotal — the UI's context-window
 	// gauge must use this, or a long tool-loop session reports "context
 	// exhausted" while the real occupancy is a fraction of the window.
-	ContextTokens  int64        `json:"contextTokens,omitempty"`
-	Daily          []StatDay    `json:"daily,omitempty"`   // per-day token/cost breakdown
-	Authors        []AuthorStat `json:"authors,omitempty"` // per-participant breakdown (team timelines)
-	FirstAt        *time.Time   `json:"firstAt,omitempty"`
-	LastAt         *time.Time   `json:"lastAt,omitempty"`
+	ContextTokens int64 `json:"contextTokens,omitempty"`
+	// CachedTokens is the cached share of ContextTokens on the last model
+	// call (0 when the provider does not report prompt caching).
+	CachedTokens int64        `json:"cachedTokens,omitempty"`
+	Daily        []StatDay    `json:"daily,omitempty"`   // per-day token/cost breakdown
+	Authors      []AuthorStat `json:"authors,omitempty"` // per-participant breakdown (team timelines)
+	FirstAt      *time.Time   `json:"firstAt,omitempty"`
+	LastAt       *time.Time   `json:"lastAt,omitempty"`
 }
 
 // AuthorStat breaks usage down per conversation participant (team members,
@@ -146,6 +149,7 @@ func (c *ChatService) SessionStats(sessionID string) (*SessionStats, error) {
 			st.TokensTotal += u.TotalTokens
 			// Events arrive in order; the last usage is the live context size.
 			st.ContextTokens = u.ContextTokens
+			st.CachedTokens = u.CachedTokens
 
 			as := authors[ev.Author]
 			if as == nil {

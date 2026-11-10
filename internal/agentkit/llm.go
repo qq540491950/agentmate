@@ -170,9 +170,10 @@ func withUsage(resp *model.LLMResponse, u *oaUsage) *model.LLMResponse {
 		return resp
 	}
 	resp.UsageMetadata = &genai.GenerateContentResponseUsageMetadata{
-		PromptTokenCount:     int32(u.PromptTokens),
-		CandidatesTokenCount: int32(u.CompletionTokens),
-		TotalTokenCount:      int32(u.TotalTokens),
+		PromptTokenCount:        int32(u.PromptTokens),
+		CandidatesTokenCount:    int32(u.CompletionTokens),
+		TotalTokenCount:         int32(u.TotalTokens),
+		CachedContentTokenCount: int32(u.cachedPrompt()),
 	}
 	return resp
 }
@@ -182,10 +183,14 @@ func withUsageA(resp *model.LLMResponse, u *anUsage) *model.LLMResponse {
 		return resp
 	}
 	total := u.InputTokens + u.OutputTokens
+	// cache_read_input_tokens is a subset of input on the Anthropic API, so it
+	// never changes the prompt total — it only tells the UI how much of it was
+	// served from cache.
 	resp.UsageMetadata = &genai.GenerateContentResponseUsageMetadata{
-		PromptTokenCount:     int32(u.InputTokens),
-		CandidatesTokenCount: int32(u.OutputTokens),
-		TotalTokenCount:      int32(total),
+		PromptTokenCount:        int32(u.InputTokens),
+		CandidatesTokenCount:    int32(u.OutputTokens),
+		TotalTokenCount:         int32(total),
+		CachedContentTokenCount: int32(u.CacheReadInputTokens),
 	}
 	return resp
 }
@@ -436,6 +441,25 @@ type oaUsage struct {
 	PromptTokens     int64 `json:"prompt_tokens"`
 	CompletionTokens int64 `json:"completion_tokens"`
 	TotalTokens      int64 `json:"total_tokens"`
+	// PromptTokensDetails carries the cached prompt portion. OpenAI-compatible
+	// gateways that forward an upstream cache hit report it here (and some use
+	// the flat "cached_tokens" field, handled by oaUsage.cached).
+	PromptTokensDetails *struct {
+		CachedTokens int64 `json:"cached_tokens"`
+	} `json:"prompt_tokens_details,omitempty"`
+	CachedTokens int64 `json:"cached_tokens,omitempty"`
+}
+
+// cachedPrompt is the cached portion of the prompt (0 when the provider does
+// not report caching). Both spellings seen in the wild are accepted.
+func (u *oaUsage) cachedPrompt() int64 {
+	if u == nil {
+		return 0
+	}
+	if u.PromptTokensDetails != nil && u.PromptTokensDetails.CachedTokens > 0 {
+		return u.PromptTokensDetails.CachedTokens
+	}
+	return u.CachedTokens
 }
 
 type oaTool struct {
@@ -926,6 +950,10 @@ type anTool struct {
 type anUsage struct {
 	InputTokens  int64 `json:"input_tokens"`
 	OutputTokens int64 `json:"output_tokens"`
+	// CacheReadInputTokens is the prompt prefix served from Anthropic's prompt
+	// cache; CacheCreationInputTokens is what was written into it this call.
+	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 }
 
 func (a *anthropicLLM) buildMessages(req *model.LLMRequest) []anMessage {
@@ -1122,7 +1150,11 @@ func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 				return
 			case "message_start":
 				if ev.Message != nil && ev.Message.Usage != nil {
-					usage = &anUsage{InputTokens: ev.Message.Usage.InputTokens}
+					usage = &anUsage{
+						InputTokens:              ev.Message.Usage.InputTokens,
+						CacheReadInputTokens:     ev.Message.Usage.CacheReadInputTokens,
+						CacheCreationInputTokens: ev.Message.Usage.CacheCreationInputTokens,
+					}
 				}
 			case "message_delta":
 				if ev.Usage == nil {
@@ -1134,6 +1166,14 @@ func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 					usage = &anUsage{}
 				}
 				usage.OutputTokens = ev.Usage.OutputTokens
+				// The cache counters can ride on message_delta instead of
+				// message_start (proxies differ); keep whichever arrived.
+				if ev.Usage.CacheReadInputTokens > 0 {
+					usage.CacheReadInputTokens = ev.Usage.CacheReadInputTokens
+				}
+				if ev.Usage.CacheCreationInputTokens > 0 {
+					usage.CacheCreationInputTokens = ev.Usage.CacheCreationInputTokens
+				}
 			case "content_block_start":
 				if ev.ContentBlock.Type == "tool_use" {
 					if ev.Index < 0 || ev.Index >= maxContentBlocks {

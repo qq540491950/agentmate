@@ -27,37 +27,89 @@ export function resolveContextUsage(
   return { pct, color, win: contextWindow, label, used: contextTokens, estimated };
 }
 
+/** trimTrailingZero formats one decimal, dropping a ".0" suffix. */
+function trimTrailingZero(v: number): string {
+  return (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, "");
+}
+
+/**
+ * compactTokens shortens a token count for the hover bubble: 265000 → "265k",
+ * 996000 → "996k", 1500 → "1.5k", 1000000 → "1M"; below 1000 stays exact.
+ * The bubble sits above a 16px ring, so full thousands separators
+ * ("996,000 tokens") wrapped the line in two.
+ */
+export function compactTokens(n: number): string {
+  const value = Math.max(0, Math.round(n || 0));
+  if (value < 1000) return String(value);
+  // One decimal only while it carries information: 1.5k, but 265k (not 265.0k).
+  const k = Math.round(value / 100) / 10;
+  if (k < 1000) return `${trimTrailingZero(k)}k`;
+  return `${trimTrailingZero(value / 1_000_000)}M`;
+}
+
 /** SessionUsageSummary is the cumulative-billing subset the tooltip appends. */
 export interface SessionUsageSummary {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /** cachedTokens is the cached share of the CURRENT prompt (last call). Zero
+   *  when the provider does not report prompt caching — it never means
+   *  "cache miss" on its own. */
+  cachedTokens?: number;
+}
+
+/** ContextTooltipContent is the hover bubble's structured text. */
+export interface ContextTooltipContent {
+  /** title is the bubble's heading line ("背景信息窗口："). */
+  title: string;
+  /** rows are the detail lines under the heading. */
+  rows: string[];
+  /** ariaLabel flattens the bubble into one sentence for the ring's
+   *  aria-label — keyboard and screen-reader users never see the hover card. */
+  ariaLabel: string;
 }
 
 /**
- * contextTooltipLines renders the hover bubble under the composer's context
- * ring (Codex desktop style): real occupancy first, cumulative billed usage
- * last. Pure so the bubble wording stays unit-tested.
+ * contextTooltipLines renders the hover card above the composer's context
+ * ring. Three lines at most — window occupancy, the cached share when the
+ * provider reports one, and the cumulative billed total:
+ *
+ *   背景信息窗口：
+ *   11% 已用（剩余 89%）
+ *   已用 109k 标记，共 996k
+ *
+ * The cache line only appears for a real hit: a model that never reports
+ * caching must not gain a "0 cached" row. Pure so the wording stays
+ * unit-tested; null means "nothing to say" and the caller renders no card.
  */
 export function contextTooltipLines(
   usage: ContextUsageView | null,
   sessionUsage: SessionUsageSummary | null | undefined,
   cost?: string,
-): string[] {
-  const lines: string[] = [];
+): ContextTooltipContent | null {
+  const rows: string[] = [];
   if (usage) {
     const remain = Math.max(0, 100 - Math.min(100, usage.pct));
-    lines.push("上下文窗口");
-    lines.push(`${usage.label} 已用（剩余 ${remain.toFixed(0)}%）`);
-    lines.push(`已用 ${usage.used.toLocaleString()}，共 ${usage.win.toLocaleString()} tokens`);
-    if (usage.estimated) lines.push("按会话内容估算——当前模型未返回用量");
+    rows.push(`${usage.label} 已用（剩余 ${remain.toFixed(0)}%）`);
+    // Window occupancy is measured in 标记 (the product wording for the
+    // model's token budget), matching the reference bubble.
+    rows.push(`已用 ${compactTokens(usage.used)} 标记，共 ${compactTokens(usage.win)}`);
+    if (usage.estimated) rows.push("按会话内容估算——当前模型未返回用量");
+  }
+  const cached = sessionUsage?.cachedTokens ?? 0;
+  if (cached > 0) {
+    rows.push(`缓存命中 ${compactTokens(cached)} 标记`);
   }
   if (sessionUsage && sessionUsage.totalTokens > 0) {
     const costPart = cost ? ` · ${cost}` : "";
-    lines.push(`累计 ${sessionUsage.totalTokens.toLocaleString()} tokens${costPart}`);
-    lines.push(`输入 ${sessionUsage.promptTokens.toLocaleString()} · 输出 ${sessionUsage.completionTokens.toLocaleString()}`);
+    rows.push(`累计 ${compactTokens(sessionUsage.totalTokens)} tokens${costPart}`);
   }
-  return lines;
+  if (rows.length === 0) return null;
+  return {
+    title: "背景信息窗口：",
+    rows,
+    ariaLabel: ["背景信息窗口", ...rows].join("；"),
+  };
 }
 
 /** EstimateMessage is the per-message subset the estimator reads. */

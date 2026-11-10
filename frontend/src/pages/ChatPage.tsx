@@ -541,6 +541,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           completionTokens: st.tokensOut,
           totalTokens: st.tokensTotal,
           contextTokens: st.contextTokens,
+          cachedTokens: st.cachedTokens,
         });
       })
       .catch(() => { /* stats are best-effort */ });
@@ -2103,6 +2104,12 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     if (contextWindow <= 0 || messages.length === 0 || estimatedTokens <= 0) return null;
     return resolveContextUsage(estimatedTokens, contextWindow, true);
   }, [realContextUsage, contextWindow, messages.length, estimatedTokens]);
+  // The hover card under the ring: window first ("背景信息窗口："), cumulative
+  // billing last. Null means "nothing to say" and the trigger disappears.
+  const contextTip = useMemo(
+    () => contextTooltipLines(contextUsage, sessionUsage, costOf(sessionUsage)),
+    [contextUsage, sessionUsage, costOf],
+  );
 
   // Whole-session cost estimate for the stats dialog (label/value order must
   // match the other stat cells: value muted on top, label bold below).
@@ -3113,18 +3120,36 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                   </button>
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
-                  {(contextUsage || (sessionUsage && sessionUsage.totalTokens > 0)) && (
+                  {contextTip && (
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <div className="hidden shrink-0 items-center px-1 sm:flex">
+                          {/* A button (not a bare div) so the numbers are reachable
+                              by keyboard: Radix opens the card on focus, and the
+                              flattened aria-label carries them even when the
+                              hover card never renders. */}
+                          <button
+                            type="button"
+                            aria-label={contextTip.ariaLabel}
+                            className="hidden shrink-0 items-center rounded-md px-1 py-0.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 sm:flex"
+                          >
                             {contextUsage
                               ? <ContextRing usage={contextUsage} />
                               : <Coins className="h-3.5 w-3.5 text-muted-foreground" />}
-                          </div>
+                          </button>
                         </TooltipTrigger>
-                        <TooltipContent side="top" className="flex-col items-start gap-0.5">
-                          {contextTooltipLines(contextUsage, sessionUsage, costOf(sessionUsage)).map((line) => (
+                        {/* Overlay surface per the design system (a rounded
+                            card, not an inverted block); text is centered like
+                            the reference bubble. hideArrow drops the pointer
+                            diamond entirely — the card is a panel, not a
+                            speech bubble. */}
+                        <TooltipContent
+                          side="top"
+                          hideArrow
+                          className="flex-col items-center gap-0.5 bg-overlay px-3 py-2 text-center text-foreground shadow-pop"
+                        >
+                          <span className="font-medium">{contextTip.title}</span>
+                          {contextTip.rows.map((line) => (
                             <span key={line}>{line}</span>
                           ))}
                         </TooltipContent>

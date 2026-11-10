@@ -67,7 +67,7 @@ const seedConfig = {
           id: "gpt-5-mini",
           displayName: "GPT-5 Mini",
           multimodal: true,
-          contextWindow: 400000,
+          contextWindow: 996000,
           maxOutputTokens: 8192,
           priceIn: 2,
           priceOut: 8,
@@ -355,8 +355,14 @@ const handlers: Record<string, (args: any[]) => any> = {
   [svc("ChatService", "GetSessionMessages")]: (args) => histories[args[0]] ?? [],
   // IsRunning(sessionID)
   [svc("ChatService", "IsRunning")]: () => false,
-  // SessionStats(sessionID)
-  [svc("ChatService", "SessionStats")]: () => ({ messages: 1, toolCalls: 1, toolFailures: 0, assistantTurns: 0, tokensIn: 120, tokensOut: 80, tokensTotal: 200 }),
+  // SessionStats(sessionID): the numbers mirror the composer's「背景信息窗口」
+  // hover card (109k of a 996k window ≈ 11%, plus a 96k cache hit) so the card
+  // can be walked without a live model call.
+  [svc("ChatService", "SessionStats")]: () => ({
+    messages: 1, toolCalls: 1, toolFailures: 0, assistantTurns: 0,
+    tokensIn: 109000, tokensOut: 0, tokensTotal: 109000,
+    contextTokens: 109000, cachedTokens: 96000,
+  }),
   // ArchiveSession(sessionID, archived)
   [svc("ChatService", "ArchiveSession")]: (args) => {
     const sess = seedConfig.sessions.find((s) => s.id === args[0]);

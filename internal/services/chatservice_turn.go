@@ -36,6 +36,10 @@ func addUsage(total, u *UsageInfo) *UsageInfo {
 	m.TotalTokens += u.TotalTokens
 	// Context occupancy never accumulates: the last call's prompt wins.
 	m.ContextTokens = u.ContextTokens
+	// Same for the cached share of that prompt — it describes the current
+	// context, not a cumulative total (and re-summing it would report cache
+	// hits that never happened).
+	m.CachedTokens = u.CachedTokens
 	return &m
 }
 

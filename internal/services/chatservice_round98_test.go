@@ -381,6 +381,75 @@ func TestTurnUsageAccumulatesAcrossToolLoop(t *testing.T) {
 	}
 }
 
+// TestTurnUsageCarriesCachedTokens: the provider's prompt-cache counters reach
+// the UI. CachedTokens is the cached share of the CURRENT context (last call),
+// so a tool loop that hits the cache twice must not report their sum — the
+// bubble would otherwise claim a cache bigger than the prompt.
+func TestTurnUsageCarriesCachedTokens(t *testing.T) {
+	turn := 0
+	chat, _, _, _ := newConfirmTestChat(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		turn++
+		if turn == 1 {
+			_, _ = w.Write([]byte(sseToolCall("c1", "write_workspace_file", `"{\"path\":\"u.txt\",\"content\":\"v\"}"`) +
+				`data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14,"prompt_tokens_details":{"cached_tokens":8}}}` + "\n\n" + sseDone))
+			return
+		}
+		_, _ = w.Write([]byte(sseText("done") +
+			`data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":40,"total_tokens":140,"prompt_tokens_details":{"cached_tokens":90}}}` + "\n\n" + sseDone))
+	})
+	events := hookEvents(t)
+
+	if err := chat.S.Store.Update(func(cfg *config.Config) {
+		for i := range cfg.Agents {
+			cfg.Agents[i].ConfirmTools = nil // no HITL: direct execution
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := chat.newLegacySession("agent", "agent_c", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := chat.Send(sess.ID, "写 u.txt", nil); err != nil {
+		t.Fatal(err)
+	}
+	var msgUsage *UsageInfo
+	var doneUsage *UsageInfo
+	for i := range *events {
+		ev := (*events)[i]
+		if ev.Kind == "message" && ev.Usage != nil {
+			msgUsage = ev.Usage
+		}
+		if ev.Kind == "done" && ev.SessionUsage != nil {
+			doneUsage = ev.SessionUsage
+		}
+	}
+	if msgUsage == nil || doneUsage == nil {
+		t.Fatal("missing usage on message/done events")
+	}
+	// Prompt/completion still accumulate (billing), the cached share does not.
+	if msgUsage.PromptTokens != 110 || msgUsage.CompletionTokens != 44 {
+		t.Fatalf("billing usage not accumulated: %+v", msgUsage)
+	}
+	if msgUsage.CachedTokens != 90 {
+		t.Fatalf("cached tokens = %d, want the last call's 90 (not the 8+90 sum)", msgUsage.CachedTokens)
+	}
+	if doneUsage.CachedTokens != 90 {
+		t.Fatalf("done cached tokens = %d, want 90", doneUsage.CachedTokens)
+	}
+	st, err := chat.SessionStats(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.CachedTokens != 90 {
+		t.Fatalf("stats cached tokens = %d, want 90", st.CachedTokens)
+	}
+	if st.TokensTotal != 154 {
+		t.Fatalf("stats total tokens = %d, want cumulative 154", st.TokensTotal)
+	}
+}
+
 // TestChatPreviewStripsControlChars: model output can carry C0 control bytes
 // (e.g. U+0001); the sidebar preview must not surface them.
 func TestChatPreviewStripsControlChars(t *testing.T) {

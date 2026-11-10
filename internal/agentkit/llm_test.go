@@ -313,6 +313,9 @@ func TestOpenAICompatUsageExtraction(t *testing.T) {
 	if got == nil || got.PromptTokenCount != 10 || got.CandidatesTokenCount != 5 || got.TotalTokenCount != 15 {
 		t.Fatalf("non-stream usage = %+v", got)
 	}
+	if got.CachedContentTokenCount != 0 {
+		t.Fatalf("no cache info should stay 0, got %d", got.CachedContentTokenCount)
+	}
 
 	// Streaming: usage arrives on a choices-less chunk via stream_options.
 	var askedForUsage bool
@@ -372,6 +375,58 @@ func TestOpenAICompatStreamUsageOnContentChunk(t *testing.T) {
 	}
 }
 
+// TestOpenAICompatCacheUsageExtraction pins the cached-prompt passthrough for
+// the two spellings gateways use: the nested prompt_tokens_details.cached_tokens
+// (OpenAI) and the flat cached_tokens (several Chinese gateways). Without this
+// the composer's「背景信息窗口」bubble could never show a cache hit.
+func TestOpenAICompatCacheUsageExtraction(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want int32
+	}{
+		{
+			"nested",
+			`{"choices":[{"message":{"content":"hi"}}],"usage":{"prompt_tokens":1000,"completion_tokens":20,"total_tokens":1020,"prompt_tokens_details":{"cached_tokens":768}}}`,
+			768,
+		},
+		{
+			"flat",
+			`{"choices":[{"message":{"content":"hi"}}],"usage":{"prompt_tokens":1000,"completion_tokens":20,"total_tokens":1020,"cached_tokens":512}}`,
+			512,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			llm, _ := NewOpenAICompat(OpenAICompatConfig{BaseURL: srv.URL, Model: "m"})
+			req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("x", genai.RoleUser)}}
+			var got *genai.GenerateContentResponseUsageMetadata
+			for resp, err := range llm.GenerateContent(context.Background(), req, false) {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if resp != nil {
+					got = resp.UsageMetadata
+				}
+			}
+			if got == nil {
+				t.Fatal("no usage")
+			}
+			if got.CachedContentTokenCount != tc.want {
+				t.Fatalf("cached tokens = %d, want %d", got.CachedContentTokenCount, tc.want)
+			}
+			if got.PromptTokenCount != 1000 {
+				t.Fatalf("prompt tokens = %d, want the full 1000 (cache is a subset)", got.PromptTokenCount)
+			}
+		})
+	}
+}
+
 func TestAnthropicUsageExtraction(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -394,6 +449,61 @@ func TestAnthropicUsageExtraction(t *testing.T) {
 	}
 	if got == nil || got.PromptTokenCount != 11 || got.CandidatesTokenCount != 4 || got.TotalTokenCount != 15 {
 		t.Fatalf("anthropic usage = %+v", got)
+	}
+}
+
+// TestAnthropicCacheUsageExtraction pins prompt-cache accounting: the read
+// counter rides on message_start in the documented shape, and some proxies fold
+// it into message_delta instead. It is a SUBSET of input_tokens, so the prompt
+// total must stay unchanged.
+func TestAnthropicCacheUsageExtraction(t *testing.T) {
+	cases := []struct {
+		name       string
+		startUsage string
+		deltaUsage string
+	}{
+		{
+			name:       "message_start",
+			startUsage: `{"input_tokens":1000,"cache_read_input_tokens":900,"cache_creation_input_tokens":40}`,
+			deltaUsage: `{"output_tokens":7}`,
+		},
+		{
+			name:       "message_delta",
+			startUsage: `{"input_tokens":1000}`,
+			deltaUsage: `{"output_tokens":7,"cache_read_input_tokens":900}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = w.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":" + tc.startUsage + "}}\n\n"))
+				_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n"))
+				_, _ = w.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":" + tc.deltaUsage + "}\n\n"))
+				_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+			}))
+			defer srv.Close()
+			llm, _ := NewAnthropic(AnthropicConfig{BaseURL: srv.URL, Model: "claude-test"})
+			req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("x", genai.RoleUser)}}
+			var got *genai.GenerateContentResponseUsageMetadata
+			for resp, err := range llm.GenerateContent(context.Background(), req, true) {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if resp != nil && !resp.Partial {
+					got = resp.UsageMetadata
+				}
+			}
+			if got == nil {
+				t.Fatal("no usage")
+			}
+			if got.PromptTokenCount != 1000 || got.CandidatesTokenCount != 7 {
+				t.Fatalf("usage = %+v", got)
+			}
+			if got.CachedContentTokenCount != 900 {
+				t.Fatalf("cached tokens = %d, want 900", got.CachedContentTokenCount)
+			}
+		})
 	}
 }
 
