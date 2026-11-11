@@ -285,7 +285,7 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 		if err != nil {
 			mcpErrs = append(mcpErrs, fmt.Sprintf("MCP「%s」不可用: %v", s.Name, err))
 		} else {
-			toolsets = append(toolsets, ts)
+			toolsets = append(toolsets, mcpToolsetForApproval(ts, ac.SandboxMode))
 		}
 	}
 	for _, id := range ac.MCPServerIDs {
@@ -778,6 +778,13 @@ func confirmsTool(ac config.AgentConfig, category string) bool {
 		}
 	}
 	return false
+}
+
+// mcpToolsetForApproval keeps the manager's server-ID cache policy-free and
+// applies the session profile to a short-lived wrapper for this agent build.
+func mcpToolsetForApproval(ts tool.Toolset, sandboxMode string) tool.Toolset {
+	requireConfirmation := config.NormalizeSandboxMode(sandboxMode) != config.SandboxModeDangerFullAccess
+	return tool.WithConfirmation(ts, requireConfirmation, nil)
 }
 
 // builtinToolsFor assembles the built-in tools an agent runs with. An empty
