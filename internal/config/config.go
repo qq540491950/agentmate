@@ -21,6 +21,31 @@ const (
 	ProtocolGemini    Protocol = "gemini"    // Google Gemini API
 )
 
+const (
+	SandboxModeWorkspaceWrite   = "workspace-write"
+	SandboxModeDangerFullAccess = "danger-full-access"
+	SandboxNetworkOff           = "off"
+	SandboxNetworkOn            = "on"
+)
+
+// NormalizeSandboxMode maps empty/unknown values to the safe default.
+func NormalizeSandboxMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case SandboxModeDangerFullAccess:
+		return SandboxModeDangerFullAccess
+	default:
+		return SandboxModeWorkspaceWrite
+	}
+}
+
+// NormalizeSandboxNetwork maps empty/unknown values to network off.
+func NormalizeSandboxNetwork(network string) string {
+	if strings.EqualFold(strings.TrimSpace(network), SandboxNetworkOn) {
+		return SandboxNetworkOn
+	}
+	return SandboxNetworkOff
+}
+
 // ReasoningLevel maps one selectable thinking level to the request field it
 // sends. Param may be dotted ("thinking.budget_tokens") for nested fields.
 // When Param is empty, Value must be a JSON object whose members are merged
@@ -216,6 +241,11 @@ type AgentConfig struct {
 	// write_workspace_file; "shell" gates every run_command call. Empty =
 	// never ask.
 	ConfirmTools []string `json:"confirmTools,omitempty"`
+	// SandboxMode and SandboxNetwork are runtime-only fields filled by the
+	// chat service for this build. They are never persisted on the agent:
+	// sandbox policy belongs to the session/machine, not to one agent.
+	SandboxMode    string `json:"-"`
+	SandboxNetwork string `json:"-"`
 	// MaxToolCalls stops a runaway tool loop. 0 = unlimited. Turn duration
 	// is intentionally unbounded: long agent tasks must not be killed by a
 	// wall-clock cap.
@@ -312,6 +342,9 @@ type TeamConfig struct {
 	Model           string    `json:"model"`
 	SystemPrompt    string    `json:"systemPrompt"`
 	CreatedAt       time.Time `json:"createdAt"`
+	// Runtime-only sandbox policy copied to every local member for this build.
+	SandboxMode    string `json:"-"`
+	SandboxNetwork string `json:"-"`
 }
 
 // SkillConfig is a reusable instruction bundle (agentskills.io SKILL.md).
@@ -420,6 +453,12 @@ type Settings struct {
 	// ToolsAudit writes a JSONL audit trail of every tool call/result to the
 	// app logs directory.
 	ToolsAudit bool `json:"toolsAudit,omitempty"`
+	// SandboxMode selects the local tool boundary. Empty normalizes to
+	// workspace-write; danger-full-access is an explicit user choice.
+	SandboxMode string `json:"sandboxMode,omitempty"`
+	// SandboxNetwork selects the child-process network policy: off (default)
+	// or on.
+	SandboxNetwork string `json:"sandboxNetwork,omitempty"`
 	// AutoRemember ingests every completed turn into long-term memory
 	// automatically (best-effort; failures are silent).
 	AutoRemember bool `json:"autoRemember,omitempty"`
@@ -575,6 +614,11 @@ type ChatSession struct {
 	// confirmations answered before the grant still honour an explicit
 	// rejection.
 	AllowAllTools bool `json:"allowAllTools,omitempty"`
+	// SandboxMode/SandboxNetwork override the global sandbox default for this
+	// chat. Empty inherits Settings. AllowAllTools stays approval-only and
+	// never changes these fields.
+	SandboxMode    string `json:"sandboxMode,omitempty"`
+	SandboxNetwork string `json:"sandboxNetwork,omitempty"`
 	// WorkspaceDir is the task-level directory used by file tools, prompt
 	// variables and artifact previews. Empty keeps legacy sessions on the
 	// global workspace.
@@ -618,6 +662,24 @@ func (s ChatSession) EffectiveWorkspaceFor(cfg Config) string {
 		}
 	}
 	return cfg.Settings.WorkspaceDir
+}
+
+// EffectiveSandboxMode resolves the chat override, then the global setting,
+// then the safe workspace-write default.
+func (s ChatSession) EffectiveSandboxMode(cfg Config) string {
+	if mode := strings.TrimSpace(s.SandboxMode); mode != "" {
+		return NormalizeSandboxMode(mode)
+	}
+	return NormalizeSandboxMode(cfg.Settings.SandboxMode)
+}
+
+// EffectiveSandboxNetwork resolves the chat override, then the global
+// setting, then network off.
+func (s ChatSession) EffectiveSandboxNetwork(cfg Config) string {
+	if network := strings.TrimSpace(s.SandboxNetwork); network != "" {
+		return NormalizeSandboxNetwork(network)
+	}
+	return NormalizeSandboxNetwork(cfg.Settings.SandboxNetwork)
 }
 
 // Clone returns an independent copy of the config. Slices, nested slices and
@@ -720,6 +782,8 @@ func Default() Config {
 			FontScale:            "md",
 			ChatWidth:            ChatWidthMedium,
 			ExecutionDisplayMode: ExecutionDisplayAuto,
+			SandboxMode:          SandboxModeWorkspaceWrite,
+			SandboxNetwork:       SandboxNetworkOff,
 		},
 		Skills: []SkillConfig{
 			{

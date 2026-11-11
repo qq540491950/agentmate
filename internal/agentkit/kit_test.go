@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"agentmate/internal/sandbox"
 )
 
 func TestSafeWorkspacePath(t *testing.T) {
@@ -34,6 +36,21 @@ func TestSafeWorkspacePath(t *testing.T) {
 		if err != nil {
 			t.Errorf("rel %q: unexpected error %v", c.rel, err)
 		}
+	}
+}
+
+func TestWriteWorkspaceFilePolicyBlocksProtectedPath(t *testing.T) {
+	root := t.TempDir()
+	policy := sandbox.DefaultPolicy(root)
+	if _, err := writeWorkspaceFile(root, writeArgs{Path: ".git/config", Content: "x"}, policy); err == nil {
+		t.Fatal("expected .git write to be denied")
+	}
+	if _, err := writeWorkspaceFile(root, writeArgs{Path: "src/main.go", Content: "package main"}, policy); err != nil {
+		t.Fatalf("normal workspace write failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "src", "main.go"))
+	if err != nil || string(data) != "package main" {
+		t.Fatalf("write result = %q, %v", string(data), err)
 	}
 }
 

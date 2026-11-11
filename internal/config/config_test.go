@@ -91,6 +91,31 @@ func TestProjectsRoundTripAndCloneIndependent(t *testing.T) {
 	}
 }
 
+func TestSandboxDefaultsAndSessionOverrides(t *testing.T) {
+	cfg := Default()
+	if cfg.Settings.SandboxMode != SandboxModeWorkspaceWrite {
+		t.Fatalf("default sandbox mode = %q", cfg.Settings.SandboxMode)
+	}
+	if cfg.Settings.SandboxNetwork != SandboxNetworkOff {
+		t.Fatalf("default sandbox network = %q", cfg.Settings.SandboxNetwork)
+	}
+	session := ChatSession{}
+	if got := session.EffectiveSandboxMode(cfg); got != SandboxModeWorkspaceWrite {
+		t.Fatalf("session default mode = %q", got)
+	}
+	if got := session.EffectiveSandboxNetwork(cfg); got != SandboxNetworkOff {
+		t.Fatalf("session default network = %q", got)
+	}
+	session.SandboxMode = SandboxModeDangerFullAccess
+	session.SandboxNetwork = SandboxNetworkOn
+	if got := session.EffectiveSandboxMode(cfg); got != SandboxModeDangerFullAccess {
+		t.Fatalf("session override mode = %q", got)
+	}
+	if got := session.EffectiveSandboxNetwork(cfg); got != SandboxNetworkOn {
+		t.Fatalf("session override network = %q", got)
+	}
+}
+
 // TestSidebarSettingsNormalizeAndPersist: older config.json files without the
 // sidebar fields load with defaults; both fields persist; unknown grouping
 // values fall back to "time" on the next load.

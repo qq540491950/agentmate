@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"agentmate/internal/sandbox"
 )
 
 func TestShellToolRejectsEmptyWorkspace(t *testing.T) {
@@ -123,5 +125,50 @@ func TestRunShellCommandRejectsEmptyCommandAndMissingWorkspace(t *testing.T) {
 	}
 	if _, err := runShellCommand(context.Background(), filepath.Join(t.TempDir(), "missing"), "echo hi", time.Second, 1024); err == nil {
 		t.Fatal("expected error for missing workspace")
+	}
+}
+
+func TestRunShellCommandWithPolicyBlocksProtectedRedirect(t *testing.T) {
+	dir := t.TempDir()
+	_, err := runShellCommandWithPolicy(
+		context.Background(), dir, `echo x>.git\config`, 5*time.Second, 1024,
+		sandbox.DefaultPolicy(dir),
+	)
+	if err == nil || !strings.Contains(err.Error(), "protected_path") {
+		t.Fatalf("expected protected_path error, got %v", err)
+	}
+}
+
+func TestRunShellCommandWithPolicyConfinesWorkspaceWrites(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("OS sandbox is Windows-only in P0")
+	}
+	base, _ := os.UserHomeDir()
+	root, err := os.MkdirTemp(base, "agentmate-shell-sandbox-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	workspace := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(root, "outside.txt")
+	if err := os.WriteFile(outside, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = runShellCommandWithPolicy(
+		context.Background(), workspace, `echo changed>..\outside.txt`, 10*time.Second, 1024,
+		sandbox.DefaultPolicy(workspace),
+	)
+	if err != nil {
+		t.Fatalf("sandboxed run: %v", err)
+	}
+	data, err := os.ReadFile(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "original" {
+		t.Fatalf("outside file changed to %q", string(data))
 	}
 }

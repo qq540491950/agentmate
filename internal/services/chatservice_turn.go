@@ -381,6 +381,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	// HITL prompt; the grant is applied here so direct chats, @-routed turns
 	// and every local team member share one source of truth.
 	allowAll := target.AllowAllTools
+	sandboxMode := target.EffectiveSandboxMode(cfg)
+	sandboxNetwork := target.EffectiveSandboxNetwork(cfg)
 	var root agent.Agent
 	switch target.TargetType {
 	case "":
@@ -394,10 +396,12 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		if allowAll {
 			ac.ConfirmTools = nil
 		}
+		ac.SandboxMode, ac.SandboxNetwork = sandboxMode, sandboxNetwork
 		root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(ac, target.ModelOverride, workspace, applyLevel)
 	case "team":
 		for _, t := range cfg.Teams {
 			if t.ID == target.TargetID {
+				t.SandboxMode, t.SandboxNetwork = sandboxMode, sandboxNetwork
 				root, _, err = c.S.Kit.BuildTeamWithWorkspaceReasoningAndAllowAll(t, workspace, applyLevel, allowAll)
 				break
 			}
@@ -423,6 +427,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				if allowAll {
 					a.ConfirmTools = nil
 				}
+				a.SandboxMode, a.SandboxNetwork = sandboxMode, sandboxNetwork
 				root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(a, target.ModelOverride, workspace, applyLevel)
 				break
 			}

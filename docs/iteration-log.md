@@ -4,6 +4,23 @@
 
 ## 视觉测试与体验设计
 
+### 第二百五十轮迭代：Windows 本地工具执行沙箱（P0，已实施）
+
+依据：对照 Codex harness 的四道门后确认，AgentMate 的 `run_command` 只有审批、没有 OS 沙箱；命令以当前用户权限运行，工作区只是 cwd，不能阻止读取配置/凭据、联网或写工作区外文件。本轮按“审批与沙箱分离”先补硬边界，默认 `workspace-write` + 网络关闭。
+
+**实现要点**
+
+- 新增 `internal/sandbox`：统一策略、受保护路径、环境白名单与 Windows 后端；`run_command` 经 `sandbox.Run` 执行，使用 AppContainer 令牌、Job Object、`CREATE_SUSPENDED` 后先入 Job 再恢复，工作区/临时目录加低完整性标签，工作区外写入由 OS 拒绝；网络默认关闭，沙箱初始化失败 fail closed。
+- 文件工具共享同一份 `CheckWrite` 策略：`.git`、`.agents`、`.codex` 与应用数据目录不可写；shell 命令增加明显的受保护路径重定向预检；外部命令环境不再继承 API Key/Token。
+- 配置新增 `sandboxMode`（`workspace-write` / `danger-full-access`）与 `sandboxNetwork`（`off` / `on`），会话级覆盖已接入 `runTurn`；设置页「网络与服务 → 本地工具沙箱」可切换，`AllowAllTools` 仍只表示免审批，不再等同无沙箱。
+- `main.go` 退出时清理沙箱 ACL；README 安全段落同步说明 Windows 边界。
+
+**测试证据**
+
+- `go test ./internal/... .`、`go test -race ./internal/... .`、`go vet ./internal/... .` 全绿；新增 sandbox 用例验证工作区外写入被拒、网络关闭、环境密钥不继承、策略白名单与短路径归一化。
+- `npx tsc --noEmit`、`npm test`（32 文件 / 247 用例）、`wails3 build` 通过。
+- `scripts/verify.sh` 的 Go/race 段在本机 bash 环境因 `go` 不在 PATH 未能执行；等价命令已在 PowerShell 环境全部通过。
+
 ### 第二百四十九轮迭代：执行过程展开态紧凑化——人可读步骤行与失败摘要（已实施）
 
 依据：用户对比 Codex 桌面端执行时间线，反馈 AgentMate 执行过程展开后逐条堆叠、信息密度过高。浏览器桩 `sess_process` 用 9 步样例（4 命令 / 2 读取 / 1 写入 / 1 搜索 / 1 其他，含 1 条失败）复现：旧版单工具行高 40px，9 步会在单屏内持续堆叠；本轮目标是保留可观测性，同时让展开态按“动作”而不是“卡片”扫读。

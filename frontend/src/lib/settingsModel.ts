@@ -91,6 +91,8 @@ const COMPARE_DEFAULTS: Partial<Record<keyof Settings, unknown>> = {
   a2aAgentId: "",
   a2aPort: 0,
   toolsAudit: false,
+  sandboxMode: "workspace-write",
+  sandboxNetwork: "off",
   autoRemember: false,
   autoTitle: true,
   titleProviderId: "",

@@ -564,22 +564,58 @@ export function SettingsPage({
         </Card>
         )}
         {tab === "network" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">网络</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-1.5">
-            <Label>HTTP 代理</Label>
-            <Input
-              value={settings.httpProxy ?? ""}
-              onChange={(e) => update({ httpProxy: e.target.value })}
-              placeholder="http://127.0.0.1:7890（留空直连）"
-            />
-            <p className="text-xs text-muted-foreground">
-              模型请求、知识库向量、MCP 远程连接与 A2A 调用统一走该代理（含 Gemini SDK 与 a2a-go 客户端的默认传输层，契约测试钉住）；保存并重启应用后生效。
-            </p>
-          </CardContent>
-        </Card>
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">网络</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-1.5">
+              <Label>HTTP 代理</Label>
+              <Input
+                value={settings.httpProxy ?? ""}
+                onChange={(e) => update({ httpProxy: e.target.value })}
+                placeholder="http://127.0.0.1:7890（留空直连）"
+              />
+              <p className="text-xs text-muted-foreground">
+                模型请求、知识库向量、MCP 远程连接与 A2A 调用统一走该代理（含 Gemini SDK 与 a2a-go 客户端的默认传输层，契约测试钉住）；保存并重启应用后生效。
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">本地工具沙箱</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <SettingRow
+                label="执行边界"
+                description="工作区可写只允许写任务工作区与临时目录；完全访问会关闭 OS 沙箱，仅用于可信任务。"
+              >
+                <Select
+                  value={settings.sandboxMode || "workspace-write"}
+                  onValueChange={(v) => update({ sandboxMode: v })}
+                >
+                  <SelectTrigger className="w-60"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="workspace-write">工作区可写（推荐）</SelectItem>
+                    <SelectItem value="danger-full-access">完全访问（无沙箱）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+              <SettingRow
+                label="允许子进程联网"
+                description="关闭时 run_command 子进程默认断网；需要 npm install、git push 等联网操作时再开启。"
+              >
+                <Switch
+                  checked={(settings.sandboxNetwork || "off") === "on"}
+                  onCheckedChange={(v) => update({ sandboxNetwork: v ? "on" : "off" })}
+                />
+              </SettingRow>
+              <p className="text-xs text-muted-foreground">
+                Windows 使用 AppContainer 与低完整性边界；工作区外写入会被拒绝。沙箱初始化失败时会拒绝执行，不会回退到全权限。
+              </p>
+            </CardContent>
+          </Card>
+        </>
         )}
         {tab === "knowledge" && (
         <Card>

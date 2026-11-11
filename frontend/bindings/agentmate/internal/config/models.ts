@@ -129,6 +129,14 @@ export interface ChatSession {
     "allowAllTools"?: boolean;
 
     /**
+     * SandboxMode/SandboxNetwork override the global sandbox default for this
+     * chat. Empty inherits Settings. AllowAllTools stays approval-only and
+     * never changes these fields.
+     */
+    "sandboxMode"?: string;
+    "sandboxNetwork"?: string;
+
+    /**
      * WorkspaceDir is the task-level directory used by file tools, prompt
      * variables and artifact previews. Empty keeps legacy sessions on the
      * global workspace.
@@ -453,6 +461,18 @@ export interface Settings {
      * app logs directory.
      */
     "toolsAudit"?: boolean;
+
+    /**
+     * SandboxMode selects the local tool boundary. Empty normalizes to
+     * workspace-write; danger-full-access is an explicit user choice.
+     */
+    "sandboxMode"?: string;
+
+    /**
+     * SandboxNetwork selects the child-process network policy: off (default)
+     * or on.
+     */
+    "sandboxNetwork"?: string;
 
     /**
      * AutoRemember ingests every completed turn into long-term memory

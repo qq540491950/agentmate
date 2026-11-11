@@ -15,6 +15,8 @@ import (
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
+
+	"agentmate/internal/sandbox"
 )
 
 const (
@@ -41,11 +43,17 @@ type shellResult struct {
 	TimedOut  bool   `json:"timedOut,omitempty"`
 }
 
-// ShellTool runs shell commands inside the task workspace. Windows uses
-// cmd.exe, other platforms /bin/sh; the command inherits the user's
-// environment and OS permissions. requireConfirmation routes every call
+// ShellTool runs shell commands inside the task workspace through the default
+// workspace-write sandbox policy. requireConfirmation routes every call
 // through ADK HITL, the same contract as write_workspace_file.
 func ShellTool(workspace string, requireConfirmation bool) (tool.Tool, error) {
+	return ShellToolWithPolicy(workspace, requireConfirmation, sandbox.DefaultPolicy(workspace))
+}
+
+// ShellToolWithPolicy runs every command through the session's OS sandbox.
+// The plain ShellTool wrapper keeps the historical default for tests and
+// callers that construct a tool without a chat policy.
+func ShellToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
 	if strings.TrimSpace(workspace) == "" {
 		return nil, fmt.Errorf("任务工作区为空，无法初始化终端工具")
 	}
@@ -63,8 +71,35 @@ func ShellTool(workspace string, requireConfirmation bool) (tool.Tool, error) {
 				timeout = maxShellTimeout
 			}
 		}
-		return runShellCommand(ctx, workspace, args.Command, timeout, maxShellOutput)
+		return runShellCommandWithPolicy(ctx, workspace, args.Command, timeout, maxShellOutput, policy)
 	})
+}
+
+func runShellCommandWithPolicy(ctx context.Context, workspace, command string, timeout time.Duration, limit int, policy sandbox.Policy) (shellResult, error) {
+	if ok, code, reason := policy.CheckCommand(command); !ok {
+		return shellResult{}, fmt.Errorf("%s: %s", code, reason)
+	}
+	shell, args, env := shellInvocation(command)
+	res, err := sandbox.Run(ctx, sandbox.Request{
+		Command:     shell,
+		Args:        args,
+		Dir:         workspace,
+		Timeout:     timeout,
+		OutputLimit: limit,
+		Env:         env,
+	}, policy)
+	if err != nil {
+		return shellResult{}, err
+	}
+	if res.Denied {
+		return shellResult{}, fmt.Errorf("%s: %s", res.DeniedCode, res.DeniedReason)
+	}
+	return shellResult{
+		ExitCode:  res.ExitCode,
+		Output:    res.Output,
+		Truncated: res.Truncated,
+		TimedOut:  res.TimedOut,
+	}, nil
 }
 
 // runShellCommand is the execution core, split from the tool wrapper so tests

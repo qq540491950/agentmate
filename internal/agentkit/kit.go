@@ -27,6 +27,7 @@ import (
 
 	"agentmate/internal/config"
 	"agentmate/internal/mcpmgr"
+	"agentmate/internal/sandbox"
 )
 
 // ModelFactory builds the model.LLM for a provider/model pair.
@@ -392,6 +393,11 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string, 
 			ac.ConfirmTools = nil
 			memberByID[id] = ac
 		}
+	}
+	for id, ac := range memberByID {
+		ac.SandboxMode = tc.SandboxMode
+		ac.SandboxNetwork = tc.SandboxNetwork
+		memberByID[id] = ac
 	}
 
 	var members []agent.Agent
@@ -795,6 +801,7 @@ func confirmsTool(ac config.AgentConfig, category string) bool {
 // agents are full-featured unless the user explicitly removed categories.
 func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspace string) ([]tool.Tool, error) {
 	var tools []tool.Tool
+	policy := k.sandboxPolicy(ac, workspace)
 	for _, name := range ac.EffectiveBuiltinTools() {
 		switch name {
 		case "time":
@@ -804,7 +811,7 @@ func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspac
 			}
 			tools = append(tools, t)
 		case "files":
-			builtin, err := workspaceFileTools(workspace, confirmsTool(ac, "files"))
+			builtin, err := workspaceFileTools(workspace, confirmsTool(ac, "files"), policy)
 			if err != nil {
 				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 			}
@@ -826,7 +833,7 @@ func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspac
 			}
 			tools = append(tools, t)
 		case "shell":
-			t, err := ShellTool(workspace, confirmsTool(ac, "shell"))
+			t, err := ShellToolWithPolicy(workspace, confirmsTool(ac, "shell"), policy)
 			if err != nil {
 				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 			}
@@ -834,6 +841,21 @@ func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspac
 		}
 	}
 	return tools, nil
+}
+
+func (k *Kit) sandboxPolicy(ac config.AgentConfig, workspace string) sandbox.Policy {
+	policy := sandbox.DefaultPolicy(workspace)
+	policy.Mode = sandbox.Mode(config.NormalizeSandboxMode(ac.SandboxMode))
+	policy.Network = sandbox.Network(config.NormalizeSandboxNetwork(ac.SandboxNetwork))
+	if k.store != nil {
+		appDir := k.store.Dir()
+		// Tests and unusual deployments can place the config store above the
+		// selected workspace; protecting an ancestor would block every write.
+		if !sandbox.Within(appDir, policy.Workspace) {
+			policy = policy.WithProtected(appDir)
+		}
+	}
+	return policy
 }
 
 func firstNonEmpty(vals ...string) string {
@@ -857,7 +879,7 @@ type timeResult struct {
 }
 
 // workspaceFileTools builds the list/read/write set for the "files" category.
-func workspaceFileTools(workspace string, requireConfirmation bool) ([]tool.Tool, error) {
+func workspaceFileTools(workspace string, requireConfirmation bool, policy sandbox.Policy) ([]tool.Tool, error) {
 	list, err := ListFilesTool(workspace)
 	if err != nil {
 		return nil, err
@@ -866,7 +888,7 @@ func workspaceFileTools(workspace string, requireConfirmation bool) ([]tool.Tool
 	if err != nil {
 		return nil, err
 	}
-	write, err := WriteFileTool(workspace, requireConfirmation)
+	write, err := WriteFileToolWithPolicy(workspace, requireConfirmation, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -994,7 +1016,9 @@ func safeWorkspacePath(workspace, rel string) (string, error) {
 			if !isWithin(realRoot, realAncestor) {
 				return "", fmt.Errorf("路径越出工作区范围")
 			}
-			return full, nil
+			// Use the resolved root spelling for not-yet-existing targets so
+			// Windows 8.3 (short) and long paths compare as one workspace.
+			return filepath.Join(realRoot, rel), nil
 		}
 		if !os.IsNotExist(aerr) {
 			return "", aerr
@@ -1078,23 +1102,37 @@ type writeResult struct {
 // HITL): the run pauses on an adk_request_confirmation interrupt and only
 // proceeds after a FunctionResponse with {"confirmed": true}.
 func WriteFileTool(workspace string, requireConfirmation bool) (tool.Tool, error) {
+	return WriteFileToolWithPolicy(workspace, requireConfirmation, sandbox.DefaultPolicy(workspace))
+}
+
+// WriteFileToolWithPolicy adds the session's protected-path policy to the
+// in-process write path. The OS sandbox covers child processes; this check is
+// the equivalent boundary for file tools, which do not spawn a process.
+func WriteFileToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:                "write_workspace_file",
 		Description:         "Create or overwrite a text file inside the user's workspace (single write up to 6MB).",
 		RequireConfirmation: requireConfirmation,
 	}, func(ctx agent.Context, args writeArgs) (writeResult, error) {
-		root, err := safeWorkspacePath(workspace, args.Path)
-		if err != nil {
-			return writeResult{}, err
-		}
-		if err := os.MkdirAll(filepath.Dir(root), 0o755); err != nil {
-			return writeResult{}, err
-		}
-		if err := WriteBoundedFile(root, args.Content, maxWriteBytes); err != nil {
-			return writeResult{}, err
-		}
-		return writeResult{OK: true, Bytes: len(args.Content)}, nil
+		return writeWorkspaceFile(workspace, args, policy)
 	})
+}
+
+func writeWorkspaceFile(workspace string, args writeArgs, policy sandbox.Policy) (writeResult, error) {
+	root, err := safeWorkspacePath(workspace, args.Path)
+	if err != nil {
+		return writeResult{}, err
+	}
+	if ok, code, reason := policy.CheckWrite(root); !ok {
+		return writeResult{}, fmt.Errorf("%s: %s", code, reason)
+	}
+	if err := os.MkdirAll(filepath.Dir(root), 0o755); err != nil {
+		return writeResult{}, err
+	}
+	if err := WriteBoundedFile(root, args.Content, maxWriteBytes); err != nil {
+		return writeResult{}, err
+	}
+	return writeResult{OK: true, Bytes: len(args.Content)}, nil
 }
 
 // ---------------------------------------------------------------------------

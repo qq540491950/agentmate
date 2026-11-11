@@ -23,6 +23,7 @@ import (
 	"agentmate/internal/config"
 	"agentmate/internal/mcpmgr"
 	"agentmate/internal/memory"
+	"agentmate/internal/sandbox"
 	"agentmate/internal/services"
 )
 
@@ -177,6 +178,7 @@ func main() {
 			// flight) must therefore never spend that whole budget.
 			shutdownBounded("A2A 服务下线", shutdownHookTimeout, a2aRPC.StopAll) // graceful: unpublish agents before exit
 			shutdownBounded("MCP 连接关闭", shutdownHookTimeout, mgr.CloseAll)   // then close MCP transports (no orphan stdio children)
+			shutdownBounded("沙箱资源清理", 2*time.Second, sandbox.Close)
 		},
 	})
 
