@@ -4,6 +4,23 @@
 
 ## 视觉测试与体验设计
 
+### 第二百四十九轮迭代：执行过程展开态紧凑化——人可读步骤行与失败摘要（已实施）
+
+依据：用户对比 Codex 桌面端执行时间线，反馈 AgentMate 执行过程展开后逐条堆叠、信息密度过高。浏览器桩 `sess_process` 用 9 步样例（4 命令 / 2 读取 / 1 写入 / 1 搜索 / 1 其他，含 1 条失败）复现：旧版单工具行高 40px，9 步会在单屏内持续堆叠；本轮目标是保留可观测性，同时让展开态按“动作”而不是“卡片”扫读。
+
+**实现要点**
+
+- **纯函数**（`frontend/src/lib/chatUtils.ts`）：新增 `toolStepDisplay`，把内置工具与 MCP/未知工具归一为 `运行/读取/写入/列出/搜索知识库` + 目标参数；新增 `summarizeToolTrace` 统计步骤、分类和失败结果；`formatToolExecutionBreakdown` 只取数量最多的两类，避免组头变成分类清单。
+- **紧凑行**（`frontend/src/components/ToolCallCard.tsx`）：执行组内改用 `compact` 行，单行只保留状态图标、人可读动作、目标与耗时；移除逐行的 `完成` 徽章、工具名、参数 chips 和重复状态文字；点击行仍展开原有输入/输出详情。`read/list` 在紧凑模式下不再把输入路径伪装成“产物”，`write/search/other` 继续保留产物预览。
+- **组头与展开**（`frontend/src/components/chat/ToolCallGroup.tsx`）：组头显示 `N 个步骤`、最多两类分类摘要的 tooltip 与独立的失败计数；展开态改为 `space-y-1` 的紧凑行列表，组头文字禁止换行，窄聊天栏下列表不再因标题换行而跳动。
+- **不改后端**：沿用现有 `ChatStreamEvent` / `ChatMessage` 的 `toolName`、`toolArgs`、`toolResp` 与时间戳；不新增配置、不改 sessions.db、不重新生成 bindings。
+
+**测试证据**
+
+- `npx tsc --noEmit`：0 错；`npm test`：32 个文件 / 247 个用例全绿；`npm run build` 成功。
+- `npm run stub`：`执行过程四档演示` 9 步样例展开后单工具行 28px，组头 40px；405px 宽聊天栏下组头不换行；失败行显示红色 `失败`，组头显示 `1 失败`；`read_workspace_file` 的产物行消失，`write_workspace_file` 的 `预览 weekly.md` 保留。
+- `chatUtils.test.ts` 新增 `toolStepDisplay` 内置/未知工具映射、`summarizeToolTrace` 分类与失败计数、`formatToolExecutionBreakdown` 头部摘要上限用例。
+
 ### 第二百四十八轮迭代：修复 outline 按钮与承载面板同色（已实施）
 
 依据：用户截图反馈设置「诊断」里的批量导出、审计日志与最近日志按钮完全和背景没区别，且怀疑全站按钮都有该问题。浏览器桩矩阵复测确认：Nord 深色下 `outline` 与所在 `panel` 卡片均为 `#434C5E`，对比度 1.0，且无边框或阴影；按钮共 97 处，其中 `outline` 约 44 处，属于全局组件缺陷。

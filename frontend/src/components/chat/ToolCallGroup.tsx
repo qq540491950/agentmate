@@ -7,8 +7,8 @@ import { ToolCallCard } from "@/components/ToolCallCard";
 import { ConfirmCard, ThinkingBlock } from "@/components/chat/MessageBubble";
 import { MessageMarkdown } from "@/components/MessageMarkdown";
 import {
-  buildToolTrace, formatWorkDuration, toolGroupElapsedMs,
-  toolGroupInvocationCount, toolGroupStatus,
+  buildToolTrace, formatToolExecutionBreakdown, formatWorkDuration, summarizeToolTrace,
+  toolGroupElapsedMs, toolGroupStatus, toolStepDisplay,
   type ToolGroup, type ToolGroupStatus,
 } from "@/lib/chatUtils";
 import {
@@ -32,9 +32,9 @@ const STATUS_META: Record<ToolGroupStatus, { label: string; icon: ReactNode; cls
  * as the result block. The display mode picks its default expansion: auto
  * follows the run state, concise stays folded (except HITL), detailed stays
  * open, and none hides the block. A user click always wins for that block.
- * Expanding shows the narration inline, the thinking text, and the original
- * per-call cards, so each invocation keeps its own detail arrow and artifact
- * previews.
+ * Expanding shows the narration inline, the thinking text, and one compact
+ * row per invocation; clicking a row keeps its input/output detail and
+ * artifact previews without turning the whole run into a stack of cards.
  */
 export function ToolCallGroup({ group, live, runningTools, durations, sessionID, filterQ, displayMode, onConfirm, onAllowAll, allowAllBusy }: {
   /** group carries the turn's messages, its final-reply timestamp and outcome
@@ -57,20 +57,24 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
   useEffect(() => { setUserExpanded(null); }, [displayMode]);
   const messages = group.messages;
   const status = toolGroupStatus(group, runningTools, !!live);
-  const count = toolGroupInvocationCount(messages);
   const autoExpanded = executionAutoExpanded(displayMode, status);
   const expanded = userExpanded ?? autoExpanded;
   const hidden = executionHidden(displayMode, status);
   const meta = STATUS_META[status];
   const trace = buildToolTrace(messages);
-  const runningNames = messages
+  const summary = summarizeToolTrace(trace);
+  const breakdown = formatToolExecutionBreakdown(summary.counts);
+  const runningSteps = messages
     .filter((m) => m.kind === "tool_call" && runningTools.has(m.id))
-    .map((m) => m.toolName)
-    .filter((name): name is string => !!name);
-  const activeToolName = runningNames.length === 1
-    ? runningNames[0]
-    : runningNames.length > 1
-      ? `${runningNames.length} 个并行`
+    .map((m) => {
+      const display = toolStepDisplay(m.toolName ?? "tool", m.toolArgs);
+      return display.target ?? display.action;
+    })
+    .filter((label) => !!label);
+  const activeToolName = runningSteps.length === 1
+    ? runningSteps[0]
+    : runningSteps.length > 1
+      ? `${runningSteps.length} 个并行`
       : "";
 
   // The whole-turn clock keeps ticking while the turn is live (including the
@@ -104,23 +108,34 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
     >
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
+        className="flex w-full min-w-0 items-center gap-2 px-3.5 py-2.5 text-left"
         aria-expanded={expanded}
         onClick={() => setUserExpanded(!expanded)}
       >
         <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
         {meta.icon}
-        <span className="font-medium">执行过程</span>
+        <span className="shrink-0 whitespace-nowrap font-medium">执行过程</span>
         {elapsedMs != null && (
-          <span className="text-2xs text-muted-foreground">已工作 {formatWorkDuration(elapsedMs)}</span>
+          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+            已工作 {formatWorkDuration(elapsedMs)}
+          </span>
         )}
-        {count > 0 && (
-          <span className="text-2xs text-muted-foreground/70" title={`本回合调用了 ${count} 个工具`}>
-            · {count} 个工具
+        {summary.total > 0 && (
+          <span
+            className="shrink-0 whitespace-nowrap text-xs text-muted-foreground/70"
+            title={`本回合执行了 ${summary.total} 个步骤${breakdown ? `：${breakdown}` : ""}`}
+          >
+            · {summary.total} 个步骤
+          </span>
+        )}
+        {summary.failed > 0 && status !== "failed" && (
+          <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-danger-text">
+            <XCircle className="h-3.5 w-3.5" />
+            {summary.failed} 失败
           </span>
         )}
         {displayMode === "concise" && status === "running" && activeToolName && (
-          <span className="min-w-0 truncate text-2xs text-muted-foreground/70">
+          <span className="min-w-0 truncate text-xs text-muted-foreground/70">
             · {activeToolName}
           </span>
         )}
@@ -138,7 +153,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
         )}
       >
         <div className="overflow-hidden">
-          <div className="space-y-3 bg-panel/40 px-3 py-3">
+          <div className="space-y-1 bg-panel/40 px-2 py-2">
             {trace.map((item) => {
               if (item.kind === "tool") {
                 return (
@@ -151,7 +166,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
                     running={!!item.call && !item.result && runningTools.has(item.call.id)}
                     durationMs={item.result ? durations.get(item.result.id) : undefined}
                     filterQ={filterQ}
-                    flat
+                    compact
                   />
                 );
               }
@@ -163,7 +178,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
               ) : m.kind === "assistant" ? (
                 // Inter-tool narration: process detail, so it stays muted inside
                 // the block instead of rendering another assistant bubble header.
-                <div key={m.id} className="px-1 text-muted-foreground" data-toolgroup-narration>
+                <div key={m.id} className="px-2 py-1 text-muted-foreground" data-toolgroup-narration>
                   <MessageMarkdown content={m.text} className="text-sm leading-[1.7]" />
                 </div>
               ) : null;

@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildSidebarProjectGroups, buildToolTrace, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools,
   computeToolDurations, dayLabel, effectiveReasoningLevel, fmtTime, formatWorkDuration, groupSessionsByProject,
-  groupSessionsByTime, groupToolMessages, groupTurns, isAwaitingReply, isDayChange, mdToSpeech,
+  formatToolExecutionBreakdown, groupSessionsByTime, groupToolMessages, groupTurns, isAwaitingReply, isDayChange, mdToSpeech,
   projectSessionWindow, sessionTargetBadgeLabel, shouldExpandProjectForSession,
+  summarizeToolTrace, toolStepDisplay,
   toolGroupDurationMs, toolGroupElapsedMs, toolGroupInvocationCount, toolGroupStatus,
   toolResultFailed, type ToolGroup, type TurnItem, type UIMessage,
 } from "./chatUtils";
@@ -401,6 +402,82 @@ describe("buildToolTrace", () => {
     expect(trace.map((item) => (item.kind === "tool" ? `${item.id}:${item.resp?.n ?? "orphan"}` : item.message.id))).toEqual([
       "c1:1", "c2:2", "orphan:orphan",
     ]);
+  });
+});
+
+describe("toolStepDisplay", () => {
+  it("turns built-in tools into a short action and target", () => {
+    expect(toolStepDisplay("run_command", { command: "go test ./internal/..." })).toMatchObject({
+      kind: "command",
+      action: "运行",
+      target: "go test ./internal/...",
+      mono: true,
+    });
+    expect(toolStepDisplay("read_workspace_file", { path: "internal/agentkit/shell.go" })).toMatchObject({
+      kind: "read",
+      action: "读取",
+      target: "internal/agentkit/shell.go",
+    });
+    expect(toolStepDisplay("write_workspace_file", { path: "notes/weekly.md" })).toMatchObject({
+      kind: "write",
+      action: "写入",
+      target: "notes/weekly.md",
+    });
+    expect(toolStepDisplay("list_workspace_files", {})).toMatchObject({
+      kind: "read",
+      action: "列出",
+      target: "工作区",
+    });
+    expect(toolStepDisplay("search_knowledge", { query: "工具调用显示" })).toMatchObject({
+      kind: "search",
+      action: "搜索知识库",
+      target: "工具调用显示",
+    });
+    expect(toolStepDisplay("get_current_time", {})).toMatchObject({
+      kind: "other",
+      action: "获取当前时间",
+    });
+  });
+
+  it("falls back to the tool name and first useful argument for MCP tools", () => {
+    expect(toolStepDisplay("github_search", { query: "repo:openai/codex" })).toMatchObject({
+      kind: "other",
+      action: "github_search",
+      target: "repo:openai/codex",
+    });
+    expect(toolStepDisplay("custom_tool", { url: "https://example.com" })).toMatchObject({
+      action: "custom_tool",
+      target: "https://example.com",
+    });
+    expect(toolStepDisplay("custom_tool", {})).toMatchObject({
+      action: "custom_tool",
+    });
+  });
+});
+
+describe("summarizeToolTrace", () => {
+  it("counts logical steps, categories and failed results", () => {
+    const trace = buildToolTrace([
+      msg({ id: "c1", kind: "tool_call", toolName: "run_command", toolArgs: { command: "git status" } }),
+      msg({ id: "r1", kind: "tool_result", toolName: "run_command", toolResp: { ok: true } }),
+      msg({ id: "c2", kind: "tool_call", toolName: "read_workspace_file", toolArgs: { path: "a.go" } }),
+      msg({ id: "r2", kind: "tool_result", toolName: "read_workspace_file", toolResp: { error: "not found" } }),
+      msg({ id: "c3", kind: "tool_call", toolName: "search_knowledge", toolArgs: { query: "display" } }),
+      msg({ id: "r3", kind: "tool_result", toolName: "search_knowledge", toolResp: { ok: true } }),
+    ]);
+    const summary = summarizeToolTrace(trace);
+    expect(summary).toEqual({
+      total: 3,
+      failed: 1,
+      counts: { command: 1, read: 1, write: 0, search: 1, other: 0 },
+    });
+    expect(formatToolExecutionBreakdown(summary.counts, 3)).toBe("1 命令 · 1 读取 · 1 搜索");
+  });
+
+  it("keeps the header breakdown to the largest categories", () => {
+    expect(formatToolExecutionBreakdown({ command: 0, read: 0, write: 0, search: 0, other: 0 })).toBe("");
+    expect(formatToolExecutionBreakdown({ command: 9, read: 0, write: 0, search: 0, other: 0 })).toBe("9 命令");
+    expect(formatToolExecutionBreakdown({ command: 4, read: 2, write: 1, search: 1, other: 1 })).toBe("4 命令 · 2 读取");
   });
 });
 

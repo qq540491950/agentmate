@@ -10,7 +10,7 @@ import {
 import { CopyButton, MessageMarkdown } from "@/components/MessageMarkdown";
 import { DiffView } from "@/components/TaskWorkspacePanel";
 import { highlightText } from "@/components/chat/highlightText";
-import { toolResultFailed } from "@/lib/chatUtils";
+import { toolResultFailed, toolStepDisplay } from "@/lib/chatUtils";
 import { Artifact, errText, type Artifact as ArtifactData } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -36,8 +36,8 @@ type ToolCallProps = {
   running: boolean;
   durationMs?: number;
   filterQ?: string;
-  /** flat drops the card outline for rows nested inside an execution group. */
-  flat?: boolean;
+  /** compact renders one lightweight execution-row instead of a card. */
+  compact?: boolean;
 };
 
 /**
@@ -56,21 +56,23 @@ export function formatDuration(ms: number): string {
 /** ToolCallCard renders one tool invocation with live status visualization.
  *  Memoized because extractArtifactPaths JSON-stringifies args/results and
  *  would otherwise run for every visible tool on each streamed token. */
-export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, resp, running, durationMs, filterQ, flat = false }: ToolCallProps) {
+export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, resp, running, durationMs, filterQ, compact = false }: ToolCallProps) {
   const [open, setOpen] = useState(false);
   // Inspect the parsed payload: substring matching used to flag successful
   // envelopes that merely carry an "error": null field, and missed MCP's
   // camelCase isError.
   const failed = useMemo(() => toolResultFailed(resp), [resp]);
 
+  const display = useMemo(() => toolStepDisplay(name, args), [name, args]);
+
   const argChips = useMemo(() => {
-    if (!args) return [];
+    if (compact || !args) return [];
     return Object.entries(args).slice(0, 4).map(([k, v]) => {
       let text = typeof v === "string" ? v : JSON.stringify(v);
       if (text.length > 42) text = text.slice(0, 42) + "…";
       return { k, text };
     });
-  }, [args]);
+  }, [args, compact]);
 
   const paths = useMemo(
     () => extractArtifactPaths(args, resp),
@@ -80,20 +82,30 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
   const outputJSON = useMemo(() => (resp == null ? "" : JSON.stringify(resp, null, 2)), [resp]);
   const showInput = args != null;
   const showOutput = resp != null;
+  // A read/list input path is not an output artifact. Inside the compact
+  // execution list only write/search/unknown tools keep the preview strip;
+  // otherwise every read row grows another line and the run becomes noisy.
+  const showPaths = paths.length > 0 && (
+    !compact || display.kind === "write" || display.kind === "search" || display.kind === "other"
+  );
 
   return (
     <div
       className={cn(
         "text-sm transition-colors",
-        flat ? "rounded-lg" : "rounded-xl bg-panel/60",
+        compact ? "rounded-lg" : "rounded-xl bg-panel/60",
       )}
       data-toolcard={name}
     >
       <button
         className={cn(
-          "flex w-full items-center gap-2 px-3 py-2.5 text-left",
-          flat && "rounded-lg transition-colors hover:bg-accent/40",
+          "flex w-full items-center gap-2 text-left",
+          compact
+            ? "rounded-lg px-2 py-1.5 transition-colors hover:bg-accent-soft focus-visible:bg-accent-soft"
+            : "px-3 py-2.5",
         )}
+        aria-label={`${running ? "正在运行" : failed ? "失败" : "完成"}：${display.action}${display.target ? ` ${display.target}` : ""}`}
+        title={compact ? `${display.action}${display.target ? ` ${display.target}` : ""}` : undefined}
         onClick={() => setOpen((v) => !v)}
       >
         <span className="shrink-0">
@@ -105,31 +117,56 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
             <CheckCircle2 className="h-3.5 w-3.5 text-success" />
           )}
         </span>
-        <Badge variant="outline" className="shrink-0 font-normal">
-          {running ? "调用中" : failed ? "失败" : "完成"}
-        </Badge>
-        <span className="font-mono text-xs">{name}</span>
-        {durationMs != null && (
-          <span className="shrink-0 text-2xs text-muted-foreground">{formatDuration(durationMs)}</span>
-        )}
-        <span className="hidden min-w-0 flex-1 items-center gap-1 overflow-hidden sm:flex">
-          {argChips.map(({ k, text }) => (
-            <span key={k} className="truncate rounded bg-control px-1.5 py-0.5 text-2xs text-muted-foreground" title={`${k}: ${text}`}>
-              {text}
+        {compact ? (
+          <>
+            {failed && <span className="shrink-0 text-xs text-danger-text">失败</span>}
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className="shrink-0 text-xs text-muted-foreground">{display.action}</span>
+              {display.target && (
+                <span
+                  className={cn(
+                    "min-w-0 truncate text-xs text-foreground",
+                    display.mono && "font-mono",
+                  )}
+                  title={display.target}
+                >
+                  {display.target}
+                </span>
+              )}
             </span>
-          ))}
-        </span>
+            {durationMs != null && (
+              <span className="shrink-0 text-xs text-muted-foreground">{formatDuration(durationMs)}</span>
+            )}
+          </>
+        ) : (
+          <>
+            <Badge variant="outline" className="shrink-0 font-normal">
+              {running ? "调用中" : failed ? "失败" : "完成"}
+            </Badge>
+            <span className="font-mono text-xs">{name}</span>
+            {durationMs != null && (
+              <span className="shrink-0 text-xs text-muted-foreground">{formatDuration(durationMs)}</span>
+            )}
+            <span className="hidden min-w-0 flex-1 items-center gap-1 overflow-hidden sm:flex">
+              {argChips.map(({ k, text }) => (
+                <span key={k} className="truncate rounded bg-control px-1.5 py-0.5 text-xs text-muted-foreground" title={`${k}: ${text}`}>
+                  {text}
+                </span>
+              ))}
+            </span>
+          </>
+        )}
         <ChevronRight className={`ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} />
       </button>
       {open && (
         <div className={cn(
           "space-y-2",
-          flat ? "mt-1 rounded-md bg-control/70 p-2" : "bg-panel/40 px-3 py-2",
+          compact ? "mt-1 rounded-md bg-control/70 p-2" : "bg-panel/40 px-3 py-2",
         )}>
           {showInput && (
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
-                <span className="text-2xs font-medium text-muted-foreground">输入</span>
+                <span className="text-xs font-medium text-muted-foreground">输入</span>
                 <CopyButton
                   text={inputJSON}
                   title="复制输入参数"
@@ -144,7 +181,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
           {showOutput && (
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
-                <span className="text-2xs font-medium text-muted-foreground">输出</span>
+                <span className="text-xs font-medium text-muted-foreground">输出</span>
                 <CopyButton
                   text={outputJSON}
                   title="复制输出结果"
@@ -157,13 +194,13 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
             </div>
           )}
           {!showInput && !showOutput && (
-            <div className="px-1 text-2xs text-muted-foreground">暂无详细内容</div>
+            <div className="px-1 text-xs text-muted-foreground">暂无详细内容</div>
           )}
         </div>
       )}
-      {paths.length > 0 && (
-        <div className={cn("flex flex-wrap items-center gap-1.5", flat ? "px-1 pt-2" : "bg-panel/40 px-3 py-2")}>
-          <span className="text-2xs text-muted-foreground">产物：</span>
+      {showPaths && (
+        <div className={cn("flex flex-wrap items-center gap-1.5", compact ? "px-2 pb-1.5 pt-0.5" : "bg-panel/40 px-3 py-2")}>
+          <span className="text-xs text-muted-foreground">产物：</span>
           {paths.map((p) => (
             <ArtifactOpenButton
               key={p}
@@ -184,7 +221,7 @@ export function ArtifactOpenButton({ path, label, sessionID }: { path: string; l
       <Button
         variant="outline"
         size="sm"
-        className="h-6 gap-1 px-2 text-2xs"
+        className="h-6 gap-1 px-2 text-xs"
         onClick={() => setTarget(path)}
       >
         <FileImage className="h-3 w-3" />

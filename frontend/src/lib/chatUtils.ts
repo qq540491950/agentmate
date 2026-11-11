@@ -304,6 +304,107 @@ export function buildToolTrace(messages: UIMessage[]): ToolTraceItem[] {
   return out;
 }
 
+export type ToolStepKind = "command" | "read" | "write" | "search" | "other";
+
+export type ToolStepDisplay = {
+  kind: ToolStepKind;
+  /** Short verb shown before the target, e.g. 运行 / 读取 / 搜索知识库. */
+  action: string;
+  /** Command, path or query extracted from the call arguments. */
+  target?: string;
+  /** Commands read best in monospace; labels such as 读取 do not. */
+  mono?: boolean;
+};
+
+const toolArgString = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+/**
+ * toolStepDisplay turns a tool invocation into one scannable line. Keep this
+ * in the pure helper layer: the execution list and its tests must agree on
+ * how unknown/MCP tools fall back to their first useful argument.
+ */
+export function toolStepDisplay(
+  name: string,
+  args?: { [k: string]: any } | null,
+): ToolStepDisplay {
+  const a = args ?? {};
+  switch (name) {
+    case "run_command": {
+      const command = toolArgString(a.command) || toolArgString(a.cmd);
+      return { kind: "command", action: "运行", target: command || "命令", mono: true };
+    }
+    case "read_workspace_file":
+      return { kind: "read", action: "读取", target: toolArgString(a.path) || "文件" };
+    case "write_workspace_file":
+      return { kind: "write", action: "写入", target: toolArgString(a.path) || "文件" };
+    case "list_workspace_files":
+      return { kind: "read", action: "列出", target: toolArgString(a.path) || "工作区" };
+    case "search_knowledge":
+      return { kind: "search", action: "搜索知识库", target: toolArgString(a.query) || "内容" };
+    case "get_current_time":
+      return { kind: "other", action: "获取当前时间" };
+    default: {
+      const target =
+        toolArgString(a.query) ||
+        toolArgString(a.path) ||
+        toolArgString(a.command) ||
+        toolArgString(a.url);
+      return { kind: "other", action: name, target: target || undefined };
+    }
+  }
+}
+
+export type ToolExecutionSummary = {
+  total: number;
+  failed: number;
+  counts: Record<ToolStepKind, number>;
+};
+
+/** summarizeToolTrace counts logical steps and failed results for the group
+ *  header. A failed step is process detail, not a turn failure; the header
+ *  reports it separately so a successful answer does not hide a red step. */
+export function summarizeToolTrace(trace: ToolTraceItem[]): ToolExecutionSummary {
+  const counts: Record<ToolStepKind, number> = {
+    command: 0,
+    read: 0,
+    write: 0,
+    search: 0,
+    other: 0,
+  };
+  let total = 0;
+  let failed = 0;
+  for (const item of trace) {
+    if (item.kind !== "tool") continue;
+    total++;
+    counts[toolStepDisplay(item.name, item.args).kind]++;
+    if (toolResultFailed(item.resp)) failed++;
+  }
+  return { total, failed, counts };
+}
+
+/** formatToolExecutionBreakdown renders the compact category summary used in
+ *  the header tooltip. Only the largest categories are kept: the header must
+ *  stay scannable, and the step rows below already expose the rest. */
+export function formatToolExecutionBreakdown(
+  counts: Record<ToolStepKind, number>,
+  maxParts = 2,
+): string {
+  const ordered: [ToolStepKind, number, string][] = [
+    ["command", counts.command, "命令"],
+    ["read", counts.read, "读取"],
+    ["write", counts.write, "写入"],
+    ["search", counts.search, "搜索"],
+    ["other", counts.other, "其他"],
+  ];
+  return ordered
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, Math.max(1, maxParts))
+    .map(([, count, label]) => `${count} ${label}`)
+    .join(" · ");
+}
+
 /** isProcessEvent reports messages that belong to one turn's execution run:
  *  thinking entries plus tool calls/results and HITL confirmations. plan_todos
  *  results are pinned UI (the todo list card), so they stay outside groups. */
