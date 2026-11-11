@@ -248,6 +248,7 @@ func runDirect(ctx context.Context, req Request, env []string) (Result, error) {
 	if len(env) > 0 {
 		cmd.Env = env
 	}
+	configureDirectProcess(cmd)
 	out := &limitedBuffer{limit: req.OutputLimit}
 	cmd.Stdout = out
 	cmd.Stderr = out

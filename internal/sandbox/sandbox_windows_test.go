@@ -4,14 +4,76 @@ package sandbox
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"golang.org/x/sys/windows"
 )
+
+var getConsoleWindow = syscall.NewLazyDLL("kernel32.dll").NewProc("GetConsoleWindow")
+var freeConsole = syscall.NewLazyDLL("kernel32.dll").NewProc("FreeConsole")
+
+// TestDangerFullAccessHidesConsole pins the regression that returned with the
+// sandbox refactor: the desktop app is a GUI process without a console, so the
+// danger-full-access direct path must pass CREATE_NO_WINDOW or every cmd.exe
+// tool call allocates a console window that flashes over the app (issue #54).
+//
+// The test binary re-executes itself twice. The middle process detaches its
+// console (FreeConsole) and calls sandbox.Run exactly like the GUI app; the
+// grandchild reports GetConsoleWindow. Without CREATE_NO_WINDOW cmd.exe
+// allocates a console and the grandchild sees a non-zero handle.
+func TestDangerFullAccessHidesConsole(t *testing.T) {
+	switch os.Getenv("AGENTMATE_CONSOLE_PROBE") {
+	case "report":
+		hwnd, _, _ := getConsoleWindow.Call()
+		fmt.Printf("CONSOLE=%d\n", hwnd)
+		os.Exit(0)
+	case "parent":
+		probe := os.Getenv("AGENTMATE_CONSOLE_PROBE_BAT")
+		dir := os.Getenv("AGENTMATE_CONSOLE_PROBE_DIR")
+		// Detach the console so this process looks like the -H windowsgui app.
+		_, _, _ = freeConsole.Call()
+		policy := DefaultPolicy(dir)
+		policy.Mode = ModeDangerFullAccess
+		res, err := Run(context.Background(), Request{
+			Command:     "cmd.exe",
+			Args:        []string{"/d", "/c", probe},
+			Dir:         dir,
+			Timeout:     30 * time.Second,
+			OutputLimit: 16 << 10,
+		}, policy)
+		fmt.Printf("RESULT_ERR=%v\nRESULT_OUT=%q\n", err, res.Output)
+		os.Exit(0)
+	}
+
+	dir := t.TempDir()
+	probe := filepath.Join(dir, "probe.bat")
+	body := fmt.Sprintf("@echo off\r\nset AGENTMATE_CONSOLE_PROBE=report\r\n\"%s\" -test.run=^TestDangerFullAccessHidesConsole$\r\n", os.Args[0])
+	if err := os.WriteFile(probe, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDangerFullAccessHidesConsole$")
+	cmd.Env = append(os.Environ(),
+		"AGENTMATE_CONSOLE_PROBE=parent",
+		"AGENTMATE_CONSOLE_PROBE_BAT="+probe,
+		"AGENTMATE_CONSOLE_PROBE_DIR="+dir,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("probe parent: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "CONSOLE=0") {
+		return
+	}
+	t.Fatalf("danger-full-access child inherited a console window:\n%s", out)
+}
 
 func sandboxTestRoot(t *testing.T) string {
 	t.Helper()

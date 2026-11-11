@@ -4,6 +4,21 @@
 
 ## 视觉测试与体验设计
 
+### 第二百五十六轮迭代：完全访问模式下终端工具不再闪现控制台窗口（已实施）
+
+依据：用户反馈对话中调用工具时终端框频繁闪现后立即关闭。截图左下角为「完全访问」模式；该模式在沙箱改造后走 `sandbox.runDirect`，而旧 `run_command` 的 `CREATE_NO_WINDOW` 只保留在未再使用的 `runShellCommand` 中。桌面应用以 `-H windowsgui` 构建且没有控制台，`runDirect` 每次启动 `cmd.exe` 都会分配一个可见控制台。
+
+**实现要点**
+
+- `sandbox.runDirect` 启动子进程前调用平台钩子 `configureDirectProcess`。
+- Windows 实现设置 `SysProcAttr.HideWindow` 与 `CREATE_NO_WINDOW`，与旧的 `agentkit.shellProcessAttrs` 保持一致；非 Windows 为空实现。
+- 新增 `TestDangerFullAccessHidesConsole`：测试进程先 `FreeConsole` 模拟 GUI 父进程，再经真实 `sandbox.Run` 启动 `cmd.exe`，由孙进程用 `GetConsoleWindow()` 断言没有控制台。
+
+**测试证据**
+
+- 修复前该用例红：`CONSOLE=2099534`；修复后绿：`CONSOLE=0`，连续 3 次通过。
+- `go test ./internal/...` 全绿；`go vet ./internal/sandbox ./internal/agentkit` 通过。
+
 ### 第二百五十五轮迭代：修复 Windows 8.3 短路径导致的工作区写入误判（已实施）
 
 依据：v0.6.8 发布 gate 在 windows-latest 上超时。日志显示 `TestNewSessionWorkspaceIsolatesParallelWrites` 卡在 `runTurn`，ADK 历史膨胀到 1.2 万条事件后才触发 10 分钟测试超时。根因是 CI 的配置目录以 `C:\Users\RUNNER~1\...` 短路径到达，而任务工作区被规范化成 `C:\Users\runneradmin\...`；`sandbox.Within` 只做词法比较，判定工作区在应用目录之外，于是 `sandboxPolicy` 把应用目录加入受保护路径，`write_workspace_file` 全部被拒，脚本化假模型便无限重复同一工具调用。

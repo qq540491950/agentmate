@@ -5,7 +5,10 @@ package sandbox
 import (
 	"context"
 	"os"
+	"os/exec"
 )
+
+func configureDirectProcess(cmd *exec.Cmd) {}
 
 func runPlatform(ctx context.Context, req Request, policy Policy) (Result, error) {
 	// The P0 backend is Windows-only. Non-Windows development builds keep the

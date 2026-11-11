@@ -125,6 +125,18 @@ func runPlatform(ctx context.Context, req Request, policy Policy) (Result, error
 	return b.run(ctx, req, policy, home)
 }
 
+// configureDirectProcess hides the console window of danger-full-access
+// children. The desktop app is built with -H windowsgui and owns no console,
+// so without CREATE_NO_WINDOW every cmd.exe child allocates a visible console
+// that flashes over the app (the same regression as issue #54, reintroduced
+// when run_command moved to sandbox.Run).
+func configureDirectProcess(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: createNoWindow,
+	}
+}
+
 func (b *windowsBackend) prepare(policy Policy) (string, error) {
 	home, err := os.MkdirTemp("", "agentmate-sandbox-*")
 	if err != nil {
