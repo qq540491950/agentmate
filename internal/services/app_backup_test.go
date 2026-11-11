@@ -203,6 +203,27 @@ func TestSaveSettingsProxyValidation(t *testing.T) {
 	}
 }
 
+func TestSaveSettingsCompactionValidation(t *testing.T) {
+	app, _, _ := newBackupTestService(t)
+	svc := NewConfigService(app.S)
+	st := app.S.Store.Get().Settings
+	negative := -1
+	st.CompactionContextPercent = &negative
+	if err := svc.SaveSettings(st); err == nil {
+		t.Fatal("expected negative compaction percent rejection")
+	}
+	tooHigh := 101
+	st.CompactionContextPercent = &tooHigh
+	if err := svc.SaveSettings(st); err == nil {
+		t.Fatal("expected over-100 compaction percent rejection")
+	}
+	st.CompactionContextPercent = nil
+	st.CompactionInterval = -1
+	if err := svc.SaveSettings(st); err == nil {
+		t.Fatal("expected negative compaction interval rejection")
+	}
+}
+
 // TestConfigBackupMaskedCoversEnvAndHeaders: a "safe to share" export must
 // also strip MCP Env/Headers (they routinely carry API keys and Authorization
 // headers), not just provider keys and auth tokens.

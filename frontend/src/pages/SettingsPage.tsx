@@ -17,6 +17,8 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NumericField } from "@/components/ui/numeric-field";
+import { choiceCardClass, SegmentedControl } from "@/components/ui/choice";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -44,6 +46,7 @@ import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
 import { modelLabel } from "@/lib/modelLabel";
 import { SANDBOX_MODE_OPTIONS } from "@/lib/sandboxMode";
 import {
+  DEFAULT_COMPACTION_CONTEXT_PERCENT,
   SETTINGS_GROUPS,
   a2aAutoStartError,
   isConfigSettingsTab,
@@ -116,6 +119,10 @@ export function SettingsPage({
   const [kbNewName, setKbNewName] = useState("");
   const [kbNewContent, setKbNewContent] = useState("");
   const dirtyRef = useRef(false);
+  const numericValidity = useRef<Record<string, boolean>>({});
+  const reportNumericValidity = useCallback((key: string, valid: boolean) => {
+    numericValidity.current[key] = valid;
+  }, []);
 
   // Deep links (empty state, @ popup, model selector) reopen the hub on a
   // specific tab; keep the active tab in sync when the prop changes.
@@ -247,6 +254,10 @@ export function SettingsPage({
 
   const save = async (): Promise<boolean> => {
     if (!settings) return false;
+    if (Object.values(numericValidity.current).some((valid) => !valid)) {
+      toast.error("请修正数字输入后再保存");
+      return false;
+    }
     const a2aError = a2aAutoStartError(settings);
     if (a2aError) {
       toast.error(a2aError);
@@ -396,94 +407,32 @@ export function SettingsPage({
 
             <div className="grid gap-2">
               <Label>明暗模式</Label>
-              <div role="radiogroup" aria-label="明暗模式" className="inline-flex w-fit rounded-lg bg-panel p-1">
-                {THEME_MODES.map((mode) => {
-                  const selected = (settings.themeMode || "dark") === mode.value;
-                  return (
-                    <button
-                      key={mode.value}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => update({ themeMode: mode.value })}
-                      onKeyDown={(event) => {
-                        const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
-                        if (!keys.includes(event.key)) return;
-                        event.preventDefault();
-                        const radios = Array.from(
-                          event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [],
-                        );
-                        const current = radios.indexOf(event.currentTarget);
-                        let next = current;
-                        if (event.key === "Home") next = 0;
-                        else if (event.key === "End") next = radios.length - 1;
-                        else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-                          next = (current - 1 + radios.length) % radios.length;
-                        } else {
-                          next = (current + 1) % radios.length;
-                        }
-                        const nextMode = THEME_MODES[next];
-                        if (nextMode) {
-                          update({ themeMode: nextMode.value });
-                          radios[next]?.focus();
-                        }
-                      }}
-                      className={cn(
-                        "h-7 rounded-md px-3 text-xs transition-colors",
-                        selected
-                          ? "bg-accent-soft font-medium text-accent-text"
-                          : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                      )}
-                    >
-                      {mode.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <SegmentedControl
+                ariaLabel="明暗模式"
+                value={settings.themeMode || "dark"}
+                options={THEME_MODES}
+                onChange={(themeMode) => update({ themeMode })}
+              />
             </div>
 
             <div className="grid gap-1.5">
               <Label>正文字号</Label>
-              <div className="flex gap-2">
-                {Object.entries(FONT_SCALES).map(([key, f]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-pressed={(settings.fontScale || "md") === key}
-                    className={cn(
-                      "h-7 w-16 rounded-md text-xs transition-colors",
-                      (settings.fontScale || "md") === key
-                        ? "bg-accent-soft font-medium text-accent-text"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                    )}
-                    onClick={() => update({ fontScale: key })}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                ariaLabel="正文字号"
+                value={settings.fontScale || "md"}
+                options={Object.entries(FONT_SCALES).map(([value, f]) => ({ value, label: f.label }))}
+                onChange={(fontScale) => update({ fontScale })}
+              />
             </div>
 
             <div className="grid gap-1.5">
               <Label>对话栏宽</Label>
-              <div className="flex gap-2">
-                {Object.entries(CHAT_WIDTHS).map(([key, w]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-pressed={(settings.chatWidth || "medium") === key}
-                    className={cn(
-                      "h-7 w-16 rounded-md text-xs transition-colors",
-                      (settings.chatWidth || "medium") === key
-                        ? "bg-accent-soft font-medium text-accent-text"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                    )}
-                    onClick={() => update({ chatWidth: key })}
-                  >
-                    {w.label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                ariaLabel="对话栏宽"
+                value={settings.chatWidth || "medium"}
+                options={Object.entries(CHAT_WIDTHS).map(([value, w]) => ({ value, label: w.label }))}
+                onChange={(chatWidth) => update({ chatWidth })}
+              />
             </div>
           </CardContent>
         </Card>
@@ -530,12 +479,7 @@ export function SettingsPage({
                         radios[next]?.focus();
                       }
                     }}
-                    className={cn(
-                      "group flex flex-col gap-3 rounded-xl p-3 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-                      selected
-                        ? option.danger ? "bg-danger-soft" : "bg-accent-soft"
-                        : "bg-panel hover:bg-overlay",
-                    )}
+                    className={choiceCardClass(selected, option.danger)}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <Icon
@@ -558,12 +502,12 @@ export function SettingsPage({
                       <span
                         className={cn(
                           "text-sm font-medium",
-                          selected && (option.danger ? "text-danger-text" : "text-accent-text"),
+                          selected && "text-foreground",
                         )}
                       >
                         {option.label}
                       </span>
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      <p className={cn("mt-1 text-xs leading-relaxed", selected ? "text-foreground" : "text-muted-foreground")}>
                         {option.description}
                       </p>
                     </div>
@@ -867,28 +811,35 @@ export function SettingsPage({
           <CardContent className="grid gap-1.5">
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
-                <Label>滑动窗口压缩间隔（轮）</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={settings.compactionInterval || ""}
-                  onChange={(e) => update({ compactionInterval: Number(e.target.value) || 0 })}
-                  placeholder="0（关闭）"
+                <Label htmlFor="compaction-interval">滑动窗口压缩间隔（轮）</Label>
+                <NumericField
+                  id="compaction-interval"
+                  aria-label="滑动窗口压缩间隔（轮）"
+                  value={settings.compactionInterval ?? 0}
+                  rule={{ min: 0, max: 100000, integer: true }}
+                  onValueChange={(compactionInterval) => update({ compactionInterval })}
+                  onValidityChange={(valid) => reportNumericValidity("compactionInterval", valid)}
+                  placeholder="0"
+                  hint="0 表示关闭；每 N 轮把更早的对话压缩为摘要。"
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label>Token 阈值触发</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={settings.compactionTokenThreshold || ""}
-                  onChange={(e) => update({ compactionTokenThreshold: Number(e.target.value) || 0 })}
-                  placeholder="0（关闭）"
+                <Label htmlFor="compaction-context-percent">上下文占用阈值（%）</Label>
+                <NumericField
+                  id="compaction-context-percent"
+                  aria-label="上下文占用阈值（%）"
+                  value={settings.compactionContextPercent ?? DEFAULT_COMPACTION_CONTEXT_PERCENT}
+                  rule={{ min: 0, max: 100, integer: true }}
+                  onValueChange={(compactionContextPercent) => update({ compactionContextPercent })}
+                  onValidityChange={(valid) => reportNumericValidity("compactionContextPercent", valid)}
+                  suffix="%"
+                  placeholder={String(DEFAULT_COMPACTION_CONTEXT_PERCENT)}
+                  hint="按当前模型上下文窗口计算；0 表示关闭。"
                 />
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              每 N 轮自动把更早的对话压缩为摘要（ADK 滑动窗口），或当提示 token 超过阈值时保留尾部、压缩其余。两者都填则同时生效；均为 0 表示关闭。远程 A2A 会话不支持。
+              每 N 轮自动把更早的对话压缩为摘要（ADK 滑动窗口），或当提示 token 超过模型上下文窗口的设定比例时保留尾部、压缩其余。两者都填则同时生效；均为 0 表示关闭。模型未配置上下文窗口时，百分比触发不生效。远程 A2A 会话不支持。
             </p>
           </CardContent>
         </Card>
@@ -1108,14 +1059,16 @@ export function SettingsPage({
                 </Select>
               </div>
               <div className="grid gap-1.5">
-                <Label>端口</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={settings.a2aPort || ""}
-                  onChange={(e) => update({ a2aPort: Number(e.target.value) || 0 })}
+                <Label htmlFor="a2a-port">端口</Label>
+                <NumericField
+                  id="a2a-port"
+                  aria-label="A2A 端口"
+                  value={settings.a2aPort ?? 0}
+                  rule={{ min: 0, max: 65535, integer: true }}
+                  onValueChange={(a2aPort) => update({ a2aPort })}
+                  onValidityChange={(valid) => reportNumericValidity("a2aPort", valid)}
                   placeholder="8080"
+                  hint="1–65535；0 表示随机端口。"
                 />
               </div>
             </div>

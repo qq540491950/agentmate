@@ -75,6 +75,10 @@ export function ModelsPage() {
   const [nameError, setNameError] = useState("");
   const [urlError, setUrlError] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
+  const numericValidity = useRef<Record<string, boolean>>({});
+  const reportNumericValidity = useCallback((key: string, valid: boolean) => {
+    numericValidity.current[key] = valid;
+  }, []);
 
   // Reopening the editor should land on the first section, not wherever the
   // previous edit left the scroll position.
@@ -92,6 +96,7 @@ export function ModelsPage() {
 
   const openEditor = (p?: ModelProvider) => {
     const item = p ? { ...p, models: (p.models ?? []).map((m) => ({ ...m })) } : blankProvider();
+    numericValidity.current = {};
     setEditing(item);
     setOpenModel((item.models ?? []).length > 0 ? 0 : null);
     setShowKey(false);
@@ -187,6 +192,10 @@ export function ModelsPage() {
 
   const save = async () => {
     if (!editing) return;
+    if (Object.values(numericValidity.current).some((valid) => !valid)) {
+      toast.error("请修正数字输入后再保存");
+      return;
+    }
     // Field-level validation stays next to the input instead of a toast: the
     // dialog is long, and a toast at the top of the screen loses the context.
     const baseUrl = (editing.baseUrl ?? "").trim();
@@ -523,6 +532,9 @@ export function ModelsPage() {
                                 index={i}
                                 onSuggest={(force) => { void suggestOne(i, force); }}
                                 onChange={(patch) => updateModel(i, patch)}
+                                onNumericValidityChange={(field, valid) =>
+                                  reportNumericValidity(`model-${i}-${field}`, valid)
+                                }
                               />
                             </div>
                           )}

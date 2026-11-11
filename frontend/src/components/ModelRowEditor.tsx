@@ -4,6 +4,7 @@ import type { ModelInfo, ReasoningConfig, ReasoningLevel } from "@/lib/api";
 import { reasoningValueError } from "@/lib/modelLabel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumericField } from "@/components/ui/numeric-field";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -44,6 +45,7 @@ interface ModelRowEditorProps {
    * fills missing defaults. */
   onSuggest: (force?: boolean) => void;
   onChange: (patch: Partial<ModelInfo>) => void;
+  onNumericValidityChange?: (fieldName: string, valid: boolean) => void;
 }
 
 /**
@@ -51,7 +53,7 @@ interface ModelRowEditorProps {
  * input type, prices and the per-model thinking-level table. The table is
  * stored as data only — the request merge lives in the Go adapters.
  */
-export function ModelRowEditor({ model, index, onSuggest, onChange }: ModelRowEditorProps) {
+export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericValidityChange }: ModelRowEditorProps) {
   const r = reasoningOf(model);
   const levels = r.levels ?? [];
   const listId = `reasoning-levels-${index}`;
@@ -108,18 +110,22 @@ export function ModelRowEditor({ model, index, onSuggest, onChange }: ModelRowEd
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="上下文窗口" hint="tokens，0 表示未知">
-            <Input
-              type="number" min="0"
-              value={model.contextWindow ?? ""}
-              onChange={(e) => onChange({ contextWindow: Math.max(0, Number(e.target.value) || 0) })}
+            <NumericField
+              aria-label="上下文窗口"
+              value={model.contextWindow ?? 0}
+              rule={{ min: 0, integer: true }}
+              onValueChange={(contextWindow) => onChange({ contextWindow })}
+              onValidityChange={(valid) => onNumericValidityChange?.("contextWindow", valid)}
               placeholder="如 128000"
             />
           </Field>
           <Field label="最大输出" hint="tokens，留空用模型默认">
-            <Input
-              type="number" min="0"
-              value={model.maxOutputTokens ?? ""}
-              onChange={(e) => onChange({ maxOutputTokens: Math.max(0, Number(e.target.value) || 0) })}
+            <NumericField
+              aria-label="最大输出"
+              value={model.maxOutputTokens ?? 0}
+              rule={{ min: 0, integer: true }}
+              onValueChange={(maxOutputTokens) => onChange({ maxOutputTokens })}
+              onValidityChange={(valid) => onNumericValidityChange?.("maxOutputTokens", valid)}
               placeholder="如 8192"
             />
           </Field>
@@ -139,18 +145,22 @@ export function ModelRowEditor({ model, index, onSuggest, onChange }: ModelRowEd
             </div>
           </Field>
           <Field label="输入价格" hint="¥ / 1M tokens，可选">
-            <Input
-              type="number" step="0.1" min="0"
-              value={model.priceIn ?? ""}
-              onChange={(e) => onChange({ priceIn: Math.max(0, Number(e.target.value) || 0) })}
+            <NumericField
+              aria-label="输入价格"
+              value={model.priceIn ?? 0}
+              rule={{ min: 0, integer: false, decimals: 2 }}
+              onValueChange={(priceIn) => onChange({ priceIn })}
+              onValidityChange={(valid) => onNumericValidityChange?.("priceIn", valid)}
               placeholder="0"
             />
           </Field>
           <Field label="输出价格" hint="¥ / 1M tokens，可选">
-            <Input
-              type="number" step="0.1" min="0"
-              value={model.priceOut ?? ""}
-              onChange={(e) => onChange({ priceOut: Math.max(0, Number(e.target.value) || 0) })}
+            <NumericField
+              aria-label="输出价格"
+              value={model.priceOut ?? 0}
+              rule={{ min: 0, integer: false, decimals: 2 }}
+              onValueChange={(priceOut) => onChange({ priceOut })}
+              onValidityChange={(valid) => onNumericValidityChange?.("priceOut", valid)}
               placeholder="0"
             />
           </Field>

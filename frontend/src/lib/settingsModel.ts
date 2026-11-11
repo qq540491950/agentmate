@@ -46,6 +46,7 @@ export type SettingsGroupDef = {
 export type SettingsLeaveGuard = (after: () => void) => void;
 
 export const DEFAULT_SETTINGS_TAB: SettingsTab = "appearance";
+export const DEFAULT_COMPACTION_CONTEXT_PERCENT = 65;
 
 export const SETTINGS_GROUPS: readonly SettingsGroupDef[] = [
   { key: "basic", label: "基础设置" },
@@ -114,7 +115,7 @@ const COMPARE_DEFAULTS: Partial<Record<keyof Settings, unknown>> = {
   titleModel: "",
   httpProxy: "",
   compactionInterval: 0,
-  compactionTokenThreshold: 0,
+  compactionContextPercent: DEFAULT_COMPACTION_CONTEXT_PERCENT,
   sidebarCollapsed: false,
   sidebarGrouping: "time",
   executionDisplayMode: "auto",

@@ -486,11 +486,21 @@ func (c *ConfigService) DeleteMCPServer(id string) error {
 // SaveSettings persists global settings, validating the outbound proxy URL
 // up front so a typo surfaces immediately instead of at next app start.
 func (c *ConfigService) SaveSettings(s config.Settings) error {
+	if s.CompactionContextPercent == nil {
+		percent := config.DefaultCompactionContextPercent
+		s.CompactionContextPercent = &percent
+	}
 	if s.HTTPProxy != "" {
 		u, err := url.Parse(s.HTTPProxy)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("代理地址无效（需 http://host:port 形式）: %q", s.HTTPProxy)
 		}
+	}
+	if s.CompactionInterval < 0 {
+		return fmt.Errorf("滑动窗口压缩间隔不能为负数")
+	}
+	if s.CompactionContextPercent != nil && (*s.CompactionContextPercent < 0 || *s.CompactionContextPercent > 100) {
+		return fmt.Errorf("上下文占用阈值需为 0-100 的整数")
 	}
 	return c.S.Store.Update(func(cfg *config.Config) {
 		cfg.Settings = s

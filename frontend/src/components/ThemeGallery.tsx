@@ -1,6 +1,7 @@
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { THEME_OPTIONS, type ThemePreset } from "@/lib/theme";
+import { choiceCardClass } from "@/components/ui/choice";
 
 function ThemePreview({ preset, dark }: { preset: ThemePreset; dark: boolean }) {
   return (
@@ -83,21 +84,16 @@ export function ThemeGallery({
                 radios[next]?.focus();
               }
             }}
-            className={cn(
-              "group rounded-xl p-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-              selected
-                ? "bg-accent-soft"
-                : "bg-panel hover:bg-accent",
-            )}
+            className={cn(choiceCardClass(selected), "p-2")}
           >
             <ThemePreview preset={option.value} dark={dark} />
             <div className="mt-2 flex items-center justify-between gap-2">
-              <span className={cn("text-sm font-medium", selected && "text-accent-text")}>
+              <span className={cn("text-sm font-medium", selected && "text-foreground")}>
                 {option.label}
               </span>
               {selected && <Check className="h-3.5 w-3.5 text-accent-text" aria-hidden="true" />}
             </div>
-            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            <p className={cn("mt-0.5 text-xs leading-relaxed", selected ? "text-foreground" : "text-muted-foreground")}>
               {option.description}
             </p>
           </button>

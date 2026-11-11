@@ -9,7 +9,7 @@ Nord 表面契约已落地；历史实现与旧文档只用于参考行为，不
 1. **默认主题是 Nord**，主题预设与明暗模式是两个独立设置：`nord | graphite | paper | contrast` × `light | dark | system`。不要做“每个页面一套主题”或“每个 Agent 一套主题”。
 2. **布局默认无线条**：顶栏、对话侧栏、设置导航、会话头、卡片、列表行、工具组、确认卡、composer、对话框、popover 不得用常驻 `border` / `border-b` / `border-r` / `ring-1` 做分区。
 3. **用表面表达层级**：`canvas` → `chrome` / `panel` → `overlay`。相邻表面只差一到两级明度，目标对比比例约 1.05–1.30；不得用高反差色块或阴影堆叠替代布局。
-4. **选中态不用左侧竖条**：当前会话、当前设置标签、选中候选统一使用 `accent-soft` 底纹 + `accent-text` 文字 + 可访问状态，不用 `border-l-2`、左侧色条或描边。
+4. **选中态不用左侧竖条**：当前会话、当前设置标签、选中候选统一使用 `accent-soft` 底纹 + `accent-text` 文字 + 可访问状态，不用 `border-l-2`、左侧色条或描边。分段控件与选择卡例外：未选中用 `control` 面，选中用 `choice-selected` / `choice-selected-danger` + `foreground` 文字 + Check 图标（见 `docs/design-system.md` §5.4）。
 5. **强调色稀缺**：`accent` 只用于选中、focus、运行态、少量链接和关键图标；主按钮用中性高对比 `primary`，不把强调色铺满页面。
 6. **状态不能只靠颜色**：确认、错误、警告、成功、运行中必须同时有图标或文字，并使用 `*-soft` 底纹，不用“只有彩色边框”的状态卡。
 7. **禁止组件内写死颜色**：不得新增 `#2E3440` 这类十六进制、`bg-zinc-*` / `text-amber-*` / `emerald-*` / `red-*` 调色板，或 `bg-[#...]` 任意值。颜色只能来自主题语义令牌。

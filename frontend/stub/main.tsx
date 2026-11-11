@@ -52,7 +52,7 @@ const seedConfig = {
     autoRemember: false,
     toolsAudit: false,
     compactionInterval: 0,
-    compactionTokenThreshold: 0,
+    compactionContextPercent: 65,
     a2aAutoStart: false,
     a2aAgentId: "",
     a2aPort: 8080,

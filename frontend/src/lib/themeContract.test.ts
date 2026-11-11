@@ -69,6 +69,19 @@ describe("theme token contract", () => {
         expect(contrast(tokens.foreground, tokens.control), "foreground/control").toBeGreaterThanOrEqual(4.5);
       });
 
+      it(`${theme}/${mode} keeps selected choices visible and readable`, () => {
+        const tokens = declarationsFor(theme, mode);
+        expect(tokens["choice-selected"]).toBeDefined();
+        expect(tokens["choice-selected-danger"]).toBeDefined();
+        expect(contrast(tokens["choice-selected"], tokens.control), "choice-selected/control").toBeGreaterThanOrEqual(1.2);
+        expect(contrast(tokens["choice-selected"], tokens.panel), "choice-selected/panel").toBeGreaterThanOrEqual(1.2);
+        expect(contrast(tokens["choice-selected-danger"], tokens.control), "choice-danger/control").toBeGreaterThanOrEqual(1.15);
+        for (const background of ["choice-selected", "choice-selected-danger"] as const) {
+          expect(contrast(tokens.foreground, tokens[background]), `foreground/${background}`).toBeGreaterThanOrEqual(4.5);
+        }
+        expect(contrast(tokens["danger-text"], tokens["choice-selected-danger"]), "danger-text/choice-danger").toBeGreaterThanOrEqual(3);
+      });
+
       it(`${theme}/${mode} keeps layout surfaces perceptible but calm`, () => {
         const tokens = declarationsFor(theme, mode);
         for (const [a, b] of [["canvas", "chrome"], ["chrome", "panel"]] as const) {

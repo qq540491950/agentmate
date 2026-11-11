@@ -39,6 +39,8 @@
 | `panel` | `card` | 执行组、composer、设置分组、管理列表容器、任务结果面板 |
 | `overlay` | `elevated` / `popover` | 菜单、对话框、toast、浮层 |
 | `control` | `control` | outline 按钮、复选框等可识别控件填充；不用于布局分区 |
+| `choice-selected` | 新增 | 分段控件、选择卡的选中填充；文字固定用 `foreground` |
+| `choice-selected-danger` | 新增 | 危险选择卡的选中填充；危险色只用于图标/状态 |
 | `accent-soft` | 由 `brand` 派生 | 选中行、候选选中、composer 拖拽、当前轮 |
 | `accent-text` | 由 `brand` 派生 | 强调文字、链接、图标 |
 | `primary` | `primary` | 中性主按钮 |
@@ -79,6 +81,7 @@
 补充约束：
 
 - Nord 深色 `canvas/chrome/panel/overlay` 相邻比例约 1.24 / 1.17 / 1.17；浅色 `canvas/chrome` 约 1.06、`chrome/panel` 约 1.22。
+- 选择控件专用 `choice-selected` / `choice-selected-danger`：Nord 深色 `#4F6173` / `#5C5D6D`，Nord 浅色 `#D2DCE8` / `#EDD8DB`；其他主题在各自令牌块中校准，均通过 `themeContract` 的选择态对比度测试。
 - 若浅色 chrome 在实际 100% 亮度下不可感知，只能在 Nord 色族内微调 chrome，不得加回分割线。
 - 代码高亮使用 Frost/Aurora 语义槽位；每个主题定义自己的语法色，组件不写死紫色/绿色。
 - Nord 官方色值来源记录在主题样式注释中；修改色值必须同步对比度测试。
@@ -108,6 +111,13 @@
 - `canvas` / `chrome` / `panel` 主布局相邻表面比例 1.05–1.30；超过 1.35 视为跳变，低于 1.05 视为不可感知。`overlay` 可与 `panel` 同色，由阴影承担浮层分离。
 - 阴影只用于 overlay 和必要的 composer；不要用阴影堆叠制造层级。
 
+### 5.4 选择控件
+
+- 分段控件和选择卡的**静止面必须使用 `control`**，不得使用与父级 `panel` 同色的 `panel`；否则点击区域会退化成纯文字。
+- 选中面使用 `choice-selected` / `choice-selected-danger`，与 `control` 的对比度目标 ≥1.20 / ≥1.15；选中文字使用 `foreground`，不要用 `accent-text` 或 `danger-text` 作为正文（它们在软底纹上可能低于 4.5:1）。
+- 选中态同时提供 Check 图标或 `aria-checked`，不能只靠颜色；危险状态用危险色图标 + 文字，不用危险色正文或强调色描边。
+- 分段控件保持 8px 控件圆角、28–32px 高度和 ≥8px 间距；选择卡使用 12px 圆角与 12px 内距。
+
 ## 6. 排版、间距、圆角、动效
 
 - 字体栈：`Geist Variable → PingFang SC → Microsoft YaHei UI → Noto Sans SC → Source Han Sans SC → system-ui`；不换字体。
@@ -127,6 +137,7 @@
 | 会话头 | `canvas`，无底边线；标题、目标徽标、操作靠间距组织 |
 | 设置导航 | `chrome`，无右边线；选中项 `accent-soft` + `accent-text` |
 | 设置分组 | `panel` 底，无 ring；标题可在面板外；设置行无 border，靠 12–16px 内距 |
+| 选择控件 | 未选中 `control` 面；选中使用 `choice-selected` / `choice-selected-danger` + `foreground` 文字 + Check 图标；无布局边框 |
 | 管理列表 | 一个 `panel` 容器包住连续行；行 hover 用 overlay；不要每项一张描边卡 |
 | 对话正文 | 助手无气泡全宽；用户 `accent-soft` 气泡无 ring；当前轮只加底纹浓度 |
 | 执行组 | 单块 `panel`；组头、内容、工具行用底纹/留白/缩进分层；不逐层套框 |
@@ -171,7 +182,7 @@
 
 - [ ] 是否只使用语义令牌，没有组件内 hex/palette 类？
 - [ ] 布局 chrome、卡片、设置行、列表行、弹窗是否都没有常驻边框/ring？
-- [ ] 选中态是否使用 `accent-soft` + `accent-text`，而不是左竖条/描边？
+- [ ] 导航/会话选中态是否使用 `accent-soft` + `accent-text`；分段/选择卡是否使用 `choice-selected` + `foreground`，而不是左竖条/描边？
 - [ ] 确认卡/错误/警告是否同时有图标或文字，而不是只有彩色边框？
 - [ ] 相邻表面在 100% 亮度下是否可感知，但没有明显色块跳变？
 - [ ] light/dark 两套是否都完整且对比度通过？

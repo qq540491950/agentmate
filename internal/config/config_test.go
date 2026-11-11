@@ -58,6 +58,48 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSettingsCompactionPercentDefaultsAndClamps(t *testing.T) {
+	ptr := func(v int) *int { return &v }
+	tests := []struct {
+		name string
+		in   *int
+		want int
+	}{
+		{name: "missing defaults to 65", in: nil, want: 65},
+		{name: "explicit zero disables", in: ptr(0), want: 0},
+		{name: "negative clamps to zero", in: ptr(-3), want: 0},
+		{name: "over 100 clamps", in: ptr(140), want: 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := Settings{CompactionContextPercent: tt.in}
+			s.normalize()
+			if got := s.CompactionPercent(); got != tt.want {
+				t.Fatalf("CompactionPercent() = %d, want %d", got, tt.want)
+			}
+			if s.CompactionContextPercent == nil {
+				t.Fatal("normalize left the percent pointer nil")
+			}
+		})
+	}
+}
+
+func TestConfigCloneDoesNotShareSettingsPointers(t *testing.T) {
+	percent, autoTitle, autoCheck := 65, true, false
+	cfg := Config{Settings: Settings{
+		CompactionContextPercent: &percent,
+		AutoTitle:                &autoTitle,
+		AutoCheckUpdate:          &autoCheck,
+	}}
+	clone := cfg.Clone()
+	*clone.Settings.CompactionContextPercent = 0
+	*clone.Settings.AutoTitle = false
+	*clone.Settings.AutoCheckUpdate = true
+	if *cfg.Settings.CompactionContextPercent != 65 || !*cfg.Settings.AutoTitle || *cfg.Settings.AutoCheckUpdate {
+		t.Fatalf("clone mutated the original settings pointers: %+v", cfg.Settings)
+	}
+}
+
 func TestProjectsRoundTripAndCloneIndependent(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)

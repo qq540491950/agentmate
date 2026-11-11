@@ -22,6 +22,11 @@ import (
 	"agentmate/internal/config"
 )
 
+// compactionEventRetentionSize keeps the current turn and a short recent tail
+// raw when tail-retention compaction fires. ADK requires a positive value
+// whenever TokenThreshold is enabled.
+const compactionEventRetentionSize = 10
+
 func addUsage(total, u *UsageInfo) *UsageInfo {
 	if u == nil {
 		return total
@@ -354,8 +359,9 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	// Per-turn pick > session default > model default. With no resolvable
 	// model (remote targets) there is nothing to inject or record.
 	applyLevel, recordedLevel := "", ""
-	if mi, ok := c.effectiveTurnModel(cfg, target); ok {
-		applyLevel, recordedLevel = resolveTurnReasoning(mi, turnReasoning, target.ReasoningLevel)
+	modelInfo, hasModel := c.effectiveTurnModel(cfg, target)
+	if hasModel {
+		applyLevel, recordedLevel = resolveTurnReasoning(modelInfo, turnReasoning, target.ReasoningLevel)
 	}
 	// Per-agent tool guardrail (0 = unlimited). Turns have no wall-clock
 	// deadline: long agent tasks are allowed to run until they finish, fail,
@@ -448,12 +454,22 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	// agents do not have.
 	if target.TargetType != "remote" {
 		se := cfg.Settings
-		if se.CompactionInterval > 0 || se.CompactionTokenThreshold > 0 {
-			runnerCfg.Compaction = &compaction.Config{
-				CompactionInterval: se.CompactionInterval,
-				OverlapSize:        1,
-				TokenThreshold:     se.CompactionTokenThreshold,
+		tokenThreshold := 0
+		if hasModel {
+			tokenThreshold = compactionTokenThreshold(modelInfo.ContextWindow, se.CompactionPercent())
+		}
+		if se.CompactionInterval > 0 || tokenThreshold > 0 {
+			cc := &compaction.Config{CompactionInterval: se.CompactionInterval}
+			if se.CompactionInterval > 0 {
+				cc.OverlapSize = 1
 			}
+			if tokenThreshold > 0 {
+				cc.TokenThreshold = tokenThreshold
+				// Keep the current turn and a small tail raw; ADK requires a
+				// positive retention size whenever TokenThreshold is enabled.
+				cc.EventRetentionSize = compactionEventRetentionSize
+			}
+			runnerCfg.Compaction = cc
 		}
 	}
 	rn, err := runner.New(runnerCfg)
@@ -747,6 +763,19 @@ func (c *ChatService) effectiveTurnModel(cfg config.Config, target *config.ChatS
 		return config.ModelInfo{}, false
 	}
 	return mi, true
+}
+
+// compactionTokenThreshold converts a context-window percentage into the
+// absolute prompt-token threshold ADK expects. Unknown context windows disable
+// this strategy rather than guessing a window that could summarize too early.
+func compactionTokenThreshold(contextWindow, percent int) int {
+	if contextWindow <= 0 || percent <= 0 {
+		return 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	return contextWindow * percent / 100
 }
 
 // findAgentConfig returns the configured agent with the given ID.

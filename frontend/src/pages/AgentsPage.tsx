@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { NumericField } from "@/components/ui/numeric-field";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -126,6 +127,10 @@ export function AgentsPage() {
   const [checking, setChecking] = useState(false);
   const agentImportRef = useRef<HTMLInputElement>(null);
   const remoteImportRef = useRef<HTMLInputElement>(null);
+  const numericValidity = useRef<Record<string, boolean>>({});
+  const reportNumericValidity = useCallback((key: string, valid: boolean) => {
+    numericValidity.current[key] = valid;
+  }, []);
 
   const reload = useCallback(() => {
     Config.GetConfig()
@@ -151,11 +156,16 @@ export function AgentsPage() {
    * required fields are visible, advanced settings stay collapsed. */
   const openEditor = (a: AgentConfig) => {
     setAdvancedOpen(false);
+    numericValidity.current = {};
     setEditing(a);
   };
 
   const save = async () => {
     if (!editing) return;
+    if (Object.values(numericValidity.current).some((valid) => !valid)) {
+      toast.error("请修正数字输入后再保存");
+      return;
+    }
     if (!editing.name.trim()) {
       toast.error("请填写 Agent 名称");
       return;
@@ -168,8 +178,8 @@ export function AgentsPage() {
       toast.error("请填写系统提示词");
       return;
     }
-    // Hand-typed numbers bypass the input min/max; clamp so providers never
-    // receive out-of-range values (OpenAI rejects temperature > 2).
+    // NumericField validates and blocks invalid drafts; keep the final clamp
+    // as defense in depth for imported agents or future callers.
     const temperature = Math.min(2, Math.max(0, editing.temperature || 0));
     const maxTokens = editing.maxTokens > 0 ? Math.floor(editing.maxTokens) : 0;
     // Model and tools are optional: blank values inherit the global default
@@ -616,19 +626,25 @@ export function AgentsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="grid gap-1.5">
                   <Label>Temperature</Label>
-                  <Input
-                    type="number" step="0.1" min="0" max="2"
+                  <NumericField
+                    aria-label="Temperature"
                     value={editing.temperature}
-                    onChange={(e) => setEditing({ ...editing, temperature: Number(e.target.value) })}
+                    rule={{ min: 0, max: 2, integer: false, decimals: 2 }}
+                    onValueChange={(temperature) => setEditing({ ...editing, temperature })}
+                    onValidityChange={(valid) => reportNumericValidity("temperature", valid)}
+                    placeholder="0.3"
                   />
                   <p className="text-xs text-muted-foreground">可选。越低越稳定，越高越发散。</p>
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Max Tokens</Label>
-                  <Input
-                    type="number" step="256" min="256"
+                  <NumericField
+                    aria-label="Max Tokens"
                     value={editing.maxTokens}
-                    onChange={(e) => setEditing({ ...editing, maxTokens: Number(e.target.value) })}
+                    rule={{ min: 0, integer: true }}
+                    onValueChange={(maxTokens) => setEditing({ ...editing, maxTokens })}
+                    onValidityChange={(valid) => reportNumericValidity("maxTokens", valid)}
+                    placeholder="0"
                   />
                   <p className="text-xs text-muted-foreground">可选。0 表示使用模型默认上限。</p>
                 </div>
@@ -724,23 +740,25 @@ export function AgentsPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label>会话 Token 预算</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={editing.maxSessionTokens || ""}
-                  onChange={(e) => setEditing({ ...editing, maxSessionTokens: Number(e.target.value) || 0 })}
-                  placeholder="0（不限制）"
+                <NumericField
+                  aria-label="会话 Token 预算"
+                  value={editing.maxSessionTokens ?? 0}
+                  rule={{ min: 0, integer: true }}
+                  onValueChange={(maxSessionTokens) => setEditing({ ...editing, maxSessionTokens })}
+                  onValidityChange={(valid) => reportNumericValidity("maxSessionTokens", valid)}
+                  placeholder="0"
                 />
                 <p className="text-xs text-muted-foreground">会话累计 tokens 超出后拒绝新消息（当前轮正常完成）</p>
               </div>
               <div className="grid gap-1.5">
                 <Label>单轮工具调用上限</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={editing.maxToolCalls || ""}
-                  onChange={(e) => setEditing({ ...editing, maxToolCalls: Number(e.target.value) || 0 })}
-                  placeholder="0（不限制）"
+                <NumericField
+                  aria-label="单轮工具调用上限"
+                  value={editing.maxToolCalls ?? 0}
+                  rule={{ min: 0, integer: true }}
+                  onValueChange={(maxToolCalls) => setEditing({ ...editing, maxToolCalls })}
+                  onValidityChange={(valid) => reportNumericValidity("maxToolCalls", valid)}
+                  placeholder="0"
                 />
                 <p className="text-xs text-muted-foreground">超出后本轮停止，防止死循环消耗</p>
               </div>

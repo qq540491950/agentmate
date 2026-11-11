@@ -493,10 +493,14 @@ export interface Settings {
 
     /**
      * Context compaction (ADK session/compaction). Interval counts completed
-     * user turns between sliding-window summarizations; TokenThreshold fires
-     * intra-turn tail retention at the given prompt token count. 0 = off.
+     * user turns between sliding-window summarizations. ContextPercent is the
+     * prompt-token threshold as a percentage of the effective model's context
+     * window; nil means the default (65), and 0 explicitly disables tail
+     * retention. The old absolute CompactionTokenThreshold is retained only for
+     * reading older config files and is no longer used at runtime.
      */
     "compactionInterval"?: number;
+    "compactionContextPercent"?: number | null;
     "compactionTokenThreshold"?: number;
 
     /**

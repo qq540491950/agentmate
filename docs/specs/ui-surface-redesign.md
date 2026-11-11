@@ -97,7 +97,7 @@
 - 主布局相邻表面（canvas ↔ chrome、chrome ↔ panel）的对比比例目标为 1.05–1.30；超过 1.35 视为色块跳变，低于 1.05 视为不可感知。`overlay` 允许与 `panel` 同色，由浮层阴影承担与页面的分离。
 - 深色主题中 chrome/panel/overlay 相对 canvas 逐级更亮；浅色主题中 chrome 相对 canvas 略深，panel/overlay 相对 canvas 更亮。明暗变化方向可以不同，但语义角色不能变。
 - 取消所有布局级 border/ring：顶栏底边、会话头底边、设置侧栏右边、卡片外圈、管理列表行、设置行、工具组、确认卡、对话框、popover、toast 的常驻描边全部移除。
-- 选中态使用 `accent-soft` 底纹 + `accent-text` 文字 + 必要的可访问状态；不使用左侧竖条、左侧 2px 色条或高对比描边。
+- 导航/会话/候选选中态使用 `accent-soft` 底纹 + `accent-text` 文字 + 必要的可访问状态；分段控件与选择卡使用 `choice-selected` / `choice-selected-danger` + `foreground` 文字 + Check 图标（避免软底纹上的文字对比不足）；不使用左侧竖条、左侧 2px 色条或高对比描边。
 - hover 使用比当前表面高一档的柔和底色；focus 使用 2px 强调色环 + 少量外扩，不靠加粗边框。
 - 不使用满屏渐变、玻璃拟态、发光描边、彩虹色图标或大面积品牌色。表面差和内容排版是主要视觉语言。
 

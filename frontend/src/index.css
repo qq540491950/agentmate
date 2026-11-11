@@ -51,6 +51,8 @@
     --color-overlay: var(--overlay);
     --color-control: var(--control);
     --color-accent-soft: var(--accent-soft);
+    --color-choice-selected: var(--choice-selected);
+    --color-choice-selected-danger: var(--choice-selected-danger);
     --color-accent-text: var(--accent-text);
     --color-danger: var(--danger);
     --color-danger-text: var(--danger-text);
@@ -140,6 +142,8 @@
     --accent: #DDE4EC;
     --accent-foreground: #2E3440;
     --accent-soft: color-mix(in oklab, var(--brand) 12%, transparent);
+    --choice-selected: #D2DCE8;
+    --choice-selected-danger: #EDD8DB;
     --accent-text: #4C6A91;
     --brand: #5E81AC;
     --brand-foreground: #ECEFF4;
@@ -208,6 +212,8 @@
     --accent: #4C566A;
     --accent-foreground: #ECEFF4;
     --accent-soft: color-mix(in oklab, var(--brand) 14%, transparent);
+    --choice-selected: #4F6173;
+    --choice-selected-danger: #5C5D6D;
     --accent-text: #9BD3E0;
     --brand: #88C0D0;
     --brand-foreground: #2E3440;
@@ -273,6 +279,8 @@
     --accent: #E5EAF1;
     --accent-foreground: #1F232B;
     --accent-soft: color-mix(in oklab, var(--brand) 12%, transparent);
+    --choice-selected: #CBDBFA;
+    --choice-selected-danger: #EFDCDE;
     --accent-text: #3E6FA8;
     --brand: #5B8DEF;
     --brand-foreground: #FFFFFF;
@@ -338,6 +346,8 @@
     --accent: #303846;
     --accent-foreground: #F2F4F7;
     --accent-soft: color-mix(in oklab, var(--brand) 14%, transparent);
+    --choice-selected: #344157;
+    --choice-selected-danger: #423F49;
     --accent-text: #9CC2FF;
     --brand: #79A9F5;
     --brand-foreground: #1B1F27;
@@ -403,6 +413,8 @@
     --accent: #EDE6DA;
     --accent-foreground: #2C2823;
     --accent-soft: color-mix(in oklab, var(--brand) 12%, transparent);
+    --choice-selected: #E3D6C7;
+    --choice-selected-danger: #EFDAD9;
     --accent-text: #7A4A20;
     --brand: #8A5A2B;
     --brand-foreground: #FFFDF8;
@@ -468,6 +480,8 @@
     --accent: #39332D;
     --accent-foreground: #F2EDE6;
     --accent-soft: color-mix(in oklab, var(--brand) 14%, transparent);
+    --choice-selected: #483D30;
+    --choice-selected-danger: #483E3C;
     --accent-text: #E8BE8C;
     --brand: #D9A46A;
     --brand-foreground: #1C1B19;
@@ -533,6 +547,8 @@
     --accent: #E6E6E6;
     --accent-foreground: #000000;
     --accent-soft: color-mix(in oklab, var(--brand) 18%, transparent);
+    --choice-selected: #D1DCEE;
+    --choice-selected-danger: #EFDCDE;
     --accent-text: #003FA3;
     --brand: #003FA3;
     --brand-foreground: #FFFFFF;
@@ -598,6 +614,8 @@
     --accent: #262626;
     --accent-foreground: #FFFFFF;
     --accent-soft: color-mix(in oklab, var(--brand) 22%, transparent);
+    --choice-selected: #352F13;
+    --choice-selected-danger: #352A2B;
     --accent-text: #FFE066;
     --brand: #FFD60A;
     --brand-foreground: #000000;

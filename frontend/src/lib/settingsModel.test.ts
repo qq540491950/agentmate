@@ -28,7 +28,7 @@ const baseSettings = {
   a2aPort: 0,
   httpProxy: "",
   compactionInterval: 0,
-  compactionTokenThreshold: 0,
+  compactionContextPercent: 65,
 } as Settings;
 
 describe("settings model", () => {
@@ -155,6 +155,7 @@ describe("settings model", () => {
     delete (withoutOptional as Partial<Settings>).autoTitle;
     delete (withoutOptional as Partial<Settings>).a2aPort;
     delete (withoutOptional as Partial<Settings>).compactionInterval;
+    delete (withoutOptional as Partial<Settings>).compactionContextPercent;
     delete (withoutOptional as Partial<Settings>).httpProxy;
     delete (withoutOptional as Partial<Settings>).toolsAudit;
     delete (withoutOptional as Partial<Settings>).sandboxMode;

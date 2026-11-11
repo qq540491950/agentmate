@@ -37,6 +37,9 @@ const (
 	SandboxModeWorkspaceWrite = SandboxModeRequestApproval
 	SandboxNetworkOff         = "off"
 	SandboxNetworkOn          = "on"
+	// DefaultCompactionContextPercent is the default prompt-token threshold
+	// for tail-retention compaction, expressed as context-window usage.
+	DefaultCompactionContextPercent = 65
 )
 
 // NormalizeSandboxMode maps empty/unknown/legacy values to one of the three
@@ -492,10 +495,14 @@ type Settings struct {
 	// applied to model/embedding/MCP requests at startup. Empty = direct.
 	HTTPProxy string `json:"httpProxy,omitempty"`
 	// Context compaction (ADK session/compaction). Interval counts completed
-	// user turns between sliding-window summarizations; TokenThreshold fires
-	// intra-turn tail retention at the given prompt token count. 0 = off.
-	CompactionInterval       int `json:"compactionInterval,omitempty"`
-	CompactionTokenThreshold int `json:"compactionTokenThreshold,omitempty"`
+	// user turns between sliding-window summarizations. ContextPercent is the
+	// prompt-token threshold as a percentage of the effective model's context
+	// window; nil means the default (65), and 0 explicitly disables tail
+	// retention. The old absolute CompactionTokenThreshold is retained only for
+	// reading older config files and is no longer used at runtime.
+	CompactionInterval       int  `json:"compactionInterval,omitempty"`
+	CompactionContextPercent *int `json:"compactionContextPercent,omitempty"`
+	CompactionTokenThreshold int  `json:"compactionTokenThreshold,omitempty"`
 	// SidebarCollapsed keeps the conversation list collapsed across restarts.
 	SidebarCollapsed bool `json:"sidebarCollapsed,omitempty"`
 	// SidebarGrouping selects the conversation-list grouping: "time" (default)
@@ -521,6 +528,23 @@ type Settings struct {
 // users who care about the extra side call can switch it off explicitly.
 func (s Settings) AutoTitleEnabled() bool {
 	return s.AutoTitle == nil || *s.AutoTitle
+}
+
+// CompactionPercent returns the effective tail-retention threshold. A nil
+// pointer means the default applies (65%). Values are clamped to 0..100 so a
+// hand-edited config cannot overflow the multiplication in the runner.
+func (s Settings) CompactionPercent() int {
+	if s.CompactionContextPercent == nil {
+		return DefaultCompactionContextPercent
+	}
+	p := *s.CompactionContextPercent
+	if p < 0 {
+		return 0
+	}
+	if p > 100 {
+		return 100
+	}
+	return p
 }
 
 // Chat column width modes. Each maps to a percentage of the chat pane in the
@@ -578,6 +602,19 @@ func (s *Settings) normalize() {
 	s.ChatWidth = NormalizeChatWidth(s.ChatWidth)
 	s.SandboxMode = NormalizeSandboxMode(s.SandboxMode)
 	s.SandboxNetwork = NormalizeSandboxNetwork(s.SandboxNetwork)
+	if s.CompactionContextPercent == nil {
+		p := DefaultCompactionContextPercent
+		s.CompactionContextPercent = &p
+	} else {
+		p := *s.CompactionContextPercent
+		if p < 0 {
+			p = 0
+		}
+		if p > 100 {
+			p = 100
+		}
+		s.CompactionContextPercent = &p
+	}
 }
 
 // Config is the root configuration document persisted to disk.
@@ -715,6 +752,18 @@ func (a *AgentConfig) ApplySandboxProfile(mode string) {
 // secret-free export) never touches the live config or its backing arrays.
 func (c Config) Clone() Config {
 	out := c
+	if c.Settings.AutoTitle != nil {
+		v := *c.Settings.AutoTitle
+		out.Settings.AutoTitle = &v
+	}
+	if c.Settings.AutoCheckUpdate != nil {
+		v := *c.Settings.AutoCheckUpdate
+		out.Settings.AutoCheckUpdate = &v
+	}
+	if c.Settings.CompactionContextPercent != nil {
+		v := *c.Settings.CompactionContextPercent
+		out.Settings.CompactionContextPercent = &v
+	}
 	out.Providers = make([]ModelProvider, len(c.Providers))
 	for i, p := range c.Providers {
 		src := p.Models
@@ -800,18 +849,20 @@ func defaultWorkspace() string {
 
 // Default returns a config seeded with useful defaults.
 func Default() Config {
+	compactionPercent := DefaultCompactionContextPercent
 	return Config{
 		Settings: Settings{
-			WorkspaceDir:         defaultWorkspace(),
-			Language:             "zh-CN",
-			ThemeMode:            "dark",
-			ThemePreset:          "nord",
-			Accent:               "blue",
-			FontScale:            "md",
-			ChatWidth:            ChatWidthMedium,
-			ExecutionDisplayMode: ExecutionDisplayAuto,
-			SandboxMode:          SandboxModeRequestApproval,
-			SandboxNetwork:       SandboxNetworkOff,
+			WorkspaceDir:             defaultWorkspace(),
+			Language:                 "zh-CN",
+			ThemeMode:                "dark",
+			ThemePreset:              "nord",
+			Accent:                   "blue",
+			FontScale:                "md",
+			ChatWidth:                ChatWidthMedium,
+			ExecutionDisplayMode:     ExecutionDisplayAuto,
+			SandboxMode:              SandboxModeRequestApproval,
+			SandboxNetwork:           SandboxNetworkOff,
+			CompactionContextPercent: &compactionPercent,
 		},
 		Skills: []SkillConfig{
 			{
