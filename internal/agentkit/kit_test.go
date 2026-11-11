@@ -45,24 +45,46 @@ func TestSandboxPolicyProfiles(t *testing.T) {
 	k := &Kit{}
 
 	request := k.sandboxPolicy(config.AgentConfig{
-		SandboxMode: config.SandboxModeRequestApproval, SandboxNetwork: config.SandboxNetworkOff,
+		ApprovalPolicy: config.ApprovalPolicyRequestApproval,
+		SandboxProfile: config.SandboxProfileWorkspaceWrite,
+		SandboxNetwork: config.SandboxNetworkOff,
 	}, workspace)
 	if request.Mode != sandbox.ModeWorkspaceWrite || request.Network != sandbox.NetworkOff {
 		t.Fatalf("request policy = %+v", request)
 	}
 
 	auto := k.sandboxPolicy(config.AgentConfig{
-		SandboxMode: config.SandboxModeAutoApprove, SandboxNetwork: config.SandboxNetworkOn,
+		ApprovalPolicy: config.ApprovalPolicyAutoApprove,
+		SandboxProfile: config.SandboxProfileWorkspaceWrite,
+		SandboxNetwork: config.SandboxNetworkOn,
 	}, workspace)
 	if auto.Mode != sandbox.ModeWorkspaceWrite || auto.Network != sandbox.NetworkOn {
 		t.Fatalf("auto policy = %+v", auto)
 	}
 
 	full := k.sandboxPolicy(config.AgentConfig{
-		SandboxMode: config.SandboxModeDangerFullAccess, SandboxNetwork: config.SandboxNetworkOff,
+		ApprovalPolicy: config.ApprovalPolicyRequestApproval,
+		SandboxProfile: config.SandboxProfileDangerFullAccess,
+		SandboxNetwork: config.SandboxNetworkOff,
 	}, workspace)
 	if full.Mode != sandbox.ModeDangerFullAccess || full.Network != sandbox.NetworkOn {
-		t.Fatalf("full policy = %+v", full)
+		t.Fatalf("request + danger policy = %+v", full)
+	}
+
+	never := k.sandboxPolicy(config.AgentConfig{
+		ApprovalPolicy: config.ApprovalPolicyNever,
+		SandboxProfile: config.SandboxProfileWorkspaceWrite,
+		SandboxNetwork: config.SandboxNetworkOff,
+	}, workspace)
+	if never.Mode != sandbox.ModeWorkspaceWrite || never.Network != sandbox.NetworkOff {
+		t.Fatalf("never + workspace policy = %+v", never)
+	}
+
+	legacy := k.sandboxPolicy(config.AgentConfig{
+		SandboxMode: config.SandboxModeDangerFullAccess,
+	}, workspace)
+	if legacy.Mode != sandbox.ModeDangerFullAccess || legacy.Network != sandbox.NetworkOn {
+		t.Fatalf("legacy fallback policy = %+v", legacy)
 	}
 }
 

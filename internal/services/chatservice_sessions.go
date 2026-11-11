@@ -99,6 +99,7 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 	// Project chats keep WorkspaceDir empty: their workspace resolves through
 	// ProjectID (see EffectiveWorkspaceFor), so re-rooting a project
 	// propagates to every chat without rewriting session rows.
+	approvalPolicy, sandboxProfile := settings.EffectiveExecutionPolicy()
 	storedWorkspace := workspaceDir
 	if projectID != "" {
 		storedWorkspace = ""
@@ -112,7 +113,9 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 		UpdatedAt:      nowUTC(),
 		WorkspaceDir:   storedWorkspace,
 		ProjectID:      projectID,
-		SandboxMode:    config.NormalizeSandboxMode(settings.SandboxMode),
+		ApprovalPolicy: approvalPolicy,
+		SandboxProfile: sandboxProfile,
+		SandboxMode:    config.LegacySandboxMode(approvalPolicy, sandboxProfile),
 		SandboxNetwork: config.NormalizeSandboxNetwork(settings.SandboxNetwork),
 	}
 	cleanup := func() {
@@ -365,29 +368,78 @@ func (c *ChatService) SetSessionReasoningLevel(sessionID, level string) error {
 	return err
 }
 
-// SetSessionSandboxMode changes this chat's current approval/sandbox profile.
-// The value is persisted, so switching chats or restarting keeps it; other
-// sessions are untouched. It applies from the next turn when a turn is
-// already running.
+// SessionExecutionPolicy is the independent approval and OS-boundary
+// dimensions a chat will use on its next turn.
+type SessionExecutionPolicy struct {
+	ApprovalPolicy string `json:"approvalPolicy"`
+	SandboxProfile string `json:"sandboxProfile"`
+}
+
+// SetSessionExecutionPolicy changes this chat's approval and sandbox
+// dimensions independently. The pair is persisted, so switching chats or
+// restarting keeps it; other sessions are untouched. It applies from the next
+// turn when a turn is already running.
+func (c *ChatService) SetSessionExecutionPolicy(sessionID, approvalPolicy, sandboxProfile, source string) error {
+	approval, err := validateSessionApprovalPolicy(approvalPolicy)
+	if err != nil {
+		return err
+	}
+	profile, err := validateSessionSandboxProfile(sandboxProfile)
+	if err != nil {
+		return err
+	}
+	return c.setSessionExecutionPolicy(sessionID, approval, profile, source, "session_execution_policy_set", "")
+}
+
+// SetSessionSandboxMode is the legacy three-profile wrapper. It maps each old
+// combined mode onto the independent pair while keeping the old audit phase.
 func (c *ChatService) SetSessionSandboxMode(sessionID, mode, source string) error {
 	normalized, err := validateSessionSandboxMode(mode)
 	if err != nil {
 		return err
 	}
-	err = c.mutateSession(sessionID, func(s *config.ChatSession) {
-		s.SandboxMode = normalized
-		if normalized == config.SandboxModeDangerFullAccess {
-			s.SandboxNetwork = config.SandboxNetworkOn
-		}
+	approval, profile := config.ExecutionPolicyFromLegacySandboxMode(normalized)
+	return c.setSessionExecutionPolicy(sessionID, approval, profile, source, "session_sandbox_mode_set", normalized)
+}
+
+func (c *ChatService) setSessionExecutionPolicy(sessionID, approvalPolicy, sandboxProfile, source, phase, legacyMode string) error {
+	err := c.mutateSession(sessionID, func(s *config.ChatSession) {
+		s.ApprovalPolicy = approvalPolicy
+		s.SandboxProfile = sandboxProfile
+		s.SandboxMode = config.LegacySandboxMode(approvalPolicy, sandboxProfile)
+		// SandboxNetwork is the user's persisted preference. Danger reports
+		// "on" through EffectiveSandboxNetwork without overwriting it, so a
+		// later switch back to workspace-write restores the original value.
 	})
 	if err == nil {
-		c.audit(sessionID, "session_sandbox_mode_set", "user", "session",
-			mustJSON(map[string]any{"mode": normalized, "source": normalizeSandboxModeSource(source)}), "")
+		payload := map[string]any{
+			"approval": approvalPolicy,
+			"sandbox":  sandboxProfile,
+			"source":   normalizeSandboxModeSource(source),
+		}
+		if legacyMode != "" {
+			payload["mode"] = legacyMode
+		}
+		c.audit(sessionID, phase, "user", "session", mustJSON(payload), "")
 	}
 	return err
 }
 
-// SessionSandboxMode reports the mode the chat will use on its next turn.
+// SessionExecutionPolicy reports the split policy the chat will use on its
+// next turn.
+func (c *ChatService) SessionExecutionPolicy(sessionID string) (*SessionExecutionPolicy, error) {
+	cfg := c.S.Store.Get()
+	for _, s := range cfg.Sessions {
+		if s.ID == sessionID {
+			approval, profile := s.EffectiveExecutionPolicy(cfg)
+			return &SessionExecutionPolicy{ApprovalPolicy: approval, SandboxProfile: profile}, nil
+		}
+	}
+	return nil, fmt.Errorf("会话 %q 不存在", sessionID)
+}
+
+// SessionSandboxMode reports the legacy combined mode the chat projects for
+// old frontends.
 // Unknown IDs are an error, like the other session-setting RPCs.
 func (c *ChatService) SessionSandboxMode(sessionID string) (string, error) {
 	cfg := c.S.Store.Get()
@@ -397,6 +449,30 @@ func (c *ChatService) SessionSandboxMode(sessionID string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("会话 %q 不存在", sessionID)
+}
+
+func validateSessionApprovalPolicy(policy string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(policy)) {
+	case config.ApprovalPolicyRequestApproval, "request", config.SandboxProfileWorkspaceWrite:
+		return config.ApprovalPolicyRequestApproval, nil
+	case config.ApprovalPolicyAutoApprove, "auto":
+		return config.ApprovalPolicyAutoApprove, nil
+	case config.ApprovalPolicyNever, config.SandboxModeDangerFullAccess:
+		return config.ApprovalPolicyNever, nil
+	default:
+		return "", fmt.Errorf("未知审批策略 %q", policy)
+	}
+}
+
+func validateSessionSandboxProfile(profile string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case config.SandboxProfileWorkspaceWrite:
+		return config.SandboxProfileWorkspaceWrite, nil
+	case config.SandboxProfileDangerFullAccess:
+		return config.SandboxProfileDangerFullAccess, nil
+	default:
+		return "", fmt.Errorf("未知沙箱 profile %q", profile)
+	}
 }
 
 func validateSessionSandboxMode(mode string) (string, error) {
@@ -682,8 +758,10 @@ func (c *ChatService) ForkSession(sessionID string) (config.ChatSession, error) 
 		ForkedFrom:     sessionID,
 		WorkspaceDir:   src.WorkspaceDir,
 		ProjectID:      src.ProjectID,
+		ApprovalPolicy: src.EffectiveApprovalPolicy(cfg),
+		SandboxProfile: src.EffectiveSandboxProfile(cfg),
 		SandboxMode:    src.EffectiveSandboxMode(cfg),
-		SandboxNetwork: src.EffectiveSandboxNetwork(cfg),
+		SandboxNetwork: src.PersistedSandboxNetwork(cfg),
 	}
 	err := c.S.Store.Update(func(cfg *config.Config) {
 		cfg.Sessions = append([]config.ChatSession{branch}, cfg.Sessions...)

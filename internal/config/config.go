@@ -22,8 +22,23 @@ const (
 )
 
 const (
+	// ApprovalPolicyRequestApproval asks before every side-effectful tool call.
+	ApprovalPolicyRequestApproval = "request-approval"
+	// ApprovalPolicyAutoApprove keeps explicit per-Agent prompts and asks only
+	// for risk-detected commands.
+	ApprovalPolicyAutoApprove = "auto-approve"
+	// ApprovalPolicyNever removes all human-in-the-loop prompts.
+	ApprovalPolicyNever = "never"
+
+	// SandboxProfileWorkspaceWrite confines local tool execution to the task
+	// workspace.
+	SandboxProfileWorkspaceWrite = "workspace-write"
+	// SandboxProfileDangerFullAccess disables the OS sandbox.
+	SandboxProfileDangerFullAccess = "danger-full-access"
+
 	// SandboxModeRequestApproval keeps the OS workspace-write boundary and
-	// asks before every side-effectful builtin tool call.
+	// asks before every side-effectful builtin tool call. It is the legacy
+	// combined profile kept for old configs and old frontends.
 	SandboxModeRequestApproval = "request-approval"
 	// SandboxModeAutoApprove keeps the OS workspace-write boundary and asks
 	// only for risk-detected commands or explicit per-Agent prompts.
@@ -42,8 +57,78 @@ const (
 	DefaultCompactionContextPercent = 65
 )
 
+// NormalizeApprovalPolicy resolves the approval half of an execution policy.
+// Legacy combined-profile names are accepted so old callers keep working.
+func NormalizeApprovalPolicy(policy string) string {
+	switch strings.ToLower(strings.TrimSpace(policy)) {
+	case ApprovalPolicyNever, SandboxModeDangerFullAccess:
+		return ApprovalPolicyNever
+	case ApprovalPolicyAutoApprove, "auto":
+		return ApprovalPolicyAutoApprove
+	case ApprovalPolicyRequestApproval, "request", SandboxProfileWorkspaceWrite:
+		return ApprovalPolicyRequestApproval
+	default:
+		return ApprovalPolicyRequestApproval
+	}
+}
+
+// NormalizeSandboxProfile resolves the OS-boundary half of an execution
+// policy. Anything unrecognized falls back to workspace-write.
+func NormalizeSandboxProfile(profile string) string {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case SandboxProfileDangerFullAccess:
+		return SandboxProfileDangerFullAccess
+	case SandboxProfileWorkspaceWrite, SandboxModeRequestApproval, SandboxModeAutoApprove, "request", "auto":
+		return SandboxProfileWorkspaceWrite
+	default:
+		return SandboxProfileWorkspaceWrite
+	}
+}
+
+// ExecutionPolicyFromLegacySandboxMode maps a legacy combined profile onto
+// the independent approval and sandbox dimensions.
+func ExecutionPolicyFromLegacySandboxMode(mode string) (approvalPolicy, sandboxProfile string) {
+	switch NormalizeSandboxMode(mode) {
+	case SandboxModeDangerFullAccess:
+		return ApprovalPolicyNever, SandboxProfileDangerFullAccess
+	case SandboxModeAutoApprove:
+		return ApprovalPolicyAutoApprove, SandboxProfileWorkspaceWrite
+	default:
+		return ApprovalPolicyRequestApproval, SandboxProfileWorkspaceWrite
+	}
+}
+
+// ResolveExecutionPolicy applies the persisted-field precedence: explicit new
+// fields win; empty fields fall back to the legacy combined profile.
+func ResolveExecutionPolicy(approvalPolicy, sandboxProfile, legacyMode string) (string, string) {
+	legacyApproval, legacySandbox := ExecutionPolicyFromLegacySandboxMode(legacyMode)
+	if strings.TrimSpace(approvalPolicy) == "" {
+		approvalPolicy = legacyApproval
+	}
+	if strings.TrimSpace(sandboxProfile) == "" {
+		sandboxProfile = legacySandbox
+	}
+	return NormalizeApprovalPolicy(approvalPolicy), NormalizeSandboxProfile(sandboxProfile)
+}
+
+// LegacySandboxMode projects an execution policy back onto the old combined
+// field. The legacy UI cannot represent split policies, so either dangerous
+// half maps to danger-full-access; this is intentionally more alarming than
+// under-reporting a missing boundary.
+func LegacySandboxMode(approvalPolicy, sandboxProfile string) string {
+	approvalPolicy = NormalizeApprovalPolicy(approvalPolicy)
+	sandboxProfile = NormalizeSandboxProfile(sandboxProfile)
+	if approvalPolicy == ApprovalPolicyNever || sandboxProfile == SandboxProfileDangerFullAccess {
+		return SandboxModeDangerFullAccess
+	}
+	if approvalPolicy == ApprovalPolicyAutoApprove {
+		return SandboxModeAutoApprove
+	}
+	return SandboxModeRequestApproval
+}
+
 // NormalizeSandboxMode maps empty/unknown/legacy values to one of the three
-// current profiles. Anything unrecognized falls back to request-approval.
+// combined profiles. Anything unrecognized falls back to request-approval.
 func NormalizeSandboxMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case SandboxModeDangerFullAccess:
@@ -260,9 +345,11 @@ type AgentConfig struct {
 	// write_workspace_file; "shell" gates every run_command call. Empty =
 	// never ask.
 	ConfirmTools []string `json:"confirmTools,omitempty"`
-	// SandboxMode and SandboxNetwork are runtime-only fields filled by the
-	// chat service for this build. They are never persisted on the agent:
-	// sandbox policy belongs to the session/machine, not to one agent.
+	// ApprovalPolicy and SandboxProfile are runtime-only fields filled by the
+	// chat service for this build. SandboxMode is the legacy combined profile
+	// kept for compatibility with old call sites.
+	ApprovalPolicy string `json:"-"`
+	SandboxProfile string `json:"-"`
 	SandboxMode    string `json:"-"`
 	SandboxNetwork string `json:"-"`
 	// MaxToolCalls stops a runaway tool loop. 0 = unlimited. Turn duration
@@ -361,7 +448,10 @@ type TeamConfig struct {
 	Model           string    `json:"model"`
 	SystemPrompt    string    `json:"systemPrompt"`
 	CreatedAt       time.Time `json:"createdAt"`
-	// Runtime-only sandbox policy copied to every local member for this build.
+	// Runtime-only execution policy copied to every local member for this
+	// build. SandboxMode is the legacy combined profile kept for compatibility.
+	ApprovalPolicy string `json:"-"`
+	SandboxProfile string `json:"-"`
 	SandboxMode    string `json:"-"`
 	SandboxNetwork string `json:"-"`
 }
@@ -472,9 +562,12 @@ type Settings struct {
 	// ToolsAudit writes a JSONL audit trail of every tool call/result to the
 	// app logs directory.
 	ToolsAudit bool `json:"toolsAudit,omitempty"`
-	// SandboxMode is the default approval/sandbox profile copied into every
-	// newly created chat: request-approval (default), auto-approve, or
-	// danger-full-access. Existing chats keep their own snapshot.
+	// ApprovalPolicy and SandboxProfile are the default execution policy copied
+	// into every newly created chat. Existing chats keep their own snapshot.
+	ApprovalPolicy string `json:"approvalPolicy,omitempty"`
+	SandboxProfile string `json:"sandboxProfile,omitempty"`
+	// SandboxMode is the legacy combined profile kept for old configs and old
+	// frontends. New fields take precedence when both are present.
 	SandboxMode string `json:"sandboxMode,omitempty"`
 	// SandboxNetwork selects the child-process network policy: off (default)
 	// or on.
@@ -600,8 +693,7 @@ func (s *Settings) normalize() {
 	}
 	s.ExecutionDisplayMode = NormalizeExecutionDisplayMode(s.ExecutionDisplayMode)
 	s.ChatWidth = NormalizeChatWidth(s.ChatWidth)
-	s.SandboxMode = NormalizeSandboxMode(s.SandboxMode)
-	s.SandboxNetwork = NormalizeSandboxNetwork(s.SandboxNetwork)
+	s.normalizeExecutionPolicy(nil)
 	if s.CompactionContextPercent == nil {
 		p := DefaultCompactionContextPercent
 		s.CompactionContextPercent = &p
@@ -615,6 +707,26 @@ func (s *Settings) normalize() {
 		}
 		s.CompactionContextPercent = &p
 	}
+}
+
+// EffectiveExecutionPolicy resolves the settings' default policy.
+func (s Settings) EffectiveExecutionPolicy() (approvalPolicy, sandboxProfile string) {
+	return ResolveExecutionPolicy(s.ApprovalPolicy, s.SandboxProfile, s.SandboxMode)
+}
+
+// normalizeExecutionPolicy keeps the split fields and the legacy combined
+// field consistent. When called after an update, a legacy-only change from an
+// old frontend updates the split fields; an explicit new-field change wins.
+func (s *Settings) normalizeExecutionPolicy(previous *Settings) {
+	if previous != nil &&
+		s.ApprovalPolicy == previous.ApprovalPolicy &&
+		s.SandboxProfile == previous.SandboxProfile &&
+		NormalizeSandboxMode(s.SandboxMode) != NormalizeSandboxMode(previous.SandboxMode) {
+		s.ApprovalPolicy, s.SandboxProfile = ExecutionPolicyFromLegacySandboxMode(s.SandboxMode)
+	}
+	s.ApprovalPolicy, s.SandboxProfile = s.EffectiveExecutionPolicy()
+	s.SandboxMode = LegacySandboxMode(s.ApprovalPolicy, s.SandboxProfile)
+	s.SandboxNetwork = NormalizeSandboxNetwork(s.SandboxNetwork)
 }
 
 // Config is the root configuration document persisted to disk.
@@ -662,9 +774,12 @@ type ChatSession struct {
 	// effective model's Reasoning table; empty = the model's default level).
 	// It is a per-chat UI choice and never writes back to provider config.
 	ReasoningLevel string `json:"reasoningLevel,omitempty"`
-	// SandboxMode/SandboxNetwork are this chat's current approval and network
-	// boundary. New chats snapshot the global defaults; changing Settings
-	// afterwards never rewrites existing chats.
+	// ApprovalPolicy/SandboxProfile are this chat's independent approval and
+	// OS-boundary dimensions. SandboxMode is the legacy combined snapshot kept
+	// for old frontends. New chats snapshot the global defaults; changing
+	// Settings afterwards never rewrites existing chats.
+	ApprovalPolicy string `json:"approvalPolicy,omitempty"`
+	SandboxProfile string `json:"sandboxProfile,omitempty"`
 	SandboxMode    string `json:"sandboxMode,omitempty"`
 	SandboxNetwork string `json:"sandboxNetwork,omitempty"`
 	// WorkspaceDir is the task-level directory used by file tools, prompt
@@ -712,39 +827,90 @@ func (s ChatSession) EffectiveWorkspaceFor(cfg Config) string {
 	return cfg.Settings.WorkspaceDir
 }
 
-// EffectiveSandboxMode resolves the chat override, then the global setting,
-// then the safe workspace-write default.
-func (s ChatSession) EffectiveSandboxMode(cfg Config) string {
-	if mode := strings.TrimSpace(s.SandboxMode); mode != "" {
-		return NormalizeSandboxMode(mode)
+// EffectiveExecutionPolicy resolves this chat's split policy, falling back to
+// the global default only for sessions with no snapshot at all.
+func (s ChatSession) EffectiveExecutionPolicy(cfg Config) (approvalPolicy, sandboxProfile string) {
+	if strings.TrimSpace(s.ApprovalPolicy) != "" ||
+		strings.TrimSpace(s.SandboxProfile) != "" ||
+		strings.TrimSpace(s.SandboxMode) != "" {
+		return ResolveExecutionPolicy(s.ApprovalPolicy, s.SandboxProfile, s.SandboxMode)
 	}
-	return NormalizeSandboxMode(cfg.Settings.SandboxMode)
+	return cfg.Settings.EffectiveExecutionPolicy()
+}
+
+// EffectiveApprovalPolicy resolves the approval dimension for this chat.
+func (s ChatSession) EffectiveApprovalPolicy(cfg Config) string {
+	approval, _ := s.EffectiveExecutionPolicy(cfg)
+	return approval
+}
+
+// EffectiveSandboxProfile resolves the OS-boundary dimension for this chat.
+func (s ChatSession) EffectiveSandboxProfile(cfg Config) string {
+	_, profile := s.EffectiveExecutionPolicy(cfg)
+	return profile
+}
+
+// EffectiveSandboxMode projects the split policy onto the legacy combined
+// field for old frontends.
+func (s ChatSession) EffectiveSandboxMode(cfg Config) string {
+	return LegacySandboxMode(s.EffectiveExecutionPolicy(cfg))
 }
 
 // EffectiveSandboxNetwork resolves the chat override, then the global
-// setting, then network off.
+// setting, then network off. A danger-full-access profile reports network on
+// regardless of the persisted value; switching back to workspace-write
+// restores that persisted value.
 func (s ChatSession) EffectiveSandboxNetwork(cfg Config) string {
+	if s.EffectiveSandboxProfile(cfg) == SandboxProfileDangerFullAccess {
+		return SandboxNetworkOn
+	}
+	return s.PersistedSandboxNetwork(cfg)
+}
+
+// PersistedSandboxNetwork resolves the network preference without applying
+// the danger-profile override. Forking keeps this value so a later switch
+// back to workspace-write restores the user's original choice.
+func (s ChatSession) PersistedSandboxNetwork(cfg Config) string {
 	if network := strings.TrimSpace(s.SandboxNetwork); network != "" {
 		return NormalizeSandboxNetwork(network)
 	}
 	return NormalizeSandboxNetwork(cfg.Settings.SandboxNetwork)
 }
 
-// ApplySandboxProfile applies one approval/sandbox profile to an agent build.
-// The profile owns both the OS boundary and the builtin confirmation set:
-// request-approval asks for every write/command, auto-approve keeps the
-// agent's configured prompts (shell adds risk-based prompts at tool build
-// time), and danger-full-access removes both the sandbox and the prompts.
-func (a *AgentConfig) ApplySandboxProfile(mode string) {
-	mode = NormalizeSandboxMode(mode)
-	a.SandboxMode = mode
-	switch mode {
-	case SandboxModeDangerFullAccess:
+// EffectiveApprovalPolicy resolves the approval dimension for an agent build.
+func (a AgentConfig) EffectiveApprovalPolicy() string {
+	approval, _ := ResolveExecutionPolicy(a.ApprovalPolicy, a.SandboxProfile, a.SandboxMode)
+	return approval
+}
+
+// EffectiveSandboxProfile resolves the OS-boundary dimension for an agent
+// build.
+func (a AgentConfig) EffectiveSandboxProfile() string {
+	_, profile := ResolveExecutionPolicy(a.ApprovalPolicy, a.SandboxProfile, a.SandboxMode)
+	return profile
+}
+
+// ApplyExecutionPolicy applies independent approval and sandbox dimensions to
+// an agent build. request-approval asks for every builtin write/command,
+// auto-approve keeps the agent's explicit prompts, and never clears them.
+func (a *AgentConfig) ApplyExecutionPolicy(approvalPolicy, sandboxProfile string) {
+	a.ApprovalPolicy = NormalizeApprovalPolicy(approvalPolicy)
+	a.SandboxProfile = NormalizeSandboxProfile(sandboxProfile)
+	a.SandboxMode = LegacySandboxMode(a.ApprovalPolicy, a.SandboxProfile)
+	switch a.ApprovalPolicy {
+	case ApprovalPolicyNever:
 		a.ConfirmTools = nil
-	case SandboxModeRequestApproval:
+	case ApprovalPolicyRequestApproval:
 		a.ConfirmTools = []string{"files", "shell"}
 	default: // auto-approve keeps the agent's explicit extra prompts
 	}
+}
+
+// ApplySandboxProfile is the legacy combined-profile wrapper. New runtime
+// code should call ApplyExecutionPolicy with both dimensions.
+func (a *AgentConfig) ApplySandboxProfile(mode string) {
+	approval, profile := ExecutionPolicyFromLegacySandboxMode(mode)
+	a.ApplyExecutionPolicy(approval, profile)
 }
 
 // Clone returns an independent copy of the config. Slices, nested slices and
@@ -860,6 +1026,8 @@ func Default() Config {
 			FontScale:                "md",
 			ChatWidth:                ChatWidthMedium,
 			ExecutionDisplayMode:     ExecutionDisplayAuto,
+			ApprovalPolicy:           ApprovalPolicyRequestApproval,
+			SandboxProfile:           SandboxProfileWorkspaceWrite,
 			SandboxMode:              SandboxModeRequestApproval,
 			SandboxNetwork:           SandboxNetworkOff,
 			CompactionContextPercent: &compactionPercent,
@@ -901,16 +1069,20 @@ func Default() Config {
 // provider-level prices move down to each model, and nameless model entries
 // are dropped. Runs once per load; the result is persisted by Open.
 func (c *Config) migrateLegacy() {
-	// Sessions created before approval modes existed have no snapshot. Give
+	// Sessions created before execution policies existed have no snapshot. Give
 	// each one the current default exactly once, so later Settings changes do
 	// not retroactively alter an existing chat's boundary.
 	for i := range c.Sessions {
 		s := &c.Sessions[i]
-		if strings.TrimSpace(s.SandboxMode) == "" {
-			s.SandboxMode = NormalizeSandboxMode(c.Settings.SandboxMode)
+		if strings.TrimSpace(s.ApprovalPolicy) == "" &&
+			strings.TrimSpace(s.SandboxProfile) == "" &&
+			strings.TrimSpace(s.SandboxMode) == "" {
+			s.ApprovalPolicy = c.Settings.ApprovalPolicy
+			s.SandboxProfile = c.Settings.SandboxProfile
 		} else {
-			s.SandboxMode = NormalizeSandboxMode(s.SandboxMode)
+			s.ApprovalPolicy, s.SandboxProfile = ResolveExecutionPolicy(s.ApprovalPolicy, s.SandboxProfile, s.SandboxMode)
 		}
+		s.SandboxMode = LegacySandboxMode(s.ApprovalPolicy, s.SandboxProfile)
 		if strings.TrimSpace(s.SandboxNetwork) == "" {
 			s.SandboxNetwork = NormalizeSandboxNetwork(c.Settings.SandboxNetwork)
 		} else {
@@ -957,6 +1129,7 @@ func Open(dir string) (*Store, error) {
 		return nil, err
 	}
 	if len(data) > 0 {
+		clearMissingExecutionPolicyFields(data, &s.cfg)
 		if err := json.Unmarshal(data, &s.cfg); err != nil {
 			// Corrupt config: keep the file as backup and start fresh. The
 			// backup may contain API keys, so it gets the same 0600 as the
@@ -975,6 +1148,24 @@ func Open(dir string) (*Store, error) {
 		_ = s.saveLocked()
 	}
 	return s, nil
+}
+
+// clearMissingExecutionPolicyFields keeps Default() from masquerading as an
+// explicit new-schema choice. When an older config has no approvalPolicy /
+// sandboxProfile keys, the legacy sandboxMode must drive migration.
+func clearMissingExecutionPolicyFields(data []byte, cfg *Config) {
+	var doc struct {
+		Settings map[string]json.RawMessage `json:"settings"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return
+	}
+	if raw, ok := doc.Settings["approvalPolicy"]; !ok || string(raw) == "null" {
+		cfg.Settings.ApprovalPolicy = ""
+	}
+	if raw, ok := doc.Settings["sandboxProfile"]; !ok || string(raw) == "null" {
+		cfg.Settings.SandboxProfile = ""
+	}
 }
 
 // NormalizeImported applies the same load-time normalization (settings
@@ -1036,8 +1227,10 @@ func (s *Store) Settings() Settings {
 func (s *Store) Update(fn func(*Config)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	previousSettings := s.cfg.Settings
 	next := s.cfg.Clone()
 	fn(&next)
+	next.Settings.normalizeExecutionPolicy(&previousSettings)
 	data, err := json.MarshalIndent(next, "", "  ")
 	if err != nil {
 		return err

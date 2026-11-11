@@ -383,10 +383,10 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	}
 
 	// Build the agent tree from the current configuration. The session's
-	// approval mode is the single source of truth for both HITL prompts and
-	// the OS sandbox boundary; direct chats, @-routed turns and every local
-	// team member share it.
-	sandboxMode := target.EffectiveSandboxMode(cfg)
+	// approval policy and sandbox profile are independent dimensions; direct
+	// chats, @-routed turns and every local team member share both.
+	approvalPolicy := target.EffectiveApprovalPolicy(cfg)
+	sandboxProfile := target.EffectiveSandboxProfile(cfg)
 	sandboxNetwork := target.EffectiveSandboxNetwork(cfg)
 	var root agent.Agent
 	switch target.TargetType {
@@ -399,12 +399,15 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			return derr
 		}
 		ac.SandboxNetwork = sandboxNetwork
-		ac.ApplySandboxProfile(sandboxMode)
+		ac.ApplyExecutionPolicy(approvalPolicy, sandboxProfile)
 		root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(ac, target.ModelOverride, workspace, applyLevel)
 	case "team":
 		for _, t := range cfg.Teams {
 			if t.ID == target.TargetID {
-				t.SandboxMode, t.SandboxNetwork = sandboxMode, sandboxNetwork
+				t.ApprovalPolicy = approvalPolicy
+				t.SandboxProfile = sandboxProfile
+				t.SandboxMode = config.LegacySandboxMode(approvalPolicy, sandboxProfile)
+				t.SandboxNetwork = sandboxNetwork
 				root, _, err = c.S.Kit.BuildTeamWithWorkspaceAndReasoning(t, workspace, applyLevel)
 				break
 			}
@@ -428,7 +431,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				// Per-session model override (chat-header picker): empty keeps
 				// the agent's configured model.
 				a.SandboxNetwork = sandboxNetwork
-				a.ApplySandboxProfile(sandboxMode)
+				a.ApplyExecutionPolicy(approvalPolicy, sandboxProfile)
 				root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(a, target.ModelOverride, workspace, applyLevel)
 				break
 			}

@@ -75,12 +75,30 @@ func pendingMCPConfirm(events []ChatStreamEvent) *ChatStreamEvent {
 func TestMCPToolApprovalFollowsSessionMode(t *testing.T) {
 	tests := []struct {
 		name        string
-		mode        string
+		approval    string
+		sandbox     string
 		wantConfirm bool
 	}{
-		{name: "request approval", mode: config.SandboxModeRequestApproval, wantConfirm: true},
-		{name: "auto approve", mode: config.SandboxModeAutoApprove, wantConfirm: true},
-		{name: "danger full access", mode: config.SandboxModeDangerFullAccess, wantConfirm: false},
+		{
+			name: "request approval", approval: config.ApprovalPolicyRequestApproval,
+			sandbox: config.SandboxProfileWorkspaceWrite, wantConfirm: true,
+		},
+		{
+			name: "auto approve", approval: config.ApprovalPolicyAutoApprove,
+			sandbox: config.SandboxProfileWorkspaceWrite, wantConfirm: true,
+		},
+		{
+			name: "danger full access", approval: config.ApprovalPolicyNever,
+			sandbox: config.SandboxProfileDangerFullAccess, wantConfirm: false,
+		},
+		{
+			name: "request + danger", approval: config.ApprovalPolicyRequestApproval,
+			sandbox: config.SandboxProfileDangerFullAccess, wantConfirm: true,
+		},
+		{
+			name: "never + workspace", approval: config.ApprovalPolicyNever,
+			sandbox: config.SandboxProfileWorkspaceWrite, wantConfirm: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -94,7 +112,7 @@ func TestMCPToolApprovalFollowsSessionMode(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := chat.SetSessionSandboxMode(sess.ID, tt.mode, "test"); err != nil {
+			if err := chat.SetSessionExecutionPolicy(sess.ID, tt.approval, tt.sandbox, "test"); err != nil {
 				t.Fatal(err)
 			}
 			if err := chat.Send(sess.ID, "调用 MCP 工具", nil); err != nil {

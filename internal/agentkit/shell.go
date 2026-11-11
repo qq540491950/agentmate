@@ -58,24 +58,25 @@ func ShellToolWithPolicy(workspace string, requireConfirmation bool, policy sand
 	return newShellTool(workspace, requireConfirmation, nil, policy)
 }
 
-// ShellToolWithPolicyAndMode applies the chat's approval profile. In
+// ShellToolWithPolicyAndMode applies the chat's approval policy. In
 // auto-approve mode a safe command runs immediately; a command matching the
-// risk detector pauses for HITL before the handler starts.
-func ShellToolWithPolicyAndMode(workspace string, requireConfirmation bool, mode string, policy sandbox.Policy) (tool.Tool, error) {
+// risk detector pauses for HITL before the handler starts. The mode argument
+// accepts legacy combined-profile names for old call sites.
+func ShellToolWithPolicyAndMode(workspace string, requireConfirmation bool, approvalPolicy string, policy sandbox.Policy) (tool.Tool, error) {
 	var provider any
-	switch config.NormalizeSandboxMode(mode) {
-	case config.SandboxModeRequestApproval:
-		// runTurn's ApplySandboxProfile has already enabled the static prompt
+	switch config.NormalizeApprovalPolicy(approvalPolicy) {
+	case config.ApprovalPolicyRequestApproval:
+		// runTurn's ApplyExecutionPolicy has already enabled the static prompt
 		// for files and shell. Keep the passed value so a session-level
 		// approval bypass can still build a prompt-free tool.
-	case config.SandboxModeAutoApprove:
+	case config.ApprovalPolicyAutoApprove:
 		if !requireConfirmation {
 			provider = func(args shellArgs) bool {
 				risky, _ := sandbox.AssessCommand(args.Command)
 				return risky
 			}
 		}
-	case config.SandboxModeDangerFullAccess:
+	case config.ApprovalPolicyNever:
 		requireConfirmation = false
 	}
 	return newShellTool(workspace, requireConfirmation, provider, policy)

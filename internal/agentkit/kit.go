@@ -285,7 +285,7 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 		if err != nil {
 			mcpErrs = append(mcpErrs, fmt.Sprintf("MCP「%s」不可用: %v", s.Name, err))
 		} else {
-			toolsets = append(toolsets, mcpToolsetForApproval(ts, ac.SandboxMode))
+			toolsets = append(toolsets, mcpToolsetForApproval(ts, ac.EffectiveApprovalPolicy()))
 		}
 	}
 	for _, id := range ac.MCPServerIDs {
@@ -376,11 +376,14 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 	for _, a := range cfg.Agents {
 		memberByID[a.ID] = a
 	}
-	// A chat shares one sandbox/approval profile across its coordinator and
-	// every local member.
+	// A chat shares one execution policy across its coordinator and every
+	// local member.
+	approvalPolicy, sandboxProfile := config.ResolveExecutionPolicy(
+		tc.ApprovalPolicy, tc.SandboxProfile, tc.SandboxMode,
+	)
 	for id, ac := range memberByID {
 		ac.SandboxNetwork = tc.SandboxNetwork
-		ac.ApplySandboxProfile(tc.SandboxMode)
+		ac.ApplyExecutionPolicy(approvalPolicy, sandboxProfile)
 		memberByID[id] = ac
 	}
 
@@ -781,9 +784,11 @@ func confirmsTool(ac config.AgentConfig, category string) bool {
 }
 
 // mcpToolsetForApproval keeps the manager's server-ID cache policy-free and
-// applies the session profile to a short-lived wrapper for this agent build.
-func mcpToolsetForApproval(ts tool.Toolset, sandboxMode string) tool.Toolset {
-	requireConfirmation := config.NormalizeSandboxMode(sandboxMode) != config.SandboxModeDangerFullAccess
+// applies the session approval policy to a short-lived wrapper for this agent
+// build. MCP tools have no reliable risk detector, so every approval policy
+// except "never" keeps the confirmation gate.
+func mcpToolsetForApproval(ts tool.Toolset, approvalPolicy string) tool.Toolset {
+	requireConfirmation := config.NormalizeApprovalPolicy(approvalPolicy) != config.ApprovalPolicyNever
 	return tool.WithConfirmation(ts, requireConfirmation, nil)
 }
 
@@ -793,12 +798,8 @@ func mcpToolsetForApproval(ts tool.Toolset, sandboxMode string) tool.Toolset {
 func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspace string) ([]tool.Tool, error) {
 	var tools []tool.Tool
 	policy := k.sandboxPolicy(ac, workspace)
-	mode := config.NormalizeSandboxMode(ac.SandboxMode)
 	fileConfirmation := confirmsTool(ac, "files")
 	shellConfirmation := confirmsTool(ac, "shell")
-	if mode == config.SandboxModeDangerFullAccess {
-		fileConfirmation, shellConfirmation = false, false
-	}
 	for _, name := range ac.EffectiveBuiltinTools() {
 		switch name {
 		case "time":
@@ -830,7 +831,7 @@ func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspac
 			}
 			tools = append(tools, t)
 		case "shell":
-			t, err := ShellToolWithPolicyAndMode(workspace, shellConfirmation, mode, policy)
+			t, err := ShellToolWithPolicyAndMode(workspace, shellConfirmation, ac.EffectiveApprovalPolicy(), policy)
 			if err != nil {
 				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 			}
@@ -842,7 +843,7 @@ func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspac
 
 func (k *Kit) sandboxPolicy(ac config.AgentConfig, workspace string) sandbox.Policy {
 	policy := sandbox.DefaultPolicy(workspace)
-	if config.NormalizeSandboxMode(ac.SandboxMode) == config.SandboxModeDangerFullAccess {
+	if ac.EffectiveSandboxProfile() == config.SandboxProfileDangerFullAccess {
 		policy.Mode = sandbox.ModeDangerFullAccess
 		// The direct backend has no AppContainer capability gate; report the
 		// effective network state instead of leaving a misleading "off".

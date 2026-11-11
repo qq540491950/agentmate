@@ -136,6 +136,12 @@ func TestProjectsRoundTripAndCloneIndependent(t *testing.T) {
 
 func TestSandboxDefaultsAndSessionOverrides(t *testing.T) {
 	cfg := Default()
+	if cfg.Settings.ApprovalPolicy != ApprovalPolicyRequestApproval {
+		t.Fatalf("default approval policy = %q", cfg.Settings.ApprovalPolicy)
+	}
+	if cfg.Settings.SandboxProfile != SandboxProfileWorkspaceWrite {
+		t.Fatalf("default sandbox profile = %q", cfg.Settings.SandboxProfile)
+	}
 	if cfg.Settings.SandboxMode != SandboxModeRequestApproval {
 		t.Fatalf("default sandbox mode = %q", cfg.Settings.SandboxMode)
 	}
@@ -145,6 +151,12 @@ func TestSandboxDefaultsAndSessionOverrides(t *testing.T) {
 	session := ChatSession{}
 	if got := session.EffectiveSandboxMode(cfg); got != SandboxModeRequestApproval {
 		t.Fatalf("session default mode = %q", got)
+	}
+	if got := session.EffectiveApprovalPolicy(cfg); got != ApprovalPolicyRequestApproval {
+		t.Fatalf("session default approval = %q", got)
+	}
+	if got := session.EffectiveSandboxProfile(cfg); got != SandboxProfileWorkspaceWrite {
+		t.Fatalf("session default profile = %q", got)
 	}
 	if got := session.EffectiveSandboxNetwork(cfg); got != SandboxNetworkOff {
 		t.Fatalf("session default network = %q", got)
@@ -156,6 +168,15 @@ func TestSandboxDefaultsAndSessionOverrides(t *testing.T) {
 	}
 	if got := session.EffectiveSandboxNetwork(cfg); got != SandboxNetworkOn {
 		t.Fatalf("session override network = %q", got)
+	}
+
+	session.ApprovalPolicy = ApprovalPolicyAutoApprove
+	session.SandboxProfile = SandboxProfileWorkspaceWrite
+	if got := session.EffectiveApprovalPolicy(cfg); got != ApprovalPolicyAutoApprove {
+		t.Fatalf("session split approval = %q", got)
+	}
+	if got := session.EffectiveSandboxProfile(cfg); got != SandboxProfileWorkspaceWrite {
+		t.Fatalf("session split profile = %q", got)
 	}
 }
 
@@ -174,6 +195,32 @@ func TestSandboxModeNormalizationAndProfiles(t *testing.T) {
 			t.Errorf("NormalizeSandboxMode(%q) = %q, want %q", input, got, want)
 		}
 	}
+	for input, want := range map[string]string{
+		"":                    ApprovalPolicyRequestApproval,
+		"request-approval":    ApprovalPolicyRequestApproval,
+		"auto-approve":        ApprovalPolicyAutoApprove,
+		"auto":                ApprovalPolicyAutoApprove,
+		"never":               ApprovalPolicyNever,
+		"danger-full-access":  ApprovalPolicyNever,
+		"workspace-write":     ApprovalPolicyRequestApproval,
+		"  REQUEST-APPROVAL ": ApprovalPolicyRequestApproval,
+	} {
+		if got := NormalizeApprovalPolicy(input); got != want {
+			t.Errorf("NormalizeApprovalPolicy(%q) = %q, want %q", input, got, want)
+		}
+	}
+	for input, want := range map[string]string{
+		"":                      SandboxProfileWorkspaceWrite,
+		"workspace-write":       SandboxProfileWorkspaceWrite,
+		"request-approval":      SandboxProfileWorkspaceWrite,
+		"auto-approve":          SandboxProfileWorkspaceWrite,
+		"danger-full-access":    SandboxProfileDangerFullAccess,
+		"  DANGER-FULL-ACCESS ": SandboxProfileDangerFullAccess,
+	} {
+		if got := NormalizeSandboxProfile(input); got != want {
+			t.Errorf("NormalizeSandboxProfile(%q) = %q, want %q", input, got, want)
+		}
+	}
 
 	agent := AgentConfig{ConfirmTools: []string{"files"}}
 	agent.ApplySandboxProfile(SandboxModeRequestApproval)
@@ -188,6 +235,31 @@ func TestSandboxModeNormalizationAndProfiles(t *testing.T) {
 	if agent.SandboxMode != SandboxModeDangerFullAccess || agent.ConfirmTools != nil {
 		t.Fatalf("full profile = %+v", agent)
 	}
+
+	agent = AgentConfig{ConfirmTools: []string{"files"}}
+	agent.ApplyExecutionPolicy(ApprovalPolicyRequestApproval, SandboxProfileWorkspaceWrite)
+	if agent.ApprovalPolicy != ApprovalPolicyRequestApproval ||
+		agent.SandboxProfile != SandboxProfileWorkspaceWrite ||
+		!reflect.DeepEqual(agent.ConfirmTools, []string{"files", "shell"}) {
+		t.Fatalf("request execution policy = %+v", agent)
+	}
+	agent = AgentConfig{ConfirmTools: []string{"files"}}
+	agent.ApplyExecutionPolicy(ApprovalPolicyAutoApprove, SandboxProfileWorkspaceWrite)
+	if agent.ApprovalPolicy != ApprovalPolicyAutoApprove ||
+		!reflect.DeepEqual(agent.ConfirmTools, []string{"files"}) {
+		t.Fatalf("auto execution policy must keep explicit prompts: %+v", agent)
+	}
+	agent.ApplyExecutionPolicy(ApprovalPolicyNever, SandboxProfileWorkspaceWrite)
+	if agent.ApprovalPolicy != ApprovalPolicyNever ||
+		agent.SandboxProfile != SandboxProfileWorkspaceWrite ||
+		agent.ConfirmTools != nil {
+		t.Fatalf("never execution policy = %+v", agent)
+	}
+	agent.ApplyExecutionPolicy(ApprovalPolicyRequestApproval, SandboxProfileDangerFullAccess)
+	if agent.SandboxProfile != SandboxProfileDangerFullAccess ||
+		!reflect.DeepEqual(agent.ConfirmTools, []string{"files", "shell"}) {
+		t.Fatalf("request + danger execution policy = %+v", agent)
+	}
 }
 
 func TestSettingsNormalizeMigratesLegacySandboxMode(t *testing.T) {
@@ -196,8 +268,158 @@ func TestSettingsNormalizeMigratesLegacySandboxMode(t *testing.T) {
 	if settings.SandboxMode != SandboxModeRequestApproval {
 		t.Fatalf("legacy mode migrated to %q", settings.SandboxMode)
 	}
+	if settings.ApprovalPolicy != ApprovalPolicyRequestApproval ||
+		settings.SandboxProfile != SandboxProfileWorkspaceWrite {
+		t.Fatalf("legacy split migration = %q/%q", settings.ApprovalPolicy, settings.SandboxProfile)
+	}
 	if settings.SandboxNetwork != SandboxNetworkOff {
 		t.Fatalf("empty network normalized to %q", settings.SandboxNetwork)
+	}
+}
+
+func TestExecutionPolicyLegacyMigrationMatrix(t *testing.T) {
+	cases := []string{
+		"",
+		SandboxModeWorkspaceWrite,
+		SandboxModeRequestApproval,
+		SandboxModeAutoApprove,
+		SandboxModeDangerFullAccess,
+	}
+	for _, legacy := range cases {
+		t.Run(legacy, func(t *testing.T) {
+			settings := map[string]any{"sandboxNetwork": SandboxNetworkOn}
+			if legacy != "" {
+				settings["sandboxMode"] = legacy
+			}
+			session := map[string]any{"id": "sess_old"}
+			legacySession := map[string]any{"id": "sess_legacy"}
+			if legacy != "" {
+				legacySession["sandboxMode"] = legacy
+			}
+			raw, err := json.Marshal(map[string]any{
+				"settings": settings,
+				"sessions": []any{session, legacySession},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "config.json"), raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			store, err := Open(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg := store.Get()
+			wantApproval, wantProfile := ExecutionPolicyFromLegacySandboxMode(legacy)
+			if cfg.Settings.ApprovalPolicy != wantApproval ||
+				cfg.Settings.SandboxProfile != wantProfile {
+				t.Fatalf("settings policy = %q/%q, want %q/%q",
+					cfg.Settings.ApprovalPolicy, cfg.Settings.SandboxProfile, wantApproval, wantProfile)
+			}
+			for _, got := range cfg.Sessions {
+				if got.ApprovalPolicy != wantApproval ||
+					got.SandboxProfile != wantProfile ||
+					got.SandboxNetwork != SandboxNetworkOn {
+					t.Fatalf("session %s migrated to %+v", got.ID, got)
+				}
+			}
+		})
+	}
+}
+
+func TestExecutionPolicyNewFieldsTakePrecedence(t *testing.T) {
+	raw := []byte(`{
+		"settings":{
+			"approvalPolicy":"auto-approve",
+			"sandboxProfile":"workspace-write",
+			"sandboxMode":"danger-full-access",
+			"sandboxNetwork":"off"
+		},
+		"sessions":[{
+			"id":"sess_split",
+			"approvalPolicy":"request-approval",
+			"sandboxProfile":"danger-full-access",
+			"sandboxMode":"auto-approve"
+		}]
+	}`)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := store.Get()
+	if cfg.Settings.ApprovalPolicy != ApprovalPolicyAutoApprove ||
+		cfg.Settings.SandboxProfile != SandboxProfileWorkspaceWrite {
+		t.Fatalf("settings new fields did not win: %+v", cfg.Settings)
+	}
+	if cfg.Settings.SandboxMode != SandboxModeAutoApprove {
+		t.Fatalf("legacy settings projection = %q", cfg.Settings.SandboxMode)
+	}
+	session := cfg.Sessions[0]
+	if session.ApprovalPolicy != ApprovalPolicyRequestApproval ||
+		session.SandboxProfile != SandboxProfileDangerFullAccess ||
+		session.EffectiveSandboxNetwork(cfg) != SandboxNetworkOn ||
+		session.SandboxMode != SandboxModeDangerFullAccess {
+		t.Fatalf("session new fields did not win: %+v", session)
+	}
+}
+
+func TestLegacyFrontendSandboxModeWritesUpdateSplitPolicy(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update(func(cfg *Config) {
+		cfg.Settings.SandboxMode = SandboxModeAutoApprove
+	}); err != nil {
+		t.Fatal(err)
+	}
+	settings := store.Get().Settings
+	if settings.ApprovalPolicy != ApprovalPolicyAutoApprove ||
+		settings.SandboxProfile != SandboxProfileWorkspaceWrite {
+		t.Fatalf("legacy-only write = %+v", settings)
+	}
+
+	if err := store.Update(func(cfg *Config) {
+		cfg.Settings.ApprovalPolicy = ApprovalPolicyNever
+		cfg.Settings.SandboxProfile = SandboxProfileWorkspaceWrite
+	}); err != nil {
+		t.Fatal(err)
+	}
+	settings = store.Get().Settings
+	if settings.SandboxMode != SandboxModeDangerFullAccess {
+		t.Fatalf("split -> legacy projection = %q", settings.SandboxMode)
+	}
+	if err := store.Update(func(cfg *Config) {
+		cfg.Settings.SandboxMode = SandboxModeRequestApproval
+	}); err != nil {
+		t.Fatal(err)
+	}
+	settings = store.Get().Settings
+	if settings.ApprovalPolicy != ApprovalPolicyRequestApproval ||
+		settings.SandboxProfile != SandboxProfileWorkspaceWrite {
+		t.Fatalf("legacy switch back did not map: %+v", settings)
+	}
+}
+
+func TestEffectiveSandboxNetworkDangerIsTransient(t *testing.T) {
+	cfg := Default()
+	session := ChatSession{
+		ApprovalPolicy: ApprovalPolicyNever,
+		SandboxProfile: SandboxProfileDangerFullAccess,
+		SandboxNetwork: SandboxNetworkOff,
+	}
+	if got := session.EffectiveSandboxNetwork(cfg); got != SandboxNetworkOn {
+		t.Fatalf("danger network = %q, want on", got)
+	}
+	session.SandboxProfile = SandboxProfileWorkspaceWrite
+	if got := session.EffectiveSandboxNetwork(cfg); got != SandboxNetworkOff {
+		t.Fatalf("workspace network = %q, want persisted off", got)
 	}
 }
 
@@ -213,7 +435,11 @@ func TestLegacySessionsSnapshotSandboxModeOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := store.Get()
-	if len(got.Sessions) != 1 || got.Sessions[0].SandboxMode != SandboxModeAutoApprove || got.Sessions[0].SandboxNetwork != SandboxNetworkOn {
+	if len(got.Sessions) != 1 ||
+		got.Sessions[0].ApprovalPolicy != ApprovalPolicyAutoApprove ||
+		got.Sessions[0].SandboxProfile != SandboxProfileWorkspaceWrite ||
+		got.Sessions[0].SandboxMode != SandboxModeAutoApprove ||
+		got.Sessions[0].SandboxNetwork != SandboxNetworkOn {
 		t.Fatalf("legacy session snapshot = %+v", got.Sessions)
 	}
 	if err := store.Update(func(cfg *Config) {
@@ -222,7 +448,10 @@ func TestLegacySessionsSnapshotSandboxModeOnce(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := store.Get().Sessions[0]; got.SandboxMode != SandboxModeAutoApprove || got.SandboxNetwork != SandboxNetworkOn {
+	if got := store.Get().Sessions[0]; got.ApprovalPolicy != ApprovalPolicyAutoApprove ||
+		got.SandboxProfile != SandboxProfileWorkspaceWrite ||
+		got.SandboxMode != SandboxModeAutoApprove ||
+		got.SandboxNetwork != SandboxNetworkOn {
 		t.Fatalf("settings rewrite changed legacy session: %+v", got)
 	}
 }

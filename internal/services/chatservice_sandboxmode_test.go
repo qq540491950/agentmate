@@ -13,7 +13,8 @@ import (
 func TestNewSessionSnapshotsDefaultSandboxMode(t *testing.T) {
 	chat, store, _ := newWorkspaceTestChat(t, func(w http.ResponseWriter, r *http.Request) {})
 	if err := store.Update(func(cfg *config.Config) {
-		cfg.Settings.SandboxMode = config.SandboxModeAutoApprove
+		cfg.Settings.ApprovalPolicy = config.ApprovalPolicyAutoApprove
+		cfg.Settings.SandboxProfile = config.SandboxProfileWorkspaceWrite
 		cfg.Settings.SandboxNetwork = config.SandboxNetworkOn
 	}); err != nil {
 		t.Fatal(err)
@@ -22,18 +23,26 @@ func TestNewSessionSnapshotsDefaultSandboxMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sess.SandboxMode != config.SandboxModeAutoApprove || sess.SandboxNetwork != config.SandboxNetworkOn {
-		t.Fatalf("new session snapshot = %q/%q", sess.SandboxMode, sess.SandboxNetwork)
+	if sess.ApprovalPolicy != config.ApprovalPolicyAutoApprove ||
+		sess.SandboxProfile != config.SandboxProfileWorkspaceWrite ||
+		sess.SandboxMode != config.SandboxModeAutoApprove ||
+		sess.SandboxNetwork != config.SandboxNetworkOn {
+		t.Fatalf("new session snapshot = %+v", sess)
 	}
 
 	if err := store.Update(func(cfg *config.Config) {
-		cfg.Settings.SandboxMode = config.SandboxModeRequestApproval
+		cfg.Settings.ApprovalPolicy = config.ApprovalPolicyRequestApproval
+		cfg.Settings.SandboxProfile = config.SandboxProfileWorkspaceWrite
 		cfg.Settings.SandboxNetwork = config.SandboxNetworkOff
 	}); err != nil {
 		t.Fatal(err)
 	}
 	for _, got := range store.Get().Sessions {
-		if got.ID == sess.ID && (got.SandboxMode != config.SandboxModeAutoApprove || got.SandboxNetwork != config.SandboxNetworkOn) {
+		if got.ID == sess.ID &&
+			(got.ApprovalPolicy != config.ApprovalPolicyAutoApprove ||
+				got.SandboxProfile != config.SandboxProfileWorkspaceWrite ||
+				got.SandboxMode != config.SandboxModeAutoApprove ||
+				got.SandboxNetwork != config.SandboxNetworkOn) {
 			t.Fatalf("settings rewrite changed existing session: %+v", got)
 		}
 	}
@@ -45,15 +54,26 @@ func TestForkSessionInheritsSandboxMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := chat.SetSessionSandboxMode(sess.ID, config.SandboxModeDangerFullAccess, "composer"); err != nil {
+	if err := chat.SetSessionExecutionPolicy(
+		sess.ID,
+		config.ApprovalPolicyRequestApproval,
+		config.SandboxProfileDangerFullAccess,
+		"composer",
+	); err != nil {
 		t.Fatal(err)
 	}
 	branch, err := chat.ForkSession(sess.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if branch.SandboxMode != config.SandboxModeDangerFullAccess {
-		t.Fatalf("fork mode = %q", branch.SandboxMode)
+	if branch.ApprovalPolicy != config.ApprovalPolicyRequestApproval ||
+		branch.SandboxProfile != config.SandboxProfileDangerFullAccess ||
+		branch.SandboxMode != config.SandboxModeDangerFullAccess ||
+		branch.SandboxNetwork != config.SandboxNetworkOff {
+		t.Fatalf("fork execution policy = %+v", branch)
+	}
+	if got := branch.EffectiveSandboxNetwork(chat.S.Store.Get()); got != config.SandboxNetworkOn {
+		t.Fatalf("danger fork effective network = %q, want on", got)
 	}
 }
 
@@ -104,7 +124,10 @@ func TestSessionSandboxModePersistsIndependentlyAndAudits(t *testing.T) {
 	}
 	for _, got := range reopened.Get().Sessions {
 		if got.ID == sess.ID {
-			if got.SandboxMode != config.SandboxModeDangerFullAccess || got.SandboxNetwork != config.SandboxNetworkOn {
+			if got.ApprovalPolicy != config.ApprovalPolicyNever ||
+				got.SandboxProfile != config.SandboxProfileDangerFullAccess ||
+				got.SandboxMode != config.SandboxModeDangerFullAccess ||
+				got.SandboxNetwork != config.SandboxNetworkOff {
 				t.Fatalf("mode not persisted: %+v", got)
 			}
 		}
@@ -118,6 +141,102 @@ func TestSessionSandboxModePersistsIndependentlyAndAudits(t *testing.T) {
 	for _, want := range []string{
 		`"phase":"session_sandbox_mode_set"`,
 		`"mode":"danger-full-access"`,
+		`"approval":"never"`,
+		`"sandbox":"danger-full-access"`,
+		`"source":"composer"`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Fatalf("audit missing %s:\n%s", want, doc)
+		}
+	}
+}
+
+func TestSetSessionExecutionPolicyPersistsAndAudits(t *testing.T) {
+	chat, store, _, _ := newConfirmTestChat(t, func(w http.ResponseWriter, r *http.Request) {})
+	sess, err := chat.NewSessionWithWorkspace("agent", "agent_c", "split", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
+	chat.SetToolAuditPath(auditPath)
+	if err := store.Update(func(cfg *config.Config) { cfg.Settings.ToolsAudit = true }); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := chat.SetSessionExecutionPolicy(
+		sess.ID,
+		config.ApprovalPolicyNever,
+		config.SandboxProfileWorkspaceWrite,
+		"composer",
+	); err != nil {
+		t.Fatal(err)
+	}
+	got, err := chat.SessionExecutionPolicy(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ApprovalPolicy != config.ApprovalPolicyNever ||
+		got.SandboxProfile != config.SandboxProfileWorkspaceWrite {
+		t.Fatalf("session execution policy = %+v", got)
+	}
+	stored := store.Get()
+	for _, session := range stored.Sessions {
+		if session.ID == sess.ID {
+			if session.SandboxNetwork != config.SandboxNetworkOff {
+				t.Fatalf("network preference rewritten: %+v", session)
+			}
+			if session.EffectiveSandboxNetwork(stored) != config.SandboxNetworkOff {
+				t.Fatalf("workspace effective network = %q", session.EffectiveSandboxNetwork(stored))
+			}
+		}
+	}
+	if legacy, err := chat.SessionSandboxMode(sess.ID); err != nil || legacy != config.SandboxModeDangerFullAccess {
+		t.Fatalf("legacy projection = %q err=%v", legacy, err)
+	}
+	if err := chat.SetSessionExecutionPolicy(
+		sess.ID,
+		config.ApprovalPolicyRequestApproval,
+		config.SandboxProfileDangerFullAccess,
+		"composer",
+	); err != nil {
+		t.Fatal(err)
+	}
+	stored = store.Get()
+	for _, session := range stored.Sessions {
+		if session.ID == sess.ID {
+			if session.SandboxNetwork != config.SandboxNetworkOff {
+				t.Fatalf("danger wrote network on: %+v", session)
+			}
+			if session.EffectiveSandboxNetwork(stored) != config.SandboxNetworkOn {
+				t.Fatalf("danger effective network = %q", session.EffectiveSandboxNetwork(stored))
+			}
+		}
+	}
+	if err := chat.SetSessionExecutionPolicy(
+		sess.ID,
+		config.ApprovalPolicyRequestApproval,
+		config.SandboxProfileWorkspaceWrite,
+		"composer",
+	); err != nil {
+		t.Fatal(err)
+	}
+	stored = store.Get()
+	for _, session := range stored.Sessions {
+		if session.ID == sess.ID && session.EffectiveSandboxNetwork(stored) != config.SandboxNetworkOff {
+			t.Fatalf("workspace switch did not restore persisted network: %+v", session)
+		}
+	}
+	data, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(data)
+	for _, want := range []string{
+		`"phase":"session_execution_policy_set"`,
+		`"approval":"never"`,
+		`"sandbox":"workspace-write"`,
+		`"approval":"request-approval"`,
+		`"sandbox":"danger-full-access"`,
 		`"source":"composer"`,
 	} {
 		if !strings.Contains(doc, want) {
