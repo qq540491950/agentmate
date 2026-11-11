@@ -1,8 +1,48 @@
 import type { Settings } from "@/lib/api";
 
+export type ApprovalPolicy = "request-approval" | "auto-approve" | "never";
+export type SandboxProfile = "workspace-write" | "danger-full-access";
+// SandboxMode is the legacy combined profile. Keep it only for migration.
 export type SandboxMode = "request-approval" | "auto-approve" | "danger-full-access";
 
-/** normalizeSandboxMode mirrors the Go migration for legacy config values. */
+export type ExecutionPolicy = {
+  approvalPolicy: ApprovalPolicy;
+  sandboxProfile: SandboxProfile;
+};
+
+export const DEFAULT_EXECUTION_POLICY: ExecutionPolicy = {
+  approvalPolicy: "request-approval",
+  sandboxProfile: "workspace-write",
+};
+
+/** normalizeApprovalPolicy mirrors config.NormalizeApprovalPolicy. */
+export function normalizeApprovalPolicy(value?: string | null): ApprovalPolicy {
+  switch ((value ?? "").trim().toLowerCase()) {
+    case "never":
+    case "danger-full-access":
+      return "never";
+    case "auto":
+    case "auto-approve":
+      return "auto-approve";
+    case "request":
+    case "request-approval":
+    case "workspace-write":
+    default:
+      return "request-approval";
+  }
+}
+
+/** normalizeSandboxProfile mirrors config.NormalizeSandboxProfile. */
+export function normalizeSandboxProfile(value?: string | null): SandboxProfile {
+  return (value ?? "").trim().toLowerCase() === "danger-full-access"
+    ? "danger-full-access"
+    : "workspace-write";
+}
+
+/**
+ * normalizeSandboxMode is retained for legacy config/session migration only.
+ * New UI state must use ApprovalPolicy and SandboxProfile independently.
+ */
 export function normalizeSandboxMode(value?: string): SandboxMode {
   switch ((value ?? "").trim().toLowerCase()) {
     case "auto":
@@ -13,6 +53,50 @@ export function normalizeSandboxMode(value?: string): SandboxMode {
     default:
       return "request-approval";
   }
+}
+
+/** executionPolicyFromLegacySandboxMode maps one old three-way choice to a pair. */
+export function executionPolicyFromLegacySandboxMode(value?: string | null): ExecutionPolicy {
+  switch (normalizeSandboxMode(value ?? undefined)) {
+    case "danger-full-access":
+      return { approvalPolicy: "never", sandboxProfile: "danger-full-access" };
+    case "auto-approve":
+      return { approvalPolicy: "auto-approve", sandboxProfile: "workspace-write" };
+    default:
+      return { ...DEFAULT_EXECUTION_POLICY };
+  }
+}
+
+/**
+ * resolveExecutionPolicy mirrors the Go precedence contract: explicit split
+ * fields win; missing split fields fall back to legacy sandboxMode; when no
+ * snapshot exists at all, use the caller's fallback (for example the global
+ * default for an old session).
+ */
+export function resolveExecutionPolicy(
+  approvalPolicy?: string | null,
+  sandboxProfile?: string | null,
+  legacySandboxMode?: string | null,
+  fallback: ExecutionPolicy = DEFAULT_EXECUTION_POLICY,
+): ExecutionPolicy {
+  const hasApproval = !!approvalPolicy?.trim();
+  const hasSandbox = !!sandboxProfile?.trim();
+  const hasLegacy = !!legacySandboxMode?.trim();
+  if (!hasApproval && !hasSandbox && !hasLegacy) {
+    return {
+      approvalPolicy: normalizeApprovalPolicy(fallback.approvalPolicy),
+      sandboxProfile: normalizeSandboxProfile(fallback.sandboxProfile),
+    };
+  }
+  const legacy = executionPolicyFromLegacySandboxMode(legacySandboxMode);
+  return {
+    approvalPolicy: hasApproval
+      ? normalizeApprovalPolicy(approvalPolicy)
+      : legacy.approvalPolicy,
+    sandboxProfile: hasSandbox
+      ? normalizeSandboxProfile(sandboxProfile)
+      : legacy.sandboxProfile,
+  };
 }
 
 export type SettingsTab =
@@ -107,6 +191,8 @@ const COMPARE_DEFAULTS: Partial<Record<keyof Settings, unknown>> = {
   a2aAgentId: "",
   a2aPort: 0,
   toolsAudit: false,
+  approvalPolicy: "request-approval",
+  sandboxProfile: "workspace-write",
   sandboxMode: "request-approval",
   sandboxNetwork: "off",
   autoRemember: false,

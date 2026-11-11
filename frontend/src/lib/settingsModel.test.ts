@@ -5,9 +5,13 @@ import {
   SETTINGS_GROUPS,
   SETTINGS_TABS,
   a2aAutoStartError,
+  executionPolicyFromLegacySandboxMode,
   isConfigSettingsTab,
   isSettingsDirty,
+  normalizeApprovalPolicy,
+  normalizeSandboxProfile,
   normalizeSandboxMode,
+  resolveExecutionPolicy,
   resolveSettingsTab,
   settingsTabsInGroup,
 } from "./settingsModel";
@@ -32,7 +36,25 @@ const baseSettings = {
 } as Settings;
 
 describe("settings model", () => {
-  it("normalizes legacy and unknown sandbox modes to the safe profile", () => {
+  it("normalizes approval and sandbox profile axes independently", () => {
+    expect(normalizeApprovalPolicy(undefined)).toBe("request-approval");
+    expect(normalizeApprovalPolicy("request")).toBe("request-approval");
+    expect(normalizeApprovalPolicy("workspace-write")).toBe("request-approval");
+    expect(normalizeApprovalPolicy("auto")).toBe("auto-approve");
+    expect(normalizeApprovalPolicy("auto-approve")).toBe("auto-approve");
+    expect(normalizeApprovalPolicy("never")).toBe("never");
+    expect(normalizeApprovalPolicy("danger-full-access")).toBe("never");
+    expect(normalizeApprovalPolicy("unknown")).toBe("request-approval");
+
+    expect(normalizeSandboxProfile(undefined)).toBe("workspace-write");
+    expect(normalizeSandboxProfile("request-approval")).toBe("workspace-write");
+    expect(normalizeSandboxProfile("auto-approve")).toBe("workspace-write");
+    expect(normalizeSandboxProfile("workspace-write")).toBe("workspace-write");
+    expect(normalizeSandboxProfile("danger-full-access")).toBe("danger-full-access");
+    expect(normalizeSandboxProfile("unknown")).toBe("workspace-write");
+  });
+
+  it("normalizes legacy combined sandbox modes only for migration", () => {
     expect(normalizeSandboxMode(undefined)).toBe("request-approval");
     expect(normalizeSandboxMode("workspace-write")).toBe("request-approval");
     expect(normalizeSandboxMode("request")).toBe("request-approval");
@@ -40,6 +62,45 @@ describe("settings model", () => {
     expect(normalizeSandboxMode("auto-approve")).toBe("auto-approve");
     expect(normalizeSandboxMode("danger-full-access")).toBe("danger-full-access");
     expect(normalizeSandboxMode("unknown")).toBe("request-approval");
+  });
+
+  it("maps legacy profiles and resolves the split pair with backend precedence", () => {
+    expect(executionPolicyFromLegacySandboxMode("request-approval")).toEqual({
+      approvalPolicy: "request-approval",
+      sandboxProfile: "workspace-write",
+    });
+    expect(executionPolicyFromLegacySandboxMode("auto-approve")).toEqual({
+      approvalPolicy: "auto-approve",
+      sandboxProfile: "workspace-write",
+    });
+    expect(executionPolicyFromLegacySandboxMode("danger-full-access")).toEqual({
+      approvalPolicy: "never",
+      sandboxProfile: "danger-full-access",
+    });
+    expect(executionPolicyFromLegacySandboxMode("unknown")).toEqual({
+      approvalPolicy: "request-approval",
+      sandboxProfile: "workspace-write",
+    });
+
+    expect(resolveExecutionPolicy(undefined, undefined, "auto-approve")).toEqual({
+      approvalPolicy: "auto-approve",
+      sandboxProfile: "workspace-write",
+    });
+    expect(resolveExecutionPolicy("never", "workspace-write", "danger-full-access")).toEqual({
+      approvalPolicy: "never",
+      sandboxProfile: "workspace-write",
+    });
+    expect(resolveExecutionPolicy("auto-approve", undefined, "danger-full-access")).toEqual({
+      approvalPolicy: "auto-approve",
+      sandboxProfile: "danger-full-access",
+    });
+    expect(resolveExecutionPolicy(undefined, undefined, undefined, {
+      approvalPolicy: "auto-approve",
+      sandboxProfile: "danger-full-access",
+    })).toEqual({
+      approvalPolicy: "auto-approve",
+      sandboxProfile: "danger-full-access",
+    });
   });
 
   it("defines the eleven tabs in navigation order with no General tab", () => {
@@ -148,6 +209,8 @@ describe("settings model", () => {
       compactionInterval: 0,
       httpProxy: "",
       toolsAudit: false,
+      approvalPolicy: "request-approval",
+      sandboxProfile: "workspace-write",
       sandboxMode: "request-approval",
       sandboxNetwork: "off",
     } as Settings;
@@ -158,6 +221,8 @@ describe("settings model", () => {
     delete (withoutOptional as Partial<Settings>).compactionContextPercent;
     delete (withoutOptional as Partial<Settings>).httpProxy;
     delete (withoutOptional as Partial<Settings>).toolsAudit;
+    delete (withoutOptional as Partial<Settings>).approvalPolicy;
+    delete (withoutOptional as Partial<Settings>).sandboxProfile;
     delete (withoutOptional as Partial<Settings>).sandboxMode;
     delete (withoutOptional as Partial<Settings>).sandboxNetwork;
 

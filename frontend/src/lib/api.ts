@@ -43,7 +43,9 @@ export type ChatStreamEvent = serviceModels.ChatStreamEvent;
 export type ServerStatus = mcpModels.ServerStatus;
 export type ToolInfo = mcpModels.ToolInfo;
 
-export type AppConfig = configModels.Config;
+export type AppConfig = Omit<configModels.Config, "settings"> & {
+  settings: Settings;
+};
 export type ModelProvider = configModels.ModelProvider;
 export type ModelInfo = configModels.ModelInfo;
 export type ReasoningLevel = configModels.ReasoningLevel;
@@ -58,8 +60,16 @@ export type KnowledgeIndexStats = agentkitModels.KnowledgeIndexStats;
 export type StorageInfo = serviceModels.StorageInfo;
 export type MemoryInfo = serviceModels.MemoryInfo;
 export type KnowledgeFile = serviceModels.KnowledgeFile;
-export type Settings = configModels.Settings;
-export type ChatSession = configModels.ChatSession;
+// The split execution-policy fields are newer than the committed bindings
+// snapshot. Keep the runtime contract typed until bindings are regenerated.
+export type Settings = configModels.Settings & {
+  approvalPolicy?: string;
+  sandboxProfile?: string;
+};
+export type ChatSession = configModels.ChatSession & {
+  approvalPolicy?: string;
+  sandboxProfile?: string;
+};
 export type Project = configModels.Project;
 
 // Session approval-mode RPC. The backend method is newer than the committed
@@ -67,7 +77,22 @@ export type Project = configModels.Project;
 // runtime; the method name is the stable contract the generator writes.
 const chatServiceName = "agentmate/internal/services.ChatService";
 
-/** setSessionSandboxMode persists the current chat's approval/sandbox mode. */
+/** setSessionExecutionPolicy persists the current chat's independent axes. */
+export function setSessionExecutionPolicy(
+  sessionID: string,
+  approvalPolicy: string,
+  sandboxProfile: string,
+): Promise<void> {
+  return Call.ByName(
+    `${chatServiceName}.SetSessionExecutionPolicy`,
+    sessionID,
+    approvalPolicy,
+    sandboxProfile,
+    "composer",
+  ).then(() => undefined);
+}
+
+/** @deprecated Use setSessionExecutionPolicy. */
 export function setSessionSandboxMode(sessionID: string, mode: string): Promise<void> {
   return Call.ByName(`${chatServiceName}.SetSessionSandboxMode`, sessionID, mode, "composer")
     .then(() => undefined);

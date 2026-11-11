@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
-  ArrowLeft, BookOpen, Bot, Boxes, Check, Database, FolderOpen, Hand, Info,
+  ArrowLeft, BellOff, BookOpen, Bot, Boxes, Check, Database, FolderLock, FolderOpen, Hand, Info,
   MessageSquare, Network, Palette, Plug, ShieldCheck, Sparkles, TriangleAlert,
   Users, type LucideIcon,
 } from "lucide-react";
@@ -44,18 +44,25 @@ import {
 } from "@/lib/executionDisplay";
 import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
 import { modelLabel } from "@/lib/modelLabel";
-import { SANDBOX_MODE_OPTIONS } from "@/lib/sandboxMode";
+import {
+  APPROVAL_OPTIONS,
+  SANDBOX_PROFILE_OPTIONS,
+  executionPolicyHint,
+  sandboxNeedsRiskConfirmation,
+} from "@/lib/sandboxMode";
 import {
   DEFAULT_COMPACTION_CONTEXT_PERCENT,
   SETTINGS_GROUPS,
   a2aAutoStartError,
   isConfigSettingsTab,
   isSettingsDirty,
-  normalizeSandboxMode,
+  resolveExecutionPolicy,
   resolveSettingsTab,
   settingsTabsInGroup,
+  type ApprovalPolicy,
+  type ExecutionPolicy,
+  type SandboxProfile,
   type SettingsLeaveGuard,
-  type SandboxMode,
   type SettingsTab,
 } from "@/lib/settingsModel";
 import { Chat, App, A2A, Config, Update, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
@@ -76,11 +83,117 @@ const SETTINGS_ICONS: Record<SettingsTab, LucideIcon> = {
   about: Info,
 };
 
-const SANDBOX_MODE_ICONS: Record<SandboxMode, LucideIcon> = {
+const APPROVAL_ICONS: Record<ApprovalPolicy, LucideIcon> = {
   "request-approval": Hand,
   "auto-approve": ShieldCheck,
+  never: BellOff,
+};
+
+const SANDBOX_PROFILE_ICONS: Record<SandboxProfile, LucideIcon> = {
+  "workspace-write": FolderLock,
   "danger-full-access": TriangleAlert,
 };
+
+type PolicyChoice<T extends string> = {
+  value: T;
+  label: string;
+  description: string;
+  danger?: boolean;
+};
+
+function PolicyChoiceGroup<T extends string>({
+  label,
+  description,
+  options,
+  icons,
+  value,
+  columnsClass,
+  onSelect,
+}: {
+  label: string;
+  description: string;
+  options: readonly PolicyChoice<T>[];
+  icons: Record<T, LucideIcon>;
+  value: T;
+  columnsClass: string;
+  onSelect: (value: T) => void;
+}) {
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+    if (!keys.includes(event.key)) return;
+    event.preventDefault();
+    const radios = Array.from(
+      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [],
+    );
+    const current = radios.indexOf(event.currentTarget);
+    if (current < 0) return;
+    let next = current;
+    if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = radios.length - 1;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      next = (current - 1 + radios.length) % radios.length;
+    } else {
+      next = (current + 1) % radios.length;
+    }
+    const nextOption = options[next];
+    if (nextOption) {
+      onSelect(nextOption.value);
+      radios[next]?.focus();
+    }
+  };
+
+  return (
+    <div className="grid gap-2">
+      <div>
+        <div className="text-sm font-medium">{label}</div>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
+      </div>
+      <div role="radiogroup" aria-label={label} className={cn("grid gap-2", columnsClass)}>
+        {options.map((option) => {
+          const selected = value === option.value;
+          const Icon = icons[option.value] as LucideIcon;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onSelect(option.value)}
+              onKeyDown={onKeyDown}
+              className={choiceCardClass(selected, option.danger)}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <Icon
+                  aria-hidden="true"
+                  className={cn(
+                    "h-4 w-4",
+                    option.danger
+                      ? "text-danger-text"
+                      : selected ? "text-accent-text" : "text-muted-foreground",
+                  )}
+                />
+                {selected && (
+                  <Check
+                    aria-hidden="true"
+                    className={cn("h-3.5 w-3.5", option.danger ? "text-danger-text" : "text-accent-text")}
+                  />
+                )}
+              </div>
+              <div>
+                <span className={cn("text-sm font-medium", selected && "text-foreground")}>
+                  {option.label}
+                </span>
+                <p className={cn("mt-1 text-xs leading-relaxed", selected ? "text-foreground" : "text-muted-foreground")}>
+                  {option.description}
+                </p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function SettingsPage({
   initialTab,
@@ -103,7 +216,7 @@ export function SettingsPage({
   const [saving, setSaving] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
-  const [pendingSandboxMode, setPendingSandboxMode] = useState<string | null>(null);
+  const [pendingSandboxProfile, setPendingSandboxProfile] = useState<SandboxProfile | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [logText, setLogText] = useState("");
@@ -162,22 +275,40 @@ export function SettingsPage({
     }
   };
 
-  const selectSandboxMode = (mode: string) => {
-    if (mode === "danger-full-access") {
-      setPendingSandboxMode(mode);
+  const defaultExecutionPolicy = resolveExecutionPolicy(
+    settings?.approvalPolicy,
+    settings?.sandboxProfile,
+    settings?.sandboxMode,
+  );
+
+  const updateDefaultExecutionPolicy = (patch: Partial<ExecutionPolicy>) => {
+    const next = resolveExecutionPolicy(
+      patch.approvalPolicy ?? defaultExecutionPolicy.approvalPolicy,
+      patch.sandboxProfile ?? defaultExecutionPolicy.sandboxProfile,
+      settings?.sandboxMode,
+    );
+    update({ approvalPolicy: next.approvalPolicy, sandboxProfile: next.sandboxProfile });
+  };
+
+  const selectSandboxProfile = (profile: SandboxProfile) => {
+    if (profile === defaultExecutionPolicy.sandboxProfile) return;
+    if (sandboxNeedsRiskConfirmation(profile)) {
+      setPendingSandboxProfile(profile);
       return;
     }
-    update({ sandboxMode: mode });
+    updateDefaultExecutionPolicy({ sandboxProfile: profile });
   };
 
   const confirmDangerFullAccess = () => {
-    update({ sandboxMode: "danger-full-access" });
-    setPendingSandboxMode(null);
+    if (pendingSandboxProfile) {
+      updateDefaultExecutionPolicy({ sandboxProfile: pendingSandboxProfile });
+    }
+    setPendingSandboxProfile(null);
   };
 
   const dirty = isSettingsDirty(savedSettings, settings);
   dirtyRef.current = dirty;
-  const sandboxMode = normalizeSandboxMode(settings?.sandboxMode);
+  const defaultPolicyHint = executionPolicyHint(defaultExecutionPolicy);
 
   const applySavedAppearance = (next: Settings) => {
     const prefs = prefsFromSettings(next);
@@ -440,89 +571,43 @@ export function SettingsPage({
         {tab === "conversation" && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">新会话默认审批模式</CardTitle>
+            <CardTitle className="text-base">新会话默认执行策略</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-3">
+          <CardContent className="grid gap-5">
             <p className="text-xs leading-relaxed text-muted-foreground">
-              只决定新建会话的初始模式。已有会话在输入框左下角的模式按钮中单独切换，不会随这里变化。
+              审批与沙箱是两个独立维度，只决定新建会话的初始值。已有会话在输入框左下角分别切换，不会随这里变化。
             </p>
-            <div role="radiogroup" aria-label="新会话默认审批模式" className="grid gap-2 sm:grid-cols-3">
-              {SANDBOX_MODE_OPTIONS.map((option) => {
-                const selected = sandboxMode === option.value;
-                const Icon = SANDBOX_MODE_ICONS[option.value];
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => selectSandboxMode(option.value)}
-                    onKeyDown={(event) => {
-                      const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
-                      if (!keys.includes(event.key)) return;
-                      event.preventDefault();
-                      const radios = Array.from(
-                        event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [],
-                      );
-                      const current = radios.indexOf(event.currentTarget);
-                      let next = current;
-                      if (event.key === "Home") next = 0;
-                      else if (event.key === "End") next = radios.length - 1;
-                      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-                        next = (current - 1 + radios.length) % radios.length;
-                      } else {
-                        next = (current + 1) % radios.length;
-                      }
-                      const nextOption = SANDBOX_MODE_OPTIONS[next];
-                      if (nextOption) {
-                        selectSandboxMode(nextOption.value);
-                        radios[next]?.focus();
-                      }
-                    }}
-                    className={choiceCardClass(selected, option.danger)}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <Icon
-                        aria-hidden="true"
-                        className={cn(
-                          "h-4 w-4",
-                          option.danger
-                            ? "text-danger-text"
-                            : selected ? "text-accent-text" : "text-muted-foreground",
-                        )}
-                      />
-                      {selected && (
-                        <Check
-                          aria-hidden="true"
-                          className={cn("h-3.5 w-3.5", option.danger ? "text-danger-text" : "text-accent-text")}
-                        />
-                      )}
-                    </div>
-                    <div>
-                      <span
-                        className={cn(
-                          "text-sm font-medium",
-                          selected && "text-foreground",
-                        )}
-                      >
-                        {option.label}
-                      </span>
-                      <p className={cn("mt-1 text-xs leading-relaxed", selected ? "text-foreground" : "text-muted-foreground")}>
-                        {option.description}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            {sandboxMode === "danger-full-access" && (
+            <PolicyChoiceGroup
+              label="新会话默认审批"
+              description="决定何时暂停并请求你的确认，不改变文件与命令的沙箱边界。"
+              options={APPROVAL_OPTIONS}
+              icons={APPROVAL_ICONS}
+              value={defaultExecutionPolicy.approvalPolicy}
+              columnsClass="sm:grid-cols-3"
+              onSelect={(approvalPolicy) => updateDefaultExecutionPolicy({ approvalPolicy })}
+            />
+            <PolicyChoiceGroup
+              label="新会话默认沙箱"
+              description="决定终端和文件工具的 OS 边界；完全访问会隐含开启联网。"
+              options={SANDBOX_PROFILE_OPTIONS}
+              icons={SANDBOX_PROFILE_ICONS}
+              value={defaultExecutionPolicy.sandboxProfile}
+              columnsClass="sm:grid-cols-2"
+              onSelect={selectSandboxProfile}
+            />
+            {defaultPolicyHint ? (
+              <div className="flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-sm text-warning-text">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <p>{defaultPolicyHint}</p>
+              </div>
+            ) : defaultExecutionPolicy.sandboxProfile === "danger-full-access" ? (
               <div className="flex items-start gap-2 rounded-lg bg-danger-soft p-3 text-sm text-danger-text">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <p>新会话默认完全访问：终端不再受 OS 沙箱限制，仅用于可信任务。</p>
               </div>
-            )}
+            ) : null}
             <p className="text-xs text-muted-foreground">
-              Agent 编辑页勾选的额外确认只在「帮我批准」下作为更严格的覆盖生效；请求批准会确认全部写入与命令，完全访问会全部免确认。
+              审批与沙箱分别生效：请求批准会确认全部写入与命令；仅风险确认只确认风险操作；从不询问不弹确认，但工作区沙箱仍会拦截越界访问。
             </p>
           </CardContent>
         </Card>
@@ -652,26 +737,29 @@ export function SettingsPage({
             <CardContent className="grid gap-3">
               <SettingRow
                 label="新会话默认允许子进程联网"
-                description={sandboxMode === "danger-full-access"
-                  ? "默认模式为完全访问时，终端联网始终开启。"
+                description={defaultExecutionPolicy.sandboxProfile === "danger-full-access"
+                  ? "完全访问会隐含开启终端联网；这里保存的偏好不会被改写。"
                   : "关闭时新会话的 run_command 子进程默认断网；已有会话不随此项变化。"}
               >
                 <Switch
-                  checked={sandboxMode === "danger-full-access" || (settings.sandboxNetwork || "off") === "on"}
-                  disabled={sandboxMode === "danger-full-access"}
+                  checked={
+                    defaultExecutionPolicy.sandboxProfile === "danger-full-access"
+                    || (settings.sandboxNetwork || "off") === "on"
+                  }
+                  disabled={defaultExecutionPolicy.sandboxProfile === "danger-full-access"}
                   onCheckedChange={(v) => update({ sandboxNetwork: v ? "on" : "off" })}
                 />
               </SettingRow>
-              {sandboxMode === "danger-full-access" && (
-                <div className="flex items-start gap-2 rounded-lg bg-danger-soft p-3 text-sm text-danger-text">
+              {defaultExecutionPolicy.sandboxProfile === "danger-full-access" && (
+                <div className="flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-sm text-warning-text">
                   <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   <p>
-                    新会话默认完全访问：终端不再受 OS 沙箱限制。已有会话在输入框旁单独切换。
+                    联网由完全访问隐含开启；保存的联网偏好保持不变，切回工作区可写后恢复。
                   </p>
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
-                Windows 使用 AppContainer 与低完整性边界；请求批准和帮我批准都会拦截工作区外写入。沙箱初始化失败时拒绝执行，不会回退到全权限。
+                Windows 使用 AppContainer 与低完整性边界；请求批准和仅风险确认都会拦截工作区外写入。沙箱初始化失败时拒绝执行，不会回退到全权限。
               </p>
             </CardContent>
           </Card>
@@ -1188,19 +1276,19 @@ export function SettingsPage({
     </div>
         )}
       </div>
-      <Dialog open={pendingSandboxMode !== null} onOpenChange={(open) => { if (!open) setPendingSandboxMode(null); }}>
+      <Dialog open={pendingSandboxProfile !== null} onOpenChange={(open) => { if (!open) setPendingSandboxProfile(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <TriangleAlert className="h-4 w-4 text-danger-text" aria-hidden="true" />
-              启用完全访问权限？
+              启用完全访问沙箱？
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            终端命令将不再经过 AppContainer 沙箱，也不再逐次确认。它可以访问互联网、读取凭据目录并写入工作区外的文件。请仅在你信任当前任务和模型输出时启用。
+            终端命令将不再经过 AppContainer 沙箱，可以访问互联网并读写工作区外的文件。审批策略仍按你当前的选择独立生效。请仅在你信任当前任务和模型输出时启用。
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingSandboxMode(null)}>
+            <Button variant="outline" onClick={() => setPendingSandboxProfile(null)}>
               取消
             </Button>
             <Button variant="destructive" onClick={confirmDangerFullAccess}>

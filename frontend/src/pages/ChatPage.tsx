@@ -7,7 +7,7 @@ import {
   Folder, FolderOpen, FileText,
   PanelRightOpen,
   ChevronRight, ChevronDown,
-  Boxes, Coins, Hand, ShieldCheck, TriangleAlert,
+  Boxes, Coins, Hand, ShieldCheck, TriangleAlert, BellOff, FolderLock,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
 } from "lucide-react";
@@ -58,15 +58,32 @@ import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
 import { SidebarFooter } from "@/components/SidebarFooter";
 import type { SettingsTab } from "@/pages/SettingsPage";
 import {
-  Chat, Config, errText, setSessionSandboxMode,
+  Chat, Config, errText, setSessionExecutionPolicy,
   effectiveSkills, listContextPaths,
   type AgentConfig, type AttachmentIn, type ChatSession, type TeamConfig,
   type RemoteAgentConfig, type UsageInfo, type ModelProvider, type ModelInfo, type SessionStats,
-  type Project, type SkillConfig, type WorkspaceEntry,
+  type Project, type Settings, type SkillConfig, type WorkspaceEntry,
 } from "@/lib/api";
 import { contextTooltipLines, estimateContextTokens, resolveContextUsage } from "@/lib/contextUsage";
-import { SANDBOX_MODE_OPTIONS, sandboxModeOption, sandboxModeShortLabel } from "@/lib/sandboxMode";
-import { normalizeSandboxMode, type SandboxMode } from "@/lib/settingsModel";
+import {
+  APPROVAL_OPTIONS,
+  SANDBOX_PROFILE_OPTIONS,
+  approvalPolicyOption,
+  approvalPolicyShortLabel,
+  executionPolicyHint,
+  sandboxNeedsRiskConfirmation,
+  sandboxProfileOption,
+  sandboxProfileShortLabel,
+} from "@/lib/sandboxMode";
+import {
+  DEFAULT_EXECUTION_POLICY,
+  normalizeApprovalPolicy,
+  normalizeSandboxProfile,
+  resolveExecutionPolicy,
+  type ApprovalPolicy,
+  type ExecutionPolicy,
+  type SandboxProfile,
+} from "@/lib/settingsModel";
 import {
   normalizeExecutionDisplayMode, type ExecutionDisplayMode,
 } from "@/lib/executionDisplay";
@@ -84,9 +101,14 @@ const RENDER_LIMIT = 200;
 // flash an empty/skeleton pane before the local SQLite read returns.
 const HISTORY_CACHE_LIMIT = 8;
 
-const SANDBOX_MODE_ICONS: Record<SandboxMode, typeof Hand> = {
+const APPROVAL_ICONS: Record<ApprovalPolicy, typeof Hand> = {
   "request-approval": Hand,
   "auto-approve": ShieldCheck,
+  never: BellOff,
+};
+
+const SANDBOX_PROFILE_ICONS: Record<SandboxProfile, typeof Hand> = {
+  "workspace-write": FolderLock,
   "danger-full-access": TriangleAlert,
 };
 
@@ -155,7 +177,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   // new chat BEFORE the first turn — so the model and approval mode chosen
   // here are real choices, not discarded ones.
   const [draftModelOverride, setDraftModelOverride] = useState("");
-  const [draftSandboxMode, setDraftSandboxMode] = useState<SandboxMode | "">("");
+  const [draftApprovalPolicy, setDraftApprovalPolicy] = useState<ApprovalPolicy | "">("");
+  const [draftSandboxProfile, setDraftSandboxProfile] = useState<SandboxProfile | "">("");
   const input = activeID ? (drafts[activeID] ?? "") : freshInput;
   const setInput = useCallback(
     (v: string | ((prev: string) => string)) => {
@@ -213,9 +236,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
   const [editing, setEditing] = useState(false);
   // Settings hold the default for NEW sessions; each session owns its current
-  // mode. The composer reads/writes that session field, never the default.
-  const [defaultSandboxMode, setDefaultSandboxMode] = useState<SandboxMode>("request-approval");
-  const [sandboxModeBusy, setSandboxModeBusy] = useState(false);
+  // policy. The composer reads/writes that session pair, never the default.
+  const [defaultExecutionPolicy, setDefaultExecutionPolicy] = useState<ExecutionPolicy>(DEFAULT_EXECUTION_POLICY);
+  const [executionPolicyBusy, setExecutionPolicyBusy] = useState(false);
   // The risk dialog can stay open across a session switch; callbacks compare
   // against the live ID before touching the visible chat.
   const activeIDRef = useRef(activeID);
@@ -261,12 +284,23 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   }, []);
 
   const active = sessions.find((s) => s.id === activeID);
-  const activeSandboxMode = normalizeSandboxMode(active?.sandboxMode || defaultSandboxMode);
-  const composerSandboxMode = activeID
-    ? activeSandboxMode
-    : normalizeSandboxMode(draftSandboxMode || defaultSandboxMode);
-  const composerSandboxOption = sandboxModeOption(composerSandboxMode);
-  const ComposerModeIcon = SANDBOX_MODE_ICONS[composerSandboxMode];
+  const activeExecutionPolicy = resolveExecutionPolicy(
+    active?.approvalPolicy,
+    active?.sandboxProfile,
+    active?.sandboxMode,
+    defaultExecutionPolicy,
+  );
+  const composerExecutionPolicy: ExecutionPolicy = activeID
+    ? activeExecutionPolicy
+    : {
+        approvalPolicy: normalizeApprovalPolicy(draftApprovalPolicy || defaultExecutionPolicy.approvalPolicy),
+        sandboxProfile: normalizeSandboxProfile(draftSandboxProfile || defaultExecutionPolicy.sandboxProfile),
+      };
+  const composerApprovalOption = approvalPolicyOption(composerExecutionPolicy.approvalPolicy);
+  const composerSandboxOption = sandboxProfileOption(composerExecutionPolicy.sandboxProfile);
+  const composerPolicyHint = executionPolicyHint(composerExecutionPolicy);
+  const ComposerApprovalIcon = APPROVAL_ICONS[composerExecutionPolicy.approvalPolicy];
+  const ComposerSandboxIcon = SANDBOX_PROFILE_ICONS[composerExecutionPolicy.sandboxProfile];
   const executionDisplayMode = normalizeExecutionDisplayMode(globalExecutionDisplay);
 
   // fireQueued pops the session's queued message and auto-sends it (used both
@@ -310,7 +344,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     setEditing(false);
     setSessionUsage(null);
     setDraftModelOverride("");
-    setDraftSandboxMode("");
+    setDraftApprovalPolicy("");
+    setDraftSandboxProfile("");
   }, []);
   const createDirectSession = useCallback(() => openNewChatDraft(""), [openNewChatDraft]);
   createDirectSessionRef.current = createDirectSession;
@@ -332,16 +367,21 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     reloadProjects();
     Config.GetConfig()
       .then((c) => {
+        const settings = c.settings as Settings | undefined;
         setAgents(c.agents ?? []);
         setTeams(c.teams ?? []);
         setRemotes(c.remoteAgents ?? []);
         setProviderCount((c.providers ?? []).length);
         setProviderList(c.providers ?? []);
-        setAutoSpeak(!!c.settings?.autoSpeak);
-        setGlobalExecutionDisplay(normalizeExecutionDisplayMode(c.settings?.executionDisplayMode));
-        setDefaultSandboxMode(normalizeSandboxMode(c.settings?.sandboxMode));
-        setGlobalWorkspace(c.settings?.workspaceDir ?? "");
-        setSidebarCollapsed(!!c.settings?.sidebarCollapsed);
+        setAutoSpeak(!!settings?.autoSpeak);
+        setGlobalExecutionDisplay(normalizeExecutionDisplayMode(settings?.executionDisplayMode));
+        setDefaultExecutionPolicy(resolveExecutionPolicy(
+          settings?.approvalPolicy,
+          settings?.sandboxProfile,
+          settings?.sandboxMode,
+        ));
+        setGlobalWorkspace(settings?.workspaceDir ?? "");
+        setSidebarCollapsed(!!settings?.sidebarCollapsed);
       })
       .catch((e) => toast.error(`加载配置失败: ${errText(e)}`));
   }, [reloadSessions]);
@@ -922,27 +962,39 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         toast.error("请先在「模型配置」页添加供应商并填入 API Key");
         return;
       }
-      const draftMode = normalizeSandboxMode(draftSandboxMode || defaultSandboxMode);
+      const draftPolicy: ExecutionPolicy = {
+        approvalPolicy: normalizeApprovalPolicy(draftApprovalPolicy || defaultExecutionPolicy.approvalPolicy),
+        sandboxProfile: normalizeSandboxProfile(draftSandboxProfile || defaultExecutionPolicy.sandboxProfile),
+      };
       try {
         const s = draftUsesProject(draftProjectID)
           ? await Chat.NewSessionWithProject("", "", "", draftProjectID)
           : await Chat.NewSessionWithWorkspace("", "", "", "");
         sid = s.id;
         // Apply the draft picks to the freshly created row BEFORE it becomes
-        // the active chat: the composer then reads the persisted mode instead
+        // the active chat: the composer then reads the persisted pair instead
         // of racing a write that lands after the first render.
         try {
           if (draftModelOverride) await Chat.SetSessionModel(s.id, draftModelOverride);
-          if (draftMode !== defaultSandboxMode) await setSessionSandboxMode(s.id, draftMode);
+          await setSessionExecutionPolicy(
+            s.id,
+            draftPolicy.approvalPolicy,
+            draftPolicy.sandboxProfile,
+          );
         } catch (e) {
           // The row exists, so the first turn must still go out; surface the
           // lost pick rather than silently pretending it was applied.
           toast.error(`应用草稿设置失败: ${errText(e)}`);
         }
         setDraftModelOverride("");
-        setDraftSandboxMode("");
+        setDraftApprovalPolicy("");
+        setDraftSandboxProfile("");
         setSessions((prev) => [
-          { ...s, sandboxMode: draftMode },
+          {
+            ...s,
+            approvalPolicy: draftPolicy.approvalPolicy,
+            sandboxProfile: draftPolicy.sandboxProfile,
+          },
           ...prev.filter((item) => item.id !== s.id),
         ]);
         setFreshInput("");
@@ -1099,61 +1151,89 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
   }, [activeID, running, markRunning]);
 
-  const applySandboxMode = useCallback(async (mode: SandboxMode) => {
-    const normalized = normalizeSandboxMode(mode);
+  const applyExecutionPolicy = useCallback(async (next: ExecutionPolicy) => {
+    const normalized: ExecutionPolicy = {
+      approvalPolicy: normalizeApprovalPolicy(next.approvalPolicy),
+      sandboxProfile: normalizeSandboxProfile(next.sandboxProfile),
+    };
     if (!activeID) {
-      setDraftSandboxMode(normalized);
-      if (normalized === "danger-full-access") {
-        toast.success("已为本会话选择完全访问权限；发送首条消息后生效");
+      setDraftApprovalPolicy(normalized.approvalPolicy);
+      setDraftSandboxProfile(normalized.sandboxProfile);
+      if (normalized.sandboxProfile === "danger-full-access") {
+        toast.success("已为本会话选择完全访问沙箱；发送首条消息后生效");
       }
       return;
     }
-    if (normalized === activeSandboxMode || sandboxModeBusy) return;
+    if (
+      (normalized.approvalPolicy === activeExecutionPolicy.approvalPolicy
+        && normalized.sandboxProfile === activeExecutionPolicy.sandboxProfile)
+      || executionPolicyBusy
+    ) return;
     const sid = activeID;
-    const previousMode = activeSandboxMode;
-    setSandboxModeBusy(true);
+    const previousPolicy = activeExecutionPolicy;
+    setExecutionPolicyBusy(true);
     // Optimistic: the composer chip must flip immediately, not one round-trip
     // later while the menu is still closing.
     setSessions((prev) => prev.map((s) => (
       s.id === sid
         ? {
             ...s,
-            sandboxMode: normalized,
-            sandboxNetwork: normalized === "danger-full-access" ? "on" : s.sandboxNetwork,
+            approvalPolicy: normalized.approvalPolicy,
+            sandboxProfile: normalized.sandboxProfile,
           }
         : s
     )));
     try {
-      await setSessionSandboxMode(sid, normalized);
+      await setSessionExecutionPolicy(
+        sid,
+        normalized.approvalPolicy,
+        normalized.sandboxProfile,
+      );
       if (sid === activeIDRef.current) {
-        toast.success(`本会话已切换为「${sandboxModeShortLabel(normalized)}」`);
+        toast.success(
+          `本会话审批：${approvalPolicyOption(normalized.approvalPolicy).label}；`
+          + `沙箱：${sandboxProfileOption(normalized.sandboxProfile).label}`,
+        );
       }
     } catch (e) {
       setSessions((prev) => prev.map((s) => (
-        s.id === sid ? { ...s, sandboxMode: previousMode } : s
+        s.id === sid
+          ? {
+              ...s,
+              approvalPolicy: previousPolicy.approvalPolicy,
+              sandboxProfile: previousPolicy.sandboxProfile,
+            }
+          : s
       )));
-      toast.error(`切换审批模式失败: ${errText(e)}`);
+      toast.error(`切换执行策略失败: ${errText(e)}`);
     } finally {
-      setSandboxModeBusy(false);
+      setExecutionPolicyBusy(false);
     }
-  }, [activeID, activeSandboxMode, sandboxModeBusy]);
+  }, [activeID, activeExecutionPolicy, executionPolicyBusy]);
 
-  const requestSandboxMode = useCallback((mode: SandboxMode) => {
-    const normalized = normalizeSandboxMode(mode);
-    if (normalized === composerSandboxMode || sandboxModeBusy) return;
-    if (normalized === "danger-full-access") {
+  const requestApprovalPolicy = useCallback((policy: ApprovalPolicy) => {
+    const normalized = normalizeApprovalPolicy(policy);
+    if (normalized === composerExecutionPolicy.approvalPolicy || executionPolicyBusy) return;
+    void applyExecutionPolicy({ ...composerExecutionPolicy, approvalPolicy: normalized });
+  }, [applyExecutionPolicy, composerExecutionPolicy, executionPolicyBusy]);
+
+  const requestSandboxProfile = useCallback((profile: SandboxProfile) => {
+    const normalized = normalizeSandboxProfile(profile);
+    if (normalized === composerExecutionPolicy.sandboxProfile || executionPolicyBusy) return;
+    const next: ExecutionPolicy = { ...composerExecutionPolicy, sandboxProfile: normalized };
+    if (sandboxNeedsRiskConfirmation(normalized)) {
       setConfirmRequest({
-        title: "切换到完全访问权限？",
-        description: "本会话将不再逐次确认，并关闭 OS 沙箱。终端可以联网并访问任意文件，请仅对可信任务启用。",
+        title: "切换到完全访问沙箱？",
+        description: "本会话的终端命令将不再经过 OS 沙箱，可访问任意文件；联网也会隐含开启。审批策略仍按当前选择独立生效。",
         confirmText: "切换",
         cancelText: "取消",
         destructive: true,
-        action: () => { void applySandboxMode(normalized); },
+        action: () => { void applyExecutionPolicy(next); },
       });
       return;
     }
-    void applySandboxMode(normalized);
-  }, [applySandboxMode, composerSandboxMode, sandboxModeBusy]);
+    void applyExecutionPolicy(next);
+  }, [applyExecutionPolicy, composerExecutionPolicy, executionPolicyBusy]);
 
   const MAX_ATT_BYTES = 6 * 1024 * 1024;
   const allowedMIME = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -3005,6 +3085,12 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 }}
               />
               </div>
+              {composerPolicyHint && (
+                <div className="mx-2 mb-1 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-1.5 text-xs leading-relaxed text-warning-text">
+                  <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>{composerPolicyHint}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5">
                 <div className="flex items-center gap-0.5">
                   <Button
@@ -3023,30 +3109,82 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        disabled={(!active && providerCount === 0) || sandboxModeBusy}
-                        aria-label={`审批模式：${composerSandboxOption.label}`}
-                        title={`本会话审批模式：${composerSandboxOption.label}。点击切换`}
+                        disabled={(!active && providerCount === 0) || executionPolicyBusy}
+                        aria-label={`本会话审批策略：${composerApprovalOption.label}`}
+                        title={`本会话审批策略：${composerApprovalOption.label}。点击切换`}
                         className={cn(
-                          "flex h-7 max-w-[168px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
-                          composerSandboxMode === "danger-full-access"
-                            ? "bg-danger-soft text-danger-text hover:bg-danger/20"
-                            : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                          ((!active && providerCount === 0) || sandboxModeBusy) && "cursor-not-allowed opacity-50",
+                          "flex h-7 max-w-[132px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-overlay hover:text-foreground",
+                          ((!active && providerCount === 0) || executionPolicyBusy) && "cursor-not-allowed opacity-50",
                         )}
                       >
-                        <ComposerModeIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                        <span className="truncate">{sandboxModeShortLabel(composerSandboxMode)}</span>
+                        <ComposerApprovalIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        <span className="truncate">{approvalPolicyShortLabel(composerExecutionPolicy.approvalPolicy)}</span>
                         <ChevronDown className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-80">
-                      <DropdownMenuLabel>本会话审批模式</DropdownMenuLabel>
+                      <DropdownMenuLabel>本会话审批策略</DropdownMenuLabel>
                       <DropdownMenuRadioGroup
-                        value={composerSandboxMode}
-                        onValueChange={(value) => requestSandboxMode(value as SandboxMode)}
+                        value={composerExecutionPolicy.approvalPolicy}
+                        onValueChange={(value) => requestApprovalPolicy(value as ApprovalPolicy)}
                       >
-                        {SANDBOX_MODE_OPTIONS.map((option) => {
-                          const Icon = SANDBOX_MODE_ICONS[option.value];
+                        {APPROVAL_OPTIONS.map((option) => {
+                          const Icon = APPROVAL_ICONS[option.value];
+                          return (
+                            <DropdownMenuRadioItem
+                              key={option.value}
+                              value={option.value}
+                              className="items-start py-2"
+                            >
+                              <div className="flex gap-2">
+                                <Icon
+                                  aria-hidden="true"
+                                  className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+                                />
+                                <div>
+                                  <div className="text-sm font-medium">{option.label}</div>
+                                  <p className="mt-0.5 whitespace-normal text-xs leading-relaxed text-muted-foreground">
+                                    {option.description}
+                                  </p>
+                                </div>
+                              </div>
+                            </DropdownMenuRadioItem>
+                          );
+                        })}
+                      </DropdownMenuRadioGroup>
+                      <div className="px-2 py-1.5 text-xs leading-relaxed text-muted-foreground">
+                        只影响当前会话；新会话的默认审批在设置中配置。
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        disabled={(!active && providerCount === 0) || executionPolicyBusy}
+                        aria-label={`本会话沙箱：${composerSandboxOption.label}`}
+                        title={`本会话沙箱：${composerSandboxOption.label}。点击切换`}
+                        className={cn(
+                          "flex h-7 max-w-[120px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
+                          composerExecutionPolicy.sandboxProfile === "danger-full-access"
+                            ? "bg-danger-soft text-danger-text hover:bg-overlay"
+                            : "text-muted-foreground hover:bg-overlay hover:text-foreground",
+                          ((!active && providerCount === 0) || executionPolicyBusy) && "cursor-not-allowed opacity-50",
+                        )}
+                      >
+                        <ComposerSandboxIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        <span className="truncate">{sandboxProfileShortLabel(composerExecutionPolicy.sandboxProfile)}</span>
+                        <ChevronDown className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-80">
+                      <DropdownMenuLabel>本会话沙箱</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={composerExecutionPolicy.sandboxProfile}
+                        onValueChange={(value) => requestSandboxProfile(value as SandboxProfile)}
+                      >
+                        {SANDBOX_PROFILE_OPTIONS.map((option) => {
+                          const Icon = SANDBOX_PROFILE_ICONS[option.value];
                           return (
                             <DropdownMenuRadioItem
                               key={option.value}
@@ -3075,7 +3213,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         })}
                       </DropdownMenuRadioGroup>
                       <div className="px-2 py-1.5 text-xs leading-relaxed text-muted-foreground">
-                        只影响当前会话；新会话的默认模式在设置中配置。
+                        {composerExecutionPolicy.sandboxProfile === "danger-full-access"
+                          ? "联网由完全访问隐含开启；切回工作区可写后恢复原网络偏好。"
+                          : "只影响当前会话；完全访问需要再次确认。"}
                       </div>
                     </DropdownMenuContent>
                   </DropdownMenu>
