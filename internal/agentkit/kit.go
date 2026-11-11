@@ -363,19 +363,10 @@ func (k *Kit) BuildTeamWithWorkspace(tc config.TeamConfig, workspace string) (ag
 // team's root agent (explicit lead or synthesized coordinator). Member agents
 // keep their own configured models and levels.
 func (k *Kit) BuildTeamWithWorkspaceAndReasoning(tc config.TeamConfig, workspace, reasoningLevel string) (agent.Agent, string, error) {
-	return k.buildTeam(tc, workspace, reasoningLevel, false)
+	return k.buildTeam(tc, workspace, reasoningLevel)
 }
 
-// BuildTeamWithWorkspaceReasoningAndAllowAll builds a team for a chat that
-// granted「允许完全访问」: every local member runs its side-effectful builtin
-// tools without the per-call HITL prompt. Pending confirmations answered
-// before the grant still honour an explicit rejection. Without allowAll it is
-// identical to BuildTeamWithWorkspaceAndReasoning.
-func (k *Kit) BuildTeamWithWorkspaceReasoningAndAllowAll(tc config.TeamConfig, workspace, reasoningLevel string, allowAll bool) (agent.Agent, string, error) {
-	return k.buildTeam(tc, workspace, reasoningLevel, allowAll)
-}
-
-func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string, allowAll bool) (agent.Agent, string, error) {
+func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) (agent.Agent, string, error) {
 	cfg := k.store.Get()
 	if strings.TrimSpace(workspace) == "" {
 		workspace = cfg.Settings.WorkspaceDir
@@ -386,11 +377,10 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string, 
 		memberByID[a.ID] = a
 	}
 	// A chat shares one sandbox/approval profile across its coordinator and
-	// every local member. allowAll only bypasses prompts; it never changes the
-	// profile's OS boundary.
+	// every local member.
 	for id, ac := range memberByID {
 		ac.SandboxNetwork = tc.SandboxNetwork
-		ac.ApplySandboxProfile(tc.SandboxMode, allowAll)
+		ac.ApplySandboxProfile(tc.SandboxMode)
 		memberByID[id] = ac
 	}
 

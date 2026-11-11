@@ -7,7 +7,7 @@ import {
   Folder, FolderOpen, FileText,
   PanelRightOpen,
   ChevronRight, ChevronDown,
-  Boxes, Coins, LockOpen,
+  Boxes, Coins, Hand, ShieldCheck, TriangleAlert,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
 } from "lucide-react";
@@ -58,18 +58,15 @@ import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
 import { SidebarFooter } from "@/components/SidebarFooter";
 import type { SettingsTab } from "@/pages/SettingsPage";
 import {
-  Chat, Config, errText, sessionAllowAllTools, setSessionAllowAllTools,
+  Chat, Config, errText, setSessionSandboxMode,
   effectiveSkills, listContextPaths,
   type AgentConfig, type AttachmentIn, type ChatSession, type TeamConfig,
   type RemoteAgentConfig, type UsageInfo, type ModelProvider, type ModelInfo, type SessionStats,
   type Project, type SkillConfig, type WorkspaceEntry,
 } from "@/lib/api";
 import { contextTooltipLines, estimateContextTokens, resolveContextUsage } from "@/lib/contextUsage";
-import {
-  ALLOW_ALL_RISK_DESCRIPTION, ALLOW_ALL_RISK_TITLE,
-  allowAllRiskAlreadyAcknowledged, allowAllToggleHint, allowAllToggleLabel,
-  rememberAllowAllRiskAcknowledged, type AllowAllSource,
-} from "@/lib/allowAll";
+import { SANDBOX_MODE_OPTIONS, sandboxModeOption, sandboxModeShortLabel } from "@/lib/sandboxMode";
+import { normalizeSandboxMode, type SandboxMode } from "@/lib/settingsModel";
 import {
   normalizeExecutionDisplayMode, type ExecutionDisplayMode,
 } from "@/lib/executionDisplay";
@@ -86,6 +83,12 @@ const RENDER_LIMIT = 200;
 // Keep the last few opened conversations in memory so switching back does not
 // flash an empty/skeleton pane before the local SQLite read returns.
 const HISTORY_CACHE_LIMIT = 8;
+
+const SANDBOX_MODE_ICONS: Record<SandboxMode, typeof Hand> = {
+  "request-approval": Hand,
+  "auto-approve": ShieldCheck,
+  "danger-full-access": TriangleAlert,
+};
 
 function rememberHistory(cache: Map<string, UIMessage[]>, sessionID: string, messages: UIMessage[]) {
   cache.delete(sessionID);
@@ -149,10 +152,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [draftProjectID, setDraftProjectID] = useState("");
   // Composer picks made before that row exists (issue #64). They stay local
   // until the first send creates the session, then send() applies them to the
-  // new chat BEFORE the first turn — so choosing a model or granting「完全访问」
-  // here is a real choice, not a discarded one.
+  // new chat BEFORE the first turn — so the model and approval mode chosen
+  // here are real choices, not discarded ones.
   const [draftModelOverride, setDraftModelOverride] = useState("");
-  const [draftAllowAll, setDraftAllowAll] = useState(false);
+  const [draftSandboxMode, setDraftSandboxMode] = useState<SandboxMode | "">("");
   const input = activeID ? (drafts[activeID] ?? "") : freshInput;
   const setInput = useCallback(
     (v: string | ((prev: string) => string)) => {
@@ -209,15 +212,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(false);
   const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
   const [editing, setEditing] = useState(false);
-  // Session-level「允许完全访问」: the composer chip and the confirmation card
-  // share this one state, whose source of truth is the backend session field.
-  // allowAllBusy covers the two-step card action (grant, then approve).
-  const [allowAll, setAllowAll] = useState(false);
-  const [allowAllBusy, setAllowAllBusy] = useState(false);
-  // The composer chip reads the draft grant before the session exists; once a
-  // chat is active its persisted grant is the single source of truth.
-  const composerAllowAll = activeID ? allowAll : draftAllowAll;
-  const allowAllIntentRef = useRef<{ sessionId: string; source: AllowAllSource; msgId?: string; callId?: string } | null>(null);
+  // Settings hold the default for NEW sessions; each session owns its current
+  // mode. The composer reads/writes that session field, never the default.
+  const [defaultSandboxMode, setDefaultSandboxMode] = useState<SandboxMode>("request-approval");
+  const [sandboxModeBusy, setSandboxModeBusy] = useState(false);
   // The risk dialog can stay open across a session switch; callbacks compare
   // against the live ID before touching the visible chat.
   const activeIDRef = useRef(activeID);
@@ -263,6 +261,12 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   }, []);
 
   const active = sessions.find((s) => s.id === activeID);
+  const activeSandboxMode = normalizeSandboxMode(active?.sandboxMode || defaultSandboxMode);
+  const composerSandboxMode = activeID
+    ? activeSandboxMode
+    : normalizeSandboxMode(draftSandboxMode || defaultSandboxMode);
+  const composerSandboxOption = sandboxModeOption(composerSandboxMode);
+  const ComposerModeIcon = SANDBOX_MODE_ICONS[composerSandboxMode];
   const executionDisplayMode = normalizeExecutionDisplayMode(globalExecutionDisplay);
 
   // fireQueued pops the session's queued message and auto-sends it (used both
@@ -306,7 +310,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     setEditing(false);
     setSessionUsage(null);
     setDraftModelOverride("");
-    setDraftAllowAll(false);
+    setDraftSandboxMode("");
   }, []);
   const createDirectSession = useCallback(() => openNewChatDraft(""), [openNewChatDraft]);
   createDirectSessionRef.current = createDirectSession;
@@ -335,6 +339,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         setProviderList(c.providers ?? []);
         setAutoSpeak(!!c.settings?.autoSpeak);
         setGlobalExecutionDisplay(normalizeExecutionDisplayMode(c.settings?.executionDisplayMode));
+        setDefaultSandboxMode(normalizeSandboxMode(c.settings?.sandboxMode));
         setGlobalWorkspace(c.settings?.workspaceDir ?? "");
         setSidebarCollapsed(!!c.settings?.sidebarCollapsed);
       })
@@ -391,27 +396,6 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       cancelled = true;
     };
   }, [activeID, active?.workspaceDir, active?.projectId]);
-
-  // Each chat carries its own「允许完全访问」grant. Reading it from the
-  // backend on every switch keeps the composer chip, the confirmation card
-  // and a restart in agreement (the field is persisted on the session).
-  useEffect(() => {
-    setAllowAll(false);
-    setAllowAllBusy(false);
-    if (!activeID) return;
-    let cancelled = false;
-    sessionAllowAllTools(activeID)
-      .then((granted) => {
-        if (!cancelled) setAllowAll(granted);
-      })
-      .catch(() => {
-        // A session that cannot be read stays on the safe side (ask).
-        if (!cancelled) setAllowAll(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeID]);
 
   // Open the newest session on first load — unless「新聊天」deliberately left
   // the page on an unsaved draft (issue #30). Any session becoming active
@@ -938,29 +922,29 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         toast.error("请先在「模型配置」页添加供应商并填入 API Key");
         return;
       }
+      const draftMode = normalizeSandboxMode(draftSandboxMode || defaultSandboxMode);
       try {
         const s = draftUsesProject(draftProjectID)
           ? await Chat.NewSessionWithProject("", "", "", draftProjectID)
           : await Chat.NewSessionWithWorkspace("", "", "", "");
         sid = s.id;
         // Apply the draft picks to the freshly created row BEFORE it becomes
-        // the active chat: the allow-all reader effect then sees the real
-        // grant instead of racing a read that predates the write (issue #64).
+        // the active chat: the composer then reads the persisted mode instead
+        // of racing a write that lands after the first render.
         try {
           if (draftModelOverride) await Chat.SetSessionModel(s.id, draftModelOverride);
-          if (draftAllowAll) {
-            await setSessionAllowAllTools(s.id, true, "composer");
-            // The write is done, so the reader effect that runs when the chat
-            // becomes active will confirm this instead of flashing it off.
-            setAllowAll(true);
-          }
+          if (draftMode !== defaultSandboxMode) await setSessionSandboxMode(s.id, draftMode);
         } catch (e) {
           // The row exists, so the first turn must still go out; surface the
           // lost pick rather than silently pretending it was applied.
           toast.error(`应用草稿设置失败: ${errText(e)}`);
         }
         setDraftModelOverride("");
-        setDraftAllowAll(false);
+        setDraftSandboxMode("");
+        setSessions((prev) => [
+          { ...s, sandboxMode: draftMode },
+          ...prev.filter((item) => item.id !== s.id),
+        ]);
         setFreshInput("");
         setDraftProjectID("");
         setActiveID(s.id);
@@ -1115,121 +1099,61 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
   }, [activeID, running, markRunning]);
 
-  // applyAllowAll is the single place that turns the session grant on. The
-  // card action must persist the grant BEFORE approving the pending call:
-  // the resumed run is rebuilt from the session and would otherwise ask
-  // again. Both entry points funnel through here so they cannot disagree.
-  const applyAllowAll = useCallback(async (intent: { sessionId: string; source: AllowAllSource; msgId?: string; callId?: string }) => {
-    const sid = intent.sessionId;
-    rememberAllowAllRiskAcknowledged((k, v) => localStorage.setItem(k, v));
-    if (!sid) {
-      // The draft has no session row yet (issue #64). Remember the grant on the
-      // composer; send() persists it when the first message creates the chat.
-      setDraftAllowAll(true);
-      toast.success("已开启完全访问：本会话不再逐次确认写文件与执行命令");
-      return;
-    }
-    const visible = () => sid === activeIDRef.current;
-    if (visible()) setAllowAll(true);
-    if (intent.source === "composer") {
-      try {
-        await setSessionAllowAllTools(sid, true, "composer");
-        toast.success("已开启完全访问：本会话不再逐次确认写文件与执行命令");
-      } catch (e) {
-        if (visible()) setAllowAll(false);
-        toast.error(`开启完全访问失败: ${errText(e)}`);
-      }
-      return;
-    }
-    if (!intent.callId) return;
-    setAllowAllBusy(true);
-    markRunning(sid, true);
-    if (visible()) {
-      setMessages((prev) => prev.map((m) => (m.id === intent.msgId ? { ...m, confirmStatus: "approved" } : m)));
-    }
-    let granted = false;
-    try {
-      await setSessionAllowAllTools(sid, true, "confirm_card");
-      granted = true;
-      await Chat.ConfirmToolCall(sid, intent.callId, true);
-    } catch (e) {
-      if (!streamedErrorRef.current) toast.error(`确认失败: ${errText(e)}`);
-      streamedErrorRef.current = false;
-      if (visible()) {
-        setAllowAll(false);
-        setMessages((prev) => prev.map((m) => (m.id === intent.msgId && m.kind === "confirm" ? { ...m, confirmStatus: "pending" } : m)));
-      }
-      markRunning(sid, false);
-      // Best-effort rollback so a half-applied card action cannot leave the
-      // backend granting access while the UI shows it off.
-      if (granted) {
-        try {
-          await setSessionAllowAllTools(sid, false, "confirm_card");
-        } catch { /* the toggle can still revoke it later */ }
-      }
-    } finally {
-      setAllowAllBusy(false);
-    }
-  }, [markRunning]);
-
-  // requestAllowAll shows the one-time risk notice before the grant takes
-  // effect; an already acknowledged device goes straight through. The session
-  // is captured now, so switching chats while the dialog is open still acts on
-  // the chat whose card/switch was used.
-  const requestAllowAll = useCallback((intent: { source: AllowAllSource; msgId?: string; callId?: string }) => {
-    // An empty activeID is the draft composer: the risk gate runs now and the
-    // grant is carried into the session created by the first send (issue #64).
-    const full = { ...intent, sessionId: activeID };
-    if (allowAllRiskAlreadyAcknowledged((k) => localStorage.getItem(k))) {
-      void applyAllowAll(full);
-      return;
-    }
-    allowAllIntentRef.current = full;
-    setConfirmRequest({
-      title: ALLOW_ALL_RISK_TITLE,
-      description: ALLOW_ALL_RISK_DESCRIPTION,
-      confirmText: "确认开启",
-      cancelText: "取消",
-      destructive: false,
-      action: () => {
-        const pending = allowAllIntentRef.current;
-        allowAllIntentRef.current = null;
-        if (pending) void applyAllowAll(pending);
-      },
-    });
-  }, [activeID, applyAllowAll]);
-
-  // allowAllFromCard answers the current confirmation and grants the session
-  // in one click (issue #48): approve once, then stop asking.
-  const allowAllFromCard = useCallback((msgId: string, callId: string | undefined) => {
-    if (!activeID || !callId || running) return;
-    requestAllowAll({ source: "confirm_card", msgId, callId });
-  }, [activeID, running, requestAllowAll]);
-
-  // toggleAllowAll is the composer switch: turning the grant off restores
-  // per-call approval for the following turns.
-  const toggleAllowAll = useCallback(() => {
-    if (allowAllBusy) return;
-    const granted = activeID ? allowAll : draftAllowAll;
-    if (!granted) {
-      requestAllowAll({ source: "composer" });
-      return;
-    }
+  const applySandboxMode = useCallback(async (mode: SandboxMode) => {
+    const normalized = normalizeSandboxMode(mode);
     if (!activeID) {
-      // Draft grant: there is nothing to revoke on the backend yet.
-      setDraftAllowAll(false);
-      toast.success("已关闭完全访问：写文件与执行命令恢复逐次确认");
+      setDraftSandboxMode(normalized);
+      if (normalized === "danger-full-access") {
+        toast.success("已为本会话选择完全访问权限；发送首条消息后生效");
+      }
       return;
     }
+    if (normalized === activeSandboxMode || sandboxModeBusy) return;
     const sid = activeID;
-    setAllowAll(false);
-    setSessionAllowAllTools(sid, false, "composer")
-      .then(() => toast.success("已关闭完全访问：写文件与执行命令恢复逐次确认"))
-      .catch((e) => {
-        setAllowAll(true);
-        toast.error(`关闭完全访问失败: ${errText(e)}`);
+    const previousMode = activeSandboxMode;
+    setSandboxModeBusy(true);
+    // Optimistic: the composer chip must flip immediately, not one round-trip
+    // later while the menu is still closing.
+    setSessions((prev) => prev.map((s) => (
+      s.id === sid
+        ? {
+            ...s,
+            sandboxMode: normalized,
+            sandboxNetwork: normalized === "danger-full-access" ? "on" : s.sandboxNetwork,
+          }
+        : s
+    )));
+    try {
+      await setSessionSandboxMode(sid, normalized);
+      if (sid === activeIDRef.current) {
+        toast.success(`本会话已切换为「${sandboxModeShortLabel(normalized)}」`);
+      }
+    } catch (e) {
+      setSessions((prev) => prev.map((s) => (
+        s.id === sid ? { ...s, sandboxMode: previousMode } : s
+      )));
+      toast.error(`切换审批模式失败: ${errText(e)}`);
+    } finally {
+      setSandboxModeBusy(false);
+    }
+  }, [activeID, activeSandboxMode, sandboxModeBusy]);
+
+  const requestSandboxMode = useCallback((mode: SandboxMode) => {
+    const normalized = normalizeSandboxMode(mode);
+    if (normalized === composerSandboxMode || sandboxModeBusy) return;
+    if (normalized === "danger-full-access") {
+      setConfirmRequest({
+        title: "切换到完全访问权限？",
+        description: "本会话将不再逐次确认，并关闭 OS 沙箱。终端可以联网并访问任意文件，请仅对可信任务启用。",
+        confirmText: "切换",
+        cancelText: "取消",
+        destructive: true,
+        action: () => { void applySandboxMode(normalized); },
       });
-  }, [activeID, allowAll, draftAllowAll, allowAllBusy, requestAllowAll]);
+      return;
+    }
+    void applySandboxMode(normalized);
+  }, [applySandboxMode, composerSandboxMode, sandboxModeBusy]);
 
   const MAX_ATT_BYTES = 6 * 1024 * 1024;
   const allowedMIME = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -1953,8 +1877,6 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           filterQ={filterQ}
           displayMode={executionDisplayMode}
           onConfirm={answerConfirm}
-          onAllowAll={allowAllFromCard}
-          allowAllBusy={allowAllBusy}
         />
       );
     }
@@ -1971,8 +1893,6 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         onEdit={startEdit}
         canEdit={editFlags.get(item.message.id) === true && !running && !!activeID}
         onConfirm={answerConfirm}
-        onAllowAll={allowAllFromCard}
-        allowAllBusy={allowAllBusy}
         sessionID={activeID}
         filterQ={filterQ}
       />
@@ -3099,25 +3019,66 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
-                  <button
-                    type="button"
-                    onClick={toggleAllowAll}
-                    disabled={(!active && providerCount === 0) || allowAllBusy}
-                    aria-pressed={composerAllowAll}
-                    aria-label={allowAllToggleLabel(composerAllowAll)}
-                    title={allowAllToggleHint(composerAllowAll)}
-                    className={cn(
-                      "flex h-7 max-w-[168px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
-                      composerAllowAll
-                        ? "bg-warning/15 text-warning hover:bg-warning/25 dark:text-warning"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                      ((!active && providerCount === 0) || allowAllBusy) && "cursor-not-allowed opacity-50",
-                    )}
-                  >
-                    <LockOpen className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{allowAllToggleLabel(composerAllowAll)}</span>
-                    {composerAllowAll && <X className="h-3 w-3 shrink-0 opacity-70" />}
-                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        disabled={(!active && providerCount === 0) || sandboxModeBusy}
+                        aria-label={`审批模式：${composerSandboxOption.label}`}
+                        title={`本会话审批模式：${composerSandboxOption.label}。点击切换`}
+                        className={cn(
+                          "flex h-7 max-w-[168px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
+                          composerSandboxMode === "danger-full-access"
+                            ? "bg-danger-soft text-danger-text hover:bg-danger/20"
+                            : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                          ((!active && providerCount === 0) || sandboxModeBusy) && "cursor-not-allowed opacity-50",
+                        )}
+                      >
+                        <ComposerModeIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        <span className="truncate">{sandboxModeShortLabel(composerSandboxMode)}</span>
+                        <ChevronDown className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-80">
+                      <DropdownMenuLabel>本会话审批模式</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={composerSandboxMode}
+                        onValueChange={(value) => requestSandboxMode(value as SandboxMode)}
+                      >
+                        {SANDBOX_MODE_OPTIONS.map((option) => {
+                          const Icon = SANDBOX_MODE_ICONS[option.value];
+                          return (
+                            <DropdownMenuRadioItem
+                              key={option.value}
+                              value={option.value}
+                              className="items-start py-2"
+                            >
+                              <div className="flex gap-2">
+                                <Icon
+                                  aria-hidden="true"
+                                  className={cn(
+                                    "mt-0.5 h-4 w-4 shrink-0",
+                                    option.danger ? "text-danger-text" : "text-muted-foreground",
+                                  )}
+                                />
+                                <div>
+                                  <div className={cn("text-sm font-medium", option.danger && "text-danger-text")}>
+                                    {option.label}
+                                  </div>
+                                  <p className="mt-0.5 whitespace-normal text-xs leading-relaxed text-muted-foreground">
+                                    {option.description}
+                                  </p>
+                                </div>
+                              </div>
+                            </DropdownMenuRadioItem>
+                          );
+                        })}
+                      </DropdownMenuRadioGroup>
+                      <div className="px-2 py-1.5 text-xs leading-relaxed text-muted-foreground">
+                        只影响当前会话；新会话的默认模式在设置中配置。
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
                   {contextTip && (
@@ -3279,12 +3240,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       )}
 
       {/* Session stats dialog */}
-      <ConfirmDialog request={confirmRequest} onClose={() => {
-        setConfirmRequest(null);
-        // Cancelling the risk notice must also drop the pending grant, or a
-        // later unrelated dialog could silently enable full access.
-        allowAllIntentRef.current = null;
-      }} />
+      <ConfirmDialog request={confirmRequest} onClose={() => setConfirmRequest(null)} />
       <Dialog open={statsOpen} onOpenChange={setStatsOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>

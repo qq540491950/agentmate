@@ -148,6 +148,8 @@ describe("settings model", () => {
       compactionInterval: 0,
       httpProxy: "",
       toolsAudit: false,
+      sandboxMode: "request-approval",
+      sandboxNetwork: "off",
     } as Settings;
     const withoutOptional = { ...baseSettings } as Settings;
     delete (withoutOptional as Partial<Settings>).autoTitle;
@@ -155,6 +157,8 @@ describe("settings model", () => {
     delete (withoutOptional as Partial<Settings>).compactionInterval;
     delete (withoutOptional as Partial<Settings>).httpProxy;
     delete (withoutOptional as Partial<Settings>).toolsAudit;
+    delete (withoutOptional as Partial<Settings>).sandboxMode;
+    delete (withoutOptional as Partial<Settings>).sandboxNetwork;
 
     expect(isSettingsDirty(withoutOptional, withDefaults)).toBe(false);
     expect(isSettingsDirty(withDefaults, { ...withDefaults, a2aPort: 8080 })).toBe(true);

@@ -62,26 +62,14 @@ export type Settings = configModels.Settings;
 export type ChatSession = configModels.ChatSession;
 export type Project = configModels.Project;
 
-// Session-level HITL permission ("allow complete access"). The backend RPCs
-// are newer than the committed bindings snapshot — frontend/bindings is a
-// shared file the integrator regenerates after merging Go changes — so call
-// them by fully qualified method name through the Wails runtime. Method names
-// are the stable contract the generator itself writes into the bindings.
+// Session approval-mode RPC. The backend method is newer than the committed
+// bindings snapshot, so call it by fully qualified name through the Wails
+// runtime; the method name is the stable contract the generator writes.
 const chatServiceName = "agentmate/internal/services.ChatService";
 
-/** sessionAllowAllTools reads this chat's「允许完全访问」grant. */
-export function sessionAllowAllTools(sessionID: string): Promise<boolean> {
-  return Call.ByName(`${chatServiceName}.SessionAllowAllTools`, sessionID)
-    .then((granted: unknown) => granted === true);
-}
-
-/** setSessionAllowAllTools grants/revokes the session grant, recording the switch source. */
-export function setSessionAllowAllTools(
-  sessionID: string,
-  allowAll: boolean,
-  source: "confirm_card" | "composer",
-): Promise<void> {
-  return Call.ByName(`${chatServiceName}.SetSessionAllowAllTools`, sessionID, allowAll, source)
+/** setSessionSandboxMode persists the current chat's approval/sandbox mode. */
+export function setSessionSandboxMode(sessionID: string, mode: string): Promise<void> {
+  return Call.ByName(`${chatServiceName}.SetSessionSandboxMode`, sessionID, mode, "composer")
     .then(() => undefined);
 }
 

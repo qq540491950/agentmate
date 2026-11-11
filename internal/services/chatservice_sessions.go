@@ -42,6 +42,8 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 		title = "新对话"
 	}
 	id := newID("sess_")
+	cfg := c.S.Store.Get()
+	settings := cfg.Settings
 	createdDir := ""
 	c.workspaceMu.Lock()
 	defer c.workspaceMu.Unlock()
@@ -58,7 +60,7 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 			return config.ChatSession{}, fmt.Errorf("项目不存在或已被删除")
 		}
 	} else if strings.TrimSpace(workspaceDir) == "" {
-		global := strings.TrimSpace(c.S.Store.Get().Settings.WorkspaceDir)
+		global := strings.TrimSpace(settings.WorkspaceDir)
 		if global == "" {
 			return config.ChatSession{}, fmt.Errorf("工作区目录未配置")
 		}
@@ -75,7 +77,7 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 		return config.ChatSession{}, err
 	}
 	if projectID == "" {
-		if err := projectRootConflict(c.S.Store.Get(), workspaceDir); err != nil {
+		if err := projectRootConflict(cfg, workspaceDir); err != nil {
 			cleanupCreatedDir(createdDir)
 			return config.ChatSession{}, err
 		}
@@ -84,7 +86,7 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 		// sessions bound to that root before the directory was registered as a
 		// project — those must not block new project chats (issue #24: the
 		// project row's + reported "工作区已被任务…使用" and created nothing).
-		if err := workspaceConflict(c.S.Store.Get(), workspaceDir, ""); err != nil {
+		if err := workspaceConflict(cfg, workspaceDir, ""); err != nil {
 			cleanupCreatedDir(createdDir)
 			return config.ChatSession{}, err
 		}
@@ -102,14 +104,16 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 		storedWorkspace = ""
 	}
 	cs := config.ChatSession{
-		ID:           id,
-		Title:        title,
-		TargetType:   targetType,
-		TargetID:     targetID,
-		CreatedAt:    nowUTC(),
-		UpdatedAt:    nowUTC(),
-		WorkspaceDir: storedWorkspace,
-		ProjectID:    projectID,
+		ID:             id,
+		Title:          title,
+		TargetType:     targetType,
+		TargetID:       targetID,
+		CreatedAt:      nowUTC(),
+		UpdatedAt:      nowUTC(),
+		WorkspaceDir:   storedWorkspace,
+		ProjectID:      projectID,
+		SandboxMode:    config.NormalizeSandboxMode(settings.SandboxMode),
+		SandboxNetwork: config.NormalizeSandboxNetwork(settings.SandboxNetwork),
 	}
 	cleanup := func() {
 		cleanupCreatedDir(createdDir)
@@ -361,43 +365,59 @@ func (c *ChatService) SetSessionReasoningLevel(sessionID, level string) error {
 	return err
 }
 
-// SetSessionAllowAllTools grants or revokes this chat's「允许完全访问」
-// permission. While granted, side-effectful builtin tools run without the
-// per-call HITL prompt; the switch is persisted on the session (so switching
-// chats or restarting keeps it) and never affects other sessions. source
-// records where it was flipped — the confirmation card or the composer
-// switch — in the audit trail.
-func (c *ChatService) SetSessionAllowAllTools(sessionID string, allowAll bool, source string) error {
-	err := c.mutateSession(sessionID, func(s *config.ChatSession) { s.AllowAllTools = allowAll })
+// SetSessionSandboxMode changes this chat's current approval/sandbox profile.
+// The value is persisted, so switching chats or restarting keeps it; other
+// sessions are untouched. It applies from the next turn when a turn is
+// already running.
+func (c *ChatService) SetSessionSandboxMode(sessionID, mode, source string) error {
+	normalized, err := validateSessionSandboxMode(mode)
+	if err != nil {
+		return err
+	}
+	err = c.mutateSession(sessionID, func(s *config.ChatSession) {
+		s.SandboxMode = normalized
+		if normalized == config.SandboxModeDangerFullAccess {
+			s.SandboxNetwork = config.SandboxNetworkOn
+		}
+	})
 	if err == nil {
-		c.audit(sessionID, "session_allow_all_tools_set", "user", "session",
-			mustJSON(map[string]any{"allowAll": allowAll, "source": normalizeAllowAllSource(source)}), "")
+		c.audit(sessionID, "session_sandbox_mode_set", "user", "session",
+			mustJSON(map[string]any{"mode": normalized, "source": normalizeSandboxModeSource(source)}), "")
 	}
 	return err
 }
 
-// SessionAllowAllTools reports whether the chat currently runs side-effectful
-// builtin tools without per-call confirmation. Unknown IDs are an error, like
-// the other session-setting RPCs.
-func (c *ChatService) SessionAllowAllTools(sessionID string) (bool, error) {
-	for _, s := range c.S.Store.Get().Sessions {
+// SessionSandboxMode reports the mode the chat will use on its next turn.
+// Unknown IDs are an error, like the other session-setting RPCs.
+func (c *ChatService) SessionSandboxMode(sessionID string) (string, error) {
+	cfg := c.S.Store.Get()
+	for _, s := range cfg.Sessions {
 		if s.ID == sessionID {
-			return s.AllowAllTools, nil
+			return s.EffectiveSandboxMode(cfg), nil
 		}
 	}
-	return false, fmt.Errorf("会话 %q 不存在", sessionID)
+	return "", fmt.Errorf("会话 %q 不存在", sessionID)
 }
 
-// normalizeAllowAllSource keeps audit payloads to the two switch locations;
-// anything else (older client, future caller) is recorded as unknown rather
-// than echoing arbitrary input into the log.
-func normalizeAllowAllSource(source string) string {
-	switch strings.TrimSpace(source) {
-	case "confirm_card", "composer":
-		return strings.TrimSpace(source)
+func validateSessionSandboxMode(mode string) (string, error) {
+	raw := strings.ToLower(strings.TrimSpace(mode))
+	switch raw {
+	case config.SandboxModeRequestApproval, "request", "workspace-write":
+		return config.SandboxModeRequestApproval, nil
+	case config.SandboxModeAutoApprove, "auto":
+		return config.SandboxModeAutoApprove, nil
+	case config.SandboxModeDangerFullAccess:
+		return config.SandboxModeDangerFullAccess, nil
 	default:
-		return "unknown"
+		return "", fmt.Errorf("未知审批模式 %q", mode)
 	}
+}
+
+func normalizeSandboxModeSource(source string) string {
+	if strings.TrimSpace(source) == "composer" {
+		return "composer"
+	}
+	return "unknown"
 }
 
 // ArchiveSession toggles the archived flag of a session (archived sessions
@@ -653,15 +673,17 @@ func (c *ChatService) ForkSession(sessionID string) (config.ChatSession, error) 
 	}
 
 	branch := config.ChatSession{
-		ID:           id,
-		Title:        strings.TrimSpace(src.Title + "（分支）"),
-		TargetType:   src.TargetType,
-		TargetID:     src.TargetID,
-		CreatedAt:    nowUTC(),
-		UpdatedAt:    nowUTC(),
-		ForkedFrom:   sessionID,
-		WorkspaceDir: src.WorkspaceDir,
-		ProjectID:    src.ProjectID,
+		ID:             id,
+		Title:          strings.TrimSpace(src.Title + "（分支）"),
+		TargetType:     src.TargetType,
+		TargetID:       src.TargetID,
+		CreatedAt:      nowUTC(),
+		UpdatedAt:      nowUTC(),
+		ForkedFrom:     sessionID,
+		WorkspaceDir:   src.WorkspaceDir,
+		ProjectID:      src.ProjectID,
+		SandboxMode:    src.EffectiveSandboxMode(cfg),
+		SandboxNetwork: src.EffectiveSandboxNetwork(cfg),
 	}
 	err := c.S.Store.Update(func(cfg *config.Config) {
 		cfg.Sessions = append([]config.ChatSession{branch}, cfg.Sessions...)

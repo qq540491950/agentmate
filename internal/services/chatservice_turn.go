@@ -376,11 +376,10 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		}
 	}
 
-	// Build the agent tree from the current configuration. A session that
-	// granted「允许完全访问」runs its side-effectful builtin tools without the
-	// HITL prompt; the grant is applied here so direct chats, @-routed turns
-	// and every local team member share one source of truth.
-	allowAll := target.AllowAllTools
+	// Build the agent tree from the current configuration. The session's
+	// approval mode is the single source of truth for both HITL prompts and
+	// the OS sandbox boundary; direct chats, @-routed turns and every local
+	// team member share it.
 	sandboxMode := target.EffectiveSandboxMode(cfg)
 	sandboxNetwork := target.EffectiveSandboxNetwork(cfg)
 	var root agent.Agent
@@ -394,13 +393,13 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			return derr
 		}
 		ac.SandboxNetwork = sandboxNetwork
-		ac.ApplySandboxProfile(sandboxMode, allowAll)
+		ac.ApplySandboxProfile(sandboxMode)
 		root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(ac, target.ModelOverride, workspace, applyLevel)
 	case "team":
 		for _, t := range cfg.Teams {
 			if t.ID == target.TargetID {
 				t.SandboxMode, t.SandboxNetwork = sandboxMode, sandboxNetwork
-				root, _, err = c.S.Kit.BuildTeamWithWorkspaceReasoningAndAllowAll(t, workspace, applyLevel, allowAll)
+				root, _, err = c.S.Kit.BuildTeamWithWorkspaceAndReasoning(t, workspace, applyLevel)
 				break
 			}
 		}
@@ -423,7 +422,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				// Per-session model override (chat-header picker): empty keeps
 				// the agent's configured model.
 				a.SandboxNetwork = sandboxNetwork
-				a.ApplySandboxProfile(sandboxMode, allowAll)
+				a.ApplySandboxProfile(sandboxMode)
 				root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(a, target.ModelOverride, workspace, applyLevel)
 				break
 			}

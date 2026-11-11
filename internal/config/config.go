@@ -469,8 +469,9 @@ type Settings struct {
 	// ToolsAudit writes a JSONL audit trail of every tool call/result to the
 	// app logs directory.
 	ToolsAudit bool `json:"toolsAudit,omitempty"`
-	// SandboxMode selects the local tool approval/sandbox profile:
-	// request-approval (default), auto-approve, or danger-full-access.
+	// SandboxMode is the default approval/sandbox profile copied into every
+	// newly created chat: request-approval (default), auto-approve, or
+	// danger-full-access. Existing chats keep their own snapshot.
 	SandboxMode string `json:"sandboxMode,omitempty"`
 	// SandboxNetwork selects the child-process network policy: off (default)
 	// or on.
@@ -624,17 +625,9 @@ type ChatSession struct {
 	// effective model's Reasoning table; empty = the model's default level).
 	// It is a per-chat UI choice and never writes back to provider config.
 	ReasoningLevel string `json:"reasoningLevel,omitempty"`
-	// AllowAllTools is this chat's「允许完全访问」permission: while true,
-	// side-effectful builtin tools (workspace writes, run_command) run without
-	// the per-call HITL confirmation prompt. It is session-scoped and
-	// persisted, so switching chats or restarting keeps the grant; new chats
-	// default to off and the composer switch can revoke it. Pending
-	// confirmations answered before the grant still honour an explicit
-	// rejection.
-	AllowAllTools bool `json:"allowAllTools,omitempty"`
-	// SandboxMode/SandboxNetwork override the global sandbox profile for this
-	// chat. Empty inherits Settings. AllowAllTools stays approval-only and
-	// never changes these fields.
+	// SandboxMode/SandboxNetwork are this chat's current approval and network
+	// boundary. New chats snapshot the global defaults; changing Settings
+	// afterwards never rewrites existing chats.
 	SandboxMode    string `json:"sandboxMode,omitempty"`
 	SandboxNetwork string `json:"sandboxNetwork,omitempty"`
 	// WorkspaceDir is the task-level directory used by file tools, prompt
@@ -705,23 +698,15 @@ func (s ChatSession) EffectiveSandboxNetwork(cfg Config) string {
 // request-approval asks for every write/command, auto-approve keeps the
 // agent's configured prompts (shell adds risk-based prompts at tool build
 // time), and danger-full-access removes both the sandbox and the prompts.
-// allowAll is the per-session approval bypass and never changes SandboxMode.
-func (a *AgentConfig) ApplySandboxProfile(mode string, allowAll bool) {
+func (a *AgentConfig) ApplySandboxProfile(mode string) {
 	mode = NormalizeSandboxMode(mode)
 	a.SandboxMode = mode
 	switch mode {
 	case SandboxModeDangerFullAccess:
 		a.ConfirmTools = nil
 	case SandboxModeRequestApproval:
-		if allowAll {
-			a.ConfirmTools = nil
-			return
-		}
 		a.ConfirmTools = []string{"files", "shell"}
-	default: // auto-approve
-		if allowAll {
-			a.ConfirmTools = nil
-		}
+	default: // auto-approve keeps the agent's explicit extra prompts
 	}
 }
 
@@ -865,6 +850,22 @@ func Default() Config {
 // provider-level prices move down to each model, and nameless model entries
 // are dropped. Runs once per load; the result is persisted by Open.
 func (c *Config) migrateLegacy() {
+	// Sessions created before approval modes existed have no snapshot. Give
+	// each one the current default exactly once, so later Settings changes do
+	// not retroactively alter an existing chat's boundary.
+	for i := range c.Sessions {
+		s := &c.Sessions[i]
+		if strings.TrimSpace(s.SandboxMode) == "" {
+			s.SandboxMode = NormalizeSandboxMode(c.Settings.SandboxMode)
+		} else {
+			s.SandboxMode = NormalizeSandboxMode(s.SandboxMode)
+		}
+		if strings.TrimSpace(s.SandboxNetwork) == "" {
+			s.SandboxNetwork = NormalizeSandboxNetwork(c.Settings.SandboxNetwork)
+		} else {
+			s.SandboxNetwork = NormalizeSandboxNetwork(s.SandboxNetwork)
+		}
+	}
 	for i := range c.Providers {
 		p := &c.Providers[i]
 		if p.PriceIn > 0 || p.PriceOut > 0 {

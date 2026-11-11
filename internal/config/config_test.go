@@ -134,22 +134,17 @@ func TestSandboxModeNormalizationAndProfiles(t *testing.T) {
 	}
 
 	agent := AgentConfig{ConfirmTools: []string{"files"}}
-	agent.ApplySandboxProfile(SandboxModeRequestApproval, false)
+	agent.ApplySandboxProfile(SandboxModeRequestApproval)
 	if agent.SandboxMode != SandboxModeRequestApproval || !reflect.DeepEqual(agent.ConfirmTools, []string{"files", "shell"}) {
 		t.Fatalf("request profile = %+v", agent)
 	}
-	agent.ApplySandboxProfile(SandboxModeAutoApprove, false)
+	agent.ApplySandboxProfile(SandboxModeAutoApprove)
 	if agent.SandboxMode != SandboxModeAutoApprove || !reflect.DeepEqual(agent.ConfirmTools, []string{"files", "shell"}) {
 		t.Fatalf("auto profile should preserve agent prompts: %+v", agent)
 	}
-	agent.ApplySandboxProfile(SandboxModeDangerFullAccess, false)
+	agent.ApplySandboxProfile(SandboxModeDangerFullAccess)
 	if agent.SandboxMode != SandboxModeDangerFullAccess || agent.ConfirmTools != nil {
 		t.Fatalf("full profile = %+v", agent)
-	}
-	agent.ConfirmTools = []string{"files", "shell"}
-	agent.ApplySandboxProfile(SandboxModeRequestApproval, true)
-	if agent.ConfirmTools != nil {
-		t.Fatalf("allowAll should clear prompts: %+v", agent)
 	}
 }
 
@@ -161,6 +156,32 @@ func TestSettingsNormalizeMigratesLegacySandboxMode(t *testing.T) {
 	}
 	if settings.SandboxNetwork != SandboxNetworkOff {
 		t.Fatalf("empty network normalized to %q", settings.SandboxNetwork)
+	}
+}
+
+func TestLegacySessionsSnapshotSandboxModeOnce(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	raw := `{"settings":{"sandboxMode":"auto-approve","sandboxNetwork":"on"},"sessions":[{"id":"sess_old","title":"旧会话"}]}`
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := store.Get()
+	if len(got.Sessions) != 1 || got.Sessions[0].SandboxMode != SandboxModeAutoApprove || got.Sessions[0].SandboxNetwork != SandboxNetworkOn {
+		t.Fatalf("legacy session snapshot = %+v", got.Sessions)
+	}
+	if err := store.Update(func(cfg *Config) {
+		cfg.Settings.SandboxMode = SandboxModeRequestApproval
+		cfg.Settings.SandboxNetwork = SandboxNetworkOff
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get().Sessions[0]; got.SandboxMode != SandboxModeAutoApprove || got.SandboxNetwork != SandboxNetworkOn {
+		t.Fatalf("settings rewrite changed legacy session: %+v", got)
 	}
 }
 

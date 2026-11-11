@@ -4,6 +4,25 @@
 
 ## 视觉测试与体验设计
 
+### 第二百五十二轮迭代：审批模式改为“新会话默认 + 当前会话切换”（已实施）
+
+依据：用户指出审批模式不应作为设置页里的全局当前值，也不应继续由输入框的旧「允许完全访问」布尔开关承担。设置页只应定义“新会话默认模式”，当前会话的模式必须在会话内显式选择和持久化。临时探针确认了两处断点：新会话的 `SandboxMode` 为空；旧 `AllowAllTools=true` 的会话实际仍是 `request-approval`。
+
+**实现要点**
+
+- 删除 `ChatSession.AllowAllTools`、`SetSessionAllowAllTools` / `SessionAllowAllTools` 及整套旧 composer/确认卡授权逻辑；审批模式成为唯一状态。
+- 新建会话在 `newSession` 中快照 `Settings.SandboxMode` / `SandboxNetwork`，分叉会话继承源会话；此后修改设置不再影响已有会话。
+- 新增 `SetSessionSandboxMode(sessionID, mode, source)` / `SessionSandboxMode(sessionID)`，做严格模式校验、持久化与 `session_sandbox_mode_set` 审计；运行中的下一轮生效。
+- Composer 左下角改为三档菜单（`请求批准` / `帮我批准` / `完全访问权限`），草稿先本地保存、首条消息创建会话后写入后端；切换到完全访问前弹出风险确认。
+- 设置页的审批模式卡从「网络与服务」移到「对话与上下文」，标题改为「新会话默认审批模式」；网络与服务只保留新会话默认联网开关。
+- 配置加载时为旧会话一次性补齐 `sandboxMode` / `sandboxNetwork` 快照；之后修改默认值不再改写已有会话。
+- Agent 编辑页的额外确认保留为「帮我批准」下的更严格覆盖；请求批准仍强制全部确认，完全访问仍全部免确认。
+
+**测试证据**
+
+- `go test ./internal/config ./internal/agentkit ./internal/services` 全绿；新增会话快照、模式独立持久化/审计、请求批准确认、完全访问免确认用例。
+- `npx tsc --noEmit`、`npm test`（32 文件 / 247 用例）、`npm run build`、`wails3 build` 通过。
+
 ### 第二百五十一轮迭代：三档工具审批模式与风险命令确认（已实施）
 
 依据：用户对照 Codex 的操作批准配置，要求把现有“工作区可写 / 完全访问”二选一完善为“请求批准 / 帮我批准 / 完全访问权限”。本轮把审批模式与 OS 沙箱统一为三个 profile，并补上完全访问的一次性风险确认。

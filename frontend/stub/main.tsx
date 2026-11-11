@@ -46,6 +46,8 @@ const seedConfig = {
     embeddingProviderId: "prov_1",
     embeddingModel: "text-embedding-3-small",
     executionDisplayMode: "auto",
+    sandboxMode: "request-approval",
+    sandboxNetwork: "off",
     httpProxy: "",
     autoRemember: false,
     toolsAudit: false,
@@ -183,9 +185,9 @@ const seedConfig = {
     { id: "sess_pm_compact", title: "让侧栏项目与对话更紧凑", targetType: "", targetId: "", createdAt: iso(-1, 16), updatedAt: iso(-1, 16), projectId: "proj_beta" },
     { id: "sess_pm_regression", title: "补充项目树视觉回归", targetType: "", targetId: "", createdAt: iso(-1, 15), updatedAt: iso(-1, 15), projectId: "proj_beta" },
     { id: "sess_confirm", title: "需要确认的写入", targetType: "agent", targetId: "agent_1", createdAt: "2026-09-18T01:00:00Z", updatedAt: "2026-09-18T01:05:00Z", modelOverride: "gpt-5-mini", workspaceDir: "/tmp/agentmate-workspace/tasks/sess_confirm" },
-    { id: "sess_process", title: "执行过程四档演示", preview: "检查、测试与文件写入均已完成。", targetType: "", targetId: "", createdAt: iso(0, 9), updatedAt: iso(0, 10) },
+    { id: "sess_process", title: "执行过程四档演示", preview: "检查、测试与文件写入均已完成。", targetType: "", targetId: "", createdAt: iso(0, 9), updatedAt: iso(0, 10), sandboxMode: "danger-full-access" },
     { id: "sess_plain", title: "普通对话", targetType: "team", targetId: "team_1", createdAt: "2026-09-17T09:00:00Z", updatedAt: "2026-09-17T09:10:00Z" },
-    { id: "sess_direct", title: "我如何选择模型呢？", targetType: "", targetId: "", createdAt: "2026-11-01T00:45:00Z", updatedAt: "2026-11-01T00:48:00Z" },
+    { id: "sess_direct", title: "我如何选择模型呢？", targetType: "", targetId: "", createdAt: "2026-11-01T00:45:00Z", updatedAt: "2026-11-01T00:48:00Z", sandboxMode: "auto-approve" },
     // Sidebar-grouping fixtures: dates relative to load time so the time
     // buckets (置顶/今天/昨天/7天内/更早) always have members to show.
     { id: "sess_pinned", title: "置顶：本周迭代计划", targetType: "", targetId: "", createdAt: "2026-10-20T09:00:00Z", updatedAt: "2026-10-20T10:00:00Z", pinned: true },
@@ -309,9 +311,9 @@ const histories: Record<string, any[]> = {
 };
 
 let pendingAnswer = 0;
-// Session-level「允许完全访问」grants (issue #48), merged into ListSessions
-// so switching chats in the stub restores each chat's own switch.
-const allowAllSessions = new Set<string>();
+// Session-level approval modes, merged into ListSessions so switching chats
+// in the stub restores each chat's own mode.
+const sessionSandboxModes = new Map<string, string>();
 type TaskSnapshotMode = "success" | "empty" | "error" | "truncated" | "slow";
 // Browser walks can request empty/error/truncated/slow states with ?taskMode=.
 const stubParams = new URLSearchParams(window.location.search);
@@ -360,8 +362,12 @@ const handlers: Record<string, (args: any[]) => any> = {
   },
   // ListSessions
   [svc("ChatService", "ListSessions")]: () => {
-    (window as any).__lastList = JSON.parse(JSON.stringify(seedConfig.sessions));
-    return seedConfig.sessions;
+    const sessions = seedConfig.sessions.map((session) => ({
+      ...session,
+      sandboxMode: sessionSandboxModes.get(session.id) ?? (session as any).sandboxMode ?? "request-approval",
+    }));
+    (window as any).__lastList = JSON.parse(JSON.stringify(sessions));
+    return sessions;
   },
   // GetSessionMessages(sessionID)
   [svc("ChatService", "GetSessionMessages")]: (args) => histories[args[0]] ?? [],
@@ -720,14 +726,20 @@ const handlers: Record<string, (args: any[]) => any> = {
     });
     return null;
   },
-  // ChatService.SessionAllowAllTools(sessionID) — issue #48. These RPCs are
-  // newer than the committed bindings snapshot, so the app calls them by
-  // method name (`Call.ByName`) and the stub routes on methodName as well.
-  "agentmate/internal/services.ChatService.SessionAllowAllTools": (args) => allowAllSessions.has(args[0]),
-  // ChatService.SetSessionAllowAllTools(sessionID, allowAll, source)
-  "agentmate/internal/services.ChatService.SetSessionAllowAllTools": (args) => {
-    if (args[1] === true) allowAllSessions.add(args[0]);
-    else allowAllSessions.delete(args[0]);
+  // ChatService.SessionSandboxMode(sessionID) / SetSessionSandboxMode.
+  // These RPCs are called by name, so the stub routes on methodName as well.
+  "agentmate/internal/services.ChatService.SessionSandboxMode": (args) => {
+    const id = String(args[0] ?? "");
+    return sessionSandboxModes.get(id)
+      ?? seedConfig.sessions.find((session) => session.id === id)?.sandboxMode
+      ?? "request-approval";
+  },
+  "agentmate/internal/services.ChatService.SetSessionSandboxMode": (args) => {
+    const id = String(args[0] ?? "");
+    const mode = String(args[1] ?? "request-approval");
+    sessionSandboxModes.set(id, mode);
+    const session = seedConfig.sessions.find((item) => item.id === id);
+    if (session) session.sandboxMode = mode;
     return null;
   },
   // ChatService.EffectiveSkills(sessionID, projectID) — composer "/" menu.

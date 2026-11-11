@@ -118,20 +118,9 @@ export interface ChatSession {
     "reasoningLevel"?: string;
 
     /**
-     * AllowAllTools is this chat's「允许完全访问」permission: while true,
-     * side-effectful builtin tools (workspace writes, run_command) run without
-     * the per-call HITL confirmation prompt. It is session-scoped and
-     * persisted, so switching chats or restarting keeps the grant; new chats
-     * default to off and the composer switch can revoke it. Pending
-     * confirmations answered before the grant still honour an explicit
-     * rejection.
-     */
-    "allowAllTools"?: boolean;
-
-    /**
-     * SandboxMode/SandboxNetwork override the global sandbox profile for this
-     * chat. Empty inherits Settings. AllowAllTools stays approval-only and
-     * never changes these fields.
+     * SandboxMode/SandboxNetwork are this chat's current approval and network
+     * boundary. New chats snapshot the global defaults; changing Settings
+     * afterwards never rewrites existing chats.
      */
     "sandboxMode"?: string;
     "sandboxNetwork"?: string;
@@ -463,8 +452,9 @@ export interface Settings {
     "toolsAudit"?: boolean;
 
     /**
-     * SandboxMode selects the local tool approval/sandbox profile:
-     * request-approval (default), auto-approve, or danger-full-access.
+     * SandboxMode is the default approval/sandbox profile copied into every
+     * newly created chat: request-approval (default), auto-approve, or
+     * danger-full-access. Existing chats keep their own snapshot.
      */
     "sandboxMode"?: string;
 

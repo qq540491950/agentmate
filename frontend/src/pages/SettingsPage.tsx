@@ -42,6 +42,7 @@ import {
 } from "@/lib/executionDisplay";
 import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
 import { modelLabel } from "@/lib/modelLabel";
+import { SANDBOX_MODE_OPTIONS } from "@/lib/sandboxMode";
 import {
   SETTINGS_GROUPS,
   a2aAutoStartError,
@@ -51,6 +52,7 @@ import {
   resolveSettingsTab,
   settingsTabsInGroup,
   type SettingsLeaveGuard,
+  type SandboxMode,
   type SettingsTab,
 } from "@/lib/settingsModel";
 import { Chat, App, A2A, Config, Update, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
@@ -71,33 +73,11 @@ const SETTINGS_ICONS: Record<SettingsTab, LucideIcon> = {
   about: Info,
 };
 
-const SANDBOX_MODE_OPTIONS: Array<{
-  value: "request-approval" | "auto-approve" | "danger-full-access";
-  title: string;
-  description: string;
-  icon: LucideIcon;
-  danger?: boolean;
-}> = [
-  {
-    value: "request-approval",
-    title: "请求批准",
-    description: "写文件和执行命令前始终询问；工作区外写入仍由沙箱拦截。",
-    icon: Hand,
-  },
-  {
-    value: "auto-approve",
-    title: "帮我批准",
-    description: "工作区内安全操作自动执行；删除、系统配置、凭据访问、发布等风险操作才询问。",
-    icon: ShieldCheck,
-  },
-  {
-    value: "danger-full-access",
-    title: "完全访问权限",
-    description: "不再询问并关闭 OS 沙箱；终端可访问互联网和任意文件，仅用于可信任务。",
-    icon: TriangleAlert,
-    danger: true,
-  },
-];
+const SANDBOX_MODE_ICONS: Record<SandboxMode, LucideIcon> = {
+  "request-approval": Hand,
+  "auto-approve": ShieldCheck,
+  "danger-full-access": TriangleAlert,
+};
 
 export function SettingsPage({
   initialTab,
@@ -184,7 +164,7 @@ export function SettingsPage({
   };
 
   const confirmDangerFullAccess = () => {
-    update({ sandboxMode: "danger-full-access", sandboxNetwork: "on" });
+    update({ sandboxMode: "danger-full-access" });
     setPendingSandboxMode(null);
   };
 
@@ -508,6 +488,101 @@ export function SettingsPage({
           </CardContent>
         </Card>
         )}
+        {tab === "conversation" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">新会话默认审批模式</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              只决定新建会话的初始模式。已有会话在输入框左下角的模式按钮中单独切换，不会随这里变化。
+            </p>
+            <div role="radiogroup" aria-label="新会话默认审批模式" className="grid gap-2 sm:grid-cols-3">
+              {SANDBOX_MODE_OPTIONS.map((option) => {
+                const selected = sandboxMode === option.value;
+                const Icon = SANDBOX_MODE_ICONS[option.value];
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => selectSandboxMode(option.value)}
+                    onKeyDown={(event) => {
+                      const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+                      if (!keys.includes(event.key)) return;
+                      event.preventDefault();
+                      const radios = Array.from(
+                        event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [],
+                      );
+                      const current = radios.indexOf(event.currentTarget);
+                      let next = current;
+                      if (event.key === "Home") next = 0;
+                      else if (event.key === "End") next = radios.length - 1;
+                      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+                        next = (current - 1 + radios.length) % radios.length;
+                      } else {
+                        next = (current + 1) % radios.length;
+                      }
+                      const nextOption = SANDBOX_MODE_OPTIONS[next];
+                      if (nextOption) {
+                        selectSandboxMode(nextOption.value);
+                        radios[next]?.focus();
+                      }
+                    }}
+                    className={cn(
+                      "group flex flex-col gap-3 rounded-xl p-3 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+                      selected
+                        ? option.danger ? "bg-danger-soft" : "bg-accent-soft"
+                        : "bg-panel hover:bg-overlay",
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <Icon
+                        aria-hidden="true"
+                        className={cn(
+                          "h-4 w-4",
+                          option.danger
+                            ? "text-danger-text"
+                            : selected ? "text-accent-text" : "text-muted-foreground",
+                        )}
+                      />
+                      {selected && (
+                        <Check
+                          aria-hidden="true"
+                          className={cn("h-3.5 w-3.5", option.danger ? "text-danger-text" : "text-accent-text")}
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <span
+                        className={cn(
+                          "text-sm font-medium",
+                          selected && (option.danger ? "text-danger-text" : "text-accent-text"),
+                        )}
+                      >
+                        {option.label}
+                      </span>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        {option.description}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {sandboxMode === "danger-full-access" && (
+              <div className="flex items-start gap-2 rounded-lg bg-danger-soft p-3 text-sm text-danger-text">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <p>新会话默认完全访问：终端不再受 OS 沙箱限制，仅用于可信任务。</p>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Agent 编辑页勾选的额外确认只在「帮我批准」下作为更严格的覆盖生效；请求批准会确认全部写入与命令，完全访问会全部免确认。
+            </p>
+          </CardContent>
+        </Card>
+        )}
         {tab === "appearance" && (
         <Card>
           <CardHeader>
@@ -628,96 +703,14 @@ export function SettingsPage({
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">本地工具沙箱</CardTitle>
+              <CardTitle className="text-base">本地工具网络</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3">
-              <div className="grid gap-2">
-                <div>
-                  <div className="text-sm font-medium">审批模式</div>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    同时决定内置文件/终端工具是否逐次询问，以及是否保留 OS 沙箱。
-                  </p>
-                </div>
-                <div role="radiogroup" aria-label="本地工具审批模式" className="grid gap-2 sm:grid-cols-3">
-                  {SANDBOX_MODE_OPTIONS.map((option) => {
-                    const selected = sandboxMode === option.value;
-                    const Icon = option.icon;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        onClick={() => selectSandboxMode(option.value)}
-                        onKeyDown={(event) => {
-                          const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
-                          if (!keys.includes(event.key)) return;
-                          event.preventDefault();
-                          const radios = Array.from(
-                            event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [],
-                          );
-                          const current = radios.indexOf(event.currentTarget);
-                          let next = current;
-                          if (event.key === "Home") next = 0;
-                          else if (event.key === "End") next = radios.length - 1;
-                          else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-                            next = (current - 1 + radios.length) % radios.length;
-                          } else {
-                            next = (current + 1) % radios.length;
-                          }
-                          const nextOption = SANDBOX_MODE_OPTIONS[next];
-                          if (nextOption) {
-                            selectSandboxMode(nextOption.value);
-                            radios[next]?.focus();
-                          }
-                        }}
-                        className={cn(
-                          "group flex flex-col gap-3 rounded-xl p-3 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-                          selected
-                            ? option.danger ? "bg-danger-soft" : "bg-accent-soft"
-                            : "bg-panel hover:bg-overlay",
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <Icon
-                            aria-hidden="true"
-                            className={cn(
-                              "h-4 w-4",
-                              option.danger
-                                ? "text-danger-text"
-                                : selected ? "text-accent-text" : "text-muted-foreground",
-                            )}
-                          />
-                          {selected && (
-                            <Check
-                              aria-hidden="true"
-                              className={cn("h-3.5 w-3.5", option.danger ? "text-danger-text" : "text-accent-text")}
-                            />
-                          )}
-                        </div>
-                        <div>
-                          <span
-                            className={cn(
-                              "text-sm font-medium",
-                              selected && (option.danger ? "text-danger-text" : "text-accent-text"),
-                            )}
-                          >
-                            {option.title}
-                          </span>
-                          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                            {option.description}
-                          </p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
               <SettingRow
-                label="允许子进程联网"
+                label="新会话默认允许子进程联网"
                 description={sandboxMode === "danger-full-access"
-                  ? "完全访问模式下终端联网始终开启。"
-                  : "关闭时 run_command 子进程默认断网；需要 git push 等联网操作时再开启。"}
+                  ? "默认模式为完全访问时，终端联网始终开启。"
+                  : "关闭时新会话的 run_command 子进程默认断网；已有会话不随此项变化。"}
               >
                 <Switch
                   checked={sandboxMode === "danger-full-access" || (settings.sandboxNetwork || "off") === "on"}
@@ -729,12 +722,12 @@ export function SettingsPage({
                 <div className="flex items-start gap-2 rounded-lg bg-danger-soft p-3 text-sm text-danger-text">
                   <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   <p>
-                    完全访问已开启：终端不再受 OS 沙箱限制。会话内的「允许完全访问」只免审批，不会关闭这里的沙箱。
+                    新会话默认完全访问：终端不再受 OS 沙箱限制。已有会话在输入框旁单独切换。
                   </p>
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
-                Windows 使用 AppContainer 与低完整性边界；请求批准和帮我批准都会拦截工作区外写入。沙箱初始化失败时拒绝执行，不会回退到全权限。内置读写工具始终以任务工作区为根，完全访问主要放开终端命令；Agent 编辑页勾选的额外确认在「帮我批准」下仍会生效。
+                Windows 使用 AppContainer 与低完整性边界；请求批准和帮我批准都会拦截工作区外写入。沙箱初始化失败时拒绝执行，不会回退到全权限。
               </p>
             </CardContent>
           </Card>

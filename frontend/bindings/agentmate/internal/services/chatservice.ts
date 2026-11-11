@@ -254,12 +254,11 @@ export function SendWithReasoning(sessionID: string, text: string, attachments: 
 }
 
 /**
- * SessionAllowAllTools reports whether the chat currently runs side-effectful
- * builtin tools without per-call confirmation. Unknown IDs are an error, like
- * the other session-setting RPCs.
+ * SessionSandboxMode reports the mode the chat will use on its next turn.
+ * Unknown IDs are an error, like the other session-setting RPCs.
  */
-export function SessionAllowAllTools(sessionID: string): $CancellablePromise<boolean> {
-    return $Call.ByID(3408629530, sessionID);
+export function SessionSandboxMode(sessionID: string): $CancellablePromise<string> {
+    return $Call.ByID(3531919665, sessionID);
 }
 
 /**
@@ -279,18 +278,6 @@ export function SessionWorkspace(sessionID: string): $CancellablePromise<string>
 }
 
 /**
- * SetSessionAllowAllTools grants or revokes this chat's「允许完全访问」
- * permission. While granted, side-effectful builtin tools run without the
- * per-call HITL prompt; the switch is persisted on the session (so switching
- * chats or restarting keeps it) and never affects other sessions. source
- * records where it was flipped — the confirmation card or the composer
- * switch — in the audit trail.
- */
-export function SetSessionAllowAllTools(sessionID: string, allowAll: boolean, source: string): $CancellablePromise<void> {
-    return $Call.ByID(1682135824, sessionID, allowAll, source);
-}
-
-/**
  * SetSessionModel pins a chat to a specific model of its target agent's
  * provider (per-session model override); empty clears the override. The
  * previous thinking level is cleared too: the new model may not offer it.
@@ -306,6 +293,16 @@ export function SetSessionModel(sessionID: string, modelID: string): $Cancellabl
  */
 export function SetSessionReasoningLevel(sessionID: string, level: string): $CancellablePromise<void> {
     return $Call.ByID(2230420479, sessionID, level);
+}
+
+/**
+ * SetSessionSandboxMode changes this chat's current approval/sandbox profile.
+ * The value is persisted, so switching chats or restarting keeps it; other
+ * sessions are untouched. It applies from the next turn when a turn is
+ * already running.
+ */
+export function SetSessionSandboxMode(sessionID: string, mode: string, source: string): $CancellablePromise<void> {
+    return $Call.ByID(3275126223, sessionID, mode, source);
 }
 
 /**

@@ -36,7 +36,7 @@ const STATUS_META: Record<ToolGroupStatus, { label: string; icon: ReactNode; cls
  * row per invocation; clicking a row keeps its input/output detail and
  * artifact previews without turning the whole run into a stack of cards.
  */
-export function ToolCallGroup({ group, live, runningTools, durations, sessionID, filterQ, displayMode, onConfirm, onAllowAll, allowAllBusy }: {
+export function ToolCallGroup({ group, live, runningTools, durations, sessionID, filterQ, displayMode, onConfirm }: {
   /** group carries the turn's messages, its final-reply timestamp and outcome
    *  (answered/errored) so the header reports the run, not a single step. */
   group: ToolGroup;
@@ -48,8 +48,6 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
   filterQ: string;
   displayMode: ExecutionDisplayMode;
   onConfirm: (msgId: string, callId: string | undefined, approved: boolean) => void;
-  onAllowAll: (msgId: string, callId: string | undefined) => void;
-  allowAllBusy: boolean;
 }) {
   // null means "follow the run state": expanded while running/awaiting a
   // confirmation, collapsed once settled. An explicit click wins from then on.
@@ -172,7 +170,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
               }
               const m = item.message;
               return m.kind === "confirm" ? (
-                <ConfirmCard key={m.id} m={m} onConfirm={onConfirm} onAllowAll={onAllowAll} allowAllBusy={allowAllBusy} />
+                <ConfirmCard key={m.id} m={m} onConfirm={onConfirm} />
               ) : m.kind === "thinking" ? (
                 <ThinkingBlock key={m.id} m={m} inline />
               ) : m.kind === "assistant" ? (
