@@ -4,6 +4,26 @@
 
 ## 视觉测试与体验设计
 
+### 第二百五十一轮迭代：三档工具审批模式与风险命令确认（已实施）
+
+依据：用户对照 Codex 的操作批准配置，要求把现有“工作区可写 / 完全访问”二选一完善为“请求批准 / 帮我批准 / 完全访问权限”。本轮把审批模式与 OS 沙箱统一为三个 profile，并补上完全访问的一次性风险确认。
+
+**实现要点**
+
+- `sandboxMode` 规范为 `request-approval`（默认）、`auto-approve`、`danger-full-access` 三值；旧 `workspace-write` 在加载与前端展示时自动迁移为 `request-approval`，未知值回退安全档。
+- `request-approval` 强制文件写入与终端命令逐次 HITL；`auto-approve` 保持 AppContainer 边界，只有命中风险规则的命令才触发确认；`danger-full-access` 关闭 OS 沙箱、放开网络并清除审批。
+- 新增 `internal/sandbox/risk.go`：覆盖递归删除、磁盘/启动配置、关机/结束进程、权限变更、Git 历史覆盖、编码/下载执行、远端发布、凭据路径等风险；风险检测是审批提示的启发式，OS 沙箱仍是硬边界。
+- `run_command` 使用 ADK `RequireConfirmationProvider` 做命令级动态确认；安全命令直接执行，`git push`、`rm -rf`、`powershell -EncodedCommand` 等命中风险后走原有确认卡。
+- 会话级「允许完全访问」仍只表示免审批，不改变沙箱 profile；新的全局「完全访问权限」才关闭沙箱。设置页改用三张单选卡（`role=radiogroup` / `aria-checked`），完全访问前弹出风险对话框，并明确内置文件工具仍以任务工作区为根。
+- Agent 编辑页的逐工具确认保留为 `auto-approve` 下的额外严格覆盖；新建 Agent 与直聊不再默认强制逐条确认，由全局模式决定。
+
+**测试证据**
+
+- `go test ./internal/... .`、`go test -race ./internal/... .`、`go vet ./internal/... .` 全绿。
+- 新增 `TestAutoApproveConfirmsOnlyRiskyCommands`：安全 `echo` 无确认直接执行，风险 `git push` 产生 HITL 确认；`TestAssessCommand` 覆盖风险/安全命令表；配置用例覆盖三档归一化、旧值迁移与 profile 应用。
+- `npx tsc --noEmit`、`npm test`（32 文件 / 248 用例）、`npm run build`、`wails3 build` 通过。
+- 本轮未接入 stdio MCP 的 OS 沙箱；第三方 MCP 启动命令仍需信任。
+
 ### 第二百五十轮迭代：Windows 本地工具执行沙箱（P0，已实施）
 
 依据：对照 Codex harness 的四道门后确认，AgentMate 的 `run_command` 只有审批、没有 OS 沙箱；命令以当前用户权限运行，工作区只是 cwd，不能阻止读取配置/凭据、联网或写工作区外文件。本轮按“审批与沙箱分离”先补硬边界，默认 `workspace-write` + 网络关闭。

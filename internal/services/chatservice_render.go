@@ -214,10 +214,9 @@ func directAgentConfig(cfg config.Config) (config.AgentConfig, error) {
 			"需要拉取代码、运行命令时直接调用 run_command，不要声称没有终端或 Shell 能力。" +
 			"写入文件和执行命令会先请用户确认。",
 		BuiltinTools: []string{"files", "shell"},
-		// Reads are automatic; writes and commands pause for human approval,
-		// the same contract configured agents get (new agents default to
-		// asking before run_command).
-		ConfirmTools: []string{"files", "shell"},
+		// Approval comes from the session's sandbox profile. Direct chats
+		// deliberately add no per-agent override, so auto-approve only asks
+		// for risk-detected commands.
 	}, nil
 }
 

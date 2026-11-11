@@ -88,7 +88,9 @@ function blankAgent(): AgentConfig {
     builtinTools: [],
     // The terminal stays behind human approval by default, matching the
     // behavior of ticking its checkbox manually.
-    confirmTools: ["shell"],
+    // Approval defaults to the global sandbox profile; per-agent switches
+    // below are an explicit extra guardrail.
+    confirmTools: [],
     createdAt: "",
     enableGuardrails: true,
   };
@@ -742,6 +744,11 @@ export function AgentsPage() {
                 />
                 <p className="text-xs text-muted-foreground">超出后本轮停止，防止死循环消耗</p>
               </div>
+              {(effectiveBuiltinTools(editing).includes("files") || effectiveBuiltinTools(editing).includes("shell")) && (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  「请求批准」会确认全部写入与命令，「完全访问」会全部免确认；只有「帮我批准」会参考下面的额外确认开关，并对检测到的风险命令单独询问。
+                </p>
+              )}
               {effectiveBuiltinTools(editing).includes("files") && (
                 <div className="flex items-center justify-between rounded-lg bg-panel/60 p-3">
                   <div>
@@ -766,7 +773,7 @@ export function AgentsPage() {
                   <div>
                     <div className="text-sm font-medium">执行终端命令需人工确认</div>
                     <div className="text-xs text-muted-foreground">
-                      模型调用 run_command 前暂停等待你的批准；命令以当前用户权限、在任务工作区内执行
+                      模型调用 run_command 前暂停等待你的批准；命令在任务工作区与 OS 沙箱边界内执行
                     </div>
                   </div>
                   <Switch

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 	"time"
@@ -93,14 +94,14 @@ func TestProjectsRoundTripAndCloneIndependent(t *testing.T) {
 
 func TestSandboxDefaultsAndSessionOverrides(t *testing.T) {
 	cfg := Default()
-	if cfg.Settings.SandboxMode != SandboxModeWorkspaceWrite {
+	if cfg.Settings.SandboxMode != SandboxModeRequestApproval {
 		t.Fatalf("default sandbox mode = %q", cfg.Settings.SandboxMode)
 	}
 	if cfg.Settings.SandboxNetwork != SandboxNetworkOff {
 		t.Fatalf("default sandbox network = %q", cfg.Settings.SandboxNetwork)
 	}
 	session := ChatSession{}
-	if got := session.EffectiveSandboxMode(cfg); got != SandboxModeWorkspaceWrite {
+	if got := session.EffectiveSandboxMode(cfg); got != SandboxModeRequestApproval {
 		t.Fatalf("session default mode = %q", got)
 	}
 	if got := session.EffectiveSandboxNetwork(cfg); got != SandboxNetworkOff {
@@ -113,6 +114,53 @@ func TestSandboxDefaultsAndSessionOverrides(t *testing.T) {
 	}
 	if got := session.EffectiveSandboxNetwork(cfg); got != SandboxNetworkOn {
 		t.Fatalf("session override network = %q", got)
+	}
+}
+
+func TestSandboxModeNormalizationAndProfiles(t *testing.T) {
+	for input, want := range map[string]string{
+		"":                     SandboxModeRequestApproval,
+		"workspace-write":      SandboxModeRequestApproval,
+		"request":              SandboxModeRequestApproval,
+		"auto":                 SandboxModeAutoApprove,
+		"auto-approve":         SandboxModeAutoApprove,
+		"danger-full-access":   SandboxModeDangerFullAccess,
+		"unknown":              SandboxModeRequestApproval,
+		"  REQUEST-APPROVAL  ": SandboxModeRequestApproval,
+	} {
+		if got := NormalizeSandboxMode(input); got != want {
+			t.Errorf("NormalizeSandboxMode(%q) = %q, want %q", input, got, want)
+		}
+	}
+
+	agent := AgentConfig{ConfirmTools: []string{"files"}}
+	agent.ApplySandboxProfile(SandboxModeRequestApproval, false)
+	if agent.SandboxMode != SandboxModeRequestApproval || !reflect.DeepEqual(agent.ConfirmTools, []string{"files", "shell"}) {
+		t.Fatalf("request profile = %+v", agent)
+	}
+	agent.ApplySandboxProfile(SandboxModeAutoApprove, false)
+	if agent.SandboxMode != SandboxModeAutoApprove || !reflect.DeepEqual(agent.ConfirmTools, []string{"files", "shell"}) {
+		t.Fatalf("auto profile should preserve agent prompts: %+v", agent)
+	}
+	agent.ApplySandboxProfile(SandboxModeDangerFullAccess, false)
+	if agent.SandboxMode != SandboxModeDangerFullAccess || agent.ConfirmTools != nil {
+		t.Fatalf("full profile = %+v", agent)
+	}
+	agent.ConfirmTools = []string{"files", "shell"}
+	agent.ApplySandboxProfile(SandboxModeRequestApproval, true)
+	if agent.ConfirmTools != nil {
+		t.Fatalf("allowAll should clear prompts: %+v", agent)
+	}
+}
+
+func TestSettingsNormalizeMigratesLegacySandboxMode(t *testing.T) {
+	settings := Settings{SandboxMode: "workspace-write"}
+	settings.normalize()
+	if settings.SandboxMode != SandboxModeRequestApproval {
+		t.Fatalf("legacy mode migrated to %q", settings.SandboxMode)
+	}
+	if settings.SandboxNetwork != SandboxNetworkOff {
+		t.Fatalf("empty network normalized to %q", settings.SandboxNetwork)
 	}
 }
 

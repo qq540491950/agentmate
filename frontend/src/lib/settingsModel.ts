@@ -1,5 +1,20 @@
 import type { Settings } from "@/lib/api";
 
+export type SandboxMode = "request-approval" | "auto-approve" | "danger-full-access";
+
+/** normalizeSandboxMode mirrors the Go migration for legacy config values. */
+export function normalizeSandboxMode(value?: string): SandboxMode {
+  switch ((value ?? "").trim().toLowerCase()) {
+    case "auto":
+    case "auto-approve":
+      return "auto-approve";
+    case "danger-full-access":
+      return "danger-full-access";
+    default:
+      return "request-approval";
+  }
+}
+
 export type SettingsTab =
   | "appearance"
   | "conversation"
@@ -91,7 +106,7 @@ const COMPARE_DEFAULTS: Partial<Record<keyof Settings, unknown>> = {
   a2aAgentId: "",
   a2aPort: 0,
   toolsAudit: false,
-  sandboxMode: "workspace-write",
+  sandboxMode: "request-approval",
   sandboxNetwork: "off",
   autoRemember: false,
   autoTitle: true,

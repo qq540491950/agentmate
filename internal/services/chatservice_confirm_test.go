@@ -11,6 +11,7 @@ import (
 	"agentmate/internal/agentkit"
 	"agentmate/internal/config"
 	"agentmate/internal/mcpmgr"
+	"agentmate/internal/sandbox"
 )
 
 // sseToolCall renders an OpenAI-compatible SSE chunk carrying one tool call.
@@ -39,6 +40,10 @@ func newConfirmTestChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *
 	}
 	err = store.Update(func(cfg *config.Config) {
 		cfg.Settings.WorkspaceDir = workspace
+		// These HITL tests configure ConfirmTools per agent. Auto-approve keeps
+		// those explicit prompts while allowing tests that clear them to run
+		// direct tool calls.
+		cfg.Settings.SandboxMode = config.SandboxModeAutoApprove
 		cfg.Providers = append(cfg.Providers, config.ModelProvider{
 			ID: "prov_c", Name: "Fake", Protocol: config.ProtocolOpenAI,
 			BaseURL: srv.URL, Models: []config.ModelInfo{{ID: "fake-mini"}}, IsDefault: true,
@@ -308,8 +313,8 @@ func TestChatToolConfirmationRestartResume(t *testing.T) {
 	}
 }
 
-// TestChatToolConfirmationGuards covers argument validation and the default-off
-// invariant: agents without ConfirmTools keep the old direct-execution flow.
+// TestChatToolConfirmationGuards covers argument validation and the auto-mode
+// invariant: agents without ConfirmTools run direct tool calls.
 func TestChatToolConfirmationGuards(t *testing.T) {
 	turn := 0
 	chat, _, workspace, _ := newConfirmTestChat(t, func(w http.ResponseWriter, r *http.Request) {
@@ -358,6 +363,87 @@ func TestChatToolConfirmationGuards(t *testing.T) {
 	}
 	if data, err := os.ReadFile(filepath.Join(workspace, "direct.txt")); err != nil || string(data) != "直接写入" {
 		t.Fatalf("expected direct write without HITL, err=%v data=%q", err, data)
+	}
+}
+
+// TestAutoApproveConfirmsOnlyRiskyCommands exercises the auto-approve profile:
+// a safe command runs without an interrupt, while a risk-detected command
+// pauses on the normal HITL flow.
+func TestAutoApproveConfirmsOnlyRiskyCommands(t *testing.T) {
+	if !sandbox.Available() {
+		t.Skipf("OS sandbox unavailable: %s", sandbox.BackendStatus().Error)
+	}
+	turn := 0
+	chat, store, _, _ := newConfirmTestChat(t, func(w http.ResponseWriter, r *http.Request) {
+		body := readAll(r)
+		w.Header().Set("Content-Type", "text/event-stream")
+		turn++
+		switch turn {
+		case 1:
+			_, _ = w.Write([]byte(sseToolCall("safe_1", "run_command", `"{\"command\":\"echo safe\"}"`) + sseDone))
+		case 2:
+			if !strings.Contains(body, `\"exitCode\":0`) {
+				t.Errorf("safe command did not execute: %s", body)
+			}
+			_, _ = w.Write([]byte(sseText("safe done") + sseDone))
+		case 3:
+			_, _ = w.Write([]byte(sseToolCall("risk_1", "run_command", `"{\"command\":\"git push origin main\"}"`) + sseDone))
+		case 4:
+			_, _ = w.Write([]byte(sseText("risk handled") + sseDone))
+		default:
+			_, _ = w.Write([]byte(sseText("done") + sseDone))
+		}
+	})
+	events := hookEvents(t)
+
+	if err := store.Update(func(cfg *config.Config) {
+		cfg.Settings.SandboxMode = config.SandboxModeAutoApprove
+		for i := range cfg.Agents {
+			cfg.Agents[i].BuiltinTools = []string{"shell"}
+			cfg.Agents[i].ConfirmTools = nil
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := chat.newLegacySession("agent", "agent_c", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := chat.Send(sess.ID, "运行安全命令", nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range *events {
+		if ev.Kind == "confirm_request" {
+			t.Fatalf("safe command unexpectedly asked for approval: %+v", ev)
+		}
+	}
+	sawSafeResult := false
+	for _, ev := range *events {
+		if ev.Kind == "tool_result" && ev.ToolName == "run_command" && ev.ToolResp["exitCode"] == float64(0) {
+			sawSafeResult = true
+		}
+	}
+	if !sawSafeResult {
+		t.Fatal("safe command produced no successful tool result")
+	}
+
+	*events = nil
+	if err := chat.Send(sess.ID, "推送代码", nil); err != nil {
+		t.Fatal(err)
+	}
+	var pending *ChatStreamEvent
+	for i := range *events {
+		if (*events)[i].Kind == "confirm_request" {
+			pending = &(*events)[i]
+			break
+		}
+	}
+	if pending == nil || pending.CallID == "" {
+		t.Fatalf("risky command did not ask for approval: %+v", *events)
+	}
+	if err := chat.ConfirmToolCall(sess.ID, pending.CallID, false); err != nil {
+		t.Fatal(err)
 	}
 }
 

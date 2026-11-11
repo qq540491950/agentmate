@@ -74,6 +74,9 @@ func newWorkspaceTestChat(t *testing.T, handler http.HandlerFunc) (*ChatService,
 	}
 	err = store.Update(func(cfg *config.Config) {
 		cfg.Settings.WorkspaceDir = workspace
+		// Workspace isolation tests script direct tool calls; keep approval
+		// out of the way and exercise the same OS policy in auto mode.
+		cfg.Settings.SandboxMode = config.SandboxModeAutoApprove
 		cfg.Providers = append(cfg.Providers, config.ModelProvider{
 			ID: "prov_ws", Name: "Fake", Protocol: config.ProtocolOpenAI,
 			BaseURL: srv.URL, Models: []config.ModelInfo{{ID: "fake-mini"}}, IsDefault: true,

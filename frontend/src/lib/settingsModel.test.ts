@@ -7,6 +7,7 @@ import {
   a2aAutoStartError,
   isConfigSettingsTab,
   isSettingsDirty,
+  normalizeSandboxMode,
   resolveSettingsTab,
   settingsTabsInGroup,
 } from "./settingsModel";
@@ -31,6 +32,16 @@ const baseSettings = {
 } as Settings;
 
 describe("settings model", () => {
+  it("normalizes legacy and unknown sandbox modes to the safe profile", () => {
+    expect(normalizeSandboxMode(undefined)).toBe("request-approval");
+    expect(normalizeSandboxMode("workspace-write")).toBe("request-approval");
+    expect(normalizeSandboxMode("request")).toBe("request-approval");
+    expect(normalizeSandboxMode("auto")).toBe("auto-approve");
+    expect(normalizeSandboxMode("auto-approve")).toBe("auto-approve");
+    expect(normalizeSandboxMode("danger-full-access")).toBe("danger-full-access");
+    expect(normalizeSandboxMode("unknown")).toBe("request-approval");
+  });
+
   it("defines the eleven tabs in navigation order with no General tab", () => {
     expect(SETTINGS_TABS.map((tab) => tab.key)).toEqual([
       "appearance",

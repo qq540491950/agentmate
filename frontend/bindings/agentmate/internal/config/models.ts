@@ -129,7 +129,7 @@ export interface ChatSession {
     "allowAllTools"?: boolean;
 
     /**
-     * SandboxMode/SandboxNetwork override the global sandbox default for this
+     * SandboxMode/SandboxNetwork override the global sandbox profile for this
      * chat. Empty inherits Settings. AllowAllTools stays approval-only and
      * never changes these fields.
      */
@@ -463,8 +463,8 @@ export interface Settings {
     "toolsAudit"?: boolean;
 
     /**
-     * SandboxMode selects the local tool boundary. Empty normalizes to
-     * workspace-write; danger-full-access is an explicit user choice.
+     * SandboxMode selects the local tool approval/sandbox profile:
+     * request-approval (default), auto-approve, or danger-full-access.
      */
     "sandboxMode"?: string;
 

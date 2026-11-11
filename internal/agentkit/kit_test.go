@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"agentmate/internal/config"
 	"agentmate/internal/sandbox"
 )
 
@@ -36,6 +37,32 @@ func TestSafeWorkspacePath(t *testing.T) {
 		if err != nil {
 			t.Errorf("rel %q: unexpected error %v", c.rel, err)
 		}
+	}
+}
+
+func TestSandboxPolicyProfiles(t *testing.T) {
+	workspace := t.TempDir()
+	k := &Kit{}
+
+	request := k.sandboxPolicy(config.AgentConfig{
+		SandboxMode: config.SandboxModeRequestApproval, SandboxNetwork: config.SandboxNetworkOff,
+	}, workspace)
+	if request.Mode != sandbox.ModeWorkspaceWrite || request.Network != sandbox.NetworkOff {
+		t.Fatalf("request policy = %+v", request)
+	}
+
+	auto := k.sandboxPolicy(config.AgentConfig{
+		SandboxMode: config.SandboxModeAutoApprove, SandboxNetwork: config.SandboxNetworkOn,
+	}, workspace)
+	if auto.Mode != sandbox.ModeWorkspaceWrite || auto.Network != sandbox.NetworkOn {
+		t.Fatalf("auto policy = %+v", auto)
+	}
+
+	full := k.sandboxPolicy(config.AgentConfig{
+		SandboxMode: config.SandboxModeDangerFullAccess, SandboxNetwork: config.SandboxNetworkOff,
+	}, workspace)
+	if full.Mode != sandbox.ModeDangerFullAccess || full.Network != sandbox.NetworkOn {
+		t.Fatalf("full policy = %+v", full)
 	}
 }
 

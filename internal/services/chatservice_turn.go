@@ -393,10 +393,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		if derr != nil {
 			return derr
 		}
-		if allowAll {
-			ac.ConfirmTools = nil
-		}
-		ac.SandboxMode, ac.SandboxNetwork = sandboxMode, sandboxNetwork
+		ac.SandboxNetwork = sandboxNetwork
+		ac.ApplySandboxProfile(sandboxMode, allowAll)
 		root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(ac, target.ModelOverride, workspace, applyLevel)
 	case "team":
 		for _, t := range cfg.Teams {
@@ -424,10 +422,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			if a.ID == target.TargetID {
 				// Per-session model override (chat-header picker): empty keeps
 				// the agent's configured model.
-				if allowAll {
-					a.ConfirmTools = nil
-				}
-				a.SandboxMode, a.SandboxNetwork = sandboxMode, sandboxNetwork
+				a.SandboxNetwork = sandboxNetwork
+				a.ApplySandboxProfile(sandboxMode, allowAll)
 				root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(a, target.ModelOverride, workspace, applyLevel)
 				break
 			}

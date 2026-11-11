@@ -16,6 +16,7 @@ import (
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
 
+	"agentmate/internal/config"
 	"agentmate/internal/sandbox"
 )
 
@@ -54,6 +55,33 @@ func ShellTool(workspace string, requireConfirmation bool) (tool.Tool, error) {
 // The plain ShellTool wrapper keeps the historical default for tests and
 // callers that construct a tool without a chat policy.
 func ShellToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
+	return newShellTool(workspace, requireConfirmation, nil, policy)
+}
+
+// ShellToolWithPolicyAndMode applies the chat's approval profile. In
+// auto-approve mode a safe command runs immediately; a command matching the
+// risk detector pauses for HITL before the handler starts.
+func ShellToolWithPolicyAndMode(workspace string, requireConfirmation bool, mode string, policy sandbox.Policy) (tool.Tool, error) {
+	var provider any
+	switch config.NormalizeSandboxMode(mode) {
+	case config.SandboxModeRequestApproval:
+		// runTurn's ApplySandboxProfile has already enabled the static prompt
+		// for files and shell. Keep the passed value so a session-level
+		// approval bypass can still build a prompt-free tool.
+	case config.SandboxModeAutoApprove:
+		if !requireConfirmation {
+			provider = func(args shellArgs) bool {
+				risky, _ := sandbox.AssessCommand(args.Command)
+				return risky
+			}
+		}
+	case config.SandboxModeDangerFullAccess:
+		requireConfirmation = false
+	}
+	return newShellTool(workspace, requireConfirmation, provider, policy)
+}
+
+func newShellTool(workspace string, requireConfirmation bool, provider any, policy sandbox.Policy) (tool.Tool, error) {
 	if strings.TrimSpace(workspace) == "" {
 		return nil, fmt.Errorf("任务工作区为空，无法初始化终端工具")
 	}
@@ -62,7 +90,8 @@ func ShellToolWithPolicy(workspace string, requireConfirmation bool, policy sand
 		Description: "Run a shell command with the user's task workspace as the working directory and return the combined stdout/stderr plus exit code. " +
 			"Use it for git, builds, tests and package installs. Commands are non-interactive; output is capped at 64KB and the process is killed after timeoutSeconds " +
 			"(default 300, max 600). A non-zero exitCode is a normal result, not a tool failure.",
-		RequireConfirmation: requireConfirmation,
+		RequireConfirmation:         requireConfirmation,
+		RequireConfirmationProvider: provider,
 	}, func(ctx agent.Context, args shellArgs) (shellResult, error) {
 		timeout := defaultShellTimeout
 		if args.TimeoutSeconds > 0 {

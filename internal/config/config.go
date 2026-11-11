@@ -22,19 +22,35 @@ const (
 )
 
 const (
-	SandboxModeWorkspaceWrite   = "workspace-write"
+	// SandboxModeRequestApproval keeps the OS workspace-write boundary and
+	// asks before every side-effectful builtin tool call.
+	SandboxModeRequestApproval = "request-approval"
+	// SandboxModeAutoApprove keeps the OS workspace-write boundary and asks
+	// only for risk-detected commands or explicit per-Agent prompts.
+	SandboxModeAutoApprove = "auto-approve"
+	// SandboxModeDangerFullAccess disables the OS sandbox and all builtin
+	// approval prompts. It must only be selected explicitly by the user.
 	SandboxModeDangerFullAccess = "danger-full-access"
-	SandboxNetworkOff           = "off"
-	SandboxNetworkOn            = "on"
+	// SandboxModeWorkspaceWrite is the legacy persisted name for the safe
+	// default. Keep it as an alias so older config files and tests migrate
+	// without a write-time special case.
+	SandboxModeWorkspaceWrite = SandboxModeRequestApproval
+	SandboxNetworkOff         = "off"
+	SandboxNetworkOn          = "on"
 )
 
-// NormalizeSandboxMode maps empty/unknown values to the safe default.
+// NormalizeSandboxMode maps empty/unknown/legacy values to one of the three
+// current profiles. Anything unrecognized falls back to request-approval.
 func NormalizeSandboxMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case SandboxModeDangerFullAccess:
 		return SandboxModeDangerFullAccess
+	case SandboxModeAutoApprove, "auto":
+		return SandboxModeAutoApprove
+	case SandboxModeRequestApproval, "request", "workspace-write":
+		return SandboxModeRequestApproval
 	default:
-		return SandboxModeWorkspaceWrite
+		return SandboxModeRequestApproval
 	}
 }
 
@@ -453,8 +469,8 @@ type Settings struct {
 	// ToolsAudit writes a JSONL audit trail of every tool call/result to the
 	// app logs directory.
 	ToolsAudit bool `json:"toolsAudit,omitempty"`
-	// SandboxMode selects the local tool boundary. Empty normalizes to
-	// workspace-write; danger-full-access is an explicit user choice.
+	// SandboxMode selects the local tool approval/sandbox profile:
+	// request-approval (default), auto-approve, or danger-full-access.
 	SandboxMode string `json:"sandboxMode,omitempty"`
 	// SandboxNetwork selects the child-process network policy: off (default)
 	// or on.
@@ -559,6 +575,8 @@ func (s *Settings) normalize() {
 	}
 	s.ExecutionDisplayMode = NormalizeExecutionDisplayMode(s.ExecutionDisplayMode)
 	s.ChatWidth = NormalizeChatWidth(s.ChatWidth)
+	s.SandboxMode = NormalizeSandboxMode(s.SandboxMode)
+	s.SandboxNetwork = NormalizeSandboxNetwork(s.SandboxNetwork)
 }
 
 // Config is the root configuration document persisted to disk.
@@ -614,7 +632,7 @@ type ChatSession struct {
 	// confirmations answered before the grant still honour an explicit
 	// rejection.
 	AllowAllTools bool `json:"allowAllTools,omitempty"`
-	// SandboxMode/SandboxNetwork override the global sandbox default for this
+	// SandboxMode/SandboxNetwork override the global sandbox profile for this
 	// chat. Empty inherits Settings. AllowAllTools stays approval-only and
 	// never changes these fields.
 	SandboxMode    string `json:"sandboxMode,omitempty"`
@@ -680,6 +698,31 @@ func (s ChatSession) EffectiveSandboxNetwork(cfg Config) string {
 		return NormalizeSandboxNetwork(network)
 	}
 	return NormalizeSandboxNetwork(cfg.Settings.SandboxNetwork)
+}
+
+// ApplySandboxProfile applies one approval/sandbox profile to an agent build.
+// The profile owns both the OS boundary and the builtin confirmation set:
+// request-approval asks for every write/command, auto-approve keeps the
+// agent's configured prompts (shell adds risk-based prompts at tool build
+// time), and danger-full-access removes both the sandbox and the prompts.
+// allowAll is the per-session approval bypass and never changes SandboxMode.
+func (a *AgentConfig) ApplySandboxProfile(mode string, allowAll bool) {
+	mode = NormalizeSandboxMode(mode)
+	a.SandboxMode = mode
+	switch mode {
+	case SandboxModeDangerFullAccess:
+		a.ConfirmTools = nil
+	case SandboxModeRequestApproval:
+		if allowAll {
+			a.ConfirmTools = nil
+			return
+		}
+		a.ConfirmTools = []string{"files", "shell"}
+	default: // auto-approve
+		if allowAll {
+			a.ConfirmTools = nil
+		}
+	}
 }
 
 // Clone returns an independent copy of the config. Slices, nested slices and
@@ -782,7 +825,7 @@ func Default() Config {
 			FontScale:            "md",
 			ChatWidth:            ChatWidthMedium,
 			ExecutionDisplayMode: ExecutionDisplayAuto,
-			SandboxMode:          SandboxModeWorkspaceWrite,
+			SandboxMode:          SandboxModeRequestApproval,
 			SandboxNetwork:       SandboxNetworkOff,
 		},
 		Skills: []SkillConfig{
