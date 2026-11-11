@@ -50,6 +50,8 @@ describe("settings model", () => {
     expect(normalizeSandboxProfile("request-approval")).toBe("workspace-write");
     expect(normalizeSandboxProfile("auto-approve")).toBe("workspace-write");
     expect(normalizeSandboxProfile("workspace-write")).toBe("workspace-write");
+    expect(normalizeSandboxProfile("read-only")).toBe("read-only");
+    expect(normalizeSandboxProfile("  READ-ONLY ")).toBe("read-only");
     expect(normalizeSandboxProfile("danger-full-access")).toBe("danger-full-access");
     expect(normalizeSandboxProfile("unknown")).toBe("workspace-write");
   });
@@ -93,6 +95,10 @@ describe("settings model", () => {
     expect(resolveExecutionPolicy("auto-approve", undefined, "danger-full-access")).toEqual({
       approvalPolicy: "auto-approve",
       sandboxProfile: "danger-full-access",
+    });
+    expect(resolveExecutionPolicy("request-approval", "read-only", "danger-full-access")).toEqual({
+      approvalPolicy: "request-approval",
+      sandboxProfile: "read-only",
     });
     expect(resolveExecutionPolicy(undefined, undefined, undefined, {
       approvalPolicy: "auto-approve",

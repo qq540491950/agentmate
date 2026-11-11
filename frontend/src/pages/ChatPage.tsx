@@ -7,7 +7,7 @@ import {
   Folder, FolderOpen, FileText,
   PanelRightOpen,
   ChevronRight, ChevronDown,
-  Boxes, Coins, Hand, ShieldCheck, TriangleAlert, BellOff, FolderLock,
+  Boxes, Coins, Hand, ShieldCheck, TriangleAlert, BellOff, Eye, FolderLock,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
 } from "lucide-react";
@@ -109,6 +109,7 @@ const APPROVAL_ICONS: Record<ApprovalPolicy, typeof Hand> = {
 
 const SANDBOX_PROFILE_ICONS: Record<SandboxProfile, typeof Hand> = {
   "workspace-write": FolderLock,
+  "read-only": Eye,
   "danger-full-access": TriangleAlert,
 };
 
@@ -3214,7 +3215,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                       </DropdownMenuRadioGroup>
                       <div className="px-2 py-1.5 text-xs leading-relaxed text-muted-foreground">
                         {composerExecutionPolicy.sandboxProfile === "danger-full-access"
-                          ? "联网由完全访问隐含开启；切回工作区可写后恢复原网络偏好。"
+                          ? "联网由完全访问隐含开启；切回其他沙箱后恢复原网络偏好。"
                           : "只影响当前会话；完全访问需要再次确认。"}
                       </div>
                     </DropdownMenuContent>

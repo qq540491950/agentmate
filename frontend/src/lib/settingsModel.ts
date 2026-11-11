@@ -1,7 +1,7 @@
 import type { Settings } from "@/lib/api";
 
 export type ApprovalPolicy = "request-approval" | "auto-approve" | "never";
-export type SandboxProfile = "workspace-write" | "danger-full-access";
+export type SandboxProfile = "workspace-write" | "read-only" | "danger-full-access";
 // SandboxMode is the legacy combined profile. Keep it only for migration.
 export type SandboxMode = "request-approval" | "auto-approve" | "danger-full-access";
 
@@ -34,9 +34,14 @@ export function normalizeApprovalPolicy(value?: string | null): ApprovalPolicy {
 
 /** normalizeSandboxProfile mirrors config.NormalizeSandboxProfile. */
 export function normalizeSandboxProfile(value?: string | null): SandboxProfile {
-  return (value ?? "").trim().toLowerCase() === "danger-full-access"
-    ? "danger-full-access"
-    : "workspace-write";
+  switch ((value ?? "").trim().toLowerCase()) {
+    case "read-only":
+      return "read-only";
+    case "danger-full-access":
+      return "danger-full-access";
+    default:
+      return "workspace-write";
+  }
 }
 
 /**

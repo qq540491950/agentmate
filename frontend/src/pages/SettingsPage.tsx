@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft, BellOff, BookOpen, Bot, Boxes, Check, Database, FolderLock, FolderOpen, Hand, Info,
+  ArrowLeft, BellOff, BookOpen, Bot, Boxes, Database, Eye, FolderLock, FolderOpen, Hand, Info,
   MessageSquare, Network, Palette, Plug, ShieldCheck, Sparkles, TriangleAlert,
   Users, type LucideIcon,
 } from "lucide-react";
@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NumericField } from "@/components/ui/numeric-field";
-import { choiceCardClass, SegmentedControl } from "@/components/ui/choice";
+import { SegmentedControl } from "@/components/ui/choice";
+import { PolicyChoiceGroup } from "@/components/PolicyChoiceGroup";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -48,7 +49,9 @@ import {
   APPROVAL_OPTIONS,
   SANDBOX_PROFILE_OPTIONS,
   executionPolicyHint,
+  sandboxNetworkCopy,
   sandboxNeedsRiskConfirmation,
+  sandboxStatusSummary,
 } from "@/lib/sandboxMode";
 import {
   DEFAULT_COMPACTION_CONTEXT_PERCENT,
@@ -65,7 +68,7 @@ import {
   type SettingsLeaveGuard,
   type SettingsTab,
 } from "@/lib/settingsModel";
-import { Chat, App, A2A, Config, Update, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
+import { Chat, App, A2A, Config, Update, getSandboxStatus, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type SandboxStatusInfo, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
 
 export type { SettingsTab } from "@/lib/settingsModel";
 
@@ -91,109 +94,9 @@ const APPROVAL_ICONS: Record<ApprovalPolicy, LucideIcon> = {
 
 const SANDBOX_PROFILE_ICONS: Record<SandboxProfile, LucideIcon> = {
   "workspace-write": FolderLock,
+  "read-only": Eye,
   "danger-full-access": TriangleAlert,
 };
-
-type PolicyChoice<T extends string> = {
-  value: T;
-  label: string;
-  description: string;
-  danger?: boolean;
-};
-
-function PolicyChoiceGroup<T extends string>({
-  label,
-  description,
-  options,
-  icons,
-  value,
-  columnsClass,
-  onSelect,
-}: {
-  label: string;
-  description: string;
-  options: readonly PolicyChoice<T>[];
-  icons: Record<T, LucideIcon>;
-  value: T;
-  columnsClass: string;
-  onSelect: (value: T) => void;
-}) {
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
-    if (!keys.includes(event.key)) return;
-    event.preventDefault();
-    const radios = Array.from(
-      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [],
-    );
-    const current = radios.indexOf(event.currentTarget);
-    if (current < 0) return;
-    let next = current;
-    if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = radios.length - 1;
-    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-      next = (current - 1 + radios.length) % radios.length;
-    } else {
-      next = (current + 1) % radios.length;
-    }
-    const nextOption = options[next];
-    if (nextOption) {
-      onSelect(nextOption.value);
-      radios[next]?.focus();
-    }
-  };
-
-  return (
-    <div className="grid gap-2">
-      <div>
-        <div className="text-sm font-medium">{label}</div>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
-      </div>
-      <div role="radiogroup" aria-label={label} className={cn("grid gap-2", columnsClass)}>
-        {options.map((option) => {
-          const selected = value === option.value;
-          const Icon = icons[option.value] as LucideIcon;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => onSelect(option.value)}
-              onKeyDown={onKeyDown}
-              className={choiceCardClass(selected, option.danger)}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <Icon
-                  aria-hidden="true"
-                  className={cn(
-                    "h-4 w-4",
-                    option.danger
-                      ? "text-danger-text"
-                      : selected ? "text-accent-text" : "text-muted-foreground",
-                  )}
-                />
-                {selected && (
-                  <Check
-                    aria-hidden="true"
-                    className={cn("h-3.5 w-3.5", option.danger ? "text-danger-text" : "text-accent-text")}
-                  />
-                )}
-              </div>
-              <div>
-                <span className={cn("text-sm font-medium", selected && "text-foreground")}>
-                  {option.label}
-                </span>
-                <p className={cn("mt-1 text-xs leading-relaxed", selected ? "text-foreground" : "text-muted-foreground")}>
-                  {option.description}
-                </p>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 export function SettingsPage({
   initialTab,
@@ -223,6 +126,8 @@ export function SettingsPage({
   const [logTitle, setLogTitle] = useState("应用日志");
   const [storage, setStorage] = useState<StorageInfo | null>(null);
   const [memoryInfo, setMemoryInfo] = useState<MemoryInfo | null>(null);
+  const [sandboxStatus, setSandboxStatus] = useState<SandboxStatusInfo | null>(null);
+  const [sandboxStatusError, setSandboxStatusError] = useState("");
   const [a2aStatuses, setA2AStatuses] = useState<A2AStatus[]>([]);
   const [indexStats, setIndexStats] = useState<KnowledgeIndexStats | null>(null);
   const [kbTestQuery, setKbTestQuery] = useState("");
@@ -260,6 +165,9 @@ export function SettingsPage({
     Config.ListKnowledgeFiles().then((fs) => setKbFiles(fs ?? [])).catch(() => {});
     App.StorageStats().then(setStorage).catch(() => {});
     App.MemoryStats().then(setMemoryInfo).catch(() => {});
+    getSandboxStatus()
+      .then((status) => setSandboxStatus(status))
+      .catch((error) => setSandboxStatusError(errText(error)));
   }, []);
 
   const update = (patch: Partial<Settings>) => {
@@ -309,6 +217,15 @@ export function SettingsPage({
   const dirty = isSettingsDirty(savedSettings, settings);
   dirtyRef.current = dirty;
   const defaultPolicyHint = executionPolicyHint(defaultExecutionPolicy);
+  const networkCopy = sandboxNetworkCopy(defaultExecutionPolicy, settings?.sandboxNetwork);
+  const sandboxStatusView = sandboxStatusError
+    ? { title: "无法读取本地工具沙箱", detail: sandboxStatusError, warning: true }
+    : sandboxStatusSummary(sandboxStatus);
+  const SandboxStatusIcon = sandboxStatusView.warning
+    ? TriangleAlert
+    : sandboxStatus?.available
+      ? ShieldCheck
+      : Info;
 
   const applySavedAppearance = (next: Settings) => {
     const prefs = prefsFromSettings(next);
@@ -588,13 +505,38 @@ export function SettingsPage({
             />
             <PolicyChoiceGroup
               label="新会话默认沙箱"
-              description="决定终端和文件工具的 OS 边界；完全访问会隐含开启联网。"
+              description="决定终端和文件工具的 OS 边界；只读会拒绝所有写入，完全访问会隐含开启联网。"
               options={SANDBOX_PROFILE_OPTIONS}
               icons={SANDBOX_PROFILE_ICONS}
               value={defaultExecutionPolicy.sandboxProfile}
-              columnsClass="sm:grid-cols-2"
+              columnsClass="sm:grid-cols-3"
               onSelect={selectSandboxProfile}
             />
+            <div
+              className={cn(
+                "flex items-start gap-3 rounded-lg p-3",
+                sandboxStatusView.warning ? "bg-warning-soft text-warning-text" : "bg-control text-foreground",
+              )}
+            >
+              <SandboxStatusIcon
+                aria-hidden="true"
+                className={cn(
+                  "mt-0.5 h-4 w-4 shrink-0",
+                  sandboxStatusView.warning ? "text-warning-text" : "text-accent-text",
+                )}
+              />
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{sandboxStatusView.title}</p>
+                <p
+                  className={cn(
+                    "mt-1 text-xs leading-relaxed",
+                    sandboxStatusView.warning ? "text-warning-text" : "text-muted-foreground",
+                  )}
+                >
+                  {sandboxStatusView.detail}
+                </p>
+              </div>
+            </div>
             {defaultPolicyHint ? (
               <div className="flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-sm text-warning-text">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -736,30 +678,26 @@ export function SettingsPage({
             </CardHeader>
             <CardContent className="grid gap-3">
               <SettingRow
-                label="新会话默认允许子进程联网"
-                description={defaultExecutionPolicy.sandboxProfile === "danger-full-access"
-                  ? "完全访问会隐含开启终端联网；这里保存的偏好不会被改写。"
-                  : "关闭时新会话的 run_command 子进程默认断网；已有会话不随此项变化。"}
+                label={networkCopy.label}
+                description={networkCopy.description}
               >
                 <Switch
-                  checked={
-                    defaultExecutionPolicy.sandboxProfile === "danger-full-access"
-                    || (settings.sandboxNetwork || "off") === "on"
-                  }
-                  disabled={defaultExecutionPolicy.sandboxProfile === "danger-full-access"}
+                  checked={networkCopy.checked}
+                  disabled={networkCopy.disabled}
                   onCheckedChange={(v) => update({ sandboxNetwork: v ? "on" : "off" })}
                 />
               </SettingRow>
-              {defaultExecutionPolicy.sandboxProfile === "danger-full-access" && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {networkCopy.note}
+              </p>
+              {networkCopy.notice && (
                 <div className="flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-sm text-warning-text">
                   <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  <p>
-                    联网由完全访问隐含开启；保存的联网偏好保持不变，切回工作区可写后恢复。
-                  </p>
+                  <p>{networkCopy.notice}</p>
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
-                Windows 使用 AppContainer 与低完整性边界；请求批准和仅风险确认都会拦截工作区外写入。沙箱初始化失败时拒绝执行，不会回退到全权限。
+                Windows 使用 AppContainer 与 ACL 边界；只读档位不授予工作区写权限。审批与沙箱独立，请求批准和仅风险确认都不会绕过沙箱；初始化失败时拒绝执行，不会回退到全权限。
               </p>
             </CardContent>
           </Card>

@@ -817,6 +817,19 @@ const handlers: Record<string, (args: any[]) => any> = {
   [svc("AppService", "StorageStats")]: () => ({ sessionsDbBytes: 524288, knowledgeDbBytes: 65536 }),
   // AppService.MemoryStats
   [svc("AppService", "MemoryStats")]: () => ({ count: 7 }),
+  // AppService.SandboxStatus — Settings platform warning.
+  [svc("AppService", "SandboxStatus")]: () => ({
+    available: true,
+    backend: "windows-appcontainer",
+    error: "",
+    profileSid: "S-1-15-2-demo",
+  }),
+  "agentmate/internal/services.AppService.SandboxStatus": () => ({
+    available: true,
+    backend: "windows-appcontainer",
+    error: "",
+    profileSid: "S-1-15-2-demo",
+  }),
 };
 
 (window as any).__lastCalls = [];

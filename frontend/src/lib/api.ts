@@ -60,6 +60,12 @@ export type KnowledgeIndexStats = agentkitModels.KnowledgeIndexStats;
 export type StorageInfo = serviceModels.StorageInfo;
 export type MemoryInfo = serviceModels.MemoryInfo;
 export type KnowledgeFile = serviceModels.KnowledgeFile;
+export type SandboxStatusInfo = {
+  available: boolean;
+  backend: string;
+  error?: string;
+  profileSid?: string;
+};
 // The split execution-policy fields are newer than the committed bindings
 // snapshot. Keep the runtime contract typed until bindings are regenerated.
 export type Settings = configModels.Settings & {
@@ -76,6 +82,13 @@ export type Project = configModels.Project;
 // bindings snapshot, so call it by fully qualified name through the Wails
 // runtime; the method name is the stable contract the generator writes.
 const chatServiceName = "agentmate/internal/services.ChatService";
+const appServiceName = "agentmate/internal/services.AppService";
+
+/** getSandboxStatus reads the platform backend for Settings warnings. */
+export function getSandboxStatus(): Promise<SandboxStatusInfo> {
+  return Call.ByName(`${appServiceName}.SandboxStatus`)
+    .then((status) => status as SandboxStatusInfo);
+}
 
 /** setSessionExecutionPolicy persists the current chat's independent axes. */
 export function setSessionExecutionPolicy(
