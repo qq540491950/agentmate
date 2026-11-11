@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 func sandboxTestRoot(t *testing.T) string {
@@ -104,6 +106,45 @@ func TestPolicyCheckWriteAllowsNewWorkspaceFile(t *testing.T) {
 	if !ok {
 		t.Fatalf("new workspace file denied: %s %s", code, reason)
 	}
+}
+
+// TestWithinCanonicalizesWindowsShortPaths pins the CI failure where the
+// config directory arrived as C:\Users\RUNNER~1\... while the workspace was
+// resolved to the long C:\Users\runneradmin\... spelling. The lexical check
+// said "outside", the app directory was added as a protected path, and every
+// workspace write was denied.
+func TestWithinCanonicalizesWindowsShortPaths(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "tasks", "sess")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	short, err := shortPath(root)
+	if err != nil || strings.EqualFold(short, root) {
+		t.Skipf("8.3 short names unavailable: short=%q err=%v", short, err)
+	}
+	if !Within(short, workspace) {
+		t.Fatalf("Within(%q, %q) = false; short and long spellings must match", short, workspace)
+	}
+	if !Within(root, filepath.Join(short, "tasks", "sess")) {
+		t.Fatalf("Within(%q, %q) = false; short and long spellings must match", root, short)
+	}
+}
+
+func shortPath(path string) (string, error) {
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return "", err
+	}
+	buf := make([]uint16, windows.MAX_PATH)
+	n, err := windows.GetShortPathName(p, &buf[0], uint32(len(buf)))
+	if err != nil {
+		return "", err
+	}
+	if n == 0 || int(n) > len(buf) {
+		return "", os.ErrInvalid
+	}
+	return windows.UTF16ToString(buf[:n]), nil
 }
 
 func TestWindowsEnvironmentDoesNotInheritSecrets(t *testing.T) {

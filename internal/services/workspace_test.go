@@ -100,19 +100,27 @@ func newWorkspaceTestChat(t *testing.T, handler http.HandlerFunc) (*ChatService,
 func TestNewSessionWorkspaceIsolatesParallelWrites(t *testing.T) {
 	var mu sync.Mutex
 	requests := []string{}
+	called := map[string]bool{}
 	chat, _, globalWorkspace := newWorkspaceTestChat(t, func(w http.ResponseWriter, r *http.Request) {
 		body := readAll(r)
 		mu.Lock()
 		requests = append(requests, body)
-		mu.Unlock()
-		w.Header().Set("Content-Type", "text/event-stream")
-		if strings.Contains(body, `\"ok\":true`) {
-			_, _ = w.Write([]byte(sseText("written") + sseDone))
-			return
-		}
 		label := "A"
 		if strings.Contains(body, "write-b") {
 			label = "B"
+		}
+		alreadyCalled := called[label]
+		called[label] = true
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		if alreadyCalled {
+			// A failed write must fail the file assertions below instead of
+			// looping on the same tool call until the 10-minute test timeout.
+			if !strings.Contains(body, `\"ok\":true`) {
+				t.Errorf("session %s write result missing ok:true: %s", label, body)
+			}
+			_, _ = w.Write([]byte(sseText("written") + sseDone))
+			return
 		}
 		args := fmt.Sprintf(`"{\"path\":\"same.txt\",\"content\":\"%s\"}"`, label)
 		_, _ = w.Write([]byte(sseToolCall("call_"+label, "write_workspace_file", args) + sseDone))
@@ -174,13 +182,18 @@ func TestNewSessionWorkspaceIsolatesParallelWrites(t *testing.T) {
 }
 
 func TestLegacySessionWithoutWorkspaceFallsBackToGlobal(t *testing.T) {
+	called := false
 	chat, _, globalWorkspace := newWorkspaceTestChat(t, func(w http.ResponseWriter, r *http.Request) {
 		body := readAll(r)
 		w.Header().Set("Content-Type", "text/event-stream")
-		if strings.Contains(body, `\"ok\":true`) {
+		if called {
+			if !strings.Contains(body, `\"ok\":true`) {
+				t.Errorf("legacy write result missing ok:true: %s", body)
+			}
 			_, _ = w.Write([]byte(sseText("written") + sseDone))
 			return
 		}
+		called = true
 		_, _ = w.Write([]byte(sseToolCall("legacy", "write_workspace_file", `"{\"path\":\"legacy.txt\",\"content\":\"legacy\"}"`) + sseDone))
 	})
 
@@ -562,17 +575,26 @@ func TestConcurrentTaskSnapshotsStayIsolated(t *testing.T) {
 }
 
 func TestParallelTaskWritesAndSnapshotsAreIsolated(t *testing.T) {
+	var mu sync.Mutex
+	called := map[string]bool{}
 	chat, _, _ := newWorkspaceTestChat(t, func(w http.ResponseWriter, r *http.Request) {
 		body := readAll(r)
-		time.Sleep(10 * time.Millisecond)
-		w.Header().Set("Content-Type", "text/event-stream")
-		if strings.Contains(body, `\"ok\":true`) {
-			_, _ = w.Write([]byte(sseText("written") + sseDone))
-			return
-		}
 		label := "A"
 		if strings.Contains(body, "write-b") {
 			label = "B"
+		}
+		mu.Lock()
+		alreadyCalled := called[label]
+		called[label] = true
+		mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+		w.Header().Set("Content-Type", "text/event-stream")
+		if alreadyCalled {
+			if !strings.Contains(body, `\"ok\":true`) {
+				t.Errorf("session %s write result missing ok:true: %s", label, body)
+			}
+			_, _ = w.Write([]byte(sseText("written") + sseDone))
+			return
 		}
 		_, _ = w.Write([]byte(sseToolCall("call_"+label, "write_workspace_file",
 			fmt.Sprintf(`"{\"path\":\"same.txt\",\"content\":\"%s\"}"`, label)) + sseDone))

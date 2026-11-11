@@ -411,8 +411,13 @@ func withinPath(root, target string) bool {
 	return true
 }
 
-// Within reports whether target is root or lives under root.
-func Within(root, target string) bool { return withinPath(root, target) }
+// Within reports whether target is root or lives under root. Both sides are
+// canonicalized first: Windows 8.3 spellings (RUNNER~1) and symlinked temp
+// directories must compare as the same tree, or a workspace inside the app
+// directory is misread as outside it and gets protected wholesale.
+func Within(root, target string) bool {
+	return withinPath(canonicalRoot(root), canonicalRoot(target))
+}
 
 // sanitizedEnvironment builds a minimal environment for a sandboxed child.
 // It intentionally drops every parent variable not in the runtime allowlist.

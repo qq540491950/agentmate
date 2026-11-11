@@ -4,6 +4,20 @@
 
 ## 视觉测试与体验设计
 
+### 第二百五十五轮迭代：修复 Windows 8.3 短路径导致的工作区写入误判（已实施）
+
+依据：v0.6.8 发布 gate 在 windows-latest 上超时。日志显示 `TestNewSessionWorkspaceIsolatesParallelWrites` 卡在 `runTurn`，ADK 历史膨胀到 1.2 万条事件后才触发 10 分钟测试超时。根因是 CI 的配置目录以 `C:\Users\RUNNER~1\...` 短路径到达，而任务工作区被规范化成 `C:\Users\runneradmin\...`；`sandbox.Within` 只做词法比较，判定工作区在应用目录之外，于是 `sandboxPolicy` 把应用目录加入受保护路径，`write_workspace_file` 全部被拒，脚本化假模型便无限重复同一工具调用。
+
+**实现要点**
+
+- `sandbox.Within` 先对两侧做 `canonicalRoot`（绝对化 + 符号链接解析），再比较；Windows 8.3 短名与长名、符号链接临时目录不再被误判为不同树。`Within` 只服务于「应用目录是否包含工作区」这一保护判定，`Policy.CheckWrite` 的越界语义不变。
+- 三个工作区隔离测试的假模型改为按会话记录「首次工具调用」，第二次请求直接收尾并断言 `ok:true`：真实写入失败会立刻以断言失败暴露，而不是挂满 10 分钟。
+
+**测试证据**
+
+- 新增 `TestWithinCanonicalizesWindowsShortPaths`：用 `GetShortPathNameW` 生成真实 8.3 短名，验证短/长拼写互相包含。
+- `go vet ./internal/sandbox/ ./internal/services/` 通过；`go test ./internal/sandbox/ ./internal/services/` 全绿（sandbox 6.1s、services 32.2s）。
+
 ### 第二百五十四轮迭代：助手消息去除冗余头部，朗读等操作移至正文右下角（已实施）
 
 依据：用户评论选中助手消息的「助手 16:00」头部，指出该头部元素不需要，语音朗读更适合放在输出右下角。直接对话中助手身份已由消息位置表达，时间信息也不是阅读主路径；团队/多 Agent 会话仍需保留成员身份。
