@@ -843,12 +843,16 @@ func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspac
 
 func (k *Kit) sandboxPolicy(ac config.AgentConfig, workspace string) sandbox.Policy {
 	policy := sandbox.DefaultPolicy(workspace)
-	if ac.EffectiveSandboxProfile() == config.SandboxProfileDangerFullAccess {
+	switch ac.EffectiveSandboxProfile() {
+	case config.SandboxProfileDangerFullAccess:
 		policy.Mode = sandbox.ModeDangerFullAccess
 		// The direct backend has no AppContainer capability gate; report the
 		// effective network state instead of leaving a misleading "off".
 		policy.Network = sandbox.NetworkOn
-	} else {
+	case config.SandboxProfileReadOnly:
+		policy.Mode = sandbox.ModeReadOnly
+		policy.Network = sandbox.Network(config.NormalizeSandboxNetwork(ac.SandboxNetwork))
+	default:
 		policy.Mode = sandbox.ModeWorkspaceWrite
 		policy.Network = sandbox.Network(config.NormalizeSandboxNetwork(ac.SandboxNetwork))
 	}
@@ -1114,6 +1118,11 @@ func WriteFileTool(workspace string, requireConfirmation bool) (tool.Tool, error
 // in-process write path. The OS sandbox covers child processes; this check is
 // the equivalent boundary for file tools, which do not spawn a process.
 func WriteFileToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
+	// A read-only write is rejected before it can mutate the workspace, so a
+	// human approval prompt would only add a dead-end interruption.
+	if policy.Mode == sandbox.ModeReadOnly {
+		requireConfirmation = false
+	}
 	return functiontool.New(functiontool.Config{
 		Name:                "write_workspace_file",
 		Description:         "Create or overwrite a text file inside the user's workspace (single write up to 6MB).",

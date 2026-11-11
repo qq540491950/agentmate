@@ -466,6 +466,8 @@ func validateSessionApprovalPolicy(policy string) (string, error) {
 
 func validateSessionSandboxProfile(profile string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case config.SandboxProfileReadOnly:
+		return config.SandboxProfileReadOnly, nil
 	case config.SandboxProfileWorkspaceWrite:
 		return config.SandboxProfileWorkspaceWrite, nil
 	case config.SandboxProfileDangerFullAccess:

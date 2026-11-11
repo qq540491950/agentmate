@@ -52,6 +52,7 @@ type windowsBackend struct {
 	sidString string
 	acls      map[string]bool
 	labeled   map[string]bool
+	modes     map[string]Mode
 }
 
 var (
@@ -69,7 +70,7 @@ func getBackend() (*windowsBackend, error) {
 		}
 		backend = &windowsBackend{
 			sid: sid, sidString: sid.String(),
-			acls: map[string]bool{}, labeled: map[string]bool{},
+			acls: map[string]bool{}, labeled: map[string]bool{}, modes: map[string]Mode{},
 		}
 	})
 	return backend, backendErr
@@ -138,6 +139,7 @@ func configureDirectProcess(cmd *exec.Cmd) {
 }
 
 func (b *windowsBackend) prepare(policy Policy) (string, error) {
+	readOnly := policy.Mode == ModeReadOnly
 	home, err := os.MkdirTemp("", "agentmate-sandbox-*")
 	if err != nil {
 		return "", fmt.Errorf("创建沙箱目录失败: %w", err)
@@ -169,9 +171,12 @@ func (b *windowsBackend) prepare(policy Policy) (string, error) {
 		if st, err := os.Stat(root); err != nil || !st.IsDir() {
 			continue
 		}
-		if err := b.grantModify(root); err != nil {
+		if err := b.setRootMode(root, policy.Mode); err != nil {
 			_ = os.RemoveAll(home)
 			return "", err
+		}
+		if readOnly {
+			continue
 		}
 		for _, path := range policy.ProtectedPaths {
 			if !withinPath(root, path) {
@@ -573,6 +578,48 @@ func buildEnvBlock(env []string) (*uint16, error) {
 
 func (b *windowsBackend) grantModify(path string) error {
 	return b.icacls(path, "/grant", "*"+b.sidString+":(OI)(CI)M")
+}
+
+func (b *windowsBackend) grantRead(path string) error {
+	return b.icacls(path, "/grant", "*"+b.sidString+":(OI)(CI)RX")
+}
+
+// setRootMode keeps a workspace's AppContainer ACE aligned with the current
+// profile. workspace-write grants are inherited and persist in the filesystem,
+// so switching the same workspace to read-only must first revoke the old ACE;
+// merely adding RX would leave the earlier Modify grant in force.
+func (b *windowsBackend) setRootMode(path string, mode Mode) error {
+	key := strings.ToLower(filepath.Clean(path))
+	b.mu.Lock()
+	if b.modes[key] == mode {
+		b.mu.Unlock()
+		return nil
+	}
+	b.mu.Unlock()
+
+	if mode == ModeReadOnly {
+		if err := b.removeACL(path); err != nil {
+			return err
+		}
+		b.mu.Lock()
+		prefix := key + "\x00"
+		for aclKey := range b.acls {
+			if strings.HasPrefix(aclKey, prefix) {
+				delete(b.acls, aclKey)
+			}
+		}
+		b.mu.Unlock()
+		if err := b.grantRead(path); err != nil {
+			return err
+		}
+	} else if err := b.grantModify(path); err != nil {
+		return err
+	}
+
+	b.mu.Lock()
+	b.modes[key] = mode
+	b.mu.Unlock()
+	return nil
 }
 
 func (b *windowsBackend) denyWrite(path string) error {

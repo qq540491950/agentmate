@@ -27,6 +27,25 @@ func TestWorkspaceWriteFailsClosedWithoutOSBackend(t *testing.T) {
 	}
 }
 
+func TestReadOnlyFailsClosedWithoutOSBackend(t *testing.T) {
+	policy := DefaultPolicy(t.TempDir())
+	policy.Mode = ModeReadOnly
+	res, err := Run(context.Background(), Request{
+		Command: "echo",
+		Args:    []string{"must-not-run"},
+		Timeout: 5 * time.Second,
+	}, policy)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("read-only error = %v, want ErrUnavailable", err)
+	}
+	if !strings.Contains(err.Error(), "当前平台未实现 OS 沙箱") {
+		t.Fatalf("read-only error missing platform message: %v", err)
+	}
+	if res.ExitCode != 0 || res.Output != "" {
+		t.Fatalf("read-only must not execute the command: %+v", res)
+	}
+}
+
 func TestDangerFullAccessRunsDirectWithoutOSBackend(t *testing.T) {
 	policy := DefaultPolicy(t.TempDir())
 	policy.Mode = ModeDangerFullAccess

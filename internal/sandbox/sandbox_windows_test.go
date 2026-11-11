@@ -127,6 +127,125 @@ func TestWindowsWorkspaceWriteBlocksOutside(t *testing.T) {
 	}
 }
 
+func TestWindowsReadOnlyAllowsReadsAndBlocksWrites(t *testing.T) {
+	if !Available() {
+		t.Skipf("AppContainer unavailable: %s", BackendStatus().Error)
+	}
+	defer Close()
+
+	root := sandboxTestRoot(t)
+	workspace := filepath.Join(root, "workspace")
+	if err := os.Mkdir(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	inside := filepath.Join(workspace, "read.txt")
+	if err := os.WriteFile(inside, []byte("read-ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(root, "outside.txt")
+	if err := os.WriteFile(outside, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Prove read-only also revokes a Modify ACE left by an earlier
+	// workspace-write run on the same directory.
+	warm, err := Run(context.Background(), Request{
+		Command: "cmd.exe",
+		Args:    []string{"/d", "/c", "echo warm>warmed.txt"},
+		Dir:     workspace,
+		Timeout: 20 * time.Second,
+	}, DefaultPolicy(workspace))
+	if err != nil || warm.ExitCode != 0 {
+		t.Fatalf("workspace-write warmup failed: %+v err=%v", warm, err)
+	}
+
+	policy := DefaultPolicy(workspace)
+	policy.Mode = ModeReadOnly
+	run := func(command string) Result {
+		t.Helper()
+		res, err := Run(context.Background(), Request{
+			Command:     "cmd.exe",
+			Args:        []string{"/d", "/c", command},
+			Dir:         workspace,
+			Timeout:     20 * time.Second,
+			OutputLimit: 16 << 10,
+		}, policy)
+		if err != nil {
+			t.Fatalf("sandboxed run %q: %v (status %+v)", command, err, BackendStatus())
+		}
+		return res
+	}
+
+	if res := run("type read.txt"); res.ExitCode != 0 || !strings.Contains(res.Output, "read-ok") {
+		t.Fatalf("read failed: %+v", res)
+	}
+	run("echo changed>read.txt")
+	if data, err := os.ReadFile(inside); err != nil || string(data) != "read-ok" {
+		t.Fatalf("workspace write was not blocked: %q err=%v", data, err)
+	}
+	run(`echo escaped>"` + outside + `"`)
+	if data, err := os.ReadFile(outside); err != nil || string(data) != "original" {
+		t.Fatalf("outside write was not blocked: %q err=%v", data, err)
+	}
+}
+
+func TestWindowsReadOnlyCanRunGitStatus(t *testing.T) {
+	if !Available() {
+		t.Skipf("AppContainer unavailable: %s", BackendStatus().Error)
+	}
+	defer Close()
+
+	root := sandboxTestRoot(t)
+	workspace := filepath.Join(root, "workspace")
+	if err := os.Mkdir(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initCmd := exec.Command("git", "-C", workspace, "init", "-q")
+	if out, err := initCmd.CombinedOutput(); err != nil {
+		t.Skipf("git unavailable: %v: %s", err, out)
+	}
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Skipf("git unavailable: %v", err)
+	}
+	gitBin := filepath.Join(filepath.Dir(filepath.Dir(gitPath)), "mingw64", "bin")
+	if _, err := os.Stat(filepath.Join(gitBin, "git.exe")); err != nil {
+		t.Skipf("Git for Windows layout unavailable: %v", err)
+	}
+	sandboxGit := filepath.Join(workspace, "gitbin")
+	if err := os.Mkdir(sandboxGit, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"git.exe", "libintl-8.dll", "libiconv-2.dll",
+		"libpcre2-8-0.dll", "libwinpthread-1.dll", "zlib1.dll",
+	} {
+		data, err := os.ReadFile(filepath.Join(gitBin, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if err := os.WriteFile(filepath.Join(sandboxGit, name), data, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	policy := DefaultPolicy(workspace)
+	policy.Mode = ModeReadOnly
+	res, err := Run(context.Background(), Request{
+		Command:     filepath.Join(sandboxGit, "git.exe"),
+		Args:        []string{"status", "--short"},
+		Dir:         workspace,
+		Timeout:     20 * time.Second,
+		OutputLimit: 16 << 10,
+	}, policy)
+	if err != nil {
+		t.Fatalf("sandboxed git status: %v (status %+v)", err, BackendStatus())
+	}
+	if res.ExitCode != 0 {
+		t.Fatalf("git status failed: %+v", res)
+	}
+}
+
 func TestPolicyCheckWriteBlocksProtectedPaths(t *testing.T) {
 	workspace := t.TempDir()
 	policy := DefaultPolicy(workspace)

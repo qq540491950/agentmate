@@ -25,6 +25,10 @@ import (
 type Mode string
 
 const (
+	// ModeReadOnly permits reading the workspace but denies every write. It is
+	// enforced by the OS backend for child processes and by Policy.CheckWrite
+	// for in-process file tools.
+	ModeReadOnly Mode = "read-only"
 	// ModeWorkspaceWrite permits writes only under the workspace and explicit
 	// writable roots. It is the default for every local tool.
 	ModeWorkspaceWrite Mode = "workspace-write"
@@ -133,13 +137,13 @@ func (p Policy) validate() error {
 	if p.Workspace == "" {
 		return fmt.Errorf("沙箱工作区为空")
 	}
-	if p.Mode != ModeWorkspaceWrite && p.Mode != ModeDangerFullAccess {
+	if p.Mode != ModeReadOnly && p.Mode != ModeWorkspaceWrite && p.Mode != ModeDangerFullAccess {
 		return fmt.Errorf("未知沙箱模式 %q", p.Mode)
 	}
 	if p.Network != NetworkOff && p.Network != NetworkOn {
 		return fmt.Errorf("未知网络策略 %q", p.Network)
 	}
-	if p.Mode == ModeWorkspaceWrite {
+	if p.Mode == ModeReadOnly || p.Mode == ModeWorkspaceWrite {
 		if st, err := os.Stat(p.Workspace); err != nil {
 			return fmt.Errorf("沙箱工作区不可用: %w", err)
 		} else if !st.IsDir() {
@@ -155,6 +159,9 @@ func (p Policy) CheckWrite(path string) (bool, string, string) {
 	p = p.normalized()
 	if p.Mode == ModeDangerFullAccess {
 		return true, "", ""
+	}
+	if p.Mode == ModeReadOnly {
+		return false, "read_only", "只读沙箱不允许写入"
 	}
 	full := canonicalTarget(path)
 	if full == "" {
@@ -192,8 +199,9 @@ func (p Policy) CheckCommand(command string) (bool, string, string) {
 	return true, "", ""
 }
 
-// Run executes one child process. A workspace-write policy never silently
-// falls back to direct execution when the platform backend is unavailable.
+// Run executes one child process. Read-only and workspace-write policies never
+// silently fall back to direct execution when the platform backend is
+// unavailable.
 func Run(ctx context.Context, req Request, policy Policy) (Result, error) {
 	policy = policy.normalized()
 	if err := policy.validate(); err != nil {
@@ -212,7 +220,17 @@ func Run(ctx context.Context, req Request, policy Policy) (Result, error) {
 		return runDirect(ctx, req, append(os.Environ(), policy.ExtraEnv...))
 	}
 	if req.Dir != "" {
-		if ok, code, reason := policy.CheckWrite(req.Dir); !ok {
+		var ok bool
+		var code, reason string
+		if policy.Mode == ModeReadOnly {
+			ok = Within(policy.Workspace, req.Dir)
+			if !ok {
+				ok, code, reason = false, "outside_workspace", fmt.Sprintf("命令工作目录越出工作区范围：%s", req.Dir)
+			}
+		} else {
+			ok, code, reason = policy.CheckWrite(req.Dir)
+		}
+		if !ok {
 			return Result{
 				ExitCode:     -1,
 				Denied:       true,
@@ -224,7 +242,7 @@ func Run(ctx context.Context, req Request, policy Policy) (Result, error) {
 	return runPlatform(ctx, req, policy)
 }
 
-// Available reports whether the current platform can enforce workspace-write.
+// Available reports whether the current platform can enforce a confined mode.
 func Available() bool {
 	return statusPlatform().Available
 }

@@ -214,6 +214,7 @@ func TestSandboxModeNormalizationAndProfiles(t *testing.T) {
 		"workspace-write":       SandboxProfileWorkspaceWrite,
 		"request-approval":      SandboxProfileWorkspaceWrite,
 		"auto-approve":          SandboxProfileWorkspaceWrite,
+		"read-only":             SandboxProfileReadOnly,
 		"danger-full-access":    SandboxProfileDangerFullAccess,
 		"  DANGER-FULL-ACCESS ": SandboxProfileDangerFullAccess,
 	} {
@@ -259,6 +260,11 @@ func TestSandboxModeNormalizationAndProfiles(t *testing.T) {
 	if agent.SandboxProfile != SandboxProfileDangerFullAccess ||
 		!reflect.DeepEqual(agent.ConfirmTools, []string{"files", "shell"}) {
 		t.Fatalf("request + danger execution policy = %+v", agent)
+	}
+	agent.ApplyExecutionPolicy(ApprovalPolicyRequestApproval, SandboxProfileReadOnly)
+	if agent.SandboxProfile != SandboxProfileReadOnly ||
+		!reflect.DeepEqual(agent.ConfirmTools, []string{"files", "shell"}) {
+		t.Fatalf("request + read-only execution policy = %+v", agent)
 	}
 }
 

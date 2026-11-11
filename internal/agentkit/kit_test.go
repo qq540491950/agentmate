@@ -62,6 +62,15 @@ func TestSandboxPolicyProfiles(t *testing.T) {
 		t.Fatalf("auto policy = %+v", auto)
 	}
 
+	readOnly := k.sandboxPolicy(config.AgentConfig{
+		ApprovalPolicy: config.ApprovalPolicyRequestApproval,
+		SandboxProfile: config.SandboxProfileReadOnly,
+		SandboxNetwork: config.SandboxNetworkOn,
+	}, workspace)
+	if readOnly.Mode != sandbox.ModeReadOnly || readOnly.Network != sandbox.NetworkOn {
+		t.Fatalf("read-only policy = %+v", readOnly)
+	}
+
 	full := k.sandboxPolicy(config.AgentConfig{
 		ApprovalPolicy: config.ApprovalPolicyRequestApproval,
 		SandboxProfile: config.SandboxProfileDangerFullAccess,
@@ -100,6 +109,24 @@ func TestWriteWorkspaceFilePolicyBlocksProtectedPath(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(root, "src", "main.go"))
 	if err != nil || string(data) != "package main" {
 		t.Fatalf("write result = %q, %v", string(data), err)
+	}
+}
+
+func TestWriteWorkspaceFileReadOnlyIsDenied(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "keep.txt")
+	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	policy := sandbox.DefaultPolicy(root)
+	policy.Mode = sandbox.ModeReadOnly
+	if _, err := writeWorkspaceFile(root, writeArgs{Path: "keep.txt", Content: "changed"}, policy); err == nil ||
+		!strings.Contains(err.Error(), "read_only") {
+		t.Fatalf("read-only write error = %v, want read_only", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "original" {
+		t.Fatalf("read-only write changed file: %q err=%v", data, err)
 	}
 }
 

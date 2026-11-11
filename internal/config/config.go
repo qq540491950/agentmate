@@ -33,6 +33,9 @@ const (
 	// SandboxProfileWorkspaceWrite confines local tool execution to the task
 	// workspace.
 	SandboxProfileWorkspaceWrite = "workspace-write"
+	// SandboxProfileReadOnly allows reading the task workspace while denying
+	// every workspace write.
+	SandboxProfileReadOnly = "read-only"
 	// SandboxProfileDangerFullAccess disables the OS sandbox.
 	SandboxProfileDangerFullAccess = "danger-full-access"
 
@@ -78,6 +81,8 @@ func NormalizeSandboxProfile(profile string) string {
 	switch strings.ToLower(strings.TrimSpace(profile)) {
 	case SandboxProfileDangerFullAccess:
 		return SandboxProfileDangerFullAccess
+	case SandboxProfileReadOnly:
+		return SandboxProfileReadOnly
 	case SandboxProfileWorkspaceWrite, SandboxModeRequestApproval, SandboxModeAutoApprove, "request", "auto":
 		return SandboxProfileWorkspaceWrite
 	default:
