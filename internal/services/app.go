@@ -15,6 +15,7 @@ import (
 	"agentmate/internal/agentkit"
 	"agentmate/internal/config"
 	"agentmate/internal/mcpmgr"
+	"agentmate/internal/sandbox"
 )
 
 func nowUTC() time.Time { return time.Now().UTC().Truncate(time.Second) }
@@ -127,6 +128,23 @@ func (a *AppService) StorageStats() StorageInfo {
 		info.KnowledgeDBBytes = st.Size()
 	}
 	return info
+}
+
+type SandboxStatusInfo struct {
+	Available  bool   `json:"available"`
+	Backend    string `json:"backend"`
+	Error      string `json:"error"`
+	ProfileSID string `json:"profileSid"`
+}
+
+func (a *AppService) SandboxStatus() SandboxStatusInfo {
+	st := sandbox.BackendStatus()
+	return SandboxStatusInfo{
+		Available:  st.Available,
+		Backend:    st.Backend,
+		Error:      st.Error,
+		ProfileSID: st.ProfileSID,
+	}
 }
 
 // VacuumSessions compacts the sessions database (reclaims space from
