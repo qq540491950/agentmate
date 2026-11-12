@@ -75,7 +75,7 @@ func (a *A2AService) Start(agentID string, port int) (A2AStatus, error) {
 	if agentCfg == nil {
 		return A2AStatus{}, fmt.Errorf("agent %q not found", agentID)
 	}
-	root, err := a.S.Kit.BuildAgent(*agentCfg)
+	root, err := a.S.Kit.BuildAgent(a2aAgentConfig(*agentCfg))
 	if err != nil {
 		return A2AStatus{}, err
 	}
@@ -130,6 +130,17 @@ func (a *A2AService) Start(agentID string, port int) (A2AStatus, error) {
 		}
 	}()
 	return A2AStatus{Running: true, URL: entry.url, AgentID: agentID, AgentName: name}, nil
+}
+
+// a2aAgentConfig keeps a published agent non-interactive. There is no UI on
+// the A2A invocation path to answer a HITL confirmation, so inheriting the
+// chat default (request-approval) would pause every file or shell call
+// forever. Keep the workspace-write OS boundary and clear per-agent prompts
+// for this runtime copy; the persisted agent is left untouched.
+func a2aAgentConfig(ac config.AgentConfig) config.AgentConfig {
+	ac.ApplyExecutionPolicy(config.ApprovalPolicyNever, config.SandboxProfileWorkspaceWrite)
+	ac.SandboxNetwork = config.SandboxNetworkOff
+	return ac
 }
 
 // StopPublishedAgent is a best-effort hook for config mutations: if the given

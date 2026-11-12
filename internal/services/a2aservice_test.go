@@ -128,6 +128,26 @@ func TestA2AServiceLoopback(t *testing.T) {
 	}
 }
 
+func TestA2AAgentConfigUsesNonInteractivePolicy(t *testing.T) {
+	got := a2aAgentConfig(config.AgentConfig{
+		ID:           "a1",
+		Name:         "对外服务",
+		ConfirmTools: []string{"files", "shell"},
+	})
+	if approval := got.EffectiveApprovalPolicy(); approval != config.ApprovalPolicyNever {
+		t.Fatalf("A2A approval policy = %q, want %q", approval, config.ApprovalPolicyNever)
+	}
+	if profile := got.EffectiveSandboxProfile(); profile != config.SandboxProfileWorkspaceWrite {
+		t.Fatalf("A2A sandbox profile = %q, want %q", profile, config.SandboxProfileWorkspaceWrite)
+	}
+	if got.SandboxNetwork != config.SandboxNetworkOff {
+		t.Fatalf("A2A network = %q, want %q", got.SandboxNetwork, config.SandboxNetworkOff)
+	}
+	if len(got.ConfirmTools) != 0 {
+		t.Fatalf("A2A per-agent confirmations must be cleared, got %v", got.ConfirmTools)
+	}
+}
+
 // TestConfigMutationStopsPublishedAgent: editing or deleting a published
 // agent takes its A2A server offline (the executor holds the tree built at
 // Start time; remote clients would otherwise keep invoking a stale agent).

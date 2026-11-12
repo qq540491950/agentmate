@@ -116,7 +116,7 @@ export function executionPolicyHint(policy: ExecutionPolicy): string | null {
 }
 
 export const SANDBOX_UNAVAILABLE_MESSAGE =
-  "当前平台未实现 OS 沙箱，请求批准/帮我批准会拒绝执行终端命令；只有完全访问可运行";
+  "当前平台未实现 OS 沙箱：工作区可写与只读会拒绝执行终端命令；只有完全访问可运行";
 
 export type SandboxStatusLike = {
   available: boolean;
