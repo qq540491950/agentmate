@@ -352,46 +352,57 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
           ) : (
             <div className="whitespace-pre-wrap break-words text-md leading-[1.7]">{m.text}</div>
           )}
-          {m.timestamp && <time className="sr-only" dateTime={m.timestamp}>{fmtTime(m.timestamp)}</time>}
         </div>
         {/* Copy/regenerate/speak/usage work on every finished assistant
             message. Only regenerate stays bound to the last reply. */}
         {!m.streaming && m.text && (
           <div
             data-slot="assistant-actions"
-            className="mt-1.5 flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            className="mt-1.5 flex items-center justify-end gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
           >
-            {m.usage && m.usage.totalTokens > 0 && (
-              <span className="mr-1 text-2xs tabular-nums text-muted-foreground/70" title={`输入 ${m.usage.promptTokens} + 输出 ${m.usage.completionTokens}`}>
-                {m.usage.totalTokens.toLocaleString()} tokens{costOf(m.usage) && ` · ${costOf(m.usage)}`}
-              </span>
-            )}
-            <button
-              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              title={copied ? "已复制" : "复制"}
-              aria-label={copied ? "已复制" : "复制这条回复"}
-              onClick={copyMsg}
-            >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            </button>
-            {isLastAssistant && canRegenerate && (
+            <div className="flex items-center gap-0.5">
+              {m.usage && m.usage.totalTokens > 0 && (
+                <span className="mr-1 text-2xs tabular-nums text-muted-foreground/70" title={`输入 ${m.usage.promptTokens} + 输出 ${m.usage.completionTokens}`}>
+                  {m.usage.totalTokens.toLocaleString()} tokens{costOf(m.usage) && ` · ${costOf(m.usage)}`}
+                </span>
+              )}
               <button
                 className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                title="重新生成最后一条回复"
-                aria-label="重新生成最后一条回复"
-                onClick={onRegenerate}
+                title={copied ? "已复制" : "复制"}
+                aria-label={copied ? "已复制" : "复制这条回复"}
+                onClick={copyMsg}
               >
-                <RefreshCw className="h-3.5 w-3.5" />
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               </button>
+              {isLastAssistant && canRegenerate && (
+                <button
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  title="重新生成最后一条回复"
+                  aria-label="重新生成最后一条回复"
+                  onClick={onRegenerate}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <button
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                title="朗读这条回复"
+                aria-label="朗读这条回复"
+                onClick={() => onSpeak(m.text)}
+              >
+                <Volume2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {m.timestamp && (
+              <time
+                data-slot="completion-time"
+                dateTime={m.timestamp}
+                title={`输出完成于 ${fmtTime(m.timestamp)}`}
+                className="whitespace-nowrap text-xs tabular-nums text-muted-foreground"
+              >
+                {fmtTime(m.timestamp)}
+              </time>
             )}
-            <button
-              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              title="朗读这条回复"
-              aria-label="朗读这条回复"
-              onClick={() => onSpeak(m.text)}
-            >
-              <Volume2 className="h-3.5 w-3.5" />
-            </button>
           </div>
         )}
       </div>

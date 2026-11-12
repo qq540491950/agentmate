@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { MessageBubble } from "./MessageBubble";
-import type { UIMessage } from "@/lib/chatUtils";
+import { fmtTime, type UIMessage } from "@/lib/chatUtils";
 
 const assistant: UIMessage = {
   id: "a1",
@@ -36,6 +36,24 @@ describe("MessageBubble", () => {
     expect(html).not.toContain("助手");
     expect(html).toContain('data-slot="assistant-actions"');
     expect(html).toContain("朗读这条回复");
+  });
+
+  it("shows the completion time after the reply actions", () => {
+    const html = render();
+    const speakButton = html.indexOf("朗读这条回复");
+    const completionTime = html.indexOf('data-slot="completion-time"');
+    expect(speakButton).toBeGreaterThan(-1);
+    expect(completionTime).toBeGreaterThan(speakButton);
+    expect(html).toMatch(
+      new RegExp(`data-slot="completion-time"[^>]*>${fmtTime(assistant.timestamp)}<\\/time>`),
+    );
+  });
+
+  it("reveals the completion time together with the reply actions", () => {
+    const html = render();
+    expect(html).toMatch(
+      /data-slot="assistant-actions"[^>]*opacity-0[^>]*group-hover:opacity-100[^>]*group-focus-within:opacity-100/,
+    );
   });
 
   it("keeps the author label for named agents and team members", () => {

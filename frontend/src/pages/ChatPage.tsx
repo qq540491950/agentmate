@@ -760,7 +760,13 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             if (idx >= 0) {
               const real = prev.length - 1 - idx;
               const copy = [...prev];
-              copy[real] = { ...copy[real], text: ev.text, streaming: false, usage: ev.usage ?? null };
+              copy[real] = {
+                ...copy[real],
+                text: ev.text,
+                streaming: false,
+                usage: ev.usage ?? null,
+                timestamp: new Date().toISOString(),
+              };
               return copy;
             }
             return [...prev, { id: nextId(), kind: "assistant", author: ev.author, text: ev.text, usage: ev.usage ?? null, timestamp: new Date().toISOString() }];
@@ -778,10 +784,12 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             } as UIMessage];
           case "error":
             return [...prev, { id: nextId(), kind: "error", author: "system", text: ev.text }];
-          case "done":
+          case "done": {
             thinkingStreamedRef.current = null;
             thinkingOpenRef.current = null;
-            return prev.map((m) => (m.streaming ? { ...m, streaming: false } : m));
+            const completedAt = new Date().toISOString();
+            return prev.map((m) => (m.streaming ? { ...m, streaming: false, timestamp: completedAt } : m));
+          }
           default:
             return prev;
         }
