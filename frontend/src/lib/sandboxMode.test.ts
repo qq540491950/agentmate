@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   APPROVAL_OPTIONS,
+  PERMISSION_PROFILE_OPTIONS,
   SANDBOX_PROFILE_OPTIONS,
   approvalPolicyLabel,
   approvalPolicyOption,
   approvalPolicyShortLabel,
   executionPolicyHint,
+  permissionProfileForPolicy,
+  permissionProfilePolicy,
+  permissionProfileShortLabel,
   sandboxNetworkCopy,
   sandboxNeedsRiskConfirmation,
   sandboxProfileLabel,
@@ -16,7 +20,7 @@ import {
 } from "./sandboxMode";
 
 describe("execution policy metadata", () => {
-  it("exposes the three approval and three sandbox choices shown by both pickers", () => {
+  it("keeps the advanced approval and sandbox metadata used by custom policies", () => {
     expect(APPROVAL_OPTIONS.map((option) => option.value)).toEqual([
       "request-approval",
       "auto-approve",
@@ -24,7 +28,7 @@ describe("execution policy metadata", () => {
     ]);
     expect(APPROVAL_OPTIONS.map((option) => option.label)).toEqual([
       "请求批准",
-      "仅风险确认",
+      "帮我批准",
       "从不询问",
     ]);
     expect(SANDBOX_PROFILE_OPTIONS.map((option) => option.value)).toEqual([
@@ -44,7 +48,7 @@ describe("execution policy metadata", () => {
     expect(approvalPolicyOption("auto").value).toBe("auto-approve");
     expect(approvalPolicyOption("danger-full-access").value).toBe("never");
     expect(approvalPolicyOption("unknown").value).toBe("request-approval");
-    expect(approvalPolicyLabel("auto-approve")).toBe("仅风险确认");
+    expect(approvalPolicyLabel("auto-approve")).toBe("帮我批准");
     expect(sandboxProfileOption("request-approval").value).toBe("workspace-write");
     expect(sandboxProfileOption("unknown").value).toBe("workspace-write");
     expect(sandboxProfileOption("read-only")).toEqual(expect.objectContaining({
@@ -56,11 +60,42 @@ describe("execution policy metadata", () => {
   });
 
   it("uses compact composer labels without changing the settings title", () => {
-    expect(approvalPolicyShortLabel("auto-approve")).toBe("仅风险");
+    expect(approvalPolicyShortLabel("auto-approve")).toBe("帮我批准");
     expect(approvalPolicyShortLabel("never")).toBe("从不询问");
     expect(sandboxProfileShortLabel("workspace-write")).toBe("工作区");
     expect(sandboxProfileShortLabel("read-only")).toBe("只读");
     expect(sandboxProfileShortLabel("danger-full-access")).toBe("完全访问");
+  });
+
+  it("maps the three Codex-style profiles to the internal execution policy pair", () => {
+    expect(PERMISSION_PROFILE_OPTIONS.map((option) => option.value)).toEqual([
+      "request-approval",
+      "auto-approve",
+      "danger-full-access",
+    ]);
+    expect(PERMISSION_PROFILE_OPTIONS.map((option) => option.label)).toEqual([
+      "请求批准",
+      "帮我批准",
+      "完全访问权限",
+    ]);
+    expect(PERMISSION_PROFILE_OPTIONS.map((option) => option.policy)).toEqual([
+      { approvalPolicy: "request-approval", sandboxProfile: "workspace-write" },
+      { approvalPolicy: "auto-approve", sandboxProfile: "workspace-write" },
+      { approvalPolicy: "never", sandboxProfile: "danger-full-access" },
+    ]);
+    expect(permissionProfilePolicy("danger-full-access")).toEqual({
+      approvalPolicy: "never",
+      sandboxProfile: "danger-full-access",
+    });
+    expect(permissionProfileForPolicy({
+      approvalPolicy: "never",
+      sandboxProfile: "danger-full-access",
+    })?.value).toBe("danger-full-access");
+    expect(permissionProfileForPolicy({
+      approvalPolicy: "never",
+      sandboxProfile: "workspace-write",
+    })).toBeNull();
+    expect(permissionProfileShortLabel("auto-approve")).toBe("帮我批准");
   });
 
   it("requires an explicit risk acknowledgement before full access", () => {

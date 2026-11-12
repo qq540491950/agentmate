@@ -23,7 +23,7 @@ export function PolicyChoiceGroup<T extends string>({
   description: string;
   options: readonly PolicyChoice<T>[];
   icons: Record<T, LucideIcon>;
-  value: T;
+  value: T | null;
   columnsClass: string;
   onSelect: (value: T) => void;
 }) {

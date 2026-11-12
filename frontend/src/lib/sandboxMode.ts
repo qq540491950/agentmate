@@ -4,7 +4,6 @@ import {
   normalizeSandboxProfile,
   type ApprovalPolicy,
   type ExecutionPolicy,
-  type SandboxMode,
   type SandboxProfile,
 } from "./settingsModel";
 
@@ -24,6 +23,25 @@ export type SandboxProfileOption = {
   danger?: boolean;
 };
 
+/**
+ * Permission profiles are the only user-facing execution setting. Each profile
+ * is expanded into the two internal dimensions (approval + sandbox) by the
+ * backend/API layer, matching Codex's preset-style permission picker.
+ */
+export type PermissionProfile =
+  | "request-approval"
+  | "auto-approve"
+  | "danger-full-access";
+
+export type PermissionProfileOption = {
+  value: PermissionProfile;
+  label: string;
+  shortLabel?: string;
+  description: string;
+  policy: ExecutionPolicy;
+  danger?: boolean;
+};
+
 /** Shared approval labels/descriptions for Settings and the composer picker. */
 export const APPROVAL_OPTIONS: ApprovalPolicyOption[] = [
   {
@@ -33,8 +51,8 @@ export const APPROVAL_OPTIONS: ApprovalPolicyOption[] = [
   },
   {
     value: "auto-approve",
-    label: "仅风险确认",
-    shortLabel: "仅风险",
+    label: "帮我批准",
+    shortLabel: "帮我批准",
     description: "工作区内安全操作自动执行；删除、系统配置、凭据访问、发布等风险操作才询问。",
   },
   {
@@ -65,6 +83,81 @@ export const SANDBOX_PROFILE_OPTIONS: SandboxProfileOption[] = [
     danger: true,
   },
 ];
+
+/** The three Codex-style presets shown in the composer and Settings. */
+export const PERMISSION_PROFILE_OPTIONS: PermissionProfileOption[] = [
+  {
+    value: "request-approval",
+    label: "请求批准",
+    description: "写文件和执行命令前始终询问；工作区外写入仍由沙箱拦截。",
+    policy: {
+      approvalPolicy: "request-approval",
+      sandboxProfile: "workspace-write",
+    },
+  },
+  {
+    value: "auto-approve",
+    label: "帮我批准",
+    shortLabel: "帮我批准",
+    description: "工作区内安全操作自动执行；删除、系统配置、凭据访问、发布等风险操作才询问。",
+    policy: {
+      approvalPolicy: "auto-approve",
+      sandboxProfile: "workspace-write",
+    },
+  },
+  {
+    value: "danger-full-access",
+    label: "完全访问权限",
+    shortLabel: "完全访问",
+    description: "不再询问并关闭 OS 沙箱；终端可访问互联网和任意文件，仅用于可信任务。",
+    policy: {
+      approvalPolicy: "never",
+      sandboxProfile: "danger-full-access",
+    },
+    danger: true,
+  },
+];
+
+function normalizePermissionProfile(value?: string | null): PermissionProfile {
+  switch ((value ?? "").trim().toLowerCase()) {
+    case "auto":
+    case "auto-approve":
+      return "auto-approve";
+    case "danger-full-access":
+      return "danger-full-access";
+    default:
+      return "request-approval";
+  }
+}
+
+export function permissionProfileOption(value?: string | null): PermissionProfileOption {
+  const normalized = normalizePermissionProfile(value);
+  return PERMISSION_PROFILE_OPTIONS.find((option) => option.value === normalized)
+    ?? PERMISSION_PROFILE_OPTIONS[0];
+}
+
+export function permissionProfilePolicy(value: PermissionProfile): ExecutionPolicy {
+  return { ...permissionProfileOption(value).policy };
+}
+
+/**
+ * Returns the matching preset only for an exact pair. A custom pair (for
+ * example never + workspace-write) returns null and must stay custom; snapping
+ * it to the nearest preset could silently weaken the sandbox.
+ */
+export function permissionProfileForPolicy(policy: ExecutionPolicy): PermissionProfileOption | null {
+  const approval = normalizeApprovalPolicy(policy.approvalPolicy);
+  const sandbox = normalizeSandboxProfile(policy.sandboxProfile);
+  return PERMISSION_PROFILE_OPTIONS.find((option) => (
+    option.policy.approvalPolicy === approval
+    && option.policy.sandboxProfile === sandbox
+  )) ?? null;
+}
+
+export function permissionProfileShortLabel(value?: string | null): string {
+  const option = permissionProfileOption(value);
+  return option.shortLabel ?? option.label;
+}
 
 export function approvalPolicyOption(value?: string): ApprovalPolicyOption {
   const normalized = normalizeApprovalPolicy(value);
@@ -202,35 +295,11 @@ function normalizeSandboxNetwork(value?: string | null): "on" | "off" {
   return (value ?? "").trim().toLowerCase() === "on" ? "on" : "off";
 }
 
-/** @deprecated Use APPROVAL_OPTIONS and SANDBOX_PROFILE_OPTIONS. */
-export type SandboxModeOption = {
-  value: SandboxMode;
-  label: string;
-  shortLabel?: string;
-  description: string;
-  danger?: boolean;
-};
+/** @deprecated Legacy alias; new UI uses PermissionProfileOption. */
+export type SandboxModeOption = PermissionProfileOption;
 
-/** @deprecated Legacy three-way metadata kept for older consumers/tests. */
-export const SANDBOX_MODE_OPTIONS: SandboxModeOption[] = [
-  {
-    value: "request-approval",
-    label: "请求批准",
-    description: "写文件和执行命令前始终询问；工作区外写入仍由沙箱拦截。",
-  },
-  {
-    value: "auto-approve",
-    label: "帮我批准",
-    description: "工作区内安全操作自动执行；删除、系统配置、凭据访问、发布等风险操作才询问。",
-  },
-  {
-    value: "danger-full-access",
-    label: "完全访问权限",
-    shortLabel: "完全访问",
-    description: "不再询问并关闭 OS 沙箱；终端可访问互联网和任意文件，仅用于可信任务。",
-    danger: true,
-  },
-];
+/** @deprecated Legacy three-way metadata; new UI uses PERMISSION_PROFILE_OPTIONS. */
+export const SANDBOX_MODE_OPTIONS: SandboxModeOption[] = PERMISSION_PROFILE_OPTIONS;
 
 /** @deprecated Use approvalPolicyOption. */
 export function sandboxModeOption(mode?: string): SandboxModeOption {

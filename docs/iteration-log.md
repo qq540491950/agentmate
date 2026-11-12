@@ -4,6 +4,25 @@
 
 ## 视觉测试与体验设计
 
+### 第二百五十八轮迭代：权限设置收敛为 Codex 三档预设（已实施）
+
+依据：用户反馈输入框同时出现「从不询问」与「完全访问」两个 chip，看起来像同一个设置被拆成两处；对照 Codex 桌面端的单一权限菜单，决定把审批与沙箱收进一个用户可见的权限 profile，设置页同步精简为三张预设卡。
+
+**实现要点**
+
+- 新增 `PERMISSION_PROFILE_OPTIONS`：请求批准 / 帮我批准 / 完全访问权限，分别映射到 `approvalPolicy + sandboxProfile` 的完整 pair；composer 只保留一个「本会话权限」下拉，设置页只保留一个「新会话默认权限」三档选择组。
+- 当前 pair 精确匹配预设时才选中；`never + workspace-write`、`request-approval + danger-full-access`、只读等自定义组合显示「自定义」，不自动吸附到会改变安全边界的预设。两轴控件从主界面移除，后端字段与 `SetSessionExecutionPolicy` 保持不变。
+- 「帮我批准」统一替代旧的「仅风险确认」文案；完全访问仍先弹风险确认，确认后一次写入 `never + danger-full-access`。
+- README、Agents 页说明与设置页网络说明同步到三档预设语义；只读等高级组合明确为配置文件能力。
+
+**测试证据**
+
+- `npx tsc --noEmit` 通过。
+- `npm test` 37 个文件 / 275 个用例全绿。
+- `npm run build` 通过（2333 modules）。
+- `go test ./internal/...` 全绿（services 46.459s）；`go vet ./internal/... .` 无输出。
+- 浏览器桩检查：composer 只显示一个「本会话权限」chip；菜单为三档预设；设置页只显示三张预设卡，无两轴控件。
+
 ### 第二百五十七轮迭代：沙箱加固——两轴执行策略、只读与按次脱离（已实施）
 
 依据：旧 `sandboxMode` 把“是否询问”和“OS 边界”混成一个三档枚举，无法表达“请求批准 + 完全访问”等组合；MCP 工具未接入审批门，非 Windows 的 `workspace-write` 还会回退到全权限执行。完整批次记录见 [docs/iterations/sandbox-hardening.md](iterations/sandbox-hardening.md)。

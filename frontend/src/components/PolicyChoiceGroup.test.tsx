@@ -30,4 +30,19 @@ describe("PolicyChoiceGroup", () => {
     expect(buttons.find((button) => button.includes("只读"))).toContain('aria-checked="true"');
     expect(buttons.find((button) => button.includes("工作区可写"))).toContain('aria-checked="false"');
   });
+
+  it("leaves every option unchecked for a custom policy pair", () => {
+    const html = renderToStaticMarkup(
+      <PolicyChoiceGroup
+        label="新会话默认权限"
+        description="选择执行边界"
+        options={SANDBOX_PROFILE_OPTIONS}
+        icons={icons}
+        value={null}
+        columnsClass="sm:grid-cols-3"
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(html.match(/aria-checked="true"/g)).toBeNull();
+  });
 });

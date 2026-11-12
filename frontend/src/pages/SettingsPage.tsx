@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft, BellOff, BookOpen, Bot, Boxes, Database, Eye, FolderLock, FolderOpen, Hand, Info,
+  ArrowLeft, BookOpen, Bot, Boxes, Database, FolderOpen, Hand, Info,
   MessageSquare, Network, Palette, Plug, ShieldCheck, Sparkles, TriangleAlert,
   Users, type LucideIcon,
 } from "lucide-react";
@@ -46,12 +46,15 @@ import {
 import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
 import { modelLabel } from "@/lib/modelLabel";
 import {
-  APPROVAL_OPTIONS,
-  SANDBOX_PROFILE_OPTIONS,
+  PERMISSION_PROFILE_OPTIONS,
+  approvalPolicyLabel,
   executionPolicyHint,
+  permissionProfileForPolicy,
+  permissionProfilePolicy,
   sandboxNetworkCopy,
-  sandboxNeedsRiskConfirmation,
+  sandboxProfileLabel,
   sandboxStatusSummary,
+  type PermissionProfile,
 } from "@/lib/sandboxMode";
 import {
   DEFAULT_COMPACTION_CONTEXT_PERCENT,
@@ -62,9 +65,7 @@ import {
   resolveExecutionPolicy,
   resolveSettingsTab,
   settingsTabsInGroup,
-  type ApprovalPolicy,
   type ExecutionPolicy,
-  type SandboxProfile,
   type SettingsLeaveGuard,
   type SettingsTab,
 } from "@/lib/settingsModel";
@@ -86,15 +87,9 @@ const SETTINGS_ICONS: Record<SettingsTab, LucideIcon> = {
   about: Info,
 };
 
-const APPROVAL_ICONS: Record<ApprovalPolicy, LucideIcon> = {
+const PERMISSION_PROFILE_ICONS: Record<PermissionProfile, LucideIcon> = {
   "request-approval": Hand,
   "auto-approve": ShieldCheck,
-  never: BellOff,
-};
-
-const SANDBOX_PROFILE_ICONS: Record<SandboxProfile, LucideIcon> = {
-  "workspace-write": FolderLock,
-  "read-only": Eye,
   "danger-full-access": TriangleAlert,
 };
 
@@ -119,7 +114,7 @@ export function SettingsPage({
   const [saving, setSaving] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
-  const [pendingSandboxProfile, setPendingSandboxProfile] = useState<SandboxProfile | null>(null);
+  const [pendingPolicy, setPendingPolicy] = useState<ExecutionPolicy | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [logText, setLogText] = useState("");
@@ -188,30 +183,26 @@ export function SettingsPage({
     settings?.sandboxProfile,
     settings?.sandboxMode,
   );
+  const defaultProfile = permissionProfileForPolicy(defaultExecutionPolicy);
 
-  const updateDefaultExecutionPolicy = (patch: Partial<ExecutionPolicy>) => {
-    const next = resolveExecutionPolicy(
-      patch.approvalPolicy ?? defaultExecutionPolicy.approvalPolicy,
-      patch.sandboxProfile ?? defaultExecutionPolicy.sandboxProfile,
-      settings?.sandboxMode,
-    );
+  const updateDefaultPolicy = (next: ExecutionPolicy) => {
     update({ approvalPolicy: next.approvalPolicy, sandboxProfile: next.sandboxProfile });
   };
 
-  const selectSandboxProfile = (profile: SandboxProfile) => {
-    if (profile === defaultExecutionPolicy.sandboxProfile) return;
-    if (sandboxNeedsRiskConfirmation(profile)) {
-      setPendingSandboxProfile(profile);
+  const selectPermissionProfile = (profile: PermissionProfile) => {
+    const next = permissionProfilePolicy(profile);
+    if (next.approvalPolicy === defaultExecutionPolicy.approvalPolicy
+      && next.sandboxProfile === defaultExecutionPolicy.sandboxProfile) return;
+    if (profile === "danger-full-access") {
+      setPendingPolicy(next);
       return;
     }
-    updateDefaultExecutionPolicy({ sandboxProfile: profile });
+    updateDefaultPolicy(next);
   };
 
   const confirmDangerFullAccess = () => {
-    if (pendingSandboxProfile) {
-      updateDefaultExecutionPolicy({ sandboxProfile: pendingSandboxProfile });
-    }
-    setPendingSandboxProfile(null);
+    if (pendingPolicy) updateDefaultPolicy(pendingPolicy);
+    setPendingPolicy(null);
   };
 
   const dirty = isSettingsDirty(savedSettings, settings);
@@ -488,30 +479,29 @@ export function SettingsPage({
         {tab === "conversation" && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">新会话默认执行策略</CardTitle>
+            <CardTitle className="text-base">新会话默认权限</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-5">
+          <CardContent className="grid gap-4">
             <p className="text-xs leading-relaxed text-muted-foreground">
-              审批与沙箱是两个独立维度，只决定新建会话的初始值。已有会话在输入框左下角分别切换，不会随这里变化。
+              只影响新建会话；已有会话在输入框左下角单独切换。
             </p>
             <PolicyChoiceGroup
-              label="新会话默认审批"
-              description="决定何时暂停并请求你的确认，不改变文件与命令的沙箱边界。"
-              options={APPROVAL_OPTIONS}
-              icons={APPROVAL_ICONS}
-              value={defaultExecutionPolicy.approvalPolicy}
+              label="权限模式"
+              description="预设会同时设置审批策略与沙箱边界。"
+              options={PERMISSION_PROFILE_OPTIONS}
+              icons={PERMISSION_PROFILE_ICONS}
+              value={defaultProfile?.value ?? null}
               columnsClass="sm:grid-cols-3"
-              onSelect={(approvalPolicy) => updateDefaultExecutionPolicy({ approvalPolicy })}
+              onSelect={selectPermissionProfile}
             />
-            <PolicyChoiceGroup
-              label="新会话默认沙箱"
-              description="决定终端和文件工具的 OS 边界；只读会拒绝所有写入，完全访问会隐含开启联网。"
-              options={SANDBOX_PROFILE_OPTIONS}
-              icons={SANDBOX_PROFILE_ICONS}
-              value={defaultExecutionPolicy.sandboxProfile}
-              columnsClass="sm:grid-cols-3"
-              onSelect={selectSandboxProfile}
-            />
+            {!defaultProfile && (
+              <div className="flex items-start gap-2 rounded-lg bg-control p-3 text-xs leading-relaxed text-muted-foreground">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  当前为自定义组合：审批「{approvalPolicyLabel(defaultExecutionPolicy.approvalPolicy)}」/ 沙箱「{sandboxProfileLabel(defaultExecutionPolicy.sandboxProfile)}」。选择任一预设会覆盖。
+                </span>
+              </div>
+            )}
             <div
               className={cn(
                 "flex items-start gap-3 rounded-lg p-3",
@@ -545,11 +535,11 @@ export function SettingsPage({
             ) : defaultExecutionPolicy.sandboxProfile === "danger-full-access" ? (
               <div className="flex items-start gap-2 rounded-lg bg-danger-soft p-3 text-sm text-danger-text">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <p>新会话默认完全访问：终端不再受 OS 沙箱限制，仅用于可信任务。</p>
+                <p>新会话默认完全访问权限：终端不再受 OS 沙箱限制，仅用于可信任务。</p>
               </div>
             ) : null}
             <p className="text-xs text-muted-foreground">
-              审批与沙箱分别生效：请求批准会确认全部写入与命令；仅风险确认只确认风险操作；从不询问不弹确认，但工作区沙箱仍会拦截越界访问。
+              「完全访问权限」会关闭 OS 沙箱并隐含开启联网。
             </p>
           </CardContent>
         </Card>
@@ -697,7 +687,7 @@ export function SettingsPage({
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
-                Windows 使用 AppContainer 与 ACL 边界；只读档位不授予工作区写权限。审批与沙箱独立，请求批准和仅风险确认都不会绕过沙箱；初始化失败时拒绝执行，不会回退到全权限。
+                Windows 使用 AppContainer 与 ACL 边界；只读档位不授予工作区写权限。权限预设会同时设置审批与沙箱，请求批准和帮我批准都不会绕过沙箱；初始化失败时拒绝执行，不会回退到全权限。
               </p>
             </CardContent>
           </Card>
@@ -1214,23 +1204,23 @@ export function SettingsPage({
     </div>
         )}
       </div>
-      <Dialog open={pendingSandboxProfile !== null} onOpenChange={(open) => { if (!open) setPendingSandboxProfile(null); }}>
+      <Dialog open={pendingPolicy !== null} onOpenChange={(open) => { if (!open) setPendingPolicy(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <TriangleAlert className="h-4 w-4 text-danger-text" aria-hidden="true" />
-              启用完全访问沙箱？
+              启用完全访问权限？
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            终端命令将不再经过 AppContainer 沙箱，可以访问互联网并读写工作区外的文件。审批策略仍按你当前的选择独立生效。请仅在你信任当前任务和模型输出时启用。
+            终端命令将不再经过 AppContainer 沙箱，可以访问互联网并读写工作区外的文件；审批策略同时设为「从不询问」。请仅在你信任当前任务和模型输出时启用。
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingSandboxProfile(null)}>
+            <Button variant="outline" onClick={() => setPendingPolicy(null)}>
               取消
             </Button>
             <Button variant="destructive" onClick={confirmDangerFullAccess}>
-              启用完全访问
+              启用完全访问权限
             </Button>
           </DialogFooter>
         </DialogContent>

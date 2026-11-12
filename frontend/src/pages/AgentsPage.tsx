@@ -764,7 +764,7 @@ export function AgentsPage() {
               </div>
               {(effectiveBuiltinTools(editing).includes("files") || effectiveBuiltinTools(editing).includes("shell")) && (
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  「请求批准」会确认全部写入与命令；「仅风险确认」只对检测到的风险命令或下面的额外确认开关询问；「从不询问」不弹确认，但沙箱仍会拦截越界写入。完全访问是独立的沙箱档位，不受这里的确认开关影响。
+                  「请求批准」会确认全部写入与命令；「帮我批准」只对检测到的风险命令或下面的额外确认开关询问；「从不询问」不弹确认，但沙箱仍会拦截越界写入。完全访问权限预设会关闭沙箱，不受这里的确认开关影响。
                 </p>
               )}
               {effectiveBuiltinTools(editing).includes("files") && (

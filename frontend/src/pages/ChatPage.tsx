@@ -7,7 +7,7 @@ import {
   Folder, FolderOpen, FileText,
   PanelRightOpen,
   ChevronRight, ChevronDown,
-  Boxes, Coins, Hand, ShieldCheck, TriangleAlert, BellOff, Eye, FolderLock,
+  Boxes, Coins, Hand, ShieldCheck, TriangleAlert, SlidersHorizontal,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
 } from "lucide-react";
@@ -66,14 +66,13 @@ import {
 } from "@/lib/api";
 import { contextTooltipLines, estimateContextTokens, resolveContextUsage } from "@/lib/contextUsage";
 import {
-  APPROVAL_OPTIONS,
-  SANDBOX_PROFILE_OPTIONS,
   approvalPolicyOption,
-  approvalPolicyShortLabel,
   executionPolicyHint,
-  sandboxNeedsRiskConfirmation,
+  PERMISSION_PROFILE_OPTIONS,
+  permissionProfileForPolicy,
+  permissionProfilePolicy,
   sandboxProfileOption,
-  sandboxProfileShortLabel,
+  type PermissionProfile,
 } from "@/lib/sandboxMode";
 import {
   DEFAULT_EXECUTION_POLICY,
@@ -101,15 +100,9 @@ const RENDER_LIMIT = 200;
 // flash an empty/skeleton pane before the local SQLite read returns.
 const HISTORY_CACHE_LIMIT = 8;
 
-const APPROVAL_ICONS: Record<ApprovalPolicy, typeof Hand> = {
+const PERMISSION_PROFILE_ICONS: Record<PermissionProfile, typeof Hand> = {
   "request-approval": Hand,
   "auto-approve": ShieldCheck,
-  never: BellOff,
-};
-
-const SANDBOX_PROFILE_ICONS: Record<SandboxProfile, typeof Hand> = {
-  "workspace-write": FolderLock,
-  "read-only": Eye,
   "danger-full-access": TriangleAlert,
 };
 
@@ -297,11 +290,16 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         approvalPolicy: normalizeApprovalPolicy(draftApprovalPolicy || defaultExecutionPolicy.approvalPolicy),
         sandboxProfile: normalizeSandboxProfile(draftSandboxProfile || defaultExecutionPolicy.sandboxProfile),
       };
+  const composerProfile = permissionProfileForPolicy(composerExecutionPolicy);
   const composerApprovalOption = approvalPolicyOption(composerExecutionPolicy.approvalPolicy);
   const composerSandboxOption = sandboxProfileOption(composerExecutionPolicy.sandboxProfile);
   const composerPolicyHint = executionPolicyHint(composerExecutionPolicy);
-  const ComposerApprovalIcon = APPROVAL_ICONS[composerExecutionPolicy.approvalPolicy];
-  const ComposerSandboxIcon = SANDBOX_PROFILE_ICONS[composerExecutionPolicy.sandboxProfile];
+  const composerPolicyLabel = composerProfile
+    ? composerProfile.label
+    : `自定义（审批：${composerApprovalOption.label}；沙箱：${composerSandboxOption.label}）`;
+  const ComposerProfileIcon = composerProfile
+    ? PERMISSION_PROFILE_ICONS[composerProfile.value]
+    : SlidersHorizontal;
   const executionDisplayMode = normalizeExecutionDisplayMode(globalExecutionDisplay);
 
   // fireQueued pops the session's queued message and auto-sends it (used both
@@ -1161,7 +1159,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       setDraftApprovalPolicy(normalized.approvalPolicy);
       setDraftSandboxProfile(normalized.sandboxProfile);
       if (normalized.sandboxProfile === "danger-full-access") {
-        toast.success("已为本会话选择完全访问沙箱；发送首条消息后生效");
+        toast.success("已为本会话选择完全访问权限；发送首条消息后生效");
       }
       return;
     }
@@ -1191,10 +1189,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         normalized.sandboxProfile,
       );
       if (sid === activeIDRef.current) {
-        toast.success(
-          `本会话审批：${approvalPolicyOption(normalized.approvalPolicy).label}；`
-          + `沙箱：${sandboxProfileOption(normalized.sandboxProfile).label}`,
-        );
+        const appliedProfile = permissionProfileForPolicy(normalized);
+        toast.success(appliedProfile
+          ? `本会话权限：${appliedProfile.label}`
+          : `本会话权限：自定义（${approvalPolicyOption(normalized.approvalPolicy).label} / ${sandboxProfileOption(normalized.sandboxProfile).label}）`);
       }
     } catch (e) {
       setSessions((prev) => prev.map((s) => (
@@ -1212,20 +1210,17 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
   }, [activeID, activeExecutionPolicy, executionPolicyBusy]);
 
-  const requestApprovalPolicy = useCallback((policy: ApprovalPolicy) => {
-    const normalized = normalizeApprovalPolicy(policy);
-    if (normalized === composerExecutionPolicy.approvalPolicy || executionPolicyBusy) return;
-    void applyExecutionPolicy({ ...composerExecutionPolicy, approvalPolicy: normalized });
-  }, [applyExecutionPolicy, composerExecutionPolicy, executionPolicyBusy]);
-
-  const requestSandboxProfile = useCallback((profile: SandboxProfile) => {
-    const normalized = normalizeSandboxProfile(profile);
-    if (normalized === composerExecutionPolicy.sandboxProfile || executionPolicyBusy) return;
-    const next: ExecutionPolicy = { ...composerExecutionPolicy, sandboxProfile: normalized };
-    if (sandboxNeedsRiskConfirmation(normalized)) {
+  const requestPermissionProfile = useCallback((profile: PermissionProfile) => {
+    const next = permissionProfilePolicy(profile);
+    if (
+      (next.approvalPolicy === composerExecutionPolicy.approvalPolicy
+        && next.sandboxProfile === composerExecutionPolicy.sandboxProfile)
+      || executionPolicyBusy
+    ) return;
+    if (profile === "danger-full-access") {
       setConfirmRequest({
-        title: "切换到完全访问沙箱？",
-        description: "本会话的终端命令将不再经过 OS 沙箱，可访问任意文件；联网也会隐含开启。审批策略仍按当前选择独立生效。",
+        title: "切换到完全访问权限？",
+        description: "本会话将不再经过 OS 沙箱，可访问任意文件；联网也会隐含开启，审批策略同时设为「从不询问」。",
         confirmText: "切换",
         cancelText: "取消",
         destructive: true,
@@ -3111,81 +3106,31 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                       <button
                         type="button"
                         disabled={(!active && providerCount === 0) || executionPolicyBusy}
-                        aria-label={`本会话审批策略：${composerApprovalOption.label}`}
-                        title={`本会话审批策略：${composerApprovalOption.label}。点击切换`}
+                        aria-label={`本会话权限：${composerPolicyLabel}`}
+                        title={`本会话权限：${composerPolicyLabel}。点击切换`}
                         className={cn(
-                          "flex h-7 max-w-[132px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-overlay hover:text-foreground",
-                          ((!active && providerCount === 0) || executionPolicyBusy) && "cursor-not-allowed opacity-50",
-                        )}
-                      >
-                        <ComposerApprovalIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                        <span className="truncate">{approvalPolicyShortLabel(composerExecutionPolicy.approvalPolicy)}</span>
-                        <ChevronDown className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-80">
-                      <DropdownMenuLabel>本会话审批策略</DropdownMenuLabel>
-                      <DropdownMenuRadioGroup
-                        value={composerExecutionPolicy.approvalPolicy}
-                        onValueChange={(value) => requestApprovalPolicy(value as ApprovalPolicy)}
-                      >
-                        {APPROVAL_OPTIONS.map((option) => {
-                          const Icon = APPROVAL_ICONS[option.value];
-                          return (
-                            <DropdownMenuRadioItem
-                              key={option.value}
-                              value={option.value}
-                              className="items-start py-2"
-                            >
-                              <div className="flex gap-2">
-                                <Icon
-                                  aria-hidden="true"
-                                  className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
-                                />
-                                <div>
-                                  <div className="text-sm font-medium">{option.label}</div>
-                                  <p className="mt-0.5 whitespace-normal text-xs leading-relaxed text-muted-foreground">
-                                    {option.description}
-                                  </p>
-                                </div>
-                              </div>
-                            </DropdownMenuRadioItem>
-                          );
-                        })}
-                      </DropdownMenuRadioGroup>
-                      <div className="px-2 py-1.5 text-xs leading-relaxed text-muted-foreground">
-                        只影响当前会话；新会话的默认审批在设置中配置。
-                      </div>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        disabled={(!active && providerCount === 0) || executionPolicyBusy}
-                        aria-label={`本会话沙箱：${composerSandboxOption.label}`}
-                        title={`本会话沙箱：${composerSandboxOption.label}。点击切换`}
-                        className={cn(
-                          "flex h-7 max-w-[120px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
+                          "flex h-7 max-w-[148px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
                           composerExecutionPolicy.sandboxProfile === "danger-full-access"
                             ? "bg-danger-soft text-danger-text hover:bg-overlay"
                             : "text-muted-foreground hover:bg-overlay hover:text-foreground",
                           ((!active && providerCount === 0) || executionPolicyBusy) && "cursor-not-allowed opacity-50",
                         )}
                       >
-                        <ComposerSandboxIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                        <span className="truncate">{sandboxProfileShortLabel(composerExecutionPolicy.sandboxProfile)}</span>
+                        <ComposerProfileIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        <span className="truncate">
+                          {composerProfile ? (composerProfile.shortLabel ?? composerProfile.label) : "自定义"}
+                        </span>
                         <ChevronDown className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-80">
-                      <DropdownMenuLabel>本会话沙箱</DropdownMenuLabel>
+                      <DropdownMenuLabel>本会话权限</DropdownMenuLabel>
                       <DropdownMenuRadioGroup
-                        value={composerExecutionPolicy.sandboxProfile}
-                        onValueChange={(value) => requestSandboxProfile(value as SandboxProfile)}
+                        value={composerProfile?.value ?? ""}
+                        onValueChange={(value) => requestPermissionProfile(value as PermissionProfile)}
                       >
-                        {SANDBOX_PROFILE_OPTIONS.map((option) => {
-                          const Icon = SANDBOX_PROFILE_ICONS[option.value];
+                        {PERMISSION_PROFILE_OPTIONS.map((option) => {
+                          const Icon = PERMISSION_PROFILE_ICONS[option.value];
                           return (
                             <DropdownMenuRadioItem
                               key={option.value}
@@ -3213,10 +3158,13 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                           );
                         })}
                       </DropdownMenuRadioGroup>
+                      {!composerProfile && (
+                        <div className="px-2 py-1.5 text-xs leading-relaxed text-muted-foreground">
+                          当前为自定义组合：审批「{composerApprovalOption.label}」/ 沙箱「{composerSandboxOption.label}」。选择任一预设会覆盖。
+                        </div>
+                      )}
                       <div className="px-2 py-1.5 text-xs leading-relaxed text-muted-foreground">
-                        {composerExecutionPolicy.sandboxProfile === "danger-full-access"
-                          ? "联网由完全访问隐含开启；切回其他沙箱后恢复原网络偏好。"
-                          : "只影响当前会话；完全访问需要再次确认。"}
+                        只影响当前会话；新会话的默认权限在设置中配置。
                       </div>
                     </DropdownMenuContent>
                   </DropdownMenu>
