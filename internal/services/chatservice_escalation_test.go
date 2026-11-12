@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"agentmate/internal/config"
+	"agentmate/internal/sandbox"
 )
 
 type auditTestRecord struct {
@@ -258,6 +259,9 @@ func TestEscalationAutoApproveRejectedDoesNotExecute(t *testing.T) {
 }
 
 func TestRequestApprovalConfirmsNormalAndEscalatedWithDistinctCards(t *testing.T) {
+	if !sandbox.Available() {
+		t.Skipf("OS sandbox unavailable: %s", sandbox.BackendStatus().Error)
+	}
 	const justification = "生成产物需要写到共享目录"
 	turn := 0
 	chat, store, globalWorkspace, _ := newConfirmTestChat(t, func(w http.ResponseWriter, r *http.Request) {

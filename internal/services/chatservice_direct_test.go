@@ -12,6 +12,7 @@ import (
 	"agentmate/internal/agentkit"
 	"agentmate/internal/config"
 	"agentmate/internal/mcpmgr"
+	"agentmate/internal/sandbox"
 )
 
 // newDirectChat wires a ChatService against a fake model server with ONLY a
@@ -338,6 +339,9 @@ func TestDirectChatAdvertisesShellTool(t *testing.T) {
 // behind the same HITL gate as a new agent — nothing runs before the user
 // approves, and the command executes in the session workspace afterwards.
 func TestDirectChatShellAsksConfirmation(t *testing.T) {
+	if !sandbox.Available() {
+		t.Skipf("OS sandbox unavailable: %s", sandbox.BackendStatus().Error)
+	}
 	root := t.TempDir()
 	turn := 0
 	chat, _, bodies := newDirectChat(t, func(w http.ResponseWriter, r *http.Request) {
