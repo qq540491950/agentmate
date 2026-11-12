@@ -544,6 +544,12 @@ export interface Settings {
      * appears.
      */
     "skippedVersion"?: string;
+
+    /**
+     * Terminal selects the shell used by the local run_command tool. Empty
+     * mode normalizes to auto for old configs.
+     */
+    "terminal"?: TerminalSettings;
 }
 
 /**
@@ -593,4 +599,18 @@ export interface TeamConfig {
     "model": string;
     "systemPrompt": string;
     "createdAt": string;
+}
+
+/**
+ * TerminalSettings selects the non-interactive shell used by run_command.
+ * Standard modes deliberately carry no detected executable path, so a config
+ * exported from one machine re-detects the shell on another machine.
+ */
+export interface TerminalSettings {
+    "mode"?: string;
+    "wslDistro"?: string;
+    "wslUser"?: string;
+    "wslShell"?: string;
+    "customPath"?: string;
+    "loadProfile"?: boolean;
 }

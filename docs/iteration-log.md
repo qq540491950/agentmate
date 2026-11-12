@@ -34,6 +34,20 @@
 - 浏览器桩实测：轨道 24px、拇指 32px、滑杆行高 32px；从「中」拖到两档之间后松手正确吸附到「高」。
 - `npm test` 41 个文件 / 290 个用例全绿；`npm run build`（2336 modules）通过。
 
+### 第二百六十五轮迭代：消息输入框聚焦保持原背景（已实施）
+
+依据：浏览器评论指出消息输入框聚焦时背景会变化，期望聚焦后保持 composer 原有表面色。
+
+**实现要点**
+
+- composer 的 textarea 显式覆盖基类 `hover:bg-accent`，使用 `hover:bg-transparent` 与 `focus:bg-transparent`；保留原有透明背景、无 focus ring 的 composer 契约。
+- 不修改通用 `Textarea` 组件，避免影响设置页等需要 hover 反馈的表单控件。
+
+**测试证据**
+
+- `npx tsc --noEmit` 通过；`npm test` 41 个文件 / 290 个用例全绿；`npm run build` 通过。
+- 浏览器桩聚焦 `消息输入框` 后计算样式：背景为 `rgba(0, 0, 0, 0)`，无 outline/box-shadow 聚焦环。
+
 ### 第二百六十四轮迭代：收窄模型弹层并为思考强度滑杆增加连续过渡（已实施）
 
 依据：用户截图反馈模型菜单横向留白过多，且拖动/切换思考强度时滑块与档位标题直接跳变，动作生硬。
@@ -48,6 +62,26 @@
 
 - 浏览器桩实测：短模型列表弹层计算宽度 224px，长内容上限 288px；滑杆 Range 过渡为 `left/right 160ms cubic-bezier(0.2,0,0,1)`，拇指外层为 `left 160ms`。
 - `npm test` 41 个文件 / 290 个用例全绿；`npx tsc --noEmit`、`npm run build`（2336 modules）通过。
+
+### 第二百六十三轮迭代：默认命令执行器支持平台感知 Shell 选择（已实施）
+
+依据：用户要求参照桌面端“集成终端 Shell”的交互，按当前平台自动列出可执行 Shell；Windows 默认顺序为 `pwsh → Git Bash → Windows PowerShell 5.1 → cmd`，`cmd` 最终兜底；其他平台使用各自默认顺序；非本平台终端仅在检测到时显示。
+
+**实现要点**
+
+- 新增 `Settings.Terminal` 配置与 `internal/terminal` 解析层：旧配置自动归一化为 `auto`，标准模式不持久化检测路径，只有自定义 Shell 保存绝对路径。
+- Windows 检测顺序为 `pwsh` → Git Bash → Windows PowerShell 5.1 → `cmd`；Git Bash 从 `git.exe` 推导，忽略 `System32\bash.exe`；Store 别名和 `.cache` 私有 `pwsh` 可显式选择但不参与 `auto`。macOS/Linux 优先登录 Shell，再按原生 Shell → `pwsh` 排序；WSL 独立展示并按 UTF-16LE 解码发行版列表。
+- `run_command` 改为消费解析后的 Shell Spec：Windows PowerShell 使用 `-NoProfile -NonInteractive`、UTF-8 输出和精确 `$LASTEXITCODE` 回传；Git Bash 注入 `CHERE_INVOKING=1`、`MSYSTEM=MINGW64` 与 Git PATH；WSL 使用 `--cd`/`--exec`，并要求完全访问。
+- 本机实测 Git Bash 在 AppContainer 下无法加载 MSYS DLL，且标准用户无法修改 `Program Files` ACL，因此将 Git Bash 标记为需完全访问；受限沙箱的 `auto` 跳过 Git Bash，按顺序选择 Windows PowerShell 5.1，完全访问时仍保持 Git Bash 在 PowerShell 5.1 之前。
+- 设置页新增“默认命令执行器”卡片：只展示检测到的 Shell；检测/测试按钮位于默认 Shell 行，WSL 发行版/用户/Shell、自定义路径和高级 profile 开关按需显示。
+- 会话首次使用时冻结 Shell 设置；修改全局设置不热切换当前会话，新建/重启后恢复的会话读取当前设置。`run_command` 结果携带实际 Shell 名称。
+
+**测试证据**
+
+- `go test ./internal/...` 全绿；`go test -race ./internal/...` 全绿；`go vet ./internal/... .` 无输出。
+- `npx tsc --noEmit` 通过；`npm test` 41 个文件 / 290 个用例全绿；`npm run build` 通过（2336 modules）；`wails3 build` 通过。
+- 本机真实检测：`auto` 在 `workspace-write` 下解析为 Windows PowerShell 5.1 并成功执行 `echo agentmate-auto-ok`；`pwsh` Store 别名、Git Bash、WSL Ubuntu-24.04 均被正确识别并标注沙箱状态。
+- 浏览器桩 1280×720 走查：默认命令执行器显示 `自动（Windows PowerShell 5.1）`；下拉顺序为 `pwsh → Git Bash → Windows PowerShell 5.1 → cmd → WSL → 自定义路径`，选项只显示名称；切换 WSL 后出现发行版/用户/Shell 字段与“需完全访问”警告。
 
 ### 第二百六十二轮迭代：修复自定义字号被合并器吞掉导致的字体层级不一致（已实施）
 

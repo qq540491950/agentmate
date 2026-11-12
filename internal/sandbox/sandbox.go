@@ -131,6 +131,14 @@ func (p Policy) WithProxy(proxyURL string) Policy {
 	return p
 }
 
+// WithExtraEnv appends explicitly configured child environment entries. The
+// shell adapter uses this instead of Request.Env so the same values apply to
+// both the sandboxed and danger-full-access backends.
+func (p Policy) WithExtraEnv(env ...string) Policy {
+	p.ExtraEnv = append(append([]string(nil), p.ExtraEnv...), env...)
+	return p
+}
+
 func (p Policy) normalized() Policy {
 	if p.Mode == "" {
 		p.Mode = ModeWorkspaceWrite

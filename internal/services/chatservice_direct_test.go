@@ -33,6 +33,7 @@ func newDirectChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *confi
 		t.Fatal(err)
 	}
 	if err := store.Update(func(cfg *config.Config) {
+		cfg.Settings.Terminal = testTerminalSettings()
 		cfg.Providers = append(cfg.Providers, config.ModelProvider{
 			ID: "prov_d", Name: "Fake", Protocol: config.ProtocolOpenAI,
 			BaseURL: srv.URL, Models: []config.ModelInfo{{ID: "fake-mini"}}, IsDefault: true,

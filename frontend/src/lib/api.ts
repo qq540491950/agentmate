@@ -4,6 +4,7 @@ import * as configModels from "../../bindings/agentmate/internal/config/models";
 import * as mcpModels from "../../bindings/agentmate/internal/mcpmgr/models";
 import * as serviceModels from "../../bindings/agentmate/internal/services/models";
 import * as agentkitModels from "../../bindings/agentmate/internal/agentkit/models";
+import * as terminalModels from "../../bindings/agentmate/internal/terminal/models";
 
 export const App = services.AppService;
 export const A2A = services.A2AService;
@@ -59,6 +60,10 @@ export type MemoryInfo = serviceModels.MemoryInfo;
 export type KnowledgeFile = serviceModels.KnowledgeFile;
 export type SandboxStatusInfo = serviceModels.SandboxStatusInfo;
 export type Settings = configModels.Settings;
+export type TerminalSettings = configModels.TerminalSettings;
+export type DetectedTerminal = terminalModels.Detected;
+export type TerminalInventory = terminalModels.Inventory;
+export type TerminalProbe = terminalModels.ProbeResult;
 export type ChatSession = configModels.ChatSession;
 export type Project = configModels.Project;
 

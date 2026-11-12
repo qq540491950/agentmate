@@ -1,4 +1,4 @@
-import type { Settings } from "@/lib/api";
+import type { Settings, TerminalSettings } from "@/lib/api";
 
 export type ApprovalPolicy = "request-approval" | "auto-approve" | "never";
 export type SandboxProfile = "workspace-write" | "read-only" | "danger-full-access";
@@ -212,7 +212,20 @@ const COMPARE_DEFAULTS: Partial<Record<keyof Settings, unknown>> = {
   executionDisplayMode: "auto",
   autoCheckUpdate: true,
   skippedVersion: "",
+  terminal: {},
 };
+
+function terminalFingerprint(value: unknown): Record<string, unknown> {
+  const terminal = (value && typeof value === "object" ? value : {}) as TerminalSettings;
+  return {
+    mode: terminal.mode?.trim() || "auto",
+    wslDistro: terminal.wslDistro?.trim() || "",
+    wslUser: terminal.wslUser?.trim() || "",
+    wslShell: terminal.wslShell?.trim() || "",
+    customPath: terminal.customPath?.trim() || "",
+    loadProfile: !!terminal.loadProfile,
+  };
+}
 
 function settingsFingerprint(settings: Settings): string {
   // Settings is a flat object of primitives and nullable primitives. Sorting
@@ -226,7 +239,12 @@ function settingsFingerprint(settings: Settings): string {
   const values = keys.map((key) => {
     const value = settings[key as keyof Settings];
     const fallback = COMPARE_DEFAULTS[key as keyof Settings];
-    return [key, value === undefined || value === null ? fallback : value];
+    const comparable = key === "terminal"
+      ? terminalFingerprint(value)
+      : value === undefined || value === null
+        ? fallback
+        : value;
+    return [key, comparable];
   });
   return JSON.stringify(values);
 }

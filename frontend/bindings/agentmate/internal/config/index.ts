@@ -20,5 +20,6 @@ export type {
     RemoteAgentConfig,
     Settings,
     SkillConfig,
-    TeamConfig
+    TeamConfig,
+    TerminalSettings
 } from "./models.js";

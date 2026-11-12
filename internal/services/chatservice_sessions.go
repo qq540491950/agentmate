@@ -139,6 +139,7 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 			auditType = "direct"
 		}
 		c.audit(cs.ID, "session_created", "system", auditType, mustJSON(map[string]string{"targetId": targetID, "title": cs.Title, "projectId": projectID}), "")
+		c.rememberSessionTerminal(cs.ID, settings.Terminal)
 	} else {
 		_ = c.sessions.Delete(context.Background(), &session.DeleteRequest{
 			AppName: c.appName, UserID: c.userID, SessionID: cs.ID,
@@ -654,6 +655,7 @@ func (c *ChatService) deleteSessionInternal(id string) error {
 	}
 	removeTaskBaseline(c.S.Store, id)
 	delete(c.workspaceLocks, id)
+	c.forgetSessionTerminal(id)
 	c.audit(id, "session_deleted", "system", "session", mustJSON(map[string]string{"sessionId": id}), "")
 	return nil
 }

@@ -366,6 +366,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	sessionID := target.ID
 	defer c.recoverRun(sessionID, &err)
 	cfg := c.S.Store.Get()
+	sessionTerminal := c.terminalSettingsFor(sessionID, cfg.Settings.Terminal)
 	workspace := target.EffectiveWorkspaceFor(cfg)
 	// Per-turn pick > session default > model default. With no resolvable
 	// model (remote targets) there is nothing to inject or record.
@@ -416,6 +417,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		}
 		ac.SandboxNetwork = sandboxNetwork
 		ac.ApplyExecutionPolicy(approvalPolicy, sandboxProfile)
+		ac.Terminal = &sessionTerminal
 		root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(ac, target.ModelOverride, workspace, applyLevel)
 	case "team":
 		for _, t := range cfg.Teams {
@@ -424,6 +426,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				t.SandboxProfile = sandboxProfile
 				t.SandboxMode = config.LegacySandboxMode(approvalPolicy, sandboxProfile)
 				t.SandboxNetwork = sandboxNetwork
+				t.Terminal = &sessionTerminal
 				root, _, err = c.S.Kit.BuildTeamWithWorkspaceAndReasoning(t, workspace, applyLevel)
 				break
 			}
@@ -448,6 +451,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				// the agent's configured model.
 				a.SandboxNetwork = sandboxNetwork
 				a.ApplyExecutionPolicy(approvalPolicy, sandboxProfile)
+				a.Terminal = &sessionTerminal
 				root, err = c.S.Kit.BuildAgentWithModelWorkspaceAndReasoning(a, target.ModelOverride, workspace, applyLevel)
 				break
 			}

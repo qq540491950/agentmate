@@ -22,6 +22,7 @@ import (
 	"agentmate/internal/agentkit"
 	"agentmate/internal/config"
 	"agentmate/internal/mcpmgr"
+	"agentmate/internal/terminal"
 )
 
 // Services bundles the shared dependencies for all Wails services.
@@ -486,6 +487,7 @@ func (c *ConfigService) DeleteMCPServer(id string) error {
 // SaveSettings persists global settings, validating the outbound proxy URL
 // up front so a typo surfaces immediately instead of at next app start.
 func (c *ConfigService) SaveSettings(s config.Settings) error {
+	s.Terminal = config.NormalizeTerminalSettings(s.Terminal)
 	if s.CompactionContextPercent == nil {
 		percent := config.DefaultCompactionContextPercent
 		s.CompactionContextPercent = &percent
@@ -502,9 +504,31 @@ func (c *ConfigService) SaveSettings(s config.Settings) error {
 	if s.CompactionContextPercent != nil && (*s.CompactionContextPercent < 0 || *s.CompactionContextPercent > 100) {
 		return fmt.Errorf("上下文占用阈值需为 0-100 的整数")
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	if _, err := terminal.Resolve(ctx, s.Terminal, terminal.DefaultHost(), s.SandboxProfile); err != nil {
+		return fmt.Errorf("终端配置无效: %w", err)
+	}
 	return c.S.Store.Update(func(cfg *config.Config) {
 		cfg.Settings = s
 	})
+}
+
+// DetectTerminals lists the shells available on this host for the settings
+// picker. Detection is intentionally on-demand: WSL and version probes can
+// take a few seconds and should not run during app startup.
+func (c *ConfigService) DetectTerminals(sandboxProfile string) terminal.Inventory {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return terminal.Detect(ctx, terminal.DefaultHost(), config.NormalizeSandboxProfile(sandboxProfile))
+}
+
+// TestTerminal runs one fixed command through the selected shell. It never
+// accepts a model/user-supplied command.
+func (c *ConfigService) TestTerminal(s config.TerminalSettings, sandboxProfile string) (terminal.ProbeResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return terminal.Test(ctx, s, terminal.DefaultHost(), config.NormalizeSandboxProfile(sandboxProfile))
 }
 
 // KnowledgeFile describes one file in the workspace knowledge directory.

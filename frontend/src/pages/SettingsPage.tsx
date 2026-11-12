@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, BookOpen, Bot, Boxes, Database, FolderOpen, Info,
-  MessageSquare, Network, Palette, Plug, ShieldCheck, Sparkles, TriangleAlert,
+  MessageSquare, Network, Palette, Plug, RefreshCw, ShieldCheck, Sparkles, TriangleAlert,
   Users, type LucideIcon,
 } from "lucide-react";
 import { Browser, Dialogs } from "@wailsio/runtime";
@@ -23,7 +23,7 @@ import { PolicyChoiceGroup } from "@/components/PolicyChoiceGroup";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { ArtifactPreview } from "@/components/ToolCallCard";
 import { UpdateCard } from "@/components/UpdateCard";
@@ -45,6 +45,13 @@ import {
 } from "@/lib/executionDisplay";
 import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
 import { modelLabel } from "@/lib/modelLabel";
+import {
+  currentDetectedTerminal,
+  resolveTerminalSettings,
+  terminalModeLabel,
+  terminalSandboxWarning,
+  terminalSettingsError,
+} from "@/lib/terminal";
 import {
   PERMISSION_PROFILE_OPTIONS,
   approvalPolicyLabel,
@@ -69,7 +76,7 @@ import {
   type SettingsLeaveGuard,
   type SettingsTab,
 } from "@/lib/settingsModel";
-import { Chat, App, A2A, Config, Update, getSandboxStatus, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type SandboxStatusInfo, type Settings, type StorageInfo, type MemoryInfo, errText, Protocol } from "@/lib/api";
+import { Chat, App, A2A, Config, Update, getSandboxStatus, type AgentConfig, type A2AStatus, type KnowledgeFile, type KnowledgeIndexStats, type ModelProvider, type SandboxStatusInfo, type Settings, type StorageInfo, type MemoryInfo, type TerminalInventory, errText, Protocol } from "@/lib/api";
 
 export type { SettingsTab } from "@/lib/settingsModel";
 
@@ -117,6 +124,10 @@ export function SettingsPage({
   const [memoryInfo, setMemoryInfo] = useState<MemoryInfo | null>(null);
   const [sandboxStatus, setSandboxStatus] = useState<SandboxStatusInfo | null>(null);
   const [sandboxStatusError, setSandboxStatusError] = useState("");
+  const [terminalInventory, setTerminalInventory] = useState<TerminalInventory | null>(null);
+  const [terminalLoading, setTerminalLoading] = useState(false);
+  const [terminalError, setTerminalError] = useState("");
+  const settingsLoaded = settings !== null;
   const [a2aStatuses, setA2AStatuses] = useState<A2AStatus[]>([]);
   const [indexStats, setIndexStats] = useState<KnowledgeIndexStats | null>(null);
   const [kbTestQuery, setKbTestQuery] = useState("");
@@ -148,6 +159,18 @@ export function SettingsPage({
       .catch((e) => toast.error(errText(e)));
   }, []);
   useEffect(reload, [reload]);
+  const reloadTerminals = useCallback((sandboxProfile = "workspace-write") => {
+    setTerminalLoading(true);
+    setTerminalError("");
+    Config.DetectTerminals(sandboxProfile)
+      .then((inventory) => setTerminalInventory(inventory ?? null))
+      .catch((e) => setTerminalError(errText(e)))
+      .finally(() => setTerminalLoading(false));
+  }, []);
+  useEffect(() => {
+    if (!settings) return;
+    reloadTerminals(settings.sandboxProfile || "workspace-write");
+  }, [reloadTerminals, settingsLoaded, settings?.sandboxProfile]);
   useEffect(() => {
     A2A.Status().then((sts) => setA2AStatuses(sts ?? [])).catch(() => {});
     Config.KnowledgeIndexStats().then(setIndexStats).catch(() => {});
@@ -178,9 +201,67 @@ export function SettingsPage({
     settings?.sandboxMode,
   );
   const defaultProfile = permissionProfileForPolicy(defaultExecutionPolicy);
+  const terminalSettings = resolveTerminalSettings(settings?.terminal);
+  const terminalCurrent = currentDetectedTerminal(terminalInventory, settings?.terminal);
+  const terminalConfigError = terminalSettingsError(terminalInventory, settings?.terminal);
+  const terminalSandboxCopy = terminalSandboxWarning(terminalCurrent?.sandbox);
+  const terminalShells = terminalInventory?.shells ?? [];
+  const terminalWSL = terminalInventory?.wsl ?? [];
+  const terminalKnownModes = new Set([
+    "auto",
+    "wsl",
+    "custom",
+    ...terminalShells.map((shell) => shell.mode),
+  ]);
+  const terminalAutoLabel = terminalInventory?.auto?.displayName?.replace(/^自动（|）$/g, "")
+    || (terminalLoading ? "检测中…" : "未检测到");
 
   const updateDefaultPolicy = (next: ExecutionPolicy) => {
     update({ approvalPolicy: next.approvalPolicy, sandboxProfile: next.sandboxProfile });
+  };
+
+  const updateTerminal = (patch: Partial<typeof terminalSettings>) => {
+    update({ terminal: { ...terminalSettings, ...patch } });
+  };
+
+  const updateTerminalMode = (mode: string) => {
+    const patch: Partial<typeof terminalSettings> = { mode };
+    if (mode === "wsl" && !terminalSettings.wslDistro && terminalWSL[0]?.wslDistro) {
+      patch.wslDistro = terminalWSL[0].wslDistro;
+    }
+    updateTerminal(patch);
+  };
+
+  const pickTerminalPath = async () => {
+    try {
+      const picked = pickedDirectoryValue(await Dialogs.OpenFile({
+        CanChooseDirectories: false,
+        CanChooseFiles: true,
+        ResolvesAliases: true,
+        Title: "选择 Shell 可执行文件",
+        ButtonText: "选择",
+      }));
+      if (picked) updateTerminal({ customPath: picked });
+    } catch (e) {
+      if (isDialogCancelError(e)) return;
+      toast.error(`选择 Shell 失败: ${errText(e)}`);
+    }
+  };
+
+  const testTerminal = async () => {
+    try {
+      const result = await Config.TestTerminal(
+        resolveTerminalSettings(settings?.terminal),
+        settings?.sandboxProfile || "workspace-write",
+      );
+      if (result.exitCode === 0) {
+        toast.success("终端测试通过");
+      } else {
+        toast.error(`终端测试退出码 ${result.exitCode}`);
+      }
+    } catch (e) {
+      toast.error(`终端测试失败: ${errText(e)}`);
+    }
   };
 
   const selectPermissionProfile = (profile: PermissionProfile) => {
@@ -295,6 +376,12 @@ export function SettingsPage({
     if (a2aError) {
       toast.error(a2aError);
       setTab("network");
+      return false;
+    }
+    const terminalConfigSaveError = terminalSettingsError(terminalInventory, settings.terminal);
+    if (terminalConfigSaveError) {
+      toast.error(terminalConfigSaveError);
+      setTab("conversation");
       return false;
     }
     setSaving(true);
@@ -522,6 +609,154 @@ export function SettingsPage({
             <p className="text-xs text-muted-foreground">
               「完全访问权限」会关闭 OS 沙箱并隐含开启联网。
             </p>
+          </CardContent>
+        </Card>
+        )}
+        {tab === "conversation" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">默认命令执行器</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              用于本地 Agent 的 run_command。当前会话沿用已使用的 Shell。
+            </p>
+            <SettingRow
+              label="默认 Shell"
+              description="按当前平台检测可用项；未安装的 Shell 不显示。"
+            >
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Select value={terminalSettings.mode} onValueChange={updateTerminalMode}>
+                  <SelectTrigger className="w-64" aria-label="默认 Shell">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">
+                      自动（{terminalAutoLabel}）
+                    </SelectItem>
+                    {terminalShells.filter((shell) => shell.mode !== "custom").map((shell) => (
+                      <SelectItem key={`${shell.mode}:${shell.path}`} value={shell.mode}>
+                        {terminalModeLabel(shell.mode)}
+                      </SelectItem>
+                    ))}
+                    {terminalWSL.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel>WSL</SelectLabel>
+                        <SelectItem value="wsl">
+                          WSL · {terminalWSL.map((item) => item.wslDistro).filter(Boolean).join(" / ")}
+                        </SelectItem>
+                      </SelectGroup>
+                    )}
+                    {terminalWSL.length === 0 && terminalSettings.mode === "wsl" && (
+                      <SelectItem value="wsl">WSL（未检测到发行版）</SelectItem>
+                    )}
+                    <SelectItem value="custom">自定义路径…</SelectItem>
+                    {!terminalKnownModes.has(terminalSettings.mode) && (
+                      <SelectItem value={terminalSettings.mode}>
+                        {terminalModeLabel(terminalSettings.mode)}（未检测到）
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => reloadTerminals(settings.sandboxProfile || "workspace-write")}
+                  disabled={terminalLoading}
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", terminalLoading && "animate-spin")} aria-hidden="true" />
+                  重新检测
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => void testTerminal()}>
+                  测试
+                </Button>
+              </div>
+            </SettingRow>
+            {terminalSettings.mode === "wsl" && (
+              <>
+                <SettingRow label="WSL 发行版" description="选择 Agent 命令实际运行的发行版">
+                  <Select
+                    value={terminalSettings.wslDistro || terminalWSL[0]?.wslDistro || ""}
+                    onValueChange={(wslDistro) => updateTerminal({ wslDistro })}
+                    disabled={terminalWSL.length === 0}
+                  >
+                    <SelectTrigger className="w-56" aria-label="WSL 发行版">
+                      <SelectValue placeholder={terminalWSL.length ? "选择发行版" : "未检测到发行版"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {terminalWSL.map((item) => (
+                        <SelectItem key={item.wslDistro} value={item.wslDistro ?? ""}>
+                          {item.wslDistro}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+                <SettingRow label="WSL 用户" description="留空使用发行版的默认用户">
+                  <Input
+                    className="w-56"
+                    value={terminalSettings.wslUser}
+                    onChange={(event) => updateTerminal({ wslUser: event.target.value })}
+                    placeholder="默认用户"
+                    aria-label="WSL 用户"
+                  />
+                </SettingRow>
+                <SettingRow label="WSL Shell" description="留空使用 /bin/bash；Alpine 等可改为 /bin/sh">
+                  <Input
+                    className="w-56"
+                    value={terminalSettings.wslShell}
+                    onChange={(event) => updateTerminal({ wslShell: event.target.value })}
+                    placeholder="/bin/bash"
+                    aria-label="WSL Shell"
+                  />
+                </SettingRow>
+              </>
+            )}
+            {terminalSettings.mode === "custom" && (
+              <SettingRow label="Shell 路径" description="必须是可执行文件的绝对路径">
+                <div className="flex w-full max-w-md items-center gap-2">
+                  <Input
+                    className="min-w-0 flex-1"
+                    value={terminalSettings.customPath}
+                    onChange={(event) => updateTerminal({ customPath: event.target.value })}
+                    placeholder="C:\path\to\shell.exe"
+                    aria-label="自定义 Shell 路径"
+                  />
+                  <Button size="sm" variant="outline" onClick={() => void pickTerminalPath()}>
+                    <FolderOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                    选择
+                  </Button>
+                </div>
+              </SettingRow>
+            )}
+            <SettingRow
+              label="加载用户启动配置"
+              description="默认关闭；开启后 profile 可能改变 PATH、输出内容或产生额外副作用"
+            >
+              <Switch
+                checked={terminalSettings.loadProfile}
+                onCheckedChange={(loadProfile) => updateTerminal({ loadProfile })}
+                aria-label="加载用户启动配置"
+              />
+            </SettingRow>
+            {terminalError && (
+              <div className="flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-sm text-warning-text">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <p>{terminalError}</p>
+              </div>
+            )}
+            {terminalConfigError && (
+              <div className="flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-sm text-warning-text">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <p>{terminalConfigError}</p>
+              </div>
+            )}
+            {terminalSandboxCopy && (
+              <div className="flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-sm text-warning-text">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <p>{terminalSandboxCopy}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
         )}

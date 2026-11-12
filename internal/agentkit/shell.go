@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +17,7 @@ import (
 
 	"agentmate/internal/config"
 	"agentmate/internal/sandbox"
+	"agentmate/internal/terminal"
 )
 
 const (
@@ -49,6 +49,7 @@ type shellResult struct {
 	Output    string `json:"output"`
 	Truncated bool   `json:"truncated,omitempty"`
 	TimedOut  bool   `json:"timedOut,omitempty"`
+	Shell     string `json:"shell,omitempty"`
 }
 
 // ShellTool runs shell commands inside the task workspace through the default
@@ -65,6 +66,7 @@ func ShellToolWithPolicy(workspace string, requireConfirmation bool, policy sand
 	execution := shellExecution{
 		policy:         policy,
 		approvalPolicy: config.ApprovalPolicyRequestApproval,
+		spec:           terminal.LegacySpec(),
 	}
 	guard := NewPreviewGuardWithPolicy(workspace, policy)
 	provider := func(args shellArgs) bool {
@@ -83,11 +85,19 @@ func ShellToolWithPolicy(workspace string, requireConfirmation bool, policy sand
 // gates the per-call escape hatch; when it is false an escalate=true call is
 // rejected instead of being silently downgraded to a sandboxed run.
 func ShellToolWithPolicyAndMode(workspace string, requireConfirmation bool, approvalPolicy string, policy sandbox.Policy, allowEscalation bool) (tool.Tool, error) {
+	return ShellToolWithSpec(workspace, requireConfirmation, approvalPolicy, policy, allowEscalation, terminal.LegacySpec())
+}
+
+// ShellToolWithSpec is the session-aware entry point. The caller resolves the
+// user's terminal setting once and passes the resulting spec; the tool itself
+// never branches on a platform shell.
+func ShellToolWithSpec(workspace string, requireConfirmation bool, approvalPolicy string, policy sandbox.Policy, allowEscalation bool, spec terminal.Spec) (tool.Tool, error) {
 	approval := config.NormalizeApprovalPolicy(approvalPolicy)
 	execution := shellExecution{
 		policy:          policy,
 		approvalPolicy:  approval,
 		allowEscalation: allowEscalation,
+		spec:            spec,
 	}
 	// Escalation is only meaningful while the command would otherwise run
 	// confined. A danger-full-access tool is already direct, and never-policy
@@ -128,6 +138,7 @@ type shellExecution struct {
 	policy          sandbox.Policy
 	approvalPolicy  string
 	allowEscalation bool
+	spec            terminal.Spec
 }
 
 // shellPreviewAllows is the read-only gate shared by both shell entry points.
@@ -147,6 +158,9 @@ func shellPreviewAllows(guard PreviewGuard, execution shellExecution, args shell
 }
 
 func (e shellExecution) policyFor(args shellArgs) (sandbox.Policy, error) {
+	if e.spec.RequiresFullAccess && e.policy.Mode != sandbox.ModeDangerFullAccess {
+		return sandbox.Policy{}, fmt.Errorf("Shell %s 运行在 Windows 沙箱之外，请将会话权限切换为完全访问后再执行", e.spec.DisplayName)
+	}
 	if !args.Escalate {
 		return e.policy, nil
 	}
@@ -175,7 +189,7 @@ func (e shellExecution) run(ctx context.Context, workspace string, args shellArg
 	if err != nil {
 		return shellResult{}, err
 	}
-	return runShellCommandWithPolicy(ctx, workspace, args.Command, timeout, limit, policy)
+	return runShellCommandWithPolicySpec(ctx, workspace, args.Command, timeout, limit, policy, e.spec)
 }
 
 func newShellTool(workspace string, requireConfirmation bool, provider any, execution shellExecution) (tool.Tool, error) {
@@ -185,6 +199,7 @@ func newShellTool(workspace string, requireConfirmation bool, provider any, exec
 	return functiontool.New(functiontool.Config{
 		Name: "run_command",
 		Description: "Run a shell command with the user's task workspace as the working directory and return the combined stdout/stderr plus exit code. " +
+			"Current terminal shell: " + shellDescription(execution.spec) + ". " +
 			"Use it for git, builds, tests and package installs. Commands are non-interactive; output is capped at 64KB and the process is killed after timeoutSeconds " +
 			"(default 300, max 600). A non-zero exitCode is a normal result, not a tool failure. " +
 			"Escalation is a last resort: first try the command inside the sandbox. Only if the sandbox denied it, retry once with escalate=true and a justification " +
@@ -204,17 +219,21 @@ func newShellTool(workspace string, requireConfirmation bool, provider any, exec
 }
 
 func runShellCommandWithPolicy(ctx context.Context, workspace, command string, timeout time.Duration, limit int, policy sandbox.Policy) (shellResult, error) {
+	return runShellCommandWithPolicySpec(ctx, workspace, command, timeout, limit, policy, terminal.LegacySpec())
+}
+
+func runShellCommandWithPolicySpec(ctx context.Context, workspace, command string, timeout time.Duration, limit int, policy sandbox.Policy, spec terminal.Spec) (shellResult, error) {
 	if ok, code, reason := policy.CheckCommand(command); !ok {
 		return shellResult{}, fmt.Errorf("%s: %s", code, reason)
 	}
-	shell, args, env := shellInvocation(command)
+	inv := spec.Invocation(workspace, command)
+	policy = policy.WithExtraEnv(inv.Env...)
 	res, err := sandbox.Run(ctx, sandbox.Request{
-		Command:     shell,
-		Args:        args,
-		Dir:         workspace,
+		Command:     inv.Command,
+		Args:        inv.Args,
+		Dir:         inv.Dir,
 		Timeout:     timeout,
 		OutputLimit: limit,
-		Env:         env,
 	}, policy)
 	if err != nil {
 		return shellResult{}, err
@@ -227,6 +246,7 @@ func runShellCommandWithPolicy(ctx context.Context, workspace, command string, t
 		Output:    res.Output,
 		Truncated: res.Truncated,
 		TimedOut:  res.TimedOut,
+		Shell:     spec.DisplayName,
 	}, nil
 }
 
@@ -251,10 +271,10 @@ func runShellCommand(ctx context.Context, workspace, command string, timeout tim
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	shell, args, env := shellInvocation(command)
-	cmd := exec.CommandContext(runCtx, shell, args...)
-	cmd.Dir = workspace
-	cmd.Env = append(os.Environ(), env...)
+	inv := terminal.LegacySpec().Invocation(workspace, command)
+	cmd := exec.CommandContext(runCtx, inv.Command, inv.Args...)
+	cmd.Dir = inv.Dir
+	cmd.Env = append(os.Environ(), inv.Env...)
 	if attrs := shellProcessAttrs(); attrs != nil {
 		cmd.SysProcAttr = attrs
 	}
@@ -270,7 +290,7 @@ func runShellCommand(ctx context.Context, workspace, command string, timeout tim
 	}
 	waitErr := cmd.Wait()
 
-	result := shellResult{Output: out.String(), Truncated: out.Truncated()}
+	result := shellResult{Output: out.String(), Truncated: out.Truncated(), Shell: terminal.LegacySpec().DisplayName}
 	if runCtx.Err() == context.DeadlineExceeded {
 		// Killing the process makes Wait return an error; the timeout result
 		// carries the output produced so far so the model can react.
@@ -292,13 +312,25 @@ func runShellCommand(ctx context.Context, workspace, command string, timeout tim
 	return result, nil
 }
 
-// shellInvocation picks the platform shell. Windows switches the console to
-// UTF-8 so Chinese output from git/go/npm is not mangled in the model context.
-func shellInvocation(command string) (name string, args []string, env []string) {
-	if runtime.GOOS == "windows" {
-		return "cmd.exe", []string{"/d", "/c", "chcp 65001>nul & " + command}, nil
+func shellDescription(spec terminal.Spec) string {
+	name := spec.DisplayName
+	if strings.TrimSpace(name) == "" {
+		name = spec.Mode
 	}
-	return "/bin/sh", []string{"-c", command}, nil
+	switch spec.Mode {
+	case config.TerminalModePwsh:
+		return name + " (PowerShell 7+ syntax; && is supported)"
+	case config.TerminalModePowerShell:
+		return name + " (Windows PowerShell 5.1 syntax; use ; instead of &&)"
+	case config.TerminalModeGitBash, config.TerminalModeBash, config.TerminalModeZsh, config.TerminalModeSh:
+		return name + " (POSIX shell syntax)"
+	case config.TerminalModeWSL:
+		return name + " (Linux/WSL syntax; paths use the distro filesystem)"
+	case config.TerminalModeCmd:
+		return name + " (cmd.exe syntax; use %VAR%)"
+	default:
+		return name
+	}
 }
 
 // boundedBuffer keeps the first limit bytes written to it and reports whether

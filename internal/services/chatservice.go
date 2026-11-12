@@ -227,6 +227,11 @@ type ChatService struct {
 	// workspaceLocks serialize one session's turn against workspace rebinding;
 	// different tasks can still run and create concurrently.
 	workspaceLocks map[string]*sync.Mutex
+	// sessionTerminals freezes the shell a session started with. It is
+	// intentionally memory-only: sessions restored after an app restart pick
+	// up the current global setting.
+	terminalMu       sync.Mutex
+	sessionTerminals map[string]config.TerminalSettings
 }
 
 // runHandle identifies one in-flight turn. The pointer identity lets a
@@ -245,15 +250,48 @@ func (c *ChatService) SetToolAuditPath(path string) { c.auditPath = path }
 // NewChatService creates the service. db may be nil (disables Regenerate trimming).
 func NewChatService(s *Services, sessions session.Service, db *gorm.DB) *ChatService {
 	return &ChatService{
-		S:              s,
-		runs:           map[string]*runHandle{},
-		active:         map[string]map[*runHandle]struct{}{},
-		workspaceLocks: map[string]*sync.Mutex{},
-		sessions:       sessions,
-		db:             db,
-		appName:        "agentmate",
-		userID:         "local",
+		S:                s,
+		runs:             map[string]*runHandle{},
+		active:           map[string]map[*runHandle]struct{}{},
+		workspaceLocks:   map[string]*sync.Mutex{},
+		sessionTerminals: map[string]config.TerminalSettings{},
+		sessions:         sessions,
+		db:               db,
+		appName:          "agentmate",
+		userID:           "local",
 	}
+}
+
+func (c *ChatService) rememberSessionTerminal(sessionID string, settings config.TerminalSettings) {
+	if sessionID == "" {
+		return
+	}
+	c.terminalMu.Lock()
+	defer c.terminalMu.Unlock()
+	if c.sessionTerminals == nil {
+		c.sessionTerminals = map[string]config.TerminalSettings{}
+	}
+	c.sessionTerminals[sessionID] = config.NormalizeTerminalSettings(settings)
+}
+
+func (c *ChatService) terminalSettingsFor(sessionID string, settings config.TerminalSettings) config.TerminalSettings {
+	c.terminalMu.Lock()
+	defer c.terminalMu.Unlock()
+	if terminal, ok := c.sessionTerminals[sessionID]; ok {
+		return terminal
+	}
+	if c.sessionTerminals == nil {
+		c.sessionTerminals = map[string]config.TerminalSettings{}
+	}
+	terminal := config.NormalizeTerminalSettings(settings)
+	c.sessionTerminals[sessionID] = terminal
+	return terminal
+}
+
+func (c *ChatService) forgetSessionTerminal(sessionID string) {
+	c.terminalMu.Lock()
+	defer c.terminalMu.Unlock()
+	delete(c.sessionTerminals, sessionID)
 }
 
 // auditMaxBytes caps the audit file before rotation (10MB).

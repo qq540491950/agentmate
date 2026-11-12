@@ -16,6 +16,9 @@ import * as agentkit$0 from "../agentkit/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as config$0 from "../config/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as terminal$0 from "../terminal/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -87,6 +90,15 @@ export function DeleteSkill(id: string): $CancellablePromise<void> {
  */
 export function DeleteTeam(id: string): $CancellablePromise<void> {
     return $Call.ByID(920225451, id);
+}
+
+/**
+ * DetectTerminals lists the shells available on this host for the settings
+ * picker. Detection is intentionally on-demand: WSL and version probes can
+ * take a few seconds and should not run during app startup.
+ */
+export function DetectTerminals(sandboxProfile: string): $CancellablePromise<terminal$0.Inventory> {
+    return $Call.ByID(2126488507, sandboxProfile);
 }
 
 /**
@@ -215,4 +227,12 @@ export function TestKnowledgeSearch(query: string): $CancellablePromise<string> 
  */
 export function TestProvider(p: config$0.ModelProvider, model: string): $CancellablePromise<number> {
     return $Call.ByID(646608668, p, model);
+}
+
+/**
+ * TestTerminal runs one fixed command through the selected shell. It never
+ * accepts a model/user-supplied command.
+ */
+export function TestTerminal(s: config$0.TerminalSettings, sandboxProfile: string): $CancellablePromise<terminal$0.ProbeResult> {
+    return $Call.ByID(529535505, s, sandboxProfile);
 }

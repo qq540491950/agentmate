@@ -56,6 +56,7 @@ const seedConfig = {
     a2aAutoStart: false,
     a2aAgentId: "",
     a2aPort: 8080,
+    terminal: { mode: "auto" },
   },
   providers: [
     {
@@ -360,6 +361,72 @@ const handlers: Record<string, (args: any[]) => any> = {
     seedConfig.settings = args[0];
     return null;
   },
+  [svc("ConfigService", "DetectTerminals")]: (args) => {
+    const danger = args[0] === "danger-full-access";
+    return {
+      os: "windows",
+      auto: {
+        mode: "auto",
+        displayName: danger ? "自动（Git Bash）" : "自动（Windows PowerShell 5.1）",
+        path: danger ? "C:\\Program Files\\Git\\usr\\bin\\bash.exe" : "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        source: danger ? "git" : "system",
+        sandbox: danger ? "requires-full-access" : "ok",
+        autoEligible: true,
+      },
+      shells: [
+        { mode: "pwsh", displayName: "PowerShell 7+", path: "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\pwsh.exe", version: "7.7.0", source: "store-alias", sandbox: "unknown", autoEligible: false },
+        { mode: "git-bash", displayName: "Git Bash", path: "C:\\Program Files\\Git\\usr\\bin\\bash.exe", version: "GNU bash, version 5.2", source: "git", sandbox: "requires-full-access", autoEligible: true },
+        { mode: "powershell", displayName: "Windows PowerShell 5.1", path: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", version: "5.1", source: "system", sandbox: "ok", autoEligible: true },
+        { mode: "cmd", displayName: "命令提示符（cmd.exe）", path: "C:\\Windows\\System32\\cmd.exe", version: "10.0", source: "system", sandbox: "ok", autoEligible: true },
+      ],
+      wsl: [
+        { mode: "wsl", displayName: "WSL：Ubuntu-24.04", path: "C:\\Windows\\System32\\wsl.exe", source: "wsl", sandbox: "requires-full-access", autoEligible: false, wslDistro: "Ubuntu-24.04" },
+      ],
+      wslDistros: ["Ubuntu-24.04"],
+      errors: [],
+    };
+  },
+  "agentmate/internal/services.ConfigService.DetectTerminals": (args) => {
+    const danger = args[0] === "danger-full-access";
+    return {
+      os: "windows",
+      auto: {
+        mode: "auto",
+        displayName: danger ? "自动（Git Bash）" : "自动（Windows PowerShell 5.1）",
+        path: danger ? "C:\\Program Files\\Git\\usr\\bin\\bash.exe" : "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        source: danger ? "git" : "system",
+        sandbox: danger ? "requires-full-access" : "ok",
+        autoEligible: true,
+      },
+      shells: [
+        { mode: "pwsh", displayName: "PowerShell 7+", path: "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\pwsh.exe", version: "7.7.0", source: "store-alias", sandbox: "unknown", autoEligible: false },
+        { mode: "git-bash", displayName: "Git Bash", path: "C:\\Program Files\\Git\\usr\\bin\\bash.exe", version: "GNU bash, version 5.2", source: "git", sandbox: "requires-full-access", autoEligible: true },
+        { mode: "powershell", displayName: "Windows PowerShell 5.1", path: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", version: "5.1", source: "system", sandbox: "ok", autoEligible: true },
+        { mode: "cmd", displayName: "命令提示符（cmd.exe）", path: "C:\\Windows\\System32\\cmd.exe", version: "10.0", source: "system", sandbox: "ok", autoEligible: true },
+      ],
+      wsl: [
+        { mode: "wsl", displayName: "WSL：Ubuntu-24.04", path: "C:\\Windows\\System32\\wsl.exe", source: "wsl", sandbox: "requires-full-access", autoEligible: false, wslDistro: "Ubuntu-24.04" },
+      ],
+      wslDistros: ["Ubuntu-24.04"],
+      errors: [],
+    };
+  },
+  [svc("ConfigService", "TestTerminal")]: () => ({
+    mode: "powershell",
+    displayName: "Windows PowerShell 5.1",
+    path: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    output: "agentmate-shell-ok",
+    exitCode: 0,
+    sandbox: "ok",
+  }),
+  "agentmate/internal/services.ConfigService.TestTerminal": () => ({
+    mode: "powershell",
+    displayName: "Windows PowerShell 5.1",
+    path: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    output: "agentmate-shell-ok",
+    exitCode: 0,
+    sandbox: "ok",
+  }),
   // ListSessions
   [svc("ChatService", "ListSessions")]: () => {
     const sessions = seedConfig.sessions.map((session) => ({

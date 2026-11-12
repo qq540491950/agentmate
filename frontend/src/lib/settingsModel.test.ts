@@ -139,6 +139,14 @@ describe("settings model", () => {
     expect(SETTINGS_TABS.some((tab) => tab.key === ("general" as never))).toBe(false);
   });
 
+  it("treats an absent terminal config and its auto default as the same draft", () => {
+    const saved = { ...baseSettings } as Settings;
+    const draft = { ...saved, terminal: { mode: "auto" } };
+    expect(isSettingsDirty(saved, draft)).toBe(false);
+    draft.terminal = { ...draft.terminal, mode: "cmd" };
+    expect(isSettingsDirty(saved, draft)).toBe(true);
+  });
+
   it("groups the sidebar into basic, capability, and system sections", () => {
     expect(SETTINGS_GROUPS.map((group) => group.label)).toEqual([
       "基础设置",

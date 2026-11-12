@@ -28,6 +28,7 @@ import (
 	"agentmate/internal/config"
 	"agentmate/internal/mcpmgr"
 	"agentmate/internal/sandbox"
+	"agentmate/internal/terminal"
 )
 
 // ModelFactory builds the model.LLM for a provider/model pair.
@@ -384,6 +385,7 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 	for id, ac := range memberByID {
 		ac.SandboxNetwork = tc.SandboxNetwork
 		ac.ApplyExecutionPolicy(approvalPolicy, sandboxProfile)
+		ac.Terminal = tc.Terminal
 		memberByID[id] = ac
 	}
 
@@ -832,7 +834,15 @@ func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspac
 			tools = append(tools, t)
 		case "shell":
 			allowEscalation := policy.Mode != sandbox.ModeDangerFullAccess
-			t, err := ShellToolWithPolicyAndMode(workspace, shellConfirmation, ac.EffectiveApprovalPolicy(), policy, allowEscalation)
+			termSettings := cfg.Settings.Terminal
+			if ac.Terminal != nil {
+				termSettings = *ac.Terminal
+			}
+			spec, err := terminal.Resolve(context.Background(), termSettings, terminal.DefaultHost(), string(policy.Mode))
+			if err != nil {
+				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
+			}
+			t, err := ShellToolWithSpec(workspace, shellConfirmation, ac.EffectiveApprovalPolicy(), policy, allowEscalation, spec)
 			if err != nil {
 				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 			}

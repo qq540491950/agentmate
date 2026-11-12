@@ -202,6 +202,7 @@ git push origin v0.5.0     # 触发 .github/workflows/release.yml
 - 沙箱内命令被拒后，模型可按次设置 `escalate` 并附 `justification` 申请脱离沙箱；请求批准 / 帮我批准强制逐次 HITL，批准只对该次调用使用完全访问，不改变会话沙箱档位。`never` 拒绝越界申请，完全访问模式忽略该参数
 - Windows 沙箱的「只读」档位仅授予任务工作区读取/执行 ACL，不授予修改权限，也不给工作区贴低完整性标签；终端可读取文件、列目录并运行 `git status` 等只读命令，但工作区内外写入都会被 OS 拒绝，`write_workspace_file` 直接返回 `read_only`。临时 HOME 仍可写，受保护路径的 deny ACE 继续生效；只读档位可通过配置文件设置，审批策略仍独立生效
 - 非 Windows 平台尚无 OS 沙箱实现：`workspace-write` / `read-only` 会拒绝执行并返回“当前平台未实现 OS 沙箱”，不会回退到全权限；只有显式选择“完全访问权限”预设时才直接运行
+- `run_command` 的 Shell 可在「设置 → 对话与上下文 → 默认命令执行器」配置：Windows 首选顺序为 `pwsh → Git Bash → Windows PowerShell 5.1 → cmd`，macOS/Linux 优先登录 Shell；Git Bash/WSL 需要完全访问时 `auto` 会跳过，只显示检测到的项，详见 [docs/terminal-shells.md](docs/terminal-shells.md)
 - 模型输出经 react-markdown 渲染，默认不执行原始 HTML；链接新窗口打开
 - 产物预览严格限制在工作区目录内（目录穿越防护、大小上限）
 - 每个任务有独立工作区；首轮开始后目录锁定，删除会话不会删除任务文件

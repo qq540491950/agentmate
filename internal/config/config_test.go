@@ -866,3 +866,25 @@ func TestChatWidthNormalization(t *testing.T) {
 		t.Fatalf("default chat width = %q, want %q", got, ChatWidthMedium)
 	}
 }
+
+func TestNormalizeTerminalSettings(t *testing.T) {
+	got := NormalizeTerminalSettings(TerminalSettings{
+		Mode:       " PWSh ",
+		WSLDistro:  " Ubuntu-24.04 ",
+		WSLUser:    " dev ",
+		WSLShell:   " /bin/bash ",
+		CustomPath: " C:\\bin\\shell.exe ",
+	})
+	if got.Mode != TerminalModePwsh {
+		t.Fatalf("mode = %q, want pwsh", got.Mode)
+	}
+	if got.WSLDistro != "Ubuntu-24.04" || got.WSLUser != "dev" || got.WSLShell != "/bin/bash" {
+		t.Fatalf("terminal fields not trimmed: %+v", got)
+	}
+	if got.CustomPath != "C:\\bin\\shell.exe" {
+		t.Fatalf("custom path = %q", got.CustomPath)
+	}
+	if unknown := NormalizeTerminalSettings(TerminalSettings{Mode: "not-a-shell"}); unknown.Mode != TerminalModeAuto {
+		t.Fatalf("unknown mode = %q, want auto", unknown.Mode)
+	}
+}

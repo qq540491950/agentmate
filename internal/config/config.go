@@ -155,6 +155,58 @@ func NormalizeSandboxNetwork(network string) string {
 	return SandboxNetworkOff
 }
 
+// Terminal mode values. `auto` resolves to the first detected shell in the
+// platform order; every other value is an explicit user choice.
+const (
+	TerminalModeAuto       = "auto"
+	TerminalModePwsh       = "pwsh"
+	TerminalModePowerShell = "powershell"
+	TerminalModeGitBash    = "git-bash"
+	TerminalModeCmd        = "cmd"
+	TerminalModeWSL        = "wsl"
+	TerminalModeBash       = "bash"
+	TerminalModeZsh        = "zsh"
+	TerminalModeSh         = "sh"
+	TerminalModeCustom     = "custom"
+)
+
+// TerminalSettings selects the non-interactive shell used by run_command.
+// Standard modes deliberately carry no detected executable path, so a config
+// exported from one machine re-detects the shell on another machine.
+type TerminalSettings struct {
+	Mode        string `json:"mode,omitempty"`
+	WSLDistro   string `json:"wslDistro,omitempty"`
+	WSLUser     string `json:"wslUser,omitempty"`
+	WSLShell    string `json:"wslShell,omitempty"`
+	CustomPath  string `json:"customPath,omitempty"`
+	LoadProfile bool   `json:"loadProfile,omitempty"`
+}
+
+// NormalizeTerminalSettings clamps persisted values to a known mode and trims
+// machine-specific fields. Empty mode means auto for old configs.
+func NormalizeTerminalSettings(t TerminalSettings) TerminalSettings {
+	t.Mode = strings.ToLower(strings.TrimSpace(t.Mode))
+	switch t.Mode {
+	case TerminalModeAuto,
+		TerminalModePwsh,
+		TerminalModePowerShell,
+		TerminalModeGitBash,
+		TerminalModeCmd,
+		TerminalModeWSL,
+		TerminalModeBash,
+		TerminalModeZsh,
+		TerminalModeSh,
+		TerminalModeCustom:
+	default:
+		t.Mode = TerminalModeAuto
+	}
+	t.WSLDistro = strings.TrimSpace(t.WSLDistro)
+	t.WSLUser = strings.TrimSpace(t.WSLUser)
+	t.WSLShell = strings.TrimSpace(t.WSLShell)
+	t.CustomPath = strings.TrimSpace(t.CustomPath)
+	return t
+}
+
 // ReasoningLevel maps one selectable thinking level to the request field it
 // sends. Param may be dotted ("thinking.budget_tokens") for nested fields.
 // When Param is empty, Value must be a JSON object whose members are merged
@@ -357,6 +409,9 @@ type AgentConfig struct {
 	SandboxProfile string `json:"-"`
 	SandboxMode    string `json:"-"`
 	SandboxNetwork string `json:"-"`
+	// Terminal is a runtime-only per-session shell snapshot. It is nil for
+	// callers that should use Settings.Terminal.
+	Terminal *TerminalSettings `json:"-"`
 	// MaxToolCalls stops a runaway tool loop. 0 = unlimited. Turn duration
 	// is intentionally unbounded: long agent tasks must not be killed by a
 	// wall-clock cap.
@@ -459,6 +514,8 @@ type TeamConfig struct {
 	SandboxProfile string `json:"-"`
 	SandboxMode    string `json:"-"`
 	SandboxNetwork string `json:"-"`
+	// Terminal is the runtime-only shell snapshot shared by every local member.
+	Terminal *TerminalSettings `json:"-"`
 }
 
 // SkillConfig is a reusable instruction bundle (agentskills.io SKILL.md).
@@ -619,6 +676,9 @@ type Settings struct {
 	// launch, so a check keeps returning "已是最新" until a newer release
 	// appears.
 	SkippedVersion string `json:"skippedVersion,omitempty"`
+	// Terminal selects the shell used by the local run_command tool. Empty
+	// mode normalizes to auto for old configs.
+	Terminal TerminalSettings `json:"terminal,omitempty"`
 }
 
 // AutoTitleEnabled reports whether model-generated titles are wanted.
@@ -699,6 +759,7 @@ func (s *Settings) normalize() {
 	s.ExecutionDisplayMode = NormalizeExecutionDisplayMode(s.ExecutionDisplayMode)
 	s.ChatWidth = NormalizeChatWidth(s.ChatWidth)
 	s.normalizeExecutionPolicy(nil)
+	s.Terminal = NormalizeTerminalSettings(s.Terminal)
 	if s.CompactionContextPercent == nil {
 		p := DefaultCompactionContextPercent
 		s.CompactionContextPercent = &p
@@ -1035,6 +1096,7 @@ func Default() Config {
 			SandboxProfile:           SandboxProfileWorkspaceWrite,
 			SandboxMode:              SandboxModeRequestApproval,
 			SandboxNetwork:           SandboxNetworkOff,
+			Terminal:                 TerminalSettings{Mode: TerminalModeAuto},
 			CompactionContextPercent: &compactionPercent,
 		},
 		Skills: []SkillConfig{

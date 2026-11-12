@@ -3084,7 +3084,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 disabled={!active && providerCount === 0}
                 // Cap the growing textarea so a long paste shrinks the message
                 // list instead of squeezing the composer out of the viewport.
-                className="max-h-48 min-h-[64px] resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 text-md leading-[1.65] shadow-none focus-visible:border-0 focus-visible:ring-0"
+                className="max-h-48 min-h-[64px] resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 text-md leading-[1.65] shadow-none hover:bg-transparent focus:bg-transparent focus-visible:border-0 focus-visible:ring-0"
               />
               <input
                 ref={fileRef}

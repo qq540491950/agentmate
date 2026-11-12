@@ -53,6 +53,7 @@ func escalationToolArgs(command, justification string) string {
 func configureShellEscalationAgent(t *testing.T, store *config.Store) {
 	t.Helper()
 	if err := store.Update(func(cfg *config.Config) {
+		cfg.Settings.Terminal = testTerminalSettings()
 		for i := range cfg.Agents {
 			cfg.Agents[i].BuiltinTools = []string{"shell"}
 			cfg.Agents[i].ConfirmTools = nil

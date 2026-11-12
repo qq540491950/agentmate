@@ -40,6 +40,9 @@ func newConfirmTestChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *
 	}
 	err = store.Update(func(cfg *config.Config) {
 		cfg.Settings.WorkspaceDir = workspace
+		// These tests exercise cmd.exe syntax and the Windows sandbox; keep the
+		// shell explicit instead of inheriting the machine-dependent auto order.
+		cfg.Settings.Terminal = testTerminalSettings()
 		// These HITL tests configure ConfirmTools per agent. Auto-approve keeps
 		// those explicit prompts while allowing tests that clear them to run
 		// direct tool calls.

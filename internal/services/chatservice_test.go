@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -16,6 +17,16 @@ import (
 	"agentmate/internal/config"
 	"agentmate/internal/mcpmgr"
 )
+
+// testTerminalSettings keeps shell-execution tests deterministic across
+// platforms: Windows needs cmd.exe syntax, while Unix uses the native auto
+// shell.
+func testTerminalSettings() config.TerminalSettings {
+	if runtime.GOOS == "windows" {
+		return config.TerminalSettings{Mode: config.TerminalModeCmd}
+	}
+	return config.TerminalSettings{Mode: config.TerminalModeAuto}
+}
 
 // TestChatEndToEndToolLoop exercises the full pipeline: ChatService.Send ->
 // ADK runner -> llmagent -> custom OpenAI-compatible model adapter (against a
