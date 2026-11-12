@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -161,6 +162,45 @@ func TestAutoTitleDisabledKeepsFallback(t *testing.T) {
 	}
 	if title == "" || len([]rune(title)) > 30 {
 		t.Fatalf("fallback title unexpected: %q", title)
+	}
+}
+
+// TestGenerateTitleSkipsReasoningContent pins the reported thinking-model
+// behavior: the title call receives a reasoning part plus the final answer,
+// but the sidebar must use only the answer. The fake also reproduces the old
+// 40-token cap, where reasoning consumed the whole budget and no title existed.
+func TestGenerateTitleSkipsReasoningContent(t *testing.T) {
+	var seen string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = readAllBody(r)
+		var req struct {
+			MaxTokens int `json:"max_tokens"`
+		}
+		_ = json.Unmarshal([]byte(seen), &req)
+		if req.MaxTokens < 256 {
+			// Mirrors the live relay under the old budget: thinking consumed
+			// all 40 output tokens and content stayed empty.
+			_, _ = w.Write([]byte(`{"choices":[{"finish_reason":"length","message":{"content":"","reasoning_content":"我们需要回答标题，不超过12汉字，只输出标题本身。需要概括对话开头"}}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"空指针报错排查","reasoning_content":"我们需要回答中文标题，不超过12汉字。标题可“空指针报错排查”。只输出标题。"}}]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := config.Default()
+	cfg.Providers = append(cfg.Providers, config.ModelProvider{
+		ID: "prov_title", Name: "Title", Protocol: config.ProtocolOpenAI,
+		BaseURL: srv.URL, Models: []config.ModelInfo{{ID: "thinking-title"}},
+	})
+	cfg.Settings.TitleProviderID = "prov_title"
+	cfg.Settings.TitleModel = "thinking-title"
+
+	title, ok := (&ChatService{}).generateTitle(cfg, "帮我看看这个报错", "这是空指针导致的。")
+	if !ok {
+		t.Fatalf("title generation failed; request=%s", seen)
+	}
+	if title != "空指针报错排查" {
+		t.Fatalf("title = %q, want %q (reasoning leaked into the title)", title, "空指针报错排查")
 	}
 }
 

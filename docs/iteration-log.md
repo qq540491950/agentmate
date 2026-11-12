@@ -4,6 +4,22 @@
 
 ## 视觉测试与体验设计
 
+### 第二百七十六轮迭代：会话标题不再混入思考内容（已实施）
+
+依据：用户截图中多条会话标题都是「我们需要回答标题，不超过12汉字」「我们需要回答用户。需要概括不超过」等 16 字片段。现场用标题模型配置重放同一条请求，返回 `content` 为空、`reasoning_content` 完整、`finish_reason` 为 `length`；把 `max_tokens` 提高到 512 后，`content` 正常返回「空指针报错排查」。确认标题侧调用把思考部分当成了答案，且 40 token 预算常被思考耗尽。
+
+**实现要点**
+
+- `generateTitle` 聚合响应时跳过 `Part.Thought`，只读取最终回答文本；思考仍按原样用于对话展示。
+- 标题侧调用 `MaxOutputTokens` 从 40 提高到 512，给默认开启思考的模型留出推理 + 输出标题的预算；标题仍在解析阶段截到 16 字。
+- 若模型只返回思考、没有最终回答，继续保留原兜底标题，不把思考片段写进侧栏。
+
+**测试证据**
+
+- 新增 `TestGenerateTitleSkipsReasoningContent`：假供应商在旧 40 token 预算下只返回 `reasoning_content` 与空 `content`，在 256+ 预算下同时返回思考与「空指针报错排查」。
+- 修复前测试失败并复现用户标题「我们需要回答标题，不超过12汉字」；修复后通过。
+- `TestAutoTitleGeneratesTitle`、`TestAutoTitleDisabledKeepsFallback`、`TestAutoTitleUsesMainModelByDefault`、`TestRefineSessionTitleCleansExistingFallback` 全部通过。
+
 ### 第二百七十五轮迭代：迟到思考不再把完成轮次误判为失败（已实施）
 
 依据：用户截图显示同一轮先正常输出回答，随后「执行过程」变成「失败」，看起来像重复执行。现场展开后确认完整回答被收进执行组，回答之后还有一条思考；切走再切回后历史回放恢复为「完成」。会话库中该轮只有一次调用、两次 `run_command` 均成功，且已持久化完整回答，没有后端错误。

@@ -986,7 +986,10 @@ func (c *ChatService) generateTitle(cfg config.Config, userText, reply string) (
 		Contents: []*genai.Content{
 			genai.NewContentFromText(prompt, genai.RoleUser),
 		},
-		Config: &genai.GenerateContentConfig{MaxOutputTokens: 40, Temperature: ptrFloat32(0.3)},
+		// Thinking models spend output tokens on reasoning_content first; 40
+		// tokens can be consumed entirely before the title is emitted. The
+		// title itself is still capped below, so a larger budget is cheap.
+		Config: &genai.GenerateContentConfig{MaxOutputTokens: 512, Temperature: ptrFloat32(0.3)},
 	}
 	var title strings.Builder
 	for resp, err := range m.GenerateContent(ctx, req, false) {
@@ -995,7 +998,10 @@ func (c *ChatService) generateTitle(cfg config.Config, userText, reply string) (
 		}
 		if resp != nil && resp.Content != nil {
 			for _, p := range resp.Content.Parts {
-				if p != nil && p.Text != "" {
+				// Reasoning is display-only. Some providers return it before
+				// the answer; concatenating both made the first thought line
+				// the sidebar title.
+				if p != nil && p.Text != "" && !p.Thought {
 					title.WriteString(p.Text)
 				}
 			}
