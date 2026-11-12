@@ -444,7 +444,7 @@ export function SettingsPage({
 
   return (
     <div className="flex h-full bg-canvas">
-      <aside className="flex w-48 shrink-0 flex-col bg-chrome py-4 text-sidebar-foreground">
+      <aside className="flex w-60 shrink-0 flex-col bg-chrome py-4 text-sidebar-foreground">
         <div className="mb-2 flex items-center justify-between px-4">
           <span className="text-sm font-semibold">设置</span>
           {onClose && (
@@ -527,7 +527,7 @@ export function SettingsPage({
                 onChange={(themeMode) => update({ themeMode })}
               />
             </SettingRow>
-            <SettingRow label="正文字号" description="调整聊天与设置界面的基准字号">
+            <SettingRow label="正文字号" description="调整会话列表、聊天、设置与底部状态栏的基准字号">
               <SegmentedControl
                 ariaLabel="正文字号"
                 value={settings.fontScale || "md"}

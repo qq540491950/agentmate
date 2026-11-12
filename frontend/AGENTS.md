@@ -84,9 +84,9 @@ Nord 使用官方 Polar Night / Snow Storm / Frost / Aurora 作为身份基础�
 | 区域 | 必须 |
 |---|---|
 | 顶栏 | `chrome` 底、无底边线；品牌图标用 `accent-soft` 小底；窗口控制 hover 用 `overlay` / `danger-soft` |
-| 对话侧栏 | `chrome` 底、无右边线；当前会话 `accent-soft` + `accent-text`；项目分组用间距与弱底纹 |
+| 对话侧栏 | `chrome` 底、无右边线；当前会话 `accent-soft` + `accent-text`；项目组行仅保留 hover，不随当前会话高亮 |
 | 会话头 | `canvas` 底、无底边线；标题/徽标/操作靠间距组织 |
-| 设置导航 | `chrome` 底、无右边线；选中项 `accent-soft`，不用左侧竖条 |
+| 设置导航 | `chrome` 底、无右边线，固定宽 240px；选中项 `accent-soft`，不用左侧竖条 |
 | 设置分组 | 标题在面板外或面板内均可，但面板用 `panel` 底、无 ring；设置行无 border，靠 12–16px 垂直内距 |
 | 管理列表 | 一个 `panel` 容器包住连续行；行 hover 用 `overlay`，不要每项一张描边卡 |
 | 对话正文 | 助手无气泡全宽正文；用户 `accent-soft` 气泡、无 ring；当前轮只加底纹浓度 |
@@ -102,7 +102,7 @@ Nord 使用官方 Polar Night / Snow Storm / Frost / Aurora 作为身份基础�
 ## 6. 排版、间距与动效
 
 - 保留 `Geist Variable` + 中文回退栈；不要换字体或图标库。
-- 正文 15px/1.7；控件与列表 13px；元数据下限 12px；禁止 10/11px 中文。
+- 正文、对话侧栏会话/项目行、侧栏底部版本/更新 15px/1.7（侧栏行保持紧凑行高）；设置导航 14px；控件与普通列表 13px；元数据下限 12px；禁止 10/11px 中文。
 - 间距节奏：页面 32、区块 24、组 16、行内 8/12；用间距承担分组，不要用边框补空间。
 - 圆角：控件 8px、面板 12px、大面板/对话框 16px、用户气泡 16px；不新增任意圆角值。
 - 过渡 120–200ms，统一 `--ease-standard`；不做全屏主题颜色渐变动画；`prefers-reduced-motion` 下关闭非必要动画。

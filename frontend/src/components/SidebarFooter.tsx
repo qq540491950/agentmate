@@ -222,7 +222,7 @@ export function SidebarFooter({
   return (
     <Popover open={panelOpen} onOpenChange={onPanelOpenChange}>
       <PopoverAnchor asChild>
-        <div className="relative flex h-9 items-center gap-1 bg-chrome px-3 text-3xs text-muted-foreground">
+        <div className="relative flex h-9 items-center gap-1 bg-chrome px-3 text-md leading-5 text-muted-foreground">
           <span
             className="min-w-0 flex-1 truncate"
             title={
@@ -231,7 +231,7 @@ export function SidebarFooter({
                 : "AgentMate · 基于 Google ADK Go v2 · Wails v3"
             }
           >
-            {currentVersion ? `AgentMate v${currentVersion}` : "AgentMate"}
+            {currentVersion ? `v${currentVersion}` : "AgentMate"}
           </span>
           {visible && badge && (
             <PopoverTrigger asChild>
@@ -242,14 +242,14 @@ export function SidebarFooter({
                   availableVersion ? `${badge.label}，${title}，v${availableVersion}` : title
                 }
                 className={cn(
-                  "inline-flex h-[21px] shrink-0 items-center gap-1 rounded-full px-1.5 text-3xs font-semibold transition-colors",
+                  "inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-md leading-5 font-semibold transition-colors",
                   BADGE_TONE[badge.tone],
                 )}
               >
-                {badge.tone === "ready" && <Check className="h-2.5 w-2.5" strokeWidth={2.4} />}
+                {badge.tone === "ready" && <Check className="h-3.5 w-3.5" strokeWidth={2.4} />}
                 {badge.tone === "progress" && status?.state === "downloading" && (
                   <span
-                    className="h-2.5 w-2.5 rounded-full"
+                    className="h-3.5 w-3.5 rounded-full"
                     style={{
                       background: `conic-gradient(currentColor 0 ${percent ?? 12}%, color-mix(in oklab, currentColor 18%, transparent) ${percent ?? 12}% 100%)`,
                       mask: "radial-gradient(circle, transparent 42%, black 45%)",
@@ -259,11 +259,11 @@ export function SidebarFooter({
                   />
                 )}
                 {badge.tone === "progress" && status?.state !== "downloading" && (
-                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 )}
-                {badge.tone === "error" && <TriangleAlert className="h-2.5 w-2.5" />}
+                {badge.tone === "error" && <TriangleAlert className="h-3.5 w-3.5" />}
                 {badge.tone === "brand" && (
-                  <ArrowUp className="h-2.5 w-2.5" strokeWidth={2.4} />
+                  <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.4} />
                 )}
                 {badge.label}
               </button>

@@ -1598,18 +1598,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     () => [...filteredSessions].sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")),
     [filteredSessions],
   );
-  // The active project gets the soft row fill shown in the reference. A
-  // pending project draft highlights its destination before the session row
-  // exists, so the user can see where the first message will land.
-  const activeProjectKey = useMemo(() => {
-    if (active) {
-      if (active.archived) return "";
-      const owner = sidebarGroups.find((g) => g.sessions.some((s) => s.id === active.id));
-      if (owner) return owner.key;
-      return active.projectId ? `proj:${active.projectId}` : "";
-    }
-    return draftProjectID ? `proj:${draftProjectID}` : "";
-  }, [active, draftProjectID, sidebarGroups]);
+  // Selection belongs to the session row only. A project row stays neutral
+  // while browsing its sessions; the one exception is a pending project draft,
+  // which marks its destination before the first session row exists.
+  const draftProjectKey = draftProjectID ? `proj:${draftProjectID}` : "";
   // Opening a chat that sits beyond the five-row preview has to reveal the
   // owning project; otherwise the active row would be invisible.
   useEffect(() => {
@@ -2141,7 +2133,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       aria-current={s.id === activeID ? "page" : undefined}
       data-session-id={s.id}
       className={cn(
-        "group relative flex cursor-pointer items-center gap-1.5 rounded-md py-[3px] text-[0.8125rem] leading-5 transition-colors",
+        "group relative flex cursor-pointer items-center gap-1.5 rounded-md py-[3px] text-md leading-5 transition-colors",
         indented ? "pl-7 pr-1.5" : "px-2.5",
         s.id === activeID
           ? "bg-accent-soft font-medium text-foreground"
@@ -2254,7 +2246,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               title="新建对话（⌘N）"
               aria-label="新建对话"
               onClick={createDirectSession}
-              className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-panel/60 px-2 text-[0.8125rem] leading-5 font-medium text-foreground transition-colors hover:bg-accent"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-panel/60 px-2 text-sm leading-5 font-medium text-foreground transition-colors hover:bg-accent"
             >
               <SquarePen className="h-3 w-3" />
               新对话
@@ -2274,7 +2266,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="h-7 rounded-md pl-8 text-[0.8125rem] leading-5 placeholder:text-muted-foreground/70"
+              className="h-7 rounded-md pl-8 text-sm leading-5 placeholder:text-muted-foreground/70"
               placeholder="搜索对话"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -2312,7 +2304,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         role="group"
                         className={cn(
                           "group flex items-center rounded-md pr-1 text-muted-foreground transition-colors",
-                          activeProjectKey === g.key
+                          draftProjectKey === g.key
                             ? "bg-accent-soft text-foreground"
                             : "hover:bg-accent hover:text-foreground",
                         )}
@@ -2335,7 +2327,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                             else next.add(g.key);
                             return next;
                           })}
-                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-[0.8125rem] leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-md leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                         >
                           {isPinned
                             ? <Pin className="h-3.5 w-3.5 shrink-0 opacity-70" />

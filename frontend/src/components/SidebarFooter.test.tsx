@@ -16,7 +16,8 @@ describe("SidebarFooter", () => {
       />,
     );
 
-    expect(html).toContain("AgentMate v0.6.3");
+    expect(html).toContain(">v0.6.3<");
+    expect(html).toContain("AgentMate v0.6.3 · 基于 Google ADK Go v2 · Wails v3");
     expect(html).toContain('title="设置（⌘,）"');
     expect(html).toContain('title="快捷键与命令"');
     expect(html).toContain('title="主题与外观"');

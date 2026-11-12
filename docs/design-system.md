@@ -123,7 +123,7 @@
 
 - 字体栈：`Geist Variable → PingFang SC → Microsoft YaHei UI → Noto Sans SC → Source Han Sans SC → system-ui`；不换字体。
 - 自定义 `text-ui` 字号必须由共享 `cn`（`@/lib/utils`）注册合并规则；`components/ui/**` 不得直接从 `cn` 引入默认合并器，否则与文字颜色同时出现时字号会被丢弃。
-- 正文 15px / 1.7；控件、列表、侧栏 13px；元数据下限 12px；禁止 10/11px 中文。
+- 正文、对话侧栏会话/项目行、侧栏底部版本/更新 15px / 1.7（侧栏行保持紧凑行高）；设置导航 14px；控件与普通列表 13px；元数据下限 12px；禁止 10/11px 中文。
 - 页面标题 20–24px，区块标题 15–16px，卡片标题 15px；使用既有 `text-*` 阶梯。
 - 间距：页面 32、区块 24、组 16、行内 8/12；用间距替代边框。
 - 圆角：控件 8px、面板 12px、大面板/对话框 16px、用户气泡 16px；不新增任意值。
@@ -136,9 +136,9 @@
 |---|---|
 | 应用壳 | 根 `canvas`；顶栏、对话侧栏、设置导航 `chrome`；内容面板 `panel`；浮层 `overlay` |
 | 顶栏 | 40px 高，无底边线；品牌图标 `accent-soft`；窗口控制 hover 用 overlay/danger-soft |
-| 对话侧栏 | `chrome`，无右边线；当前项 `accent-soft` + `accent-text`，不加左竖条；项目分组用间距/弱底纹 |
+| 对话侧栏 | `chrome`，无右边线；当前项 `accent-soft` + `accent-text`，不加左竖条；项目组行仅保留 hover，不随当前会话高亮 |
 | 会话头 | `canvas`，无底边线；标题、目标徽标、操作靠间距组织 |
-| 设置导航 | `chrome`，无右边线；选中项 `accent-soft` + `accent-text` |
+| 设置导航 | `chrome`，无右边线，固定宽 240px；选中项 `accent-soft` + `accent-text` |
 | 设置分组 | `panel` 底，无 ring；标题可在面板外；设置行无 border，靠 12–16px 内距 |
 | 选择控件 | 未选中 `control` 面；选中使用 `choice-selected` / `choice-selected-danger` + `foreground` 文字 + Check 图标；无布局边框 |
 | 管理列表 | 一个 `panel` 容器包住连续行；行 hover 用 overlay；不要每项一张描边卡 |
