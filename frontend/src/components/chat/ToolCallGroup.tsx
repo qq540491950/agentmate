@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   CheckCircle2, ChevronRight, Loader2, ShieldAlert, XCircle,
 } from "lucide-react";
@@ -60,6 +60,37 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
   const hidden = executionHidden(displayMode, status);
   const meta = STATUS_META[status];
   const trace = buildToolTrace(messages);
+  // The expanded process list is a bounded scroll region: a long run must not
+  // push the final answer (or the composer) off the window. While the turn is
+  // live, follow appended steps only when the reader is already at the
+  // bottom; scrolling up is treated as "I am reading this part".
+  const executionScrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const wasExpandedRef = useRef(false);
+  useEffect(() => {
+    const el = executionScrollRef.current;
+    const wasExpanded = wasExpandedRef.current;
+    const justExpanded = expanded && !wasExpanded;
+    wasExpandedRef.current = expanded;
+    if (!el) return;
+    if (!expanded) {
+      el.scrollTop = 0;
+      stickToBottomRef.current = true;
+      return;
+    }
+    if (justExpanded) {
+      stickToBottomRef.current = true;
+      el.scrollTop = live || status === "running" ? el.scrollHeight : 0;
+      return;
+    }
+    if (!wasExpanded) return;
+    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [expanded, messages, live, status]);
+  const onExecutionScroll = () => {
+    const el = executionScrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
   const summary = summarizeToolTrace(trace);
   const breakdown = formatToolExecutionBreakdown(summary.counts);
   const runningSteps = messages
@@ -151,7 +182,15 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
         )}
       >
         <div className="overflow-hidden">
-          <div className="space-y-1 bg-panel/40 px-2 py-2">
+          <div
+            ref={executionScrollRef}
+            data-slot="execution-scroll"
+            role="group"
+            tabIndex={expanded ? 0 : -1}
+            aria-label="执行过程步骤"
+            onScroll={onExecutionScroll}
+            className="max-h-64 space-y-1 overflow-y-auto overscroll-contain bg-panel/40 px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
+          >
             {trace.map((item) => {
               if (item.kind === "tool") {
                 return (

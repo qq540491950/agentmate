@@ -3,7 +3,7 @@ import {
   Dialog, DialogContent, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Brain, Check, ChevronDown, ChevronUp, Copy, Loader2, Pencil, RefreshCw, ShieldAlert, TriangleAlert, Volume2, X,
+  Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Loader2, Pencil, RefreshCw, ShieldAlert, TriangleAlert, Volume2, X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -82,25 +82,48 @@ export function ConfirmCard({ m, onConfirm }: {
  * ThinkingBlock shows a model's reasoning. It streams expanded while the
  * model is still thinking, then collapses to a one-line summary — the answer
  * is what the reader came for, but nothing is discarded. Inside an execution
- * group (inline) the group header already toggles the whole run, so the text
- * stays visible there instead of nesting a second toggle.
+ * group (inline) it renders as a one-line row with a short preview and opens
+ * its full text on demand, so a long run stays scannable without losing the
+ * reasoning.
  */
 export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: { m: UIMessage; inline?: boolean }) {
-  const [open, setOpen] = useState(!!m.streaming);
+  // The standalone block opens while streaming; inside an execution group the
+  // row starts folded so a long run stays scannable (Codex-style timeline).
+  const [open, setOpen] = useState(!inline && !!m.streaming);
   useEffect(() => {
-    if (!m.streaming) setOpen(false);
-  }, [m.streaming]);
+    if (!m.streaming && !inline) setOpen(false);
+  }, [m.streaming, inline]);
   if (inline) {
+    const preview = m.text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .pop() ?? "";
     return (
-      <div className="rounded-lg bg-panel/60 px-3 py-2">
-        <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+      <div data-slot="thinking-row" className="rounded-lg">
+        <button
+          type="button"
+          className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent-soft focus-visible:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          aria-expanded={open}
+          aria-label={open ? "收起思考过程" : "展开思考过程"}
+          onClick={() => setOpen((v) => !v)}
+        >
           <Brain className="h-3.5 w-3.5 shrink-0" />
-          <span className="font-medium">思考过程</span>
-          {m.streaming && <Loader2 className="h-3 w-3 animate-spin" />}
-        </div>
-        <div className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-[1.7] text-muted-foreground">
-          {m.text || (m.streaming ? "思考中…" : "")}
-        </div>
+          <span className="shrink-0 font-medium">思考过程</span>
+          <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
+            {preview || (m.streaming ? "思考中…" : "")}
+          </span>
+          {m.streaming && <Loader2 className="h-3 w-3 shrink-0 animate-spin" />}
+          <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-90")} />
+        </button>
+        {open && (
+          <div
+            data-slot="thinking-body"
+            className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-control/70 px-2 py-1.5 text-xs leading-[1.7] text-muted-foreground"
+          >
+            {m.text || (m.streaming ? "思考中…" : "")}
+          </div>
+        )}
       </div>
     );
   }
