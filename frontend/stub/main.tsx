@@ -175,7 +175,7 @@ const seedConfig = {
     // Compact project-tree fixtures: the first project has fewer than the
     // five-row preview, the second overflows into「展开显示」.
     { id: "sess_pm_flash", title: "设计模型等待回复的闪烁状态", targetType: "", targetId: "", createdAt: iso(0, 16), updatedAt: iso(0, 16), projectId: "proj_beta" },
-    { id: "sess_cloud_443", title: "我来比对两个配置中的 443 端口节点", targetType: "", targetId: "", createdAt: iso(0, 11), updatedAt: iso(0, 11), projectId: "proj_alpha" },
+    { id: "sess_cloud_443", title: "我来比对两个配置中的 443 端口节点", targetType: "", targetId: "", createdAt: iso(0, 11), updatedAt: iso(0, 11), projectId: "proj_alpha", pinned: true },
     { id: "sess_cloud_pull1", title: "拉取最新的代码", targetType: "", targetId: "", createdAt: iso(0, 10), updatedAt: iso(0, 10), projectId: "proj_alpha" },
     { id: "sess_cloud_pull2", title: "** 拉取最新代码", targetType: "", targetId: "", createdAt: iso(-1, 18), updatedAt: iso(-1, 18), projectId: "proj_alpha" },
     { id: "sess_cloud_pull3", title: "拉取最新代码", targetType: "", targetId: "", createdAt: iso(-1, 17), updatedAt: iso(-1, 17), projectId: "proj_alpha" },

@@ -1583,11 +1583,11 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // The compact sidebar is one project tree: default chats first, then
-  // registered projects in their stable creation order, then ad-hoc
-  // workspace folders. Each project previews five chats and reveals the rest
-  // through「展开显示」; archived chats stay in their own trailing section.
-  // A search query collapses the tree into one flat result list.
+  // The compact sidebar is one project tree: pinned chats first as a global
+  // group, then default chats, registered projects in their stable creation
+  // order, and ad-hoc workspace folders. Each group previews five chats and
+  // reveals the rest through「展开显示」; archived chats stay in their own
+  // trailing section. A search query collapses the tree into one flat list.
   const searching = search.trim().length > 0;
   const sidebarGroups = useMemo(
     () => buildSidebarProjectGroups(filteredSessions, projects, globalWorkspace),
@@ -2174,7 +2174,6 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             : ""}
         />
       </span>
-      {s.pinned && <Pin className="h-3 w-3 shrink-0 text-accent-text" aria-label="已置顶" />}
       {runningMap[s.id] && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent-text" aria-label="生成中" />}
       {!runningMap[s.id] && unread[s.id] && <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-label="有新回复未查看" />}
       {/* The cluster hosts the "…" dropdown anchor, so it must keep its layout
@@ -2305,6 +2304,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                   const sessionWindow = projectSessionWindow(g.sessions, expanded);
                   const project = g.projectId ? projects.find((p) => p.id === g.projectId) : undefined;
                   const isDefault = g.key === "default";
+                  const isPinned = g.key === "pinned";
                   const hasActions = !!project || (!isDefault && !!g.path);
                   return (
                     <div key={g.key} className="mb-2 last:mb-0">
@@ -2323,7 +2323,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                           aria-label={
                             isDefault
                               ? `对话分组，${collapsed ? "已收起" : "已展开"}`
-                              : `项目「${g.label}」，${collapsed ? "已收起" : "已展开"}`
+                              : isPinned
+                                ? `置顶对话，${collapsed ? "已收起" : "已展开"}`
+                                : `项目「${g.label}」，${collapsed ? "已收起" : "已展开"}`
                           }
                           title={collapsed ? `展开「${g.label}」` : `收起「${g.label}」`}
                           data-project-state={collapsed ? "closed" : "open"}
@@ -2335,11 +2337,13 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                           })}
                           className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-[0.8125rem] leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                         >
-                          {isDefault
-                            ? <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                            : collapsed
-                              ? <Folder className="h-4 w-4 shrink-0 opacity-70" />
-                              : <FolderOpen className="h-4 w-4 shrink-0 opacity-70" />}
+                          {isPinned
+                            ? <Pin className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                            : isDefault
+                              ? <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                              : collapsed
+                                ? <Folder className="h-4 w-4 shrink-0 opacity-70" />
+                                : <FolderOpen className="h-4 w-4 shrink-0 opacity-70" />}
                           <span className="min-w-0 flex-1 truncate font-medium">{g.label}</span>
                         </button>
                         {hasActions && (

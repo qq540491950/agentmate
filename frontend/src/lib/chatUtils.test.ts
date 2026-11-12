@@ -886,10 +886,12 @@ describe('buildSidebarProjectGroups', () => {
     ]);
   });
 
-  it('keeps pinned chats first inside each project and then sorts by recency', () => {
+  it('extracts pinned chats into one leading global group and removes them from projects', () => {
     const groups = buildSidebarProjectGroups(
       [
-        sess({ id: 'old-pinned', projectId: 'proj_a', pinned: true, updatedAt: '2026-10-01T00:00:00' }),
+        sess({ id: 'project-pinned', projectId: 'proj_a', pinned: true, updatedAt: '2026-10-01T00:00:00' }),
+        sess({ id: 'direct-pinned', pinned: true, updatedAt: '2026-11-02T00:00:00' }),
+        sess({ id: 'direct', updatedAt: '2026-11-01T12:00:00' }),
         sess({ id: 'newest', projectId: 'proj_a', updatedAt: '2026-11-01T10:00:00' }),
         sess({ id: 'middle', projectId: 'proj_a', updatedAt: '2026-10-15T00:00:00' }),
       ],
@@ -897,7 +899,21 @@ describe('buildSidebarProjectGroups', () => {
       WS,
     );
 
-    expect(groups[0].sessions.map((s) => s.id)).toEqual(['old-pinned', 'newest', 'middle']);
+    expect(groups.map((g) => [g.key, g.label, g.sessions.map((s) => s.id)])).toEqual([
+      ['pinned', '置顶', ['direct-pinned', 'project-pinned']],
+      ['default', '对话', ['direct']],
+      ['proj:proj_a', 'alpha', ['newest', 'middle']],
+    ]);
+  });
+
+  it('keeps archived pinned chats out of the global pinned group', () => {
+    const groups = buildSidebarProjectGroups(
+      [sess({ id: 'archived-pinned', pinned: true, archived: true })],
+      [],
+      WS,
+    );
+
+    expect(groups).toEqual([]);
   });
 });
 

@@ -698,7 +698,7 @@ export interface SessionGroup {
 }
 
 export interface ProjectGroup {
-  /** key is "proj:<id>", an ad-hoc dir root, "default" or "archived". */
+  /** key is "pinned", "default", "proj:<id>", an ad-hoc dir root or "archived". */
   key: string;
   label: string;
   /** Full workspace root for tooltips; undefined for the default project. */
@@ -816,25 +816,31 @@ export function groupSessionsByProject(sessions: ChatSession[], projects: Projec
     .map((g) => ({ ...g, sessions: g.sessions.sort(byRecency) }));
 }
 
-/** sortSidebarSessions keeps pinned chats at the top of their project, then
- * orders the rest by recent activity. */
+/** sortSidebarSessions orders each project by recent activity. Pinned chats
+ * are extracted into the leading global group before project grouping. */
 function sortSidebarSessions(sessions: ChatSession[]): ChatSession[] {
-  return [...sessions].sort((a, b) => {
-    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    return byRecency(a, b);
-  });
+  return [...sessions].sort(byRecency);
 }
 
 /** buildSidebarProjectGroups turns the raw workspace grouping into the stable
  * tree used by the compact sidebar:
- *   default chats → registered projects (including empty ones, in project
- *   order) → ad-hoc workspace folders → (archived is rendered separately).
+ *   pinned chats → default chats → registered projects (including empty ones,
+ *   in project order) → ad-hoc workspace folders → (archived is rendered
+ *   separately). Pinned chats leave their project group so each chat appears
+ *   exactly once and stays reachable at the top regardless of its workspace.
  * Registered projects keep their creation order instead of jumping around
  * whenever one of their chats receives a new message. */
 export function buildSidebarProjectGroups(sessions: ChatSession[], projects: Project[], globalWorkspace: string): ProjectGroup[] {
-  const grouped = groupSessionsByProject(sessions, projects, globalWorkspace);
+  const pinned = sessions.filter((s) => s.pinned && !s.archived).sort(byRecency);
+  const grouped = groupSessionsByProject(
+    sessions.filter((s) => !s.pinned || s.archived),
+    projects,
+    globalWorkspace,
+  );
   const byKey = new Map(grouped.map((g) => [g.key, g]));
   const out: ProjectGroup[] = [];
+
+  if (pinned.length > 0) out.push({ key: "pinned", label: SESSION_GROUP_LABELS.pinned, sessions: pinned });
 
   const defaultGroup = byKey.get("default");
   if (defaultGroup) out.push({ ...defaultGroup, label: "对话" });
