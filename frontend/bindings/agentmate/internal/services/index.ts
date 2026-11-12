@@ -39,6 +39,8 @@ export type {
     ImportAgentResult,
     KnowledgeFile,
     MemoryInfo,
+    SandboxStatusInfo,
+    SessionExecutionPolicy,
     SessionStats,
     StatDay,
     StorageInfo,

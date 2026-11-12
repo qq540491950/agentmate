@@ -4,6 +4,25 @@
 
 ## 视觉测试与体验设计
 
+### 第二百五十七轮迭代：沙箱加固——两轴执行策略、只读与按次脱离（已实施）
+
+依据：旧 `sandboxMode` 把“是否询问”和“OS 边界”混成一个三档枚举，无法表达“请求批准 + 完全访问”等组合；MCP 工具未接入审批门，非 Windows 的 `workspace-write` 还会回退到全权限执行。完整批次记录见 [docs/iterations/sandbox-hardening.md](iterations/sandbox-hardening.md)。
+
+**实现要点**
+
+- `Settings` / `ChatSession` 拆分出独立的 `approvalPolicy` 与 `sandboxProfile`，新会话快照全局默认；legacy `sandboxMode` 仅作兼容投影，读写优先级为新字段。
+- 新增 `SetSessionExecutionPolicy` / `SessionExecutionPolicy` 与两轴设置页、composer 选择器；完全访问仍先确认，交叉组合有明确文案。
+- Windows 新增只读 AppContainer ACL（切换时撤销旧 Modify ACE）；非 Windows 的工作区可写与只读均 fail closed，仅显式完全访问直接执行。
+- MCP toolset 按会话审批策略包一层确认；`run_command` 支持按次 `escalate` / `justification`，`never` 拒绝越界申请，批准只影响本次调用并写审计。
+- 新增 `edit_workspace_file`（原子替换、有界 unified diff）与共享 `PreviewGuard` 路径/命令预检，确认卡展示风险原因；A2A 发布代理固定为非交互 `never + workspace-write + network off`。
+- 补充网络与统一工具执行层 ADR；重建 `frontend/bindings/**`，`api.ts` 收敛为生成的强类型 RPC 与模型。
+
+**测试证据**
+
+- `go test ./internal/... .` 全绿（agentkit 16.3s、services 46.4s）；`go test -race ./internal/... .` 全绿（services 37.2s）；`go vet ./internal/... .` 无输出。
+- `npx tsc --noEmit` 0 类型错误；`npm test` 37 个文件 / 273 个用例全绿；`npm run build` 通过（2333 modules）。
+- `wails3 build` 通过（673 packages / 7 services / 101 methods，Windows 原生产物构建成功）；`git diff --check` 通过，改动文本文件均为 LF。
+
 ### 第二百五十六轮迭代：完全访问模式下终端工具不再闪现控制台窗口（已实施）
 
 依据：用户反馈对话中调用工具时终端框频繁闪现后立即关闭。截图左下角为「完全访问」模式；该模式在沙箱改造后走 `sandbox.runDirect`，而旧 `run_command` 的 `CREATE_NO_WINDOW` 只保留在未再使用的 `runShellCommand` 中。桌面应用以 `-H windowsgui` 构建且没有控制台，`runDirect` 每次启动 `cmd.exe` 都会分配一个可见控制台。

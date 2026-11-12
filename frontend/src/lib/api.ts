@@ -1,5 +1,4 @@
 // Thin re-export layer over the generated Wails bindings.
-import { Call } from "@wailsio/runtime";
 import * as services from "../../bindings/agentmate/internal/services";
 import * as configModels from "../../bindings/agentmate/internal/config/models";
 import * as mcpModels from "../../bindings/agentmate/internal/mcpmgr/models";
@@ -43,9 +42,7 @@ export type ChatStreamEvent = serviceModels.ChatStreamEvent;
 export type ServerStatus = mcpModels.ServerStatus;
 export type ToolInfo = mcpModels.ToolInfo;
 
-export type AppConfig = Omit<configModels.Config, "settings"> & {
-  settings: Settings;
-};
+export type AppConfig = configModels.Config;
 export type ModelProvider = configModels.ModelProvider;
 export type ModelInfo = configModels.ModelInfo;
 export type ReasoningLevel = configModels.ReasoningLevel;
@@ -60,34 +57,14 @@ export type KnowledgeIndexStats = agentkitModels.KnowledgeIndexStats;
 export type StorageInfo = serviceModels.StorageInfo;
 export type MemoryInfo = serviceModels.MemoryInfo;
 export type KnowledgeFile = serviceModels.KnowledgeFile;
-export type SandboxStatusInfo = {
-  available: boolean;
-  backend: string;
-  error?: string;
-  profileSid?: string;
-};
-// The split execution-policy fields are newer than the committed bindings
-// snapshot. Keep the runtime contract typed until bindings are regenerated.
-export type Settings = configModels.Settings & {
-  approvalPolicy?: string;
-  sandboxProfile?: string;
-};
-export type ChatSession = configModels.ChatSession & {
-  approvalPolicy?: string;
-  sandboxProfile?: string;
-};
+export type SandboxStatusInfo = serviceModels.SandboxStatusInfo;
+export type Settings = configModels.Settings;
+export type ChatSession = configModels.ChatSession;
 export type Project = configModels.Project;
-
-// Session approval-mode RPC. The backend method is newer than the committed
-// bindings snapshot, so call it by fully qualified name through the Wails
-// runtime; the method name is the stable contract the generator writes.
-const chatServiceName = "agentmate/internal/services.ChatService";
-const appServiceName = "agentmate/internal/services.AppService";
 
 /** getSandboxStatus reads the platform backend for Settings warnings. */
 export function getSandboxStatus(): Promise<SandboxStatusInfo> {
-  return Call.ByName(`${appServiceName}.SandboxStatus`)
-    .then((status) => status as SandboxStatusInfo);
+  return App.SandboxStatus();
 }
 
 /** setSessionExecutionPolicy persists the current chat's independent axes. */
@@ -96,19 +73,12 @@ export function setSessionExecutionPolicy(
   approvalPolicy: string,
   sandboxProfile: string,
 ): Promise<void> {
-  return Call.ByName(
-    `${chatServiceName}.SetSessionExecutionPolicy`,
-    sessionID,
-    approvalPolicy,
-    sandboxProfile,
-    "composer",
-  ).then(() => undefined);
+  return Chat.SetSessionExecutionPolicy(sessionID, approvalPolicy, sandboxProfile, "composer");
 }
 
 /** @deprecated Use setSessionExecutionPolicy. */
 export function setSessionSandboxMode(sessionID: string, mode: string): Promise<void> {
-  return Call.ByName(`${chatServiceName}.SetSessionSandboxMode`, sessionID, mode, "composer")
-    .then(() => undefined);
+  return Chat.SetSessionSandboxMode(sessionID, mode, "composer");
 }
 
 

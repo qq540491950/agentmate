@@ -254,7 +254,16 @@ export function SendWithReasoning(sessionID: string, text: string, attachments: 
 }
 
 /**
- * SessionSandboxMode reports the mode the chat will use on its next turn.
+ * SessionExecutionPolicy reports the split policy the chat will use on its
+ * next turn.
+ */
+export function SessionExecutionPolicy(sessionID: string): $CancellablePromise<$models.SessionExecutionPolicy | null> {
+    return $Call.ByID(2734589841, sessionID);
+}
+
+/**
+ * SessionSandboxMode reports the legacy combined mode the chat projects for
+ * old frontends.
  * Unknown IDs are an error, like the other session-setting RPCs.
  */
 export function SessionSandboxMode(sessionID: string): $CancellablePromise<string> {
@@ -278,6 +287,16 @@ export function SessionWorkspace(sessionID: string): $CancellablePromise<string>
 }
 
 /**
+ * SetSessionExecutionPolicy changes this chat's approval and sandbox
+ * dimensions independently. The pair is persisted, so switching chats or
+ * restarting keeps it; other sessions are untouched. It applies from the next
+ * turn when a turn is already running.
+ */
+export function SetSessionExecutionPolicy(sessionID: string, approvalPolicy: string, sandboxProfile: string, source: string): $CancellablePromise<void> {
+    return $Call.ByID(2455585607, sessionID, approvalPolicy, sandboxProfile, source);
+}
+
+/**
  * SetSessionModel pins a chat to a specific model of its target agent's
  * provider (per-session model override); empty clears the override. The
  * previous thinking level is cleared too: the new model may not offer it.
@@ -296,10 +315,8 @@ export function SetSessionReasoningLevel(sessionID: string, level: string): $Can
 }
 
 /**
- * SetSessionSandboxMode changes this chat's current approval/sandbox profile.
- * The value is persisted, so switching chats or restarting keeps it; other
- * sessions are untouched. It applies from the next turn when a turn is
- * already running.
+ * SetSessionSandboxMode is the legacy three-profile wrapper. It maps each old
+ * combined mode onto the independent pair while keeping the old audit phase.
  */
 export function SetSessionSandboxMode(sessionID: string, mode: string, source: string): $CancellablePromise<void> {
     return $Call.ByID(3275126223, sessionID, mode, source);

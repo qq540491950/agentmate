@@ -118,10 +118,13 @@ export interface ChatSession {
     "reasoningLevel"?: string;
 
     /**
-     * SandboxMode/SandboxNetwork are this chat's current approval and network
-     * boundary. New chats snapshot the global defaults; changing Settings
-     * afterwards never rewrites existing chats.
+     * ApprovalPolicy/SandboxProfile are this chat's independent approval and
+     * OS-boundary dimensions. SandboxMode is the legacy combined snapshot kept
+     * for old frontends. New chats snapshot the global defaults; changing
+     * Settings afterwards never rewrites existing chats.
      */
+    "approvalPolicy"?: string;
+    "sandboxProfile"?: string;
     "sandboxMode"?: string;
     "sandboxNetwork"?: string;
 
@@ -452,9 +455,15 @@ export interface Settings {
     "toolsAudit"?: boolean;
 
     /**
-     * SandboxMode is the default approval/sandbox profile copied into every
-     * newly created chat: request-approval (default), auto-approve, or
-     * danger-full-access. Existing chats keep their own snapshot.
+     * ApprovalPolicy and SandboxProfile are the default execution policy copied
+     * into every newly created chat. Existing chats keep their own snapshot.
+     */
+    "approvalPolicy"?: string;
+    "sandboxProfile"?: string;
+
+    /**
+     * SandboxMode is the legacy combined profile kept for old configs and old
+     * frontends. New fields take precedence when both are present.
      */
     "sandboxMode"?: string;
 

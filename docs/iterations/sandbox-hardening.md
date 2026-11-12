@@ -150,8 +150,8 @@
   回环 / 元数据地址拦截、DNS rebinding 防护或 UDP/QUIC 过滤。
 - **A2A 非交互策略**：发布代理固定 `never + workspace-write + network off`，
   没有远程 HITL 通道；这是有意的取舍，不是完整的远程审批方案。
-- **生成绑定**：提交中的绑定快照仍不包含两轴字段、`SetSessionExecutionPolicy`
-  与 `SandboxStatus`；下一次由 Integrator 统一重建绑定后可收敛为生成类型。
+- **生成绑定**：分支提交遵守共享文件约束，未包含生成物；合并到 `main` 后已统一
+  重建 `frontend/bindings/**`，并把 `api.ts` 收敛为生成的强类型 RPC 与模型。
 - **历史审批卡**：实时确认卡会显示风险命令原因与路径预检；历史重放对普通
   `run_command` 仍只显示通用文案，脱离沙箱文案已对齐。
 - **平台验证**：Windows AppContainer / ACL 用例已在本机真实子进程验证；

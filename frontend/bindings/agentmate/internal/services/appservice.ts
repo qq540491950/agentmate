@@ -117,6 +117,10 @@ export function RevealWorkspaceFile(sessionID: string, relPath: string): $Cancel
     return $Call.ByID(147551796, sessionID, relPath);
 }
 
+export function SandboxStatus(): $CancellablePromise<$models.SandboxStatusInfo> {
+    return $Call.ByID(1555592077);
+}
+
 /**
  * SetLogPath points the diagnostics log reader at the app log file.
  */

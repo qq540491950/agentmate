@@ -246,6 +246,22 @@ export interface MemoryInfo {
     "count": number;
 }
 
+export interface SandboxStatusInfo {
+    "available": boolean;
+    "backend": string;
+    "error": string;
+    "profileSid": string;
+}
+
+/**
+ * SessionExecutionPolicy is the independent approval and OS-boundary
+ * dimensions a chat will use on its next turn.
+ */
+export interface SessionExecutionPolicy {
+    "approvalPolicy": string;
+    "sandboxProfile": string;
+}
+
 /**
  * SessionStats aggregates observability metrics for one conversation.
  */
