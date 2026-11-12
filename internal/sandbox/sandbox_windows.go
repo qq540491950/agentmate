@@ -256,7 +256,7 @@ func isWriteProtectedOnly(path string) bool {
 }
 
 func (b *windowsBackend) run(ctx context.Context, req Request, policy Policy, home string) (Result, error) {
-	env := sanitizedEnvironment(home, append(policy.ExtraEnv, req.Env...))
+	env := sanitizedEnvironment(home, append(policy.sandboxEnvironment(), req.Env...))
 	envBlock, err := buildEnvBlock(env)
 	if err != nil {
 		return Result{}, err

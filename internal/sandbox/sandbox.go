@@ -52,6 +52,10 @@ type Policy struct {
 	Workspace      string
 	WritableRoots  []string
 	ProtectedPaths []string
+	// ProxyURL is injected only into sandboxed child environments as
+	// HTTP_PROXY/HTTPS_PROXY. Direct (danger-full-access) execution ignores it
+	// and keeps inheriting the caller's environment.
+	ProxyURL string
 	// ExtraEnv is for explicitly configured values (for example a stdio MCP
 	// server's own environment). It is appended after the sanitized base
 	// environment, so it can intentionally provide a server-specific secret.
@@ -120,6 +124,13 @@ func (p Policy) WithWritableRoots(paths ...string) Policy {
 	return p.normalized()
 }
 
+// WithProxy sets the proxy exposed to sandboxed children. An empty URL keeps
+// proxy variables out of the child environment.
+func (p Policy) WithProxy(proxyURL string) Policy {
+	p.ProxyURL = strings.TrimSpace(proxyURL)
+	return p
+}
+
 func (p Policy) normalized() Policy {
 	if p.Mode == "" {
 		p.Mode = ModeWorkspaceWrite
@@ -127,6 +138,7 @@ func (p Policy) normalized() Policy {
 	if p.Network == "" {
 		p.Network = NetworkOff
 	}
+	p.ProxyURL = strings.TrimSpace(p.ProxyURL)
 	p.Workspace = canonicalRoot(p.Workspace)
 	p.WritableRoots = cleanUnique(canonicalRoots(p.WritableRoots))
 	p.ProtectedPaths = cleanUnique(canonicalRoots(p.ProtectedPaths))
@@ -486,6 +498,29 @@ func sanitizedEnvironment(home string, extra []string) []string {
 		out = append(out, key+"="+values[key])
 	}
 	return out
+}
+
+// sandboxEnvironment returns environment values that apply only to confined
+// children. The direct backend never calls this helper, so a configured proxy
+// cannot silently replace the parent environment in danger-full-access mode.
+func (p Policy) sandboxEnvironment() []string {
+	env := proxyEnvironment(p.ProxyURL)
+	return append(env, p.ExtraEnv...)
+}
+
+// proxyEnvironment maps the single in-app proxy setting to the variables HTTP
+// clients conventionally consume. Loopback stays direct, matching the global
+// transport's no-proxy carve-out for local model and MCP endpoints.
+func proxyEnvironment(proxyURL string) []string {
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		return nil
+	}
+	return []string{
+		"HTTP_PROXY=" + proxyURL,
+		"HTTPS_PROXY=" + proxyURL,
+		"NO_PROXY=localhost,127.0.0.1,::1",
+	}
 }
 
 type limitedBuffer struct {

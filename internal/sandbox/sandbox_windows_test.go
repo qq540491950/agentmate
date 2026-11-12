@@ -354,6 +354,53 @@ func TestWindowsEnvironmentDoesNotInheritSecrets(t *testing.T) {
 	}
 }
 
+func TestWindowsProxyEnvironment(t *testing.T) {
+	if !Available() {
+		t.Skipf("AppContainer unavailable: %s", BackendStatus().Error)
+	}
+	defer Close()
+
+	t.Setenv("HTTP_PROXY", "http://parent-proxy.invalid:7890")
+	t.Setenv("HTTPS_PROXY", "http://parent-proxy.invalid:7890")
+	t.Setenv("NO_PROXY", "*")
+
+	root := sandboxTestRoot(t)
+	workspace := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	probe := func(policy Policy) string {
+		t.Helper()
+		res, err := Run(context.Background(), Request{
+			Command: "cmd.exe",
+			Args: []string{"/d", "/c",
+				"echo HTTP_PROXY=[%HTTP_PROXY%]&echo HTTPS_PROXY=[%HTTPS_PROXY%]&echo NO_PROXY=[%NO_PROXY%]"},
+			Dir:     workspace,
+			Timeout: 20 * time.Second,
+		}, policy)
+		if err != nil {
+			t.Fatalf("sandboxed run: %v", err)
+		}
+		return res.Output
+	}
+
+	if got := probe(DefaultPolicy(workspace)); strings.Contains(strings.ToLower(got), "parent-proxy.invalid") ||
+		strings.Contains(got, "NO_PROXY=[*]") {
+		t.Fatalf("unconfigured sandbox inherited proxy variables: %q", got)
+	}
+
+	got := probe(DefaultPolicy(workspace).WithProxy("http://127.0.0.1:7890"))
+	for _, want := range []string{
+		"HTTP_PROXY=[http://127.0.0.1:7890]",
+		"HTTPS_PROXY=[http://127.0.0.1:7890]",
+		"NO_PROXY=[localhost,127.0.0.1,::1]",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("sandbox environment missing %q: %q", want, got)
+		}
+	}
+}
+
 func TestWindowsNetworkOff(t *testing.T) {
 	if !Available() {
 		t.Skipf("AppContainer unavailable: %s", BackendStatus().Error)

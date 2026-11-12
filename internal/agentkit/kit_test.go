@@ -97,6 +97,34 @@ func TestSandboxPolicyProfiles(t *testing.T) {
 	}
 }
 
+func TestSandboxPolicyUsesConfiguredHTTPProxy(t *testing.T) {
+	store, err := config.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := &Kit{store: store}
+	agent := config.AgentConfig{
+		ApprovalPolicy: config.ApprovalPolicyRequestApproval,
+		SandboxProfile: config.SandboxProfileWorkspaceWrite,
+		SandboxNetwork: config.SandboxNetworkOn,
+	}
+
+	policy := k.sandboxPolicy(agent, t.TempDir())
+	if policy.ProxyURL != "" {
+		t.Fatalf("empty HTTPProxy produced %q", policy.ProxyURL)
+	}
+
+	if err := store.Update(func(cfg *config.Config) {
+		cfg.Settings.HTTPProxy = "http://127.0.0.1:7890"
+	}); err != nil {
+		t.Fatal(err)
+	}
+	policy = k.sandboxPolicy(agent, t.TempDir())
+	if policy.ProxyURL != "http://127.0.0.1:7890" {
+		t.Fatalf("proxy policy = %q", policy.ProxyURL)
+	}
+}
+
 func TestWriteWorkspaceFilePolicyBlocksProtectedPath(t *testing.T) {
 	root := t.TempDir()
 	policy := sandbox.DefaultPolicy(root)

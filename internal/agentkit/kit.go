@@ -847,7 +847,11 @@ func (k *Kit) sandboxPolicy(ac config.AgentConfig, workspace string) sandbox.Pol
 	if k.store != nil {
 		protectedDirs = append(protectedDirs, k.store.Dir())
 	}
-	return SessionPolicy(workspace, ac.EffectiveSandboxProfile(), ac.SandboxNetwork, protectedDirs...)
+	policy := SessionPolicy(workspace, ac.EffectiveSandboxProfile(), ac.SandboxNetwork, protectedDirs...)
+	if k.store != nil {
+		policy = policy.WithProxy(k.store.Settings().HTTPProxy)
+	}
+	return policy
 }
 
 func firstNonEmpty(vals ...string) string {
