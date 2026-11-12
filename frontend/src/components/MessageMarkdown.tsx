@@ -117,7 +117,7 @@ function CodeBlock({ children, className, node, ...rest }: any) {
   const isBlock = String(className || "").includes("language-") || String(raw).includes("\n");
   if (!isBlock) {
     return (
-      <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]" {...rest}>
+      <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em] font-medium" {...rest}>
         {children}
       </code>
     );

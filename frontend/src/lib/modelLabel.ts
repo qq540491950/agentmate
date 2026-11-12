@@ -11,6 +11,17 @@ export function modelLabel(m: LabeledModel): string {
 }
 
 /**
+ * modelPickerLabel adds the provider to a model row, matching the Codex
+ * picker's "model · provider" treatment. The provider is display metadata
+ * only; requests and persisted selections still use the model ID.
+ */
+export function modelPickerLabel(m: LabeledModel, providerName?: string): string {
+  const name = modelLabel(m);
+  const provider = providerName?.trim();
+  return name && provider ? `${name} · ${provider}` : name;
+}
+
+/**
  * reasoningLevels returns the model's enabled level table. Disabled or
  * missing tables yield [], which hides the chat-level thinking picker.
  */
@@ -40,14 +51,20 @@ export function composerReasoningModel(input: {
   return null;
 }
 
-/** levelLabel renders the common level names in Chinese, custom ones as-is. */
+/** levelLabel renders the common level names like Codex, custom ones as-is. */
 export function levelLabel(level: string): string {
   const labels: Record<string, string> = {
-    off: "关闭",
-    low: "低",
+    none: "无",
+    off: "无",
+    minimal: "极低",
+    low: "轻度",
     medium: "中",
     high: "高",
-    max: "最高",
+    xhigh: "极高",
+    "extra-high": "极高",
+    max: "Max",
+    ultra: "Ultra",
+    persistent: "持续",
   };
   const key = level.trim().toLowerCase();
   return labels[key] ?? level;

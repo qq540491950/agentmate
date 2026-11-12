@@ -188,6 +188,7 @@
     --chart-5: #7C4D91;
     --radius: 0.625rem;
     --chat-col-width: 72%;
+    --composer-col-max: 60rem;
 }
 
 :root.dark,
@@ -675,9 +676,19 @@
     max-width: var(--chat-col-width);
 }
 
+/* The composer keeps the selected chat-width preference, but is additionally
+   capped so the control does not stretch across an ultrawide reading pane. */
+.composer-col {
+    width: 100%;
+    max-width: min(var(--chat-col-width), var(--composer-col-max));
+}
+
 @media (min-width: 48rem) {
     .chat-col {
         max-width: min(var(--chat-col-width), calc(100% - 120px));
+    }
+    .composer-col {
+        max-width: min(var(--chat-col-width), calc(100% - 120px), var(--composer-col-max));
     }
 }
 
@@ -768,11 +779,32 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+/* Radix moves the range via right and the thumb wrapper via left; animate both
+   with the same short ease so switching stops feels continuous rather than
+   snapping between tick marks. */
+[data-slot="slider"] [data-slot="slider-range"] {
+  transition: left 160ms var(--ease-standard), right 160ms var(--ease-standard);
+}
+[data-slot="slider"] > span:has(> [data-slot="slider-thumb"]) {
+  transition: left 160ms var(--ease-standard);
+  will-change: left;
+}
+[data-slot="slider"][data-dragging] [data-slot="slider-range"],
+[data-slot="slider"][data-dragging] > span:has(> [data-slot="slider-thumb"]) {
+  transition: none;
+}
+
 /* 代码块语法高亮：每个主题单独定义，组件只消费语义槽位。 */
 .hl-kw { color: var(--tok-kw); font-weight: 500; }
 .hl-str { color: var(--tok-str); }
 .hl-num { color: var(--tok-num); }
 .hl-com { color: var(--tok-com); font-style: italic; }
+
+/* Markdown emphasis uses the same 600 weight as headings and controls. */
+.message-md strong,
+.message-md b {
+  font-weight: 600;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .wb-thinking-shimmer {

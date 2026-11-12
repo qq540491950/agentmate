@@ -122,10 +122,12 @@
 ## 6. 排版、间距、圆角、动效
 
 - 字体栈：`Geist Variable → PingFang SC → Microsoft YaHei UI → Noto Sans SC → Source Han Sans SC → system-ui`；不换字体。
+- 自定义 `text-ui` 字号必须由共享 `cn`（`@/lib/utils`）注册合并规则；`components/ui/**` 不得直接从 `cn` 引入默认合并器，否则与文字颜色同时出现时字号会被丢弃。
 - 正文 15px / 1.7；控件、列表、侧栏 13px；元数据下限 12px；禁止 10/11px 中文。
 - 页面标题 20–24px，区块标题 15–16px，卡片标题 15px；使用既有 `text-*` 阶梯。
 - 间距：页面 32、区块 24、组 16、行内 8/12；用间距替代边框。
 - 圆角：控件 8px、面板 12px、大面板/对话框 16px、用户气泡 16px；不新增任意值。
+- Composer 在跟随「对话栏宽」偏好的同时，最大宽度额外封顶 `60rem`（960px）；窄屏继续由 `calc(100% - 120px)` 保护。
 - 过渡 120–200ms，统一 `--ease-standard`；不做全屏主题颜色渐变；`prefers-reduced-motion` 下关闭非必要动画。
 
 ## 7. 组件模式
@@ -145,6 +147,7 @@
 | 确认卡 | `*-soft` 底 + 状态图标 + 文字；无 border/左色条 |
 | 思考过程 | 低对比底纹 + 图标 + 缩进；无左竖线 |
 | Composer | `panel` 底、16px 圆角、无 border；聚焦不显示整块包边/ring，靠文本光标与内部控件自身焦点提示；拖拽用 `accent-soft` |
+| Composer 模型/思考强度 | 模型与当前档位共用一个纯文字按钮，打开后按钮显示当前操作名（选择推理强度/选择模型），并在同一 `overlay` 浮层内切换「思考强度」与「选择模型」；模型行文案为「模型 · 供应商」，思考强度用单轨滑杆，标题显示当前档位，刻度只做位置提示 |
 | 菜单/Popover/Dialog | overlay 底 + shadow；无 ring/border；选中项 `accent-soft` |
 | 任务结果区 | `chrome` 独立底色；标签、文件行、预览区用底纹/间距；无 `border-l` |
 | 空态 | panel/overlay 底 + 图标 + 标题 + 说明 + 主操作；禁止 dashed border |

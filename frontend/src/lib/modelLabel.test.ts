@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { composerReasoningModel, levelLabel, modelLabel, reasoningLevels, validateModelReasoning } from "./modelLabel";
+import { composerReasoningModel, levelLabel, modelLabel, modelPickerLabel, reasoningLevels, validateModelReasoning } from "./modelLabel";
 import type { ModelInfo } from "@/lib/api";
 
 describe("modelLabel", () => {
@@ -12,6 +12,19 @@ describe("modelLabel", () => {
     expect(modelLabel({ id: "gpt-5" })).toBe("gpt-5");
     expect(modelLabel(null)).toBe("");
     expect(modelLabel(undefined)).toBe("");
+  });
+});
+
+describe("modelPickerLabel", () => {
+  it("appends the provider once for picker rows", () => {
+    expect(modelPickerLabel({ id: "deepseek-v4", displayName: "DeepSeek V4.1 Flash" }, "腾讯云服务器"))
+      .toBe("DeepSeek V4.1 Flash · 腾讯云服务器");
+    expect(modelPickerLabel({ id: "gpt-5" }, "OpenAI")).toBe("gpt-5 · OpenAI");
+  });
+
+  it("omits blank providers and handles an empty model", () => {
+    expect(modelPickerLabel({ id: "gpt-5" }, "  ")).toBe("gpt-5");
+    expect(modelPickerLabel(null, "OpenAI")).toBe("");
   });
 });
 
@@ -28,9 +41,15 @@ describe("reasoningLevels", () => {
 });
 
 describe("levelLabel", () => {
-  it("maps common levels and keeps custom labels", () => {
-    expect(levelLabel("off")).toBe("关闭");
+  it("matches the Codex labels for common levels", () => {
+    expect(levelLabel("off")).toBe("无");
+    expect(levelLabel("low")).toBe("轻度");
+    expect(levelLabel("xhigh")).toBe("极高");
+    expect(levelLabel("max")).toBe("Max");
     expect(levelLabel("HIGH")).toBe("高");
+  });
+
+  it("keeps custom labels", () => {
     expect(levelLabel("turbo")).toBe("turbo");
   });
 });

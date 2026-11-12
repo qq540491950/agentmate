@@ -6,8 +6,8 @@ import {
   X, BarChart3, Brain, Network, GitFork, Pin, PinOff, FileCode2, Archive, ClipboardCopy,
   Folder, FolderOpen, FileText,
   PanelRightOpen,
-  ChevronRight, ChevronDown,
-  Boxes, Coins, Hand, ShieldCheck, TriangleAlert, SlidersHorizontal,
+  Check, ChevronRight, ChevronDown,
+  Coins, Hand, ShieldCheck, TriangleAlert, SlidersHorizontal,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
 } from "lucide-react";
@@ -24,6 +24,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { PROJECT_SESSION_LIMIT, buildSidebarProjectGroups, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupToolMessages, groupTurns, isAwaitingReply, isDayChange, mdToSpeech, projectSessionWindow, sessionTargetBadgeLabel, shouldExpandProjectForSession, type ChatItem, type UIMessage } from "@/lib/chatUtils";
 import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
@@ -42,7 +43,7 @@ import {
   type MentionCandidate,
 } from "@/lib/mentions";
 import { isDialogCancelError } from "@/lib/workspace";
-import { composerReasoningModel, levelLabel, modelLabel, reasoningLevels } from "@/lib/modelLabel";
+import { composerReasoningModel, levelLabel, modelLabel, modelPickerLabel, reasoningLevels } from "@/lib/modelLabel";
 import { resolveAgentModel } from "@/lib/agentModel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
 import { TurnBlock, type TurnBodyOpts } from "@/components/chat/TurnBlock";
@@ -54,6 +55,7 @@ import { ContextRing } from "@/components/chat/ContextRing";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
+import { ReasoningEffortPanel } from "@/components/chat/ReasoningEffortPanel";
 import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
 import { SidebarFooter } from "@/components/SidebarFooter";
 import type { SettingsTab } from "@/pages/SettingsPage";
@@ -935,10 +937,12 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [queued, setQueued] = useState<Record<string, QueuedMessage[]>>({});
   const queuedRef = useRef(queued);
   useEffect(() => { queuedRef.current = queued; }, [queued]);
-  // Per-turn thinking level: a composer-local choice that applies ONLY to the
-  // next message. Empty follows the session default; it is never persisted
-  // (that is what the session-level default is for).
+  // Composer-local effort state drives live slider feedback. Active chats
+  // persist the committed level to the session; drafts keep it until the
+  // first message creates the session row.
   const [turnReasoning, setTurnReasoning] = useState("");
+  const [intelligenceOpen, setIntelligenceOpen] = useState(false);
+  const [intelligenceView, setIntelligenceView] = useState<"effort" | "model">("effort");
   const runningMapRef = useRef(runningMap);
   useEffect(() => { runningMapRef.current = runningMap; }, [runningMap]);
 
@@ -952,7 +956,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     // be created): only then do the pending image attachments belong to it.
     const fromComposer = !sid || sid === activeID;
     // A queued delivery carries the level picked when it was queued; a
-    // composer send reads the per-turn pick at the moment Send is pressed.
+    // composer send reads the current slider level at the moment Send is pressed.
     const reasoning = reasoningOverride !== undefined ? reasoningOverride : fromComposer ? turnReasoning : "";
     // Composer-first flow: with no session yet, the first message creates a
     // direct chat on the fly. Only a provider is required — never an Agent.
@@ -975,6 +979,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         // of racing a write that lands after the first render.
         try {
           if (draftModelOverride) await Chat.SetSessionModel(s.id, draftModelOverride);
+          if (reasoning) await Chat.SetSessionReasoningLevel(s.id, reasoning);
           await setSessionExecutionPolicy(
             s.id,
             draftPolicy.approvalPolicy,
@@ -1078,7 +1083,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     markRunning(sid, true);
     const wasEditing = editing && sid === activeID;
     setEditing(false);
-    // The per-turn choice is consumed by a normal send. Editing re-runs the
+    // The transient slider value is cleared by a normal send; active chats
+    // keep it through their persisted session-level value. Editing re-runs the
     // original turn with its recorded level, so a pending pick stays pending.
     if (fromComposer && !wasEditing) setTurnReasoning("");
     const atts = fromComposer ? pendingAtts : [];
@@ -1742,8 +1748,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   // (direct chats: the provider's first; agents: their configured model).
   const composerModel = active ? (target.model ?? composerModels[0] ?? null) : draftModel;
   const composerModelValue = composerModel?.id ?? "";
-  const composerModelLabel = composerModel ? modelLabel(composerModel) : "";
   const composerProviderName = active ? (target.provider?.name ?? "") : (draftProvider?.name ?? "");
+  const composerModelDisplay = modelPickerLabel(composerModel, composerProviderName);
   const chooseComposerModel = (value: string) => {
     if (!active) {
       setDraftModelOverride(value);
@@ -1795,15 +1801,17 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   // stale pick after a model switch) are ignored and fall through.
   const pendingReasoning = availableLevels.some((l) => l.level === turnReasoning) ? turnReasoning : "";
   const nextReasoningLevel = effectiveReasoningLevel(availableLevels, pendingReasoning, sessionReasoning, defaultReasoningLevel);
-  const nextReasoningLabel = pendingReasoning
-    ? `本轮 ${levelLabel(pendingReasoning)}`
-    : sessionReasoning ? `会话 ${levelLabel(sessionReasoning)}` : levelLabel(nextReasoningLevel);
+  const nextReasoningLabel = levelLabel(nextReasoningLevel);
   // A pick belongs to one chat+model; switching either starts from the
   // session default again (a level valid for the old table may not exist).
   // A pick belongs to one chat+model; switching either (including a draft's
   // model chip) starts from the session default again — a level valid for the
   // old table may not exist on the new one.
-  useEffect(() => { setTurnReasoning(""); }, [activeID, composerModelID]);
+  useEffect(() => {
+    setTurnReasoning("");
+    setIntelligenceOpen(false);
+    setIntelligenceView("effort");
+  }, [activeID, composerModelID]);
 
   const setSessionModel = async (modelID: string) => {
     if (!activeID) return;
@@ -1818,14 +1826,23 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
   };
 
-  const setSessionReasoning = async (level: string) => {
+  // The model/reasoning control persists the effort for the conversation,
+  // matching Codex. Sliders update local state continuously for feedback and
+  // commit the final stop once the pointer/keyboard gesture ends.
+  const commitReasoning = async (level: string) => {
+    setTurnReasoning(level);
     if (!activeID) return;
+    const previous = active?.reasoningLevel ?? "";
+    setSessions((prev) => prev.map((session) => (
+      session.id === activeID ? { ...session, reasoningLevel: level } : session
+    )));
     try {
       await Chat.SetSessionReasoningLevel(activeID, level);
-      setTurnReasoning("");
-      reloadSessions();
-      toast.success(level === "" ? "已清除会话默认思考强度" : `会话默认思考强度：${levelLabel(level)}`);
     } catch (e) {
+      setSessions((prev) => prev.map((session) => (
+        session.id === activeID ? { ...session, reasoningLevel: previous } : session
+      )));
+      setTurnReasoning(previous);
       toast.error(`设置会话思考强度失败: ${errText(e)}`);
     }
   };
@@ -2222,7 +2239,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       <>
       <div className="flex shrink-0 flex-col bg-chrome font-sans" style={{ width: sidebarWidth }}>
         <div className="flex items-center gap-1 px-3 pb-2 pt-3">
-          <span className="text-3xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+          <span className="text-xs font-semibold text-muted-foreground">
             项目
           </span>
           <button
@@ -2397,7 +2414,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                           {sessionWindow.visible.map((s) => renderSessionRow(s))}
                           {g.sessions.length > PROJECT_SESSION_LIMIT && (
                             <button
-                              className="flex w-full items-center rounded-md py-1 pl-7 pr-2 text-left text-3xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                              className="flex w-full items-center rounded-md py-1 pl-7 pr-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                               aria-expanded={expanded}
                               aria-label={expanded
                                 ? `收起「${g.label}」的全部对话`
@@ -2822,7 +2839,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               <span className="shrink-0 text-muted-foreground">{qi === 0 ? "已排队" : `排队 #${qi + 1}`}</span>
               <span className="min-w-0 flex-1 truncate">{q.text}</span>
               {q.reasoning && (
-                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-3xs text-muted-foreground">
+                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                   思考：{levelLabel(q.reasoning)}
                 </span>
               )}
@@ -2837,7 +2854,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               </button>
             </div>
           ))}
-          <div className="mx-auto chat-col px-3">
+          <div className="mx-auto composer-col px-3">
             {editing && (
               <div className="mb-2 flex items-center justify-between rounded-md bg-accent-soft px-3 py-1.5 text-xs text-muted-foreground">
                 <span>正在编辑最后一条消息，发送后将替换该轮对话</span>
@@ -2847,7 +2864,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               </div>
             )}
           </div>
-          <div className="mx-auto chat-col px-3">
+          <div className="mx-auto composer-col px-3">
             {pendingAtts.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
                 {pendingAtts.map((a, i) => (
@@ -2865,7 +2882,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               </div>
             )}
           </div>
-          <div className="mx-auto chat-col px-3">
+          <div className="mx-auto composer-col px-3">
             <div
               className={cn(
                 "rounded-2xl bg-panel shadow-composer transition-colors",
@@ -2914,7 +2931,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                           : c.kind === "directory" ? <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                         <span className="min-w-0 flex-1 truncate">{label}</span>
-                        <span className="shrink-0 text-3xs text-muted-foreground">{tag}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{tag}</span>
                       </button>
                     );
                   })}
@@ -2946,12 +2963,12 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                       <span className="flex w-full items-center gap-2">
                         <span className="font-mono font-medium">{c.cmd}</span>
                         {c.source && c.source !== "builtin" && (
-                          <span className="shrink-0 rounded bg-panel px-1 text-3xs font-normal text-muted-foreground">
+                          <span className="shrink-0 rounded bg-panel px-1 text-xs font-normal text-muted-foreground">
                             {slashSourceLabel(c.source)}
                           </span>
                         )}
                       </span>
-                      <span className="w-full truncate text-2xs font-normal text-muted-foreground">{c.desc}</span>
+                      <span className="w-full truncate text-xs font-normal text-muted-foreground">{c.desc}</span>
                     </button>
                   ))}
                 </div>
@@ -3206,86 +3223,103 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                       </Tooltip>
                     </TooltipProvider>
                   )}
-                  {availableLevels.length > 0 && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          className="flex h-7 min-w-0 max-w-[136px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                          title={`本条消息思考强度：${levelLabel(nextReasoningLevel)}（仅下一条消息，不影响正在进行的回复）`}
-                          aria-label="选择本条消息的思考强度"
-                        >
-                          <Brain className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{nextReasoningLabel}</span>
-                          <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-60">
-                        <DropdownMenuLabel>本条消息思考强度</DropdownMenuLabel>
-                        <DropdownMenuRadioGroup
-                          value={nextReasoningLevel}
-                          onValueChange={(v) => setTurnReasoning(v)}
-                        >
-                          {availableLevels.map((l) => (
-                            <DropdownMenuRadioItem key={l.level} value={l.level} className="text-xs">
-                              <span className="flex-1">{levelLabel(l.level)}</span>
-                              <span className="font-mono text-3xs text-muted-foreground">{l.level}</span>
-                            </DropdownMenuRadioItem>
-                          ))}
-                        </DropdownMenuRadioGroup>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel className="text-2xs font-normal text-muted-foreground">
-                          会话默认（影响后续所有轮次）
-                        </DropdownMenuLabel>
-                        {active && (
-                          <DropdownMenuItem
-                            className="text-xs"
-                            disabled={!nextReasoningLevel || nextReasoningLevel === sessionReasoning}
-                            onSelect={() => setSessionReasoning(nextReasoningLevel)}
-                          >
-                            将「{levelLabel(nextReasoningLevel || defaultReasoningLevel)}」设为会话默认
-                          </DropdownMenuItem>
-                        )}
-                        {sessionReasoning && (
-                          <DropdownMenuItem className="text-xs" onSelect={() => setSessionReasoning("")}>
-                            清除会话默认，回到模型默认
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
                   {composerModels.length > 0 && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                    <Popover
+                      open={intelligenceOpen}
+                      onOpenChange={(open) => {
+                        setIntelligenceOpen(open);
+                        if (open) {
+                          setIntelligenceView(availableLevels.length > 0 ? "effort" : "model");
+                        }
+                      }}
+                    >
+                      <PopoverTrigger asChild>
                         <button
-                          className="flex h-7 min-w-0 max-w-[200px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                          title={`${active ? "本会话使用的模型" : "新会话使用的模型"}：${composerModelLabel}（首条消息发出后沿用，仅影响当前对话）`}
-                          aria-label="选择模型"
+                          type="button"
+                          className={cn(
+                            "flex h-8 min-w-0 max-w-[360px] items-center gap-1.5 rounded-lg bg-control px-2.5 text-ui text-foreground transition-colors hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 md:min-w-[180px]",
+                            intelligenceOpen && "text-muted-foreground",
+                          )}
+                          title={`${active ? "本会话" : "新会话"}模型与思考强度：${composerModelDisplay}${availableLevels.length > 0 ? ` · ${levelLabel(nextReasoningLevel)}` : ""}。点击调整`}
+                          aria-label={availableLevels.length > 0 ? "选择推理强度" : "选择模型"}
                         >
-                          <Boxes className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{composerModelLabel}</span>
-                          <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+                          {intelligenceOpen ? (
+                            <span className="min-w-0 flex-1 truncate text-center">
+                              {intelligenceView === "model" ? "选择模型" : "选择推理强度"}
+                            </span>
+                          ) : (
+                            <>
+                              <span className="min-w-0 truncate">{composerModelDisplay}</span>
+                              {availableLevels.length > 0 && (
+                                <span className="shrink-0 text-muted-foreground">{nextReasoningLabel}</span>
+                              )}
+                            </>
+                          )}
+                          <ChevronDown className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
                         </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-64">
-                        <DropdownMenuLabel className="truncate">
-                          本会话模型{composerProviderName ? ` · ${composerProviderName}` : ""}
-                        </DropdownMenuLabel>
-                        <DropdownMenuRadioGroup
-                          value={composerModelValue}
-                          onValueChange={chooseComposerModel}
-                        >
-                          {composerModels.map((m) => (
-                            <DropdownMenuRadioItem key={m.id} value={m.id} className="text-xs">
-                              <span className="truncate" title={`${modelLabel(m)} · ${m.id}`}>{modelLabel(m)}</span>
-                            </DropdownMenuRadioItem>
-                          ))}
-                        </DropdownMenuRadioGroup>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => onOpenSettings("models")}>
-                          <Boxes className="h-3.5 w-3.5 shrink-0" /> 管理模型供应商…
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        side="top"
+                        align="end"
+                        sideOffset={6}
+                        aria-label={intelligenceView === "model" ? "选择模型" : "选择思考强度"}
+                        className={cn(
+                          "rounded-xl p-0",
+                          intelligenceView === "model"
+                            ? "w-max min-w-56 max-w-72"
+                            : "w-72",
+                        )}
+                      >
+                        {intelligenceView === "model" ? (
+                          <div className="p-1.5">
+                            <div className="px-2 pb-1 pt-1.5 text-xs font-medium text-muted-foreground">
+                              选择模型
+                            </div>
+                            <div role="listbox" aria-label="选择模型" className="max-h-80 overflow-y-auto">
+                              {composerModels.map((m) => {
+                                const selected = m.id === composerModelValue;
+                                const rowLabel = modelPickerLabel(m, composerProviderName);
+                                return (
+                                  <button
+                                    key={m.id}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={selected}
+                                    className={cn(
+                                      "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-ui transition-colors hover:bg-accent-soft",
+                                      selected && "bg-accent-soft text-accent-text",
+                                    )}
+                                    onClick={() => {
+                                      if (!selected) chooseComposerModel(m.id);
+                                      setIntelligenceOpen(false);
+                                    }}
+                                  >
+                                    <span className="min-w-0 flex-1 truncate" title={`${rowLabel} · ${m.id}`}>
+                                      {modelLabel(m)}
+                                      {composerProviderName && (
+                                        <span className={cn("text-muted-foreground", selected && "text-accent-text/80")}>
+                                          {` · ${composerProviderName}`}
+                                        </span>
+                                      )}
+                                    </span>
+                                    {selected && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <ReasoningEffortPanel
+                            levels={availableLevels}
+                            value={nextReasoningLevel}
+                            modelName={composerModelDisplay}
+                            onChange={setTurnReasoning}
+                            onValueCommit={commitReasoning}
+                            onOpenModelPicker={() => setIntelligenceView("model")}
+                          />
+                        )}
+                      </PopoverContent>
+                    </Popover>
                   )}
                   {running ? (
                     <Button
