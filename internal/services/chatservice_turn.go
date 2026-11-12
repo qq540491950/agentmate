@@ -264,6 +264,7 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 		return fmt.Errorf("会话 %q 不存在", sessionID)
 	}
 	pending := false
+	var pendingCall *genai.FunctionCall
 	lastUserText := ""
 	lastUserReasoning := ""
 	for ev := range resp.Session.Events().All() {
@@ -286,6 +287,9 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 			}
 			if isConfirmationInterrupt(ev, p.FunctionCall) && p.FunctionCall.ID == callID {
 				pending = true
+				if orig, _ := confirmRequestInfo(p.FunctionCall.Args); orig != nil {
+					pendingCall = orig
+				}
 			}
 			if p.FunctionResponse != nil && p.FunctionResponse.Name == toolconfirmation.FunctionCallName && p.FunctionResponse.ID == callID {
 				return fmt.Errorf("该确认请求已被处理")
@@ -295,8 +299,14 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 	if !pending {
 		return fmt.Errorf("未找到待确认的工具调用 %s", callID)
 	}
-	c.audit(sessionID, "confirm", "user", toolconfirmation.FunctionCallName,
-		mustJSON(map[string]any{"callID": callID, "decision": map[bool]string{true: "approved", false: "rejected"}[approved]}), "")
+	confirmPayload := map[string]any{
+		"callID":   callID,
+		"decision": map[bool]string{true: "approved", false: "rejected"}[approved],
+	}
+	for key, value := range escalationAuditFields(pendingCall) {
+		confirmPayload[key] = value
+	}
+	c.audit(sessionID, "confirm", "user", toolconfirmation.FunctionCallName, mustJSON(confirmPayload), "")
 
 	msg := &genai.Content{
 		Role: genai.RoleUser,
@@ -626,12 +636,13 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				hint := ""
 				if orig, h := confirmRequestInfo(p.FunctionCall.Args); orig != nil {
 					name, args, hint = orig.Name, orig.Args, h
+					hint = confirmRequestHint(orig, hint)
 				}
 				emit(ChatStreamEvent{Kind: "confirm_request", Author: author,
 					ToolName: name, ToolArgs: args, CallID: p.FunctionCall.ID, Hint: hint})
 			case p.FunctionCall != nil:
 				toolCallsThisTurn++
-				c.audit(sessionID, "call", author, p.FunctionCall.Name, mustJSON(p.FunctionCall.Args), "")
+				c.audit(sessionID, "call", author, p.FunctionCall.Name, mustJSON(auditToolCallArgs(p.FunctionCall)), "")
 				emit(ChatStreamEvent{Kind: "tool_call", Author: author,
 					ToolName: p.FunctionCall.Name, ToolArgs: p.FunctionCall.Args})
 			case p.FunctionResponse != nil:

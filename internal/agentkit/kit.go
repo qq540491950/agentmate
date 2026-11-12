@@ -831,7 +831,8 @@ func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspac
 			}
 			tools = append(tools, t)
 		case "shell":
-			t, err := ShellToolWithPolicyAndMode(workspace, shellConfirmation, ac.EffectiveApprovalPolicy(), policy)
+			allowEscalation := policy.Mode != sandbox.ModeDangerFullAccess
+			t, err := ShellToolWithPolicyAndMode(workspace, shellConfirmation, ac.EffectiveApprovalPolicy(), policy, allowEscalation)
 			if err != nil {
 				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 			}

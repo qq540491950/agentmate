@@ -2,6 +2,7 @@ package agentkit
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,6 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/session"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/toolconfirmation"
+
+	"agentmate/internal/config"
 	"agentmate/internal/sandbox"
 )
 
@@ -170,5 +177,94 @@ func TestRunShellCommandWithPolicyConfinesWorkspaceWrites(t *testing.T) {
 	}
 	if string(data) != "original" {
 		t.Fatalf("outside file changed to %q", string(data))
+	}
+}
+
+// shellToolTestContext supplies the real context methods sandbox.Run needs
+// while keeping the ADK confirmation state under test control.
+type shellToolTestContext struct {
+	agent.ContextMock
+	ctx          context.Context
+	confirmation *toolconfirmation.ToolConfirmation
+}
+
+func (c *shellToolTestContext) Deadline() (time.Time, bool) { return c.ctx.Deadline() }
+func (c *shellToolTestContext) Done() <-chan struct{}       { return c.ctx.Done() }
+func (c *shellToolTestContext) Err() error                  { return c.ctx.Err() }
+func (c *shellToolTestContext) Value(key any) any           { return c.ctx.Value(key) }
+func (c *shellToolTestContext) Actions() *session.EventActions {
+	return &session.EventActions{}
+}
+func (c *shellToolTestContext) ToolConfirmation() *toolconfirmation.ToolConfirmation {
+	return c.confirmation
+}
+
+type runnableShellTool interface {
+	tool.Tool
+	Run(agent.Context, any) (map[string]any, error)
+}
+
+func TestShellEscalationRejectedWhenApprovalNever(t *testing.T) {
+	dir := t.TempDir()
+	tl, err := ShellToolWithPolicyAndMode(
+		dir, false, config.ApprovalPolicyNever, sandbox.DefaultPolicy(dir), true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = tl.(runnableShellTool).Run(&shellToolTestContext{ctx: context.Background()}, map[string]any{
+		"command":       "echo should-not-run>never-escalation.txt",
+		"escalate":      true,
+		"justification": "需要写入工作区外的构建缓存",
+	})
+	if err == nil || !strings.Contains(err.Error(), "never") {
+		t.Fatalf("escalation under never should be rejected, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "never-escalation.txt")); !os.IsNotExist(statErr) {
+		t.Fatal("rejected escalation must not execute the command")
+	}
+}
+
+func TestShellEscalationForcesConfirmationInAutoApprove(t *testing.T) {
+	dir := t.TempDir()
+	tl, err := ShellToolWithPolicyAndMode(
+		dir, false, config.ApprovalPolicyAutoApprove, sandbox.DefaultPolicy(dir), true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = tl.(runnableShellTool).Run(&shellToolTestContext{ctx: context.Background()}, map[string]any{
+		"command":       "echo pending>auto-escalation.txt",
+		"escalate":      true,
+		"justification": "需要写入工作区外的构建缓存",
+	})
+	if !errors.Is(err, tool.ErrConfirmationRequired) {
+		t.Fatalf("escalation should require confirmation, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "auto-escalation.txt")); !os.IsNotExist(statErr) {
+		t.Fatal("command must not run before confirmation")
+	}
+}
+
+func TestShellEscalationIgnoredInDangerMode(t *testing.T) {
+	dir := t.TempDir()
+	policy := sandbox.DefaultPolicy(dir)
+	policy.Mode = sandbox.ModeDangerFullAccess
+	tl, err := ShellToolWithPolicyAndMode(
+		dir, false, config.ApprovalPolicyAutoApprove, policy, false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := tl.(runnableShellTool).Run(&shellToolTestContext{ctx: context.Background()}, map[string]any{
+		"command":       "echo direct>danger-escalation.txt",
+		"escalate":      true,
+		"justification": "完全访问模式已经不在沙箱内",
+	})
+	if err != nil {
+		t.Fatalf("danger mode should ignore escalate: %v (result %+v)", err, res)
+	}
+	if data, readErr := os.ReadFile(filepath.Join(dir, "danger-escalation.txt")); readErr != nil || strings.TrimSpace(string(data)) != "direct" {
+		t.Fatalf("danger command did not run, data=%q err=%v", data, readErr)
 	}
 }

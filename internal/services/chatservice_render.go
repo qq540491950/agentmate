@@ -85,7 +85,7 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 				m.Kind = "confirm_request"
 				m.ToolName = orig.Name
 				m.ToolArgs = orig.Args
-				m.Hint = hint
+				m.Hint = confirmRequestHint(orig, hint)
 			}
 			out = append(out, m)
 		case p.FunctionCall != nil:
@@ -145,6 +145,67 @@ func confirmRequestInfo(args map[string]any) (*genai.FunctionCall, string) {
 		hint, _ = tc["hint"].(string)
 	}
 	return orig, hint
+}
+
+// confirmRequestHint replaces ADK's generic English prompt for run_command.
+// The card needs an unambiguous boundary label: an escalated call must say it
+// leaves the sandbox and carry the model's justification; an ordinary call
+// must not look like an escalation.
+func confirmRequestHint(call *genai.FunctionCall, fallback string) string {
+	if call == nil || call.Name != "run_command" {
+		return fallback
+	}
+	escalate, _ := call.Args["escalate"].(bool)
+	if !escalate {
+		return "执行终端命令。"
+	}
+	justification, _ := call.Args["justification"].(string)
+	justification = strings.TrimSpace(justification)
+	if justification == "" {
+		return "脱离沙箱执行终端命令。"
+	}
+	return "脱离沙箱执行终端命令。理由：" + justification
+}
+
+// escalationAuditFields returns the stable fields the tool-audit trail uses
+// for a per-call sandbox escape. A nil result means the call is not an
+// escalated run_command.
+func escalationAuditFields(call *genai.FunctionCall) map[string]any {
+	if call == nil || call.Name != "run_command" {
+		return nil
+	}
+	escalate, _ := call.Args["escalate"].(bool)
+	if !escalate {
+		return nil
+	}
+	fields := map[string]any{"escalated": true}
+	if command, ok := call.Args["command"].(string); ok {
+		fields["command"] = command
+	}
+	if justification, ok := call.Args["justification"].(string); ok {
+		fields["justification"] = justification
+	}
+	return fields
+}
+
+// auditToolCallArgs preserves the original tool arguments and adds the
+// normalized escalation fields (notably escalated=true) for the call record.
+func auditToolCallArgs(call *genai.FunctionCall) map[string]any {
+	if call == nil {
+		return nil
+	}
+	fields := escalationAuditFields(call)
+	if fields == nil {
+		return call.Args
+	}
+	merged := make(map[string]any, len(call.Args)+len(fields))
+	for key, value := range call.Args {
+		merged[key] = value
+	}
+	for key, value := range fields {
+		merged[key] = value
+	}
+	return merged
 }
 
 // isConfirmationInterrupt reports whether the part is the adk_request_confirmation

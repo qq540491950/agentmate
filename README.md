@@ -199,6 +199,7 @@ git push origin v0.5.0     # 触发 .github/workflows/release.yml
 ### 安全
 - `config.json`（含 API Key）权限 0600；API Key 不出本机（仅直连所配置的供应商）
 - Windows 下 `run_command` 子进程默认使用 AppContainer + 低完整性边界：仅可写任务工作区，联网默认关闭，工作区外写入会被 OS 拒绝；沙箱初始化失败时工具拒绝执行，不会回退到全权限。「设置 → 对话与上下文 → 新会话默认审批模式」只决定新会话初始值（请求批准 / 帮我批准 / 完全访问）；当前会话在输入框左下角单独切换，三档都按会话持久化
+- 沙箱内命令被拒后，模型可按次设置 `escalate` 并附 `justification` 申请脱离沙箱；请求批准 / 帮我批准强制逐次 HITL，批准只对该次调用使用完全访问，不改变会话沙箱档位。`never` 拒绝越界申请，完全访问模式忽略该参数
 - Windows 沙箱的「只读」档位仅授予任务工作区读取/执行 ACL，不授予修改权限，也不给工作区贴低完整性标签；终端可读取文件、列目录并运行 `git status` 等只读命令，但工作区内外写入都会被 OS 拒绝，`write_workspace_file` 直接返回 `read_only`。临时 HOME 仍可写，受保护路径的 deny ACE 继续生效；审批策略与只读档位相互独立
 - 非 Windows 平台尚无 OS 沙箱实现：`workspace-write` 会拒绝执行并返回“当前平台未实现 OS 沙箱”，不会回退到全权限；只有显式选择“完全访问”时才直接运行
 - 模型输出经 react-markdown 渲染，默认不执行原始 HTML；链接新窗口打开

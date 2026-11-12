@@ -35,6 +35,13 @@ const (
 type shellArgs struct {
 	Command        string `json:"command" jsonschema:"shell command line to run with the task workspace as the working directory"`
 	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"kill the command after this many seconds (default 300, max 600)"`
+	// Escalate is deliberately opt-in per call. The model must first run the
+	// command inside the sandbox and only request this after the sandbox
+	// denied it; it is never a way to preempt the boundary.
+	Escalate bool `json:"escalate,omitempty" jsonschema:"request permission to run THIS invocation outside the sandbox; only set after an in-sandbox command was denied, never preemptively"`
+	// Justification is shown verbatim on the confirmation card so the user can
+	// decide whether crossing the boundary is necessary.
+	Justification string `json:"justification,omitempty" jsonschema:"when escalate is true, explain to the user why this command must leave the sandbox"`
 }
 
 type shellResult struct {
@@ -55,16 +62,33 @@ func ShellTool(workspace string, requireConfirmation bool) (tool.Tool, error) {
 // The plain ShellTool wrapper keeps the historical default for tests and
 // callers that construct a tool without a chat policy.
 func ShellToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
-	return newShellTool(workspace, requireConfirmation, nil, policy)
+	return newShellTool(workspace, requireConfirmation, nil, shellExecution{
+		policy:         policy,
+		approvalPolicy: config.ApprovalPolicyRequestApproval,
+	})
 }
 
 // ShellToolWithPolicyAndMode applies the chat's approval policy. In
 // auto-approve mode a safe command runs immediately; a command matching the
 // risk detector pauses for HITL before the handler starts. The mode argument
-// accepts legacy combined-profile names for old call sites.
-func ShellToolWithPolicyAndMode(workspace string, requireConfirmation bool, approvalPolicy string, policy sandbox.Policy) (tool.Tool, error) {
+// accepts legacy combined-profile names for old call sites. allowEscalation
+// gates the per-call escape hatch; when it is false an escalate=true call is
+// rejected instead of being silently downgraded to a sandboxed run.
+func ShellToolWithPolicyAndMode(workspace string, requireConfirmation bool, approvalPolicy string, policy sandbox.Policy, allowEscalation bool) (tool.Tool, error) {
+	approval := config.NormalizeApprovalPolicy(approvalPolicy)
+	execution := shellExecution{
+		policy:          policy,
+		approvalPolicy:  approval,
+		allowEscalation: allowEscalation,
+	}
+	// Escalation is only meaningful while the command would otherwise run
+	// confined. A danger-full-access tool is already direct, and never-policy
+	// deliberately has no way to cross the boundary.
+	escalationNeedsConfirmation := allowEscalation &&
+		policy.Mode != sandbox.ModeDangerFullAccess &&
+		approval != config.ApprovalPolicyNever
 	var provider any
-	switch config.NormalizeApprovalPolicy(approvalPolicy) {
+	switch approval {
 	case config.ApprovalPolicyRequestApproval:
 		// runTurn's ApplyExecutionPolicy has already enabled the static prompt
 		// for files and shell. Keep the passed value so a session-level
@@ -72,6 +96,9 @@ func ShellToolWithPolicyAndMode(workspace string, requireConfirmation bool, appr
 	case config.ApprovalPolicyAutoApprove:
 		if !requireConfirmation {
 			provider = func(args shellArgs) bool {
+				if args.Escalate && escalationNeedsConfirmation {
+					return true
+				}
 				risky, _ := sandbox.AssessCommand(args.Command)
 				return risky
 			}
@@ -79,10 +106,50 @@ func ShellToolWithPolicyAndMode(workspace string, requireConfirmation bool, appr
 	case config.ApprovalPolicyNever:
 		requireConfirmation = false
 	}
-	return newShellTool(workspace, requireConfirmation, provider, policy)
+	return newShellTool(workspace, requireConfirmation, provider, execution)
 }
 
-func newShellTool(workspace string, requireConfirmation bool, provider any, policy sandbox.Policy) (tool.Tool, error) {
+// shellExecution resolves per-call sandbox overrides without mutating the
+// session policy. Only the approved invocation gets a danger policy.
+type shellExecution struct {
+	policy          sandbox.Policy
+	approvalPolicy  string
+	allowEscalation bool
+}
+
+func (e shellExecution) policyFor(args shellArgs) (sandbox.Policy, error) {
+	if !args.Escalate {
+		return e.policy, nil
+	}
+	if e.policy.Mode == sandbox.ModeDangerFullAccess {
+		// The command is already direct; ignore escalation rather than adding
+		// a second, meaningless confirmation.
+		return e.policy, nil
+	}
+	if !e.allowEscalation {
+		return sandbox.Policy{}, fmt.Errorf("当前沙箱配置不允许脱离沙箱执行")
+	}
+	if e.approvalPolicy == config.ApprovalPolicyNever {
+		return sandbox.Policy{}, fmt.Errorf("审批策略为 never，禁止脱离沙箱执行；请先切换到请求批准或帮我批准")
+	}
+	if strings.TrimSpace(args.Justification) == "" {
+		return sandbox.Policy{}, fmt.Errorf("脱离沙箱执行必须提供 justification，向用户说明为什么必须越界")
+	}
+	escalated := e.policy
+	escalated.Mode = sandbox.ModeDangerFullAccess
+	escalated.Network = sandbox.NetworkOn
+	return escalated, nil
+}
+
+func (e shellExecution) run(ctx context.Context, workspace string, args shellArgs, timeout time.Duration, limit int) (shellResult, error) {
+	policy, err := e.policyFor(args)
+	if err != nil {
+		return shellResult{}, err
+	}
+	return runShellCommandWithPolicy(ctx, workspace, args.Command, timeout, limit, policy)
+}
+
+func newShellTool(workspace string, requireConfirmation bool, provider any, execution shellExecution) (tool.Tool, error) {
 	if strings.TrimSpace(workspace) == "" {
 		return nil, fmt.Errorf("任务工作区为空，无法初始化终端工具")
 	}
@@ -90,7 +157,9 @@ func newShellTool(workspace string, requireConfirmation bool, provider any, poli
 		Name: "run_command",
 		Description: "Run a shell command with the user's task workspace as the working directory and return the combined stdout/stderr plus exit code. " +
 			"Use it for git, builds, tests and package installs. Commands are non-interactive; output is capped at 64KB and the process is killed after timeoutSeconds " +
-			"(default 300, max 600). A non-zero exitCode is a normal result, not a tool failure.",
+			"(default 300, max 600). A non-zero exitCode is a normal result, not a tool failure. " +
+			"Escalation is a last resort: first try the command inside the sandbox. Only if the sandbox denied it, retry once with escalate=true and a justification " +
+			"explaining why the command must run outside the sandbox. Never set escalate preemptively.",
 		RequireConfirmation:         requireConfirmation,
 		RequireConfirmationProvider: provider,
 	}, func(ctx agent.Context, args shellArgs) (shellResult, error) {
@@ -101,7 +170,7 @@ func newShellTool(workspace string, requireConfirmation bool, provider any, poli
 				timeout = maxShellTimeout
 			}
 		}
-		return runShellCommandWithPolicy(ctx, workspace, args.Command, timeout, maxShellOutput, policy)
+		return execution.run(ctx, workspace, args, timeout, maxShellOutput)
 	})
 }
 
