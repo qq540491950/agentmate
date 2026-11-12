@@ -3,7 +3,7 @@ import {
   Dialog, DialogContent, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Brain, Check, ChevronDown, ChevronUp, Copy, Loader2, Pencil, RefreshCw, ShieldAlert, Volume2, X,
+  Brain, Check, ChevronDown, ChevronUp, Copy, Loader2, Pencil, RefreshCw, ShieldAlert, TriangleAlert, Volume2, X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,10 @@ export function ConfirmCard({ m, onConfirm }: {
   durationMs?: number;
 }) {
   const status = m.confirmStatus ?? "pending";
+  const hint = (m.hint ?? "").trim();
+  // The backend owns the reason text; this only selects the warning
+  // presentation for boundary-crossing / preflight failures.
+  const riskyHint = /脱离沙箱|工作区外|受保护路径|只读模式|预检失败/.test(hint);
   return (
     <div className={cn(
       "rounded-xl px-4 py-3",
@@ -41,7 +45,13 @@ export function ConfirmCard({ m, onConfirm }: {
         </span>
         <Badge variant="outline" className="font-mono text-2xs">{m.toolName}</Badge>
       </div>
-      {m.hint && <div className="mt-1.5 text-xs text-muted-foreground">{m.hint}</div>}
+      <div className={cn(
+        "mt-1.5 flex items-start gap-1.5 rounded-md px-2 py-1.5 text-xs",
+        riskyHint ? "bg-warning-soft text-warning-text" : "text-muted-foreground",
+      )}>
+        {riskyHint && <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+        <span>{hint || "该工具调用需要你的确认。"}</span>
+      </div>
       {m.toolArgs && Object.keys(m.toolArgs).length > 0 && (
         <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-control p-2 font-mono text-2xs leading-relaxed text-muted-foreground">
           {JSON.stringify(m.toolArgs, null, 2)}

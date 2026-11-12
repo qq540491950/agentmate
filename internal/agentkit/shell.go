@@ -62,10 +62,18 @@ func ShellTool(workspace string, requireConfirmation bool) (tool.Tool, error) {
 // The plain ShellTool wrapper keeps the historical default for tests and
 // callers that construct a tool without a chat policy.
 func ShellToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
-	return newShellTool(workspace, requireConfirmation, nil, shellExecution{
+	execution := shellExecution{
 		policy:         policy,
 		approvalPolicy: config.ApprovalPolicyRequestApproval,
-	})
+	}
+	guard := NewPreviewGuardWithPolicy(workspace, policy)
+	provider := func(args shellArgs) bool {
+		if !shellPreviewAllows(guard, execution, args) {
+			return false
+		}
+		return requireConfirmation
+	}
+	return newShellTool(workspace, requireConfirmation, provider, execution)
 }
 
 // ShellToolWithPolicyAndMode applies the chat's approval policy. In
@@ -87,24 +95,29 @@ func ShellToolWithPolicyAndMode(workspace string, requireConfirmation bool, appr
 	escalationNeedsConfirmation := allowEscalation &&
 		policy.Mode != sandbox.ModeDangerFullAccess &&
 		approval != config.ApprovalPolicyNever
-	var provider any
-	switch approval {
-	case config.ApprovalPolicyRequestApproval:
-		// runTurn's ApplyExecutionPolicy has already enabled the static prompt
-		// for files and shell. Keep the passed value so a session-level
-		// approval bypass can still build a prompt-free tool.
-	case config.ApprovalPolicyAutoApprove:
-		if !requireConfirmation {
-			provider = func(args shellArgs) bool {
-				if args.Escalate && escalationNeedsConfirmation {
-					return true
-				}
-				risky, _ := sandbox.AssessCommand(args.Command)
-				return risky
-			}
+	guard := NewPreviewGuardWithPolicy(workspace, policy)
+	provider := func(args shellArgs) bool {
+		// A call the handler will reject must not open a dead-end approval
+		// card: let it run and return the error to the model.
+		if !shellPreviewAllows(guard, execution, args) {
+			return false
 		}
-	case config.ApprovalPolicyNever:
-		requireConfirmation = false
+		switch approval {
+		case config.ApprovalPolicyRequestApproval:
+			// Request-approval asks before every executable call, including a
+			// command that would otherwise be safe to auto-approve.
+			return true
+		case config.ApprovalPolicyNever:
+			return false
+		}
+		if requireConfirmation {
+			return true
+		}
+		if args.Escalate && escalationNeedsConfirmation {
+			return true
+		}
+		risky, _ := sandbox.AssessCommand(args.Command)
+		return risky
 	}
 	return newShellTool(workspace, requireConfirmation, provider, execution)
 }
@@ -115,6 +128,22 @@ type shellExecution struct {
 	policy          sandbox.Policy
 	approvalPolicy  string
 	allowEscalation bool
+}
+
+// shellPreviewAllows is the read-only gate shared by both shell entry points.
+// A failure means the handler itself will reject the call, so no confirmation
+// prompt should be shown.
+func shellPreviewAllows(guard PreviewGuard, execution shellExecution, args shellArgs) bool {
+	if strings.TrimSpace(args.Command) == "" {
+		return false
+	}
+	if ok, _, _ := guard.CheckCommand(args.Command); !ok {
+		return false
+	}
+	if _, err := execution.policyFor(args); err != nil {
+		return false
+	}
+	return true
 }
 
 func (e shellExecution) policyFor(args shellArgs) (sandbox.Policy, error) {

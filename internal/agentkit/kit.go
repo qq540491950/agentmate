@@ -843,29 +843,11 @@ func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspac
 }
 
 func (k *Kit) sandboxPolicy(ac config.AgentConfig, workspace string) sandbox.Policy {
-	policy := sandbox.DefaultPolicy(workspace)
-	switch ac.EffectiveSandboxProfile() {
-	case config.SandboxProfileDangerFullAccess:
-		policy.Mode = sandbox.ModeDangerFullAccess
-		// The direct backend has no AppContainer capability gate; report the
-		// effective network state instead of leaving a misleading "off".
-		policy.Network = sandbox.NetworkOn
-	case config.SandboxProfileReadOnly:
-		policy.Mode = sandbox.ModeReadOnly
-		policy.Network = sandbox.Network(config.NormalizeSandboxNetwork(ac.SandboxNetwork))
-	default:
-		policy.Mode = sandbox.ModeWorkspaceWrite
-		policy.Network = sandbox.Network(config.NormalizeSandboxNetwork(ac.SandboxNetwork))
-	}
+	var protectedDirs []string
 	if k.store != nil {
-		appDir := k.store.Dir()
-		// Tests and unusual deployments can place the config store above the
-		// selected workspace; protecting an ancestor would block every write.
-		if !sandbox.Within(appDir, policy.Workspace) {
-			policy = policy.WithProtected(appDir)
-		}
+		protectedDirs = append(protectedDirs, k.store.Dir())
 	}
-	return policy
+	return SessionPolicy(workspace, ac.EffectiveSandboxProfile(), ac.SandboxNetwork, protectedDirs...)
 }
 
 func firstNonEmpty(vals ...string) string {
@@ -875,6 +857,77 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// SessionPolicy builds the execution policy shared by built-in tools and the
+// chat service's read-only confirmation preview. It is the single place that
+// maps an approval-independent sandbox profile + network setting onto a
+// sandbox.Policy, so a prompt can never disagree with the boundary that will
+// execute the call.
+func SessionPolicy(workspace, profile, network string, protectedDirs ...string) sandbox.Policy {
+	policy := sandbox.DefaultPolicy(workspace)
+	switch config.NormalizeSandboxProfile(profile) {
+	case config.SandboxProfileDangerFullAccess:
+		policy.Mode = sandbox.ModeDangerFullAccess
+		// The direct backend has no AppContainer capability gate; report the
+		// effective network state instead of leaving a misleading "off".
+		policy.Network = sandbox.NetworkOn
+	case config.SandboxProfileReadOnly:
+		policy.Mode = sandbox.ModeReadOnly
+		policy.Network = sandbox.Network(config.NormalizeSandboxNetwork(network))
+	default:
+		policy.Mode = sandbox.ModeWorkspaceWrite
+		policy.Network = sandbox.Network(config.NormalizeSandboxNetwork(network))
+	}
+	for _, dir := range protectedDirs {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		// Tests and unusual deployments can place the config store above the
+		// selected workspace; protecting an ancestor would block every write.
+		if !sandbox.Within(dir, policy.Workspace) {
+			policy = policy.WithProtected(dir)
+		}
+	}
+	return policy
+}
+
+// PreviewGuard is a read-only view of the same workspace policy used by the
+// file and shell tools. The confirmation providers and the chat service's
+// hint builder share it: a preflight never creates, changes or removes files.
+type PreviewGuard struct {
+	workspace string
+	policy    sandbox.Policy
+}
+
+// NewPreviewGuard builds a guard for a workspace and sandbox profile. It is
+// safe to call on every turn; no state is written.
+func NewPreviewGuard(workspace, profile, network string, protectedDirs ...string) PreviewGuard {
+	return PreviewGuard{
+		workspace: workspace,
+		policy:    SessionPolicy(workspace, profile, network, protectedDirs...),
+	}
+}
+
+// NewPreviewGuardWithPolicy reuses a policy that was already built for the
+// tools, avoiding a second, potentially disagreeing resolution.
+func NewPreviewGuardWithPolicy(workspace string, policy sandbox.Policy) PreviewGuard {
+	return PreviewGuard{workspace: workspace, policy: policy}
+}
+
+// CheckWritePath reports whether a workspace-relative path may be written.
+// It resolves traversal and symlinks but never touches the target file.
+func (g PreviewGuard) CheckWritePath(rel string) (bool, string, string) {
+	root, err := safeWorkspacePath(g.workspace, rel)
+	if err != nil {
+		return false, "outside_workspace", err.Error()
+	}
+	return g.policy.CheckWrite(root)
+}
+
+// CheckCommand runs the shell preflight without starting a process.
+func (g PreviewGuard) CheckCommand(command string) (bool, string, string) {
+	return g.policy.CheckCommand(command)
 }
 
 // ---------------------------------------------------------------------------
@@ -1139,15 +1192,22 @@ func WriteFileTool(workspace string, requireConfirmation bool) (tool.Tool, error
 // in-process write path. The OS sandbox covers child processes; this check is
 // the equivalent boundary for file tools, which do not spawn a process.
 func WriteFileToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
-	// A read-only write is rejected before it can mutate the workspace, so a
-	// human approval prompt would only add a dead-end interruption.
-	if policy.Mode == sandbox.ModeReadOnly {
-		requireConfirmation = false
-	}
+	guard := NewPreviewGuardWithPolicy(workspace, policy)
 	return functiontool.New(functiontool.Config{
 		Name:                "write_workspace_file",
 		Description:         "Create or overwrite a text file inside the user's workspace (single write up to 6MB).",
 		RequireConfirmation: requireConfirmation,
+		RequireConfirmationProvider: func(args writeArgs) bool {
+			// A path the handler will reject must not interrupt the user with a
+			// dead-end approval: skip HITL and let the handler return the error.
+			if strings.TrimSpace(args.Path) == "" {
+				return false
+			}
+			if ok, _, _ := guard.CheckWritePath(args.Path); !ok {
+				return false
+			}
+			return requireConfirmation
+		},
 	}, func(ctx agent.Context, args writeArgs) (writeResult, error) {
 		return writeWorkspaceFile(workspace, args, policy)
 	})
@@ -1181,15 +1241,22 @@ func EditFileTool(workspace string, requireConfirmation bool) (tool.Tool, error)
 // EditFileToolWithPolicy adds the session's protected-path policy to the
 // in-process edit path, the same boundary write_workspace_file uses.
 func EditFileToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
-	if policy.Mode == sandbox.ModeReadOnly {
-		requireConfirmation = false
-	}
+	guard := NewPreviewGuardWithPolicy(workspace, policy)
 	return functiontool.New(functiontool.Config{
 		Name: "edit_workspace_file",
 		Description: "修改已有文件优先用本工具：用 oldText/newText 做精确替换；" +
 			"新建或整体重写用 write_workspace_file。默认 oldText 必须唯一匹配，" +
 			"replaceAll=true 可替换全部；返回 unified diff（最多 200 行 / 32KB）。",
 		RequireConfirmation: requireConfirmation,
+		RequireConfirmationProvider: func(args editArgs) bool {
+			if strings.TrimSpace(args.Path) == "" || args.OldText == "" {
+				return false
+			}
+			if ok, _, _ := guard.CheckWritePath(args.Path); !ok {
+				return false
+			}
+			return requireConfirmation
+		},
 	}, func(ctx agent.Context, args editArgs) (editResult, error) {
 		return editWorkspaceFile(workspace, args, policy)
 	})

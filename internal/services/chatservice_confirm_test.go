@@ -127,6 +127,9 @@ func TestChatToolConfirmationApprove(t *testing.T) {
 	if req.ToolArgs["path"] != "notes/hitl.txt" {
 		t.Fatalf("confirm_request should surface the ORIGINAL call args: %+v", req)
 	}
+	if !strings.Contains(req.Hint, "写入工作区文件") {
+		t.Fatalf("confirm_request should explain the write boundary: %q", req.Hint)
+	}
 	callID = req.CallID
 
 	// Nothing may be written before approval.

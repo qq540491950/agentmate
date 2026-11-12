@@ -20,6 +20,7 @@ import (
 
 	"agentmate/internal/agentkit"
 	"agentmate/internal/config"
+	"agentmate/internal/sandbox"
 )
 
 // compactionEventRetentionSize keeps the current turn and a short recent tail
@@ -398,6 +399,11 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	approvalPolicy := target.EffectiveApprovalPolicy(cfg)
 	sandboxProfile := target.EffectiveSandboxProfile(cfg)
 	sandboxNetwork := target.EffectiveSandboxNetwork(cfg)
+	var protectedDirs []string
+	if c.S != nil && c.S.Store != nil {
+		protectedDirs = append(protectedDirs, c.S.Store.Dir())
+	}
+	previewGuard := agentkit.NewPreviewGuard(workspace, sandboxProfile, sandboxNetwork, protectedDirs...)
 	var root agent.Agent
 	switch target.TargetType {
 	case "":
@@ -636,7 +642,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				hint := ""
 				if orig, h := confirmRequestInfo(p.FunctionCall.Args); orig != nil {
 					name, args, hint = orig.Name, orig.Args, h
-					hint = confirmRequestHint(orig, hint)
+					hint = confirmRequestReason(previewGuard, orig, hint)
 				}
 				emit(ChatStreamEvent{Kind: "confirm_request", Author: author,
 					ToolName: name, ToolArgs: args, CallID: p.FunctionCall.ID, Hint: hint})
@@ -715,6 +721,64 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		})
 	}
 	return nil
+}
+
+// confirmRequestReason builds the human-facing reason for a HITL card. It is
+// computed on the backend so the frontend only renders ChatStreamEvent.Hint;
+// the policy itself stays in agentkit (PreviewGuard) and is never copied here.
+func confirmRequestReason(guard agentkit.PreviewGuard, call *genai.FunctionCall, fallback string) string {
+	hint := strings.TrimSpace(fallback)
+	// ADK always supplies a generic English prompt. Treat that (and an empty
+	// hint) as "no application hint" and derive the actionable reason.
+	if hint != "" && !isGenericConfirmationHint(hint) {
+		return hint
+	}
+	if call == nil {
+		return "该工具调用需要确认。"
+	}
+	switch call.Name {
+	case "run_command":
+		escalate, _ := call.Args["escalate"].(bool)
+		if escalate {
+			justification, _ := call.Args["justification"].(string)
+			justification = strings.TrimSpace(justification)
+			if justification == "" {
+				return "脱离沙箱执行终端命令。"
+			}
+			return "脱离沙箱执行终端命令。理由：" + justification
+		}
+		command, _ := call.Args["command"].(string)
+		if risky, reason := sandbox.AssessCommand(command); risky {
+			return "该命令需要确认：" + reason + "。"
+		}
+		return "该命令需要确认。"
+	case "write_workspace_file", "edit_workspace_file":
+		path, _ := call.Args["path"].(string)
+		if ok, code, _ := guard.CheckWritePath(path); !ok {
+			switch code {
+			case "read_only":
+				return "只读模式不允许写入：" + path
+			case "protected_path":
+				return "受保护路径不可写：" + path
+			case "outside_workspace":
+				return "工作区外路径不可写：" + path
+			default:
+				return "写入预检失败：" + path
+			}
+		}
+		if call.Name == "edit_workspace_file" {
+			return "修改工作区文件：" + path
+		}
+		return "写入工作区文件：" + path
+	default:
+		return "外部工具可能有副作用。"
+	}
+}
+
+// isGenericConfirmationHint reports whether ADK supplied its built-in prompt
+// instead of an application-specific explanation.
+func isGenericConfirmationHint(hint string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(hint)), "please approve or reject")
 }
 
 // effectiveTurnModel resolves the ModelInfo of the model this session's root

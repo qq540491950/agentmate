@@ -42,4 +42,34 @@ describe("MessageBubble", () => {
     const html = render({ ...assistant, author: "代码审查员" });
     expect(html).toContain("代码审查员");
   });
+
+  it("shows the backend hint and highlights boundary reasons", () => {
+    const html = render({
+      id: "c1",
+      kind: "confirm",
+      author: "助手",
+      text: "",
+      toolName: "run_command",
+      callId: "call_1",
+      hint: "脱离沙箱执行终端命令。理由：需要写入共享缓存",
+      confirmStatus: "pending",
+    });
+    expect(html).toContain("脱离沙箱执行终端命令。理由：需要写入共享缓存");
+    expect(html).toContain("bg-warning-soft");
+    expect(html).toContain("lucide-triangle-alert");
+  });
+
+  it("never falls back to toolArgs alone when the hint is missing", () => {
+    const html = render({
+      id: "c2",
+      kind: "confirm",
+      author: "助手",
+      text: "",
+      toolName: "mcp_echo",
+      callId: "call_2",
+      toolArgs: { message: "hello" },
+      confirmStatus: "pending",
+    });
+    expect(html).toContain("该工具调用需要你的确认。");
+  });
 });

@@ -127,6 +127,9 @@ func TestMCPToolApprovalFollowsSessionMode(t *testing.T) {
 				if req.ToolArgs["message"] != "hello" {
 					t.Fatalf("confirmation must show original MCP args: %+v", req.ToolArgs)
 				}
+				if !strings.Contains(req.Hint, "外部工具可能有副作用") {
+					t.Fatalf("MCP confirmation should warn about external side effects: %q", req.Hint)
+				}
 				if calls.Load() != 0 {
 					t.Fatal("MCP tool ran before approval")
 				}
