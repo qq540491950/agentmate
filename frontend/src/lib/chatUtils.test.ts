@@ -423,6 +423,11 @@ describe("toolStepDisplay", () => {
       action: "写入",
       target: "notes/weekly.md",
     });
+    expect(toolStepDisplay("edit_workspace_file", { path: "notes/weekly.md" })).toMatchObject({
+      kind: "write",
+      action: "修改",
+      target: "notes/weekly.md",
+    });
     expect(toolStepDisplay("list_workspace_files", {})).toMatchObject({
       kind: "read",
       action: "列出",

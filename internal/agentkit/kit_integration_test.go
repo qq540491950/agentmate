@@ -82,6 +82,7 @@ func TestBuiltinToolsDefaultToFullSet(t *testing.T) {
 		"list_workspace_files",
 		"read_workspace_file",
 		"write_workspace_file",
+		"edit_workspace_file",
 		"search_knowledge",
 		"plan_todos",
 		"run_command",

@@ -338,6 +338,8 @@ export function toolStepDisplay(
       return { kind: "read", action: "读取", target: toolArgString(a.path) || "文件" };
     case "write_workspace_file":
       return { kind: "write", action: "写入", target: toolArgString(a.path) || "文件" };
+    case "edit_workspace_file":
+      return { kind: "write", action: "修改", target: toolArgString(a.path) || "文件" };
     case "list_workspace_files":
       return { kind: "read", action: "列出", target: toolArgString(a.path) || "工作区" };
     case "search_knowledge":

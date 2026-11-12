@@ -888,7 +888,8 @@ type timeResult struct {
 	Timezone string `json:"timezone"`
 }
 
-// workspaceFileTools builds the list/read/write set for the "files" category.
+// workspaceFileTools builds the list/read/write/edit set for the "files"
+// category.
 func workspaceFileTools(workspace string, requireConfirmation bool, policy sandbox.Policy) ([]tool.Tool, error) {
 	list, err := ListFilesTool(workspace)
 	if err != nil {
@@ -902,7 +903,11 @@ func workspaceFileTools(workspace string, requireConfirmation bool, policy sandb
 	if err != nil {
 		return nil, err
 	}
-	return []tool.Tool{list, read, write}, nil
+	edit, err := EditFileToolWithPolicy(workspace, requireConfirmation, policy)
+	if err != nil {
+		return nil, err
+	}
+	return []tool.Tool{list, read, write, edit}, nil
 }
 
 // TimeTool reports the current time.
@@ -1107,6 +1112,21 @@ type writeResult struct {
 	Bytes int  `json:"bytes"`
 }
 
+type editArgs struct {
+	Path       string `json:"path" jsonschema:"relative path inside the workspace"`
+	OldText    string `json:"oldText" jsonschema:"exact text to replace; include enough surrounding context to be unique"`
+	NewText    string `json:"newText" jsonschema:"replacement text"`
+	ReplaceAll bool   `json:"replaceAll,omitempty" jsonschema:"replace every occurrence when true; the default requires a unique match"`
+}
+
+type editResult struct {
+	OK           bool   `json:"ok"`
+	Bytes        int    `json:"bytes"`
+	AddedLines   int    `json:"addedLines"`
+	RemovedLines int    `json:"removedLines"`
+	Diff         string `json:"diff"`
+}
+
 // WriteFileTool writes a file within the workspace. When requireConfirmation
 // is true the tool asks the human operator to approve each call first (ADK
 // HITL): the run pauses on an adk_request_confirmation interrupt and only
@@ -1148,6 +1168,366 @@ func writeWorkspaceFile(workspace string, args writeArgs, policy sandbox.Policy)
 		return writeResult{}, err
 	}
 	return writeResult{OK: true, Bytes: len(args.Content)}, nil
+}
+
+// EditFileTool edits an existing workspace file by replacing oldText with
+// newText. It is deliberately separate from write_workspace_file: a targeted
+// replacement keeps unrelated bytes (notably CRLF line endings) intact and
+// gives the model a diff instead of forcing a full rewrite.
+func EditFileTool(workspace string, requireConfirmation bool) (tool.Tool, error) {
+	return EditFileToolWithPolicy(workspace, requireConfirmation, sandbox.DefaultPolicy(workspace))
+}
+
+// EditFileToolWithPolicy adds the session's protected-path policy to the
+// in-process edit path, the same boundary write_workspace_file uses.
+func EditFileToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
+	if policy.Mode == sandbox.ModeReadOnly {
+		requireConfirmation = false
+	}
+	return functiontool.New(functiontool.Config{
+		Name: "edit_workspace_file",
+		Description: "修改已有文件优先用本工具：用 oldText/newText 做精确替换；" +
+			"新建或整体重写用 write_workspace_file。默认 oldText 必须唯一匹配，" +
+			"replaceAll=true 可替换全部；返回 unified diff（最多 200 行 / 32KB）。",
+		RequireConfirmation: requireConfirmation,
+	}, func(ctx agent.Context, args editArgs) (editResult, error) {
+		return editWorkspaceFile(workspace, args, policy)
+	})
+}
+
+func editWorkspaceFile(workspace string, args editArgs, policy sandbox.Policy) (editResult, error) {
+	if args.OldText == "" {
+		return editResult{}, fmt.Errorf("oldText 不能为空")
+	}
+	root, err := safeWorkspacePath(workspace, args.Path)
+	if err != nil {
+		return editResult{}, err
+	}
+	if ok, code, reason := policy.CheckWrite(root); !ok {
+		return editResult{}, fmt.Errorf("%s: %s", code, reason)
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		return editResult{}, err
+	}
+	if info.IsDir() {
+		return editResult{}, fmt.Errorf("目标路径是目录，不能编辑")
+	}
+	if info.Size() > int64(maxWriteBytes) {
+		return editResult{}, fmt.Errorf("文件超过 %d MB 上限", maxWriteBytes>>20)
+	}
+	raw, err := os.ReadFile(root)
+	if err != nil {
+		return editResult{}, err
+	}
+	original := string(raw)
+	count := strings.Count(original, args.OldText)
+	if count == 0 {
+		return editResult{}, fmt.Errorf("未找到匹配内容")
+	}
+	if count > 1 && !args.ReplaceAll {
+		return editResult{}, fmt.Errorf("匹配到 %d 处，请提供更精确上下文或 replaceAll=true", count)
+	}
+	updated := strings.Replace(original, args.OldText, args.NewText, 1)
+	if args.ReplaceAll {
+		updated = strings.ReplaceAll(original, args.OldText, args.NewText)
+	}
+	if len(updated) > maxWriteBytes {
+		return editResult{}, fmt.Errorf("写入内容超过 %d MB 上限（%d 字节）", maxWriteBytes>>20, len(updated))
+	}
+	if err := writeFilePreservingMode(root, []byte(updated), info.Mode()); err != nil {
+		return editResult{}, err
+	}
+	diff, added, removed := unifiedWorkspaceDiff(args.Path, original, updated, maxDiffLines, maxDiffBytes)
+	return editResult{
+		OK:           true,
+		Bytes:        len(updated),
+		AddedLines:   added,
+		RemovedLines: removed,
+		Diff:         diff,
+	}, nil
+}
+
+// writeFilePreservingMode writes through a sibling temporary file and renames
+// it over the target. The directory is the same, so the rename is atomic on
+// the same volume, and an interrupted write never leaves a half-written file.
+func writeFilePreservingMode(path string, data []byte, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".agentmate-edit-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := func() {
+		if tmpName != "" {
+			_ = os.Remove(tmpName)
+		}
+	}
+	defer cleanup()
+	if err := tmp.Chmod(mode.Perm()); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	tmpName = ""
+	return nil
+}
+
+const (
+	maxDiffLines = 200
+	maxDiffBytes = 32 * 1024
+)
+
+type diffOp struct {
+	kind byte // ' ' context, '-' removed, '+' added
+	text string
+}
+
+// unifiedWorkspaceDiff renders a bounded unified diff with a small line LCS.
+// A pathological pair of large files falls back to a coarse remove/add block:
+// still a valid diff, but without spending quadratic memory.
+func unifiedWorkspaceDiff(path, oldText, newText string, lineLimit, byteLimit int) (string, int, int) {
+	ops := lineDiffOps(oldText, newText)
+	added, removed := 0, 0
+	for _, op := range ops {
+		switch op.kind {
+		case '+':
+			added++
+		case '-':
+			removed++
+		}
+	}
+	var lines []string
+	var changes []int
+	for i, op := range ops {
+		if op.kind != ' ' {
+			changes = append(changes, i)
+		}
+	}
+	if len(changes) == 0 {
+		return "", added, removed
+	}
+	oldBefore := make([]int, len(ops)+1)
+	newBefore := make([]int, len(ops)+1)
+	for i, op := range ops {
+		oldBefore[i+1] = oldBefore[i]
+		newBefore[i+1] = newBefore[i]
+		if op.kind != '+' {
+			oldBefore[i+1]++
+		}
+		if op.kind != '-' {
+			newBefore[i+1]++
+		}
+	}
+	const context = 3
+	displayPath := filepath.ToSlash(strings.TrimPrefix(path, "./"))
+	if displayPath == "" {
+		displayPath = "file"
+	}
+	lines = append(lines, "--- a/"+displayPath, "+++ b/"+displayPath)
+	start := changes[0] - context
+	if start < 0 {
+		start = 0
+	}
+	end := changes[0] + context + 1
+	if end > len(ops) {
+		end = len(ops)
+	}
+	flushHunk := func(hunkStart, hunkEnd int) {
+		oldCount := oldBefore[hunkEnd] - oldBefore[hunkStart]
+		newCount := newBefore[hunkEnd] - newBefore[hunkStart]
+		oldStart := oldBefore[hunkStart]
+		newStart := newBefore[hunkStart]
+		if oldCount > 0 {
+			oldStart++
+		}
+		if newCount > 0 {
+			newStart++
+		}
+		lines = append(lines, fmt.Sprintf("@@ -%d,%d +%d,%d @@", oldStart, oldCount, newStart, newCount))
+		for _, op := range ops[hunkStart:hunkEnd] {
+			lines = append(lines, string(op.kind)+op.text)
+		}
+	}
+	for _, idx := range changes[1:] {
+		nextStart := idx - context
+		if nextStart <= end {
+			nextEnd := idx + context + 1
+			if nextEnd > len(ops) {
+				nextEnd = len(ops)
+			}
+			if nextEnd > end {
+				end = nextEnd
+			}
+			continue
+		}
+		flushHunk(start, end)
+		start = nextStart
+		if start < 0 {
+			start = 0
+		}
+		end = idx + context + 1
+		if end > len(ops) {
+			end = len(ops)
+		}
+	}
+	flushHunk(start, end)
+	return capDiffLines(lines, lineLimit, byteLimit), added, removed
+}
+
+func lineDiffOps(oldText, newText string) []diffOp {
+	a := splitDiffLines(oldText)
+	b := splitDiffLines(newText)
+	prefix := 0
+	for prefix < len(a) && prefix < len(b) && diffLineText(a[prefix]) == diffLineText(b[prefix]) {
+		prefix++
+	}
+	endA, endB := len(a), len(b)
+	for endA > prefix && endB > prefix && diffLineText(a[endA-1]) == diffLineText(b[endB-1]) {
+		endA--
+		endB--
+	}
+	ops := make([]diffOp, 0, len(a)+len(b))
+	for i := 0; i < prefix; i++ {
+		ops = append(ops, diffOp{' ', diffLineText(a[i])})
+	}
+	ops = append(ops, lineLCSOps(a[prefix:endA], b[prefix:endB])...)
+	for i := endA; i < len(a); i++ {
+		ops = append(ops, diffOp{' ', diffLineText(a[i])})
+	}
+	return ops
+}
+
+func lineLCSOps(a, b []string) []diffOp {
+	const maxCells = 1_000_000
+	if len(a) == 0 || len(b) == 0 || len(a)*len(b) > maxCells {
+		out := make([]diffOp, 0, len(a)+len(b))
+		for _, line := range a {
+			out = append(out, diffOp{'-', diffLineText(line)})
+		}
+		for _, line := range b {
+			out = append(out, diffOp{'+', diffLineText(line)})
+		}
+		return out
+	}
+	an := make([]string, len(a))
+	bn := make([]string, len(b))
+	for i, line := range a {
+		an[i] = diffLineText(line)
+	}
+	for i, line := range b {
+		bn[i] = diffLineText(line)
+	}
+	width := len(bn) + 1
+	dp := make([]int32, (len(an)+1)*width)
+	for i := len(an) - 1; i >= 0; i-- {
+		row := i * width
+		next := (i + 1) * width
+		for j := len(bn) - 1; j >= 0; j-- {
+			switch {
+			case an[i] == bn[j]:
+				dp[row+j] = dp[next+j+1] + 1
+			case dp[next+j] >= dp[row+j+1]:
+				dp[row+j] = dp[next+j]
+			default:
+				dp[row+j] = dp[row+j+1]
+			}
+		}
+	}
+	out := make([]diffOp, 0, len(an)+len(bn))
+	i, j := 0, 0
+	for i < len(an) && j < len(bn) {
+		switch {
+		case an[i] == bn[j]:
+			out = append(out, diffOp{' ', an[i]})
+			i++
+			j++
+		case dp[(i+1)*width+j] >= dp[i*width+j+1]:
+			out = append(out, diffOp{'-', an[i]})
+			i++
+		default:
+			out = append(out, diffOp{'+', bn[j]})
+			j++
+		}
+	}
+	for ; i < len(an); i++ {
+		out = append(out, diffOp{'-', an[i]})
+	}
+	for ; j < len(bn); j++ {
+		out = append(out, diffOp{'+', bn[j]})
+	}
+	return out
+}
+
+func splitDiffLines(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for {
+		i := strings.IndexByte(s, '\n')
+		if i < 0 {
+			out = append(out, s)
+			return out
+		}
+		out = append(out, s[:i+1])
+		s = s[i+1:]
+		if s == "" {
+			return out
+		}
+	}
+}
+
+func diffLineText(line string) string {
+	line = strings.TrimSuffix(line, "\n")
+	return strings.TrimSuffix(line, "\r")
+}
+
+func capDiffLines(lines []string, lineLimit, byteLimit int) string {
+	if lineLimit <= 0 {
+		lineLimit = maxDiffLines
+	}
+	if byteLimit <= 0 {
+		byteLimit = maxDiffBytes
+	}
+	const marker = "... [diff 已截断]"
+	var b strings.Builder
+	written := 0
+	for i, line := range lines {
+		// Reserve room for the truncation marker unless this is the final
+		// line, so a diff that fits exactly is never marked as truncated.
+		reserve := 0
+		if i < len(lines)-1 {
+			reserve = len(marker) + 1
+		}
+		if written+1 > lineLimit ||
+			(i < len(lines)-1 && written+2 > lineLimit) ||
+			b.Len()+len(line)+1+reserve > byteLimit {
+			if b.Len() > 0 {
+				b.WriteString(marker)
+				b.WriteByte('\n')
+			} else {
+				b.WriteString(marker)
+			}
+			return b.String()
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+		written++
+	}
+	return b.String()
 }
 
 // ---------------------------------------------------------------------------
