@@ -101,7 +101,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     env:
-      WAILS_VERSION: v3.0.0
+      WAILS_VERSION: v3.1.0
       TASK_VERSION: v3.54.0
     steps:
       - uses: actions/checkout@v5

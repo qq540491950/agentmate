@@ -4,6 +4,23 @@
 
 ## 视觉测试与体验设计
 
+### 第二百七十九轮迭代：升级 Wails 至 v3.1.0（已实施）
+
+依据：Wails v3.1.0 于 2026-11-01 发布，仓库仍固定 v3.0.0；Go SDK、CLI 与前端运行时需要保持同一版本，且 v3.1.0 包含事件分发、Windows WebView2、托盘/窗口与 updater 修复。
+
+**实现要点**
+
+- `github.com/wailsapp/wails/v3` 从 `v3.0.0` 升到 `v3.1.0`；`go mod tidy` 引入 `purego` / `x/term`，移除 Wails 不再使用的间接依赖。
+- `@wailsio/runtime` 同步到 `3.1.0`；README 安装命令与 CI / Release 的 `WAILS_VERSION` 同步固定为 `v3.1.0`。
+- 重新生成前端绑定，生成结果与升级前零差异；未启用实验性的 `WAILS_PUREGO` 后端。
+
+**测试证据**
+
+- `wails3 build`（v3.1.0）：前端生产构建、绑定生成、Windows `syso` 与 `bin/agentmate.exe` 全部通过。
+- `go build .`、`go vet ./internal/... .`、`go test ./internal/...`、`go test -race ./internal/...` 通过。
+- `npx tsc --noEmit`、`npm test`（42 个文件 / 299 个用例）、`npm run build` 通过。
+- 当前发布目标 Windows 已由真实 `wails3 build` 覆盖；macOS / Linux 运行验证留给跨平台 CI。
+
 ### 第二百七十八轮迭代：统一悬浮提示为自绘浮层（已实施）
 
 依据：用户截图显示项目内大量鼠标悬浮提示仍是 WebView2 原生 `title` 气泡（方角、细边、系统排版），与上下文占用提示的圆角浮层不一致。前端生产源码中约 96 处 `title=`，绝大多数会生成真实 DOM 悬浮提示；仅上下文占用使用 Radix Tooltip。

@@ -48,7 +48,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  WAILS_VERSION: v3.0.0
+  WAILS_VERSION: v3.1.0
   TASK_VERSION: v3.54.0
   NODE_VERSION: "20.19"
 

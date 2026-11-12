@@ -56,7 +56,7 @@
 - [Wails v3 CLI](https://v3.wails.io/getting-started/installation/)，与 Go SDK 保持同一版本：
 
 ```bash
-go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
 ```
 
 升级 Go 工具链后要重新执行上面的安装命令：`wails3` 内置的 `go/types`
