@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildSidebarProjectGroups, buildToolTrace, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools,
   computeToolDurations, dayLabel, effectiveReasoningLevel, fmtTime, formatWorkDuration, groupSessionsByProject,
-  formatToolExecutionBreakdown, groupSessionsByTime, groupToolMessages, groupTurns, isAwaitingReply, isDayChange, mdToSpeech,
+  formatToolExecutionBreakdown, groupSessionsByTime, groupToolMessages, groupTurns, insertThinkingBeforeStreamingReply,
+  isAwaitingReply, isDayChange, mdToSpeech,
   projectSessionWindow, sessionTargetBadgeLabel, shouldExpandProjectForSession,
   summarizeToolTrace, toolStepDisplay,
   toolGroupDurationMs, toolGroupElapsedMs, toolGroupInvocationCount, toolGroupStatus,
@@ -99,6 +100,21 @@ describe("isAwaitingReply", () => {
     expect(isAwaitingReply([user, msg({ id: "c1", kind: "tool_call", toolName: "read" })], true)).toBe(false);
     expect(isAwaitingReply([user, msg({ id: "r1", kind: "tool_result", toolName: "read" })], true)).toBe(false);
     expect(isAwaitingReply([user, msg({ id: "cf", kind: "confirm", toolName: "write" })], true)).toBe(false);
+  });
+});
+
+describe("insertThinkingBeforeStreamingReply", () => {
+  const late = msg({ id: "t", kind: "thinking", author: "助手", text: "迟到的思考" });
+
+  it("places a late thought before the same author's streaming reply", () => {
+    const stream = msg({ id: "a", kind: "assistant", author: "助手", text: "", streaming: true });
+    expect(insertThinkingBeforeStreamingReply([stream], late).map((m) => m.id)).toEqual(["t", "a"]);
+  });
+
+  it("appends when no streaming reply belongs to the same author", () => {
+    const done = msg({ id: "a", kind: "assistant", author: "助手", text: "完成" });
+    const other = msg({ id: "o", kind: "assistant", author: "别的助手", text: "", streaming: true });
+    expect(insertThinkingBeforeStreamingReply([done, other], late).map((m) => m.id)).toEqual(["a", "o", "t"]);
   });
 });
 
@@ -293,6 +309,43 @@ describe("groupToolMessages", () => {
     expect(groupToolMessages(msgs).map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
       "u", "live",
     ]);
+  });
+
+  it("keeps a late final thinking event from turning a completed run red", () => {
+    // The final aggregated event can deliver its thought after the answer's
+    // deltas opened the reply bubble. The thought belongs before the answer;
+    // it must not become the boundary that hides the completed reply.
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", author: "user", text: "确定没有未提交的内容" }),
+      msg({ id: "t1", kind: "thinking", author: "助手", text: "先检查" }),
+      msg({ id: "c1", kind: "tool_call", author: "助手", toolName: "run_command" }),
+      msg({ id: "r1", kind: "tool_result", author: "助手", toolName: "run_command", toolResp: { exitCode: 0 } }),
+      msg({ id: "a", kind: "assistant", author: "助手", text: "工作区完全干净。" }),
+      msg({ id: "t2", kind: "thinking", author: "助手", text: "All clean." }),
+    ];
+    const items = groupToolMessages(msgs);
+    const group = items.find((i) => i.kind === "tool_group");
+    if (!group || group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(group.answered).toBe(true);
+    expect(group.messages.map((m) => m.id)).toEqual(["t1", "c1", "r1", "t2"]);
+    expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "u", "group:t1", "a",
+    ]);
+    expect(toolGroupStatus(group, new Set(), false)).toBe("done");
+  });
+
+  it("still fails a turn that ends in thinking without a reply", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", author: "user", text: "检查" }),
+      msg({ id: "t1", kind: "thinking", author: "助手", text: "先检查" }),
+      msg({ id: "c1", kind: "tool_call", author: "助手", toolName: "run_command" }),
+      msg({ id: "r1", kind: "tool_result", author: "助手", toolName: "run_command", toolResp: { exitCode: 0 } }),
+      msg({ id: "t2", kind: "thinking", author: "助手", text: "还没回答" }),
+    ];
+    const group = groupToolMessages(msgs).find((i) => i.kind === "tool_group");
+    if (!group || group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(group.answered).toBe(false);
+    expect(toolGroupStatus(group, new Set(), false)).toBe("failed");
   });
 
   it("merges thinking entries with the turn's tool run and keeps the reply separate", () => {

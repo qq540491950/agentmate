@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { PROJECT_SESSION_LIMIT, buildSidebarProjectGroups, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupToolMessages, groupTurns, isAwaitingReply, isDayChange, mdToSpeech, projectSessionWindow, sessionTargetBadgeLabel, shouldExpandProjectForSession, type ChatItem, type UIMessage } from "@/lib/chatUtils";
+import { PROJECT_SESSION_LIMIT, buildSidebarProjectGroups, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupToolMessages, groupTurns, insertThinkingBeforeStreamingReply, isAwaitingReply, isDayChange, mdToSpeech, projectSessionWindow, sessionTargetBadgeLabel, shouldExpandProjectForSession, type ChatItem, type UIMessage } from "@/lib/chatUtils";
 import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
 import {
   SIDEBAR_KEYBOARD_STEP, SIDEBAR_MIN_WIDTH,
@@ -638,7 +638,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       let idx = prev.length - 1;
       while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].streaming && prev[idx].author === author)) idx--;
       if (idx < 0) {
-        return [...prev, { id: nextId(), kind: "thinking", author, text, streaming: true, timestamp: new Date().toISOString() }];
+        return insertThinkingBeforeStreamingReply(prev, {
+          id: nextId(), kind: "thinking", author, text, streaming: true, timestamp: new Date().toISOString(),
+        });
       }
       const copy = [...prev];
       copy[idx] = { ...copy[idx], text: copy[idx].text + text };
@@ -709,7 +711,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           let idx = prev.length - 1;
           while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].streaming && prev[idx].author === ev.author)) idx--;
           if (idx >= 0) return prev;
-          return [...prev, { id: nextId(), kind: "thinking", author: ev.author, text: "", streaming: true, timestamp: new Date().toISOString() }];
+          return insertThinkingBeforeStreamingReply(prev, {
+            id: nextId(), kind: "thinking", author: ev.author, text: "", streaming: true, timestamp: new Date().toISOString(),
+          });
         });
         return;
       }
@@ -753,7 +757,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               return copy;
             }
             if (!ev.text) return prev;
-            return [...prev, { id: nextId(), kind: "thinking", author: ev.author, text: ev.text, streaming: false, timestamp: new Date().toISOString() }];
+            return insertThinkingBeforeStreamingReply(prev, {
+              id: nextId(), kind: "thinking", author: ev.author, text: ev.text, streaming: false, timestamp: new Date().toISOString(),
+            });
           }
           case "message": {
             const idx = [...prev].reverse().findIndex((m) => m.streaming && m.author === ev.author);

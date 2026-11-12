@@ -243,6 +243,23 @@ export function isAwaitingReply(messages: UIMessage[], running: boolean): boolea
   return !tail || tail.kind === "user";
 }
 
+/**
+ * insertThinkingBeforeStreamingReply keeps a late final reasoning event ahead
+ * of the answer it belongs to. The answer deltas open the streaming assistant
+ * bubble before the aggregated final event can deliver its thought; appending
+ * that thought at the tail would put reasoning after the reply and make the
+ * turn look unanswered when it is grouped.
+ */
+export function insertThinkingBeforeStreamingReply(messages: UIMessage[], thinking: UIMessage): UIMessage[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.kind === "assistant" && m.streaming && m.author === thinking.author) {
+      return [...messages.slice(0, i), thinking, ...messages.slice(i)];
+    }
+  }
+  return [...messages, thinking];
+}
+
 /** ToolStep pairs one tool_call with its matching tool_result. Keeping the
  *  pair together is what makes an execution block read as N tools instead of
  *  2N call/result rows. */
@@ -416,6 +433,15 @@ function isProcessEvent(m: UIMessage): boolean {
   return m.toolName !== "plan_todos";
 }
 
+/** isToolActivity reports the events that actually did work in a turn.
+ *  Thinking is deliberately excluded: a final aggregated reasoning event can
+ *  arrive after the streamed answer, and it must not hide that reply. */
+function isToolActivity(m: UIMessage): boolean {
+  if (m.kind === "confirm") return true;
+  if (m.kind !== "tool_call" && m.kind !== "tool_result") return false;
+  return m.toolName !== "plan_todos";
+}
+
 /**
  * groupToolMessages turns each turn (everything between two user messages)
  * into at most one collapsible execution block plus its final reply. Process
@@ -423,7 +449,7 @@ function isProcessEvent(m: UIMessage): boolean {
  * assistant narration the model emits between tool batches all belong to the
  * same block: narration used to break the run, which split one turn into
  * several look-alike blocks (thinking card, empty skeleton, tool card, reply).
- * The turn's last assistant message after the last process event is the only
+ * The turn's last assistant message after the last tool activity is the only
  * result and stays outside the block. Empty settled assistant shells are
  * dropped; plan_todos cards stay standalone without splitting the run (the
  * pinned plan must not shred a long turn into several look-alike groups);
@@ -460,11 +486,21 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
     if (isProcessEvent(turn[i])) { lastProcessIdx = i; break; }
   }
 
-  // The result is the last assistant message after the last process event.
+  // The result boundary is the last tool/confirmation activity, not the last
+  // thinking event: a final reasoning block can arrive after the streamed
+  // answer (the answer bubble already exists, so the thinking is appended
+  // behind it). Treating that thought as the boundary hid the answer inside
+  // the execution block and turned a completed turn red.
+  let lastActivityIdx = -1;
+  for (let i = turn.length - 1; i >= 0; i--) {
+    if (isToolActivity(turn[i])) { lastActivityIdx = i; break; }
+  }
+
+  // The result is the last assistant message after the last tool activity.
   // Empty settled shells (a streaming placeholder whose turn ended in a tool
   // call) are skipped so they cannot render as an empty assistant block.
   let resultIdx = -1;
-  for (let i = turn.length - 1; i > lastProcessIdx; i--) {
+  for (let i = turn.length - 1; i > lastActivityIdx; i--) {
     const m = turn[i];
     if (m.kind !== "assistant") continue;
     if (!m.text.trim() && !m.streaming) continue;
@@ -481,13 +517,36 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
     return out;
   }
 
-  const endTs = resultIdx >= 0 ? turn[resultIdx].timestamp : undefined;
+  // Late reasoning belongs before the reply it explains. Keep the turn's
+  // remaining order intact: only move same-author thinking entries that
+  // arrived after the final assistant.
+  let ordered = turn;
+  if (resultIdx >= 0) {
+    const result = turn[resultIdx];
+    const lateThinking = turn.slice(resultIdx + 1).filter(
+      (m) => m.kind === "thinking" && m.author === result.author,
+    );
+    if (lateThinking.length > 0) {
+      const rest = turn.slice(resultIdx + 1).filter(
+        (m) => !(m.kind === "thinking" && m.author === result.author),
+      );
+      ordered = [
+        ...turn.slice(0, resultIdx),
+        ...lateThinking,
+        result,
+        ...rest,
+      ];
+      resultIdx += lateThinking.length;
+    }
+  }
+
+  const endTs = resultIdx >= 0 ? ordered[resultIdx].timestamp : undefined;
   // Turn outcome, not step outcome: a failed tool the model worked around is
   // process detail. Only a turn that ended in an error without ever writing
   // its reply failed — guardrail warnings before a later user message and
   // budget warnings after the reply both still have/leave an answer.
   const answered = resultIdx >= 0;
-  const errored = !answered && turn.some((m) => m.kind === "error");
+  const errored = !answered && ordered.some((m) => m.kind === "error");
   let run: UIMessage[] = [];
   const flush = () => {
     if (run.length === 0) return;
@@ -503,8 +562,8 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
     run = [];
   };
 
-  for (let i = 0; i < turn.length; i++) {
-    const m = turn[i];
+  for (let i = 0; i < ordered.length; i++) {
+    const m = ordered[i];
     if (i === resultIdx) {
       flush();
       out.push(messageItem(m));
