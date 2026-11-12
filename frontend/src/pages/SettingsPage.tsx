@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft, BookOpen, Bot, Boxes, Database, FolderOpen, Hand, Info,
+  ArrowLeft, BookOpen, Bot, Boxes, Database, FolderOpen, Info,
   MessageSquare, Network, Palette, Plug, ShieldCheck, Sparkles, TriangleAlert,
   Users, type LucideIcon,
 } from "lucide-react";
@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/select";
 import { ArtifactPreview } from "@/components/ToolCallCard";
 import { UpdateCard } from "@/components/UpdateCard";
-import { ThemeGallery } from "@/components/ThemeGallery";
+import { ThemeChoice } from "@/components/ThemeChoice";
 import { cn } from "@/lib/utils";
 import { SettingRow } from "@/components/layout/PageShell";
 import { buildIssueReportURL } from "@/lib/issue";
@@ -85,12 +85,6 @@ const SETTINGS_ICONS: Record<SettingsTab, LucideIcon> = {
   knowledge: BookOpen,
   data: Database,
   about: Info,
-};
-
-const PERMISSION_PROFILE_ICONS: Record<PermissionProfile, LucideIcon> = {
-  "request-approval": Hand,
-  "auto-approve": ShieldCheck,
-  "danger-full-access": TriangleAlert,
 };
 
 export function SettingsPage({
@@ -358,7 +352,6 @@ export function SettingsPage({
   const titleModelValue = settings.titleProviderId && settings.titleModel
     ? `${settings.titleProviderId}\t${settings.titleModel}`
     : "main";
-  const previewDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
   const showConfigSaveBar = isConfigSettingsTab(tab);
   const configContentWidth = tab === "knowledge" || tab === "about" ? "max-w-3xl" : "max-w-4xl";
 
@@ -434,45 +427,35 @@ export function SettingsPage({
           <CardHeader>
             <CardTitle className="text-base">外观</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-5">
-            <div className="grid gap-2">
-              <Label>主题</Label>
-              <ThemeGallery
-                value={settings.themePreset || "nord"}
-                dark={previewDark}
-                onChange={(themePreset) => update({ themePreset })}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label>明暗模式</Label>
+          <CardContent className="grid gap-2">
+            <ThemeChoice
+              value={settings.themePreset || "nord"}
+              onChange={(themePreset) => update({ themePreset })}
+            />
+            <SettingRow label="明暗模式" description="跟随系统时只改变明暗，不改变当前主题">
               <SegmentedControl
                 ariaLabel="明暗模式"
                 value={settings.themeMode || "dark"}
                 options={THEME_MODES}
                 onChange={(themeMode) => update({ themeMode })}
               />
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label>正文字号</Label>
+            </SettingRow>
+            <SettingRow label="正文字号" description="调整聊天与设置界面的基准字号">
               <SegmentedControl
                 ariaLabel="正文字号"
                 value={settings.fontScale || "md"}
                 options={Object.entries(FONT_SCALES).map(([value, f]) => ({ value, label: f.label }))}
                 onChange={(fontScale) => update({ fontScale })}
               />
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label>对话栏宽</Label>
+            </SettingRow>
+            <SettingRow label="对话栏宽" description="控制对话正文在窗口中的阅读宽度">
               <SegmentedControl
                 ariaLabel="对话栏宽"
                 value={settings.chatWidth || "medium"}
                 options={Object.entries(CHAT_WIDTHS).map(([value, w]) => ({ value, label: w.label }))}
                 onChange={(chatWidth) => update({ chatWidth })}
               />
-            </div>
+            </SettingRow>
           </CardContent>
         </Card>
         )}
@@ -483,15 +466,13 @@ export function SettingsPage({
           </CardHeader>
           <CardContent className="grid gap-4">
             <p className="text-xs leading-relaxed text-muted-foreground">
-              只影响新建会话；已有会话在输入框左下角单独切换。
+              只影响新建会话；已有会话在输入框左下角单独切换。权限预设会同时设置审批策略与沙箱边界。
             </p>
             <PolicyChoiceGroup
               label="权限模式"
               description="预设会同时设置审批策略与沙箱边界。"
               options={PERMISSION_PROFILE_OPTIONS}
-              icons={PERMISSION_PROFILE_ICONS}
               value={defaultProfile?.value ?? null}
-              columnsClass="sm:grid-cols-3"
               onSelect={selectPermissionProfile}
             />
             {!defaultProfile && (

@@ -1,26 +1,16 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { Eye, FolderLock, TriangleAlert, type LucideIcon } from "lucide-react";
 import { describe, expect, it, vi } from "vitest";
 import { SANDBOX_PROFILE_OPTIONS } from "@/lib/sandboxMode";
-import type { SandboxProfile } from "@/lib/settingsModel";
 import { PolicyChoiceGroup } from "./PolicyChoiceGroup";
 
-const icons: Record<SandboxProfile, LucideIcon> = {
-  "workspace-write": FolderLock,
-  "read-only": Eye,
-  "danger-full-access": TriangleAlert,
-};
-
 describe("PolicyChoiceGroup", () => {
-  it("exposes read-only as the single checked radio option", () => {
+  it("exposes read-only as the single checked compact option", () => {
     const html = renderToStaticMarkup(
       <PolicyChoiceGroup
         label="新会话默认沙箱"
         description="选择执行边界"
         options={SANDBOX_PROFILE_OPTIONS}
-        icons={icons}
         value="read-only"
-        columnsClass="sm:grid-cols-3"
         onSelect={vi.fn()}
       />,
     );
@@ -29,6 +19,7 @@ describe("PolicyChoiceGroup", () => {
     const buttons = html.split("</button>");
     expect(buttons.find((button) => button.includes("只读"))).toContain('aria-checked="true"');
     expect(buttons.find((button) => button.includes("工作区可写"))).toContain('aria-checked="false"');
+    expect(html).toContain("终端只能读，不能写工作区；文件写入会被拒绝。");
   });
 
   it("leaves every option unchecked for a custom policy pair", () => {
@@ -37,9 +28,7 @@ describe("PolicyChoiceGroup", () => {
         label="新会话默认权限"
         description="选择执行边界"
         options={SANDBOX_PROFILE_OPTIONS}
-        icons={icons}
         value={null}
-        columnsClass="sm:grid-cols-3"
         onSelect={vi.fn()}
       />,
     );

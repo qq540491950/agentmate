@@ -39,8 +39,8 @@
 | `panel` | `card` | 执行组、composer、设置分组、管理列表容器、任务结果面板 |
 | `overlay` | `elevated` / `popover` | 菜单、对话框、toast、浮层 |
 | `control` | `control` | outline 按钮、复选框等可识别控件填充；不用于布局分区 |
-| `choice-selected` | 新增 | 分段控件、选择卡的选中填充；文字固定用 `foreground` |
-| `choice-selected-danger` | 新增 | 危险选择卡的选中填充；危险色只用于图标/状态 |
+| `choice-selected` | 新增 | 分段控件（含主题/权限设置）的选中填充；文字固定用 `foreground` |
+| `choice-selected-danger` | 新增 | 危险选项的选中填充；危险色只用于图标/状态 |
 | `accent-soft` | 由 `brand` 派生 | 选中行、候选选中、composer 拖拽、当前轮 |
 | `accent-text` | 由 `brand` 派生 | 强调文字、链接、图标 |
 | `primary` | `primary` | 中性主按钮 |
@@ -113,10 +113,11 @@
 
 ### 5.4 选择控件
 
-- 分段控件和选择卡的**静止面必须使用 `control`**，不得使用与父级 `panel` 同色的 `panel`；否则点击区域会退化成纯文字。
+- 设置页的主题、权限、模式、字号、栏宽等少量互斥选项统一使用紧凑分段控件；**静止面必须使用 `control`**，不得使用与父级 `panel` 同色的 `panel`，否则点击区域会退化成纯文字。
 - 选中面使用 `choice-selected` / `choice-selected-danger`，与 `control` 的对比度目标 ≥1.20 / ≥1.15；选中文字使用 `foreground`，不要用 `accent-text` 或 `danger-text` 作为正文（它们在软底纹上可能低于 4.5:1）。
 - 选中态同时提供 Check 图标或 `aria-checked`，不能只靠颜色；危险状态用危险色图标 + 文字，不用危险色正文或强调色描边。
-- 分段控件保持 8px 控件圆角、28–32px 高度和 ≥8px 间距；选择卡使用 12px 圆角与 12px 内距。
+- 分段控件保持 8px 控件圆角、28–32px 高度和 ≥8px 间距。
+- 设置页不再使用大型主题预览卡或权限说明卡；选项说明只在设置行左侧显示一次。主题切换即时作用于整个界面，当前界面就是预览。
 
 ## 6. 排版、间距、圆角、动效
 
@@ -174,7 +175,7 @@
 
 - 所有交互可键盘操作；focus 不可被固定区域遮挡。
 - 纯图标按钮必须有中文 `aria-label` 或 `title`。
-- 主题卡片使用单选组语义和 `aria-checked`；选中态不能只靠颜色。
+- 主题与权限选择使用分段单选组语义和 `aria-checked`；选中态不能只靠颜色。
 - 桌面指针目标建议 ≥ 28px；触控/粗指针 ≥ 44px。
 - `prefers-reduced-motion`、`forced-colors` 与高对比主题必须走查。
 
@@ -182,7 +183,7 @@
 
 - [ ] 是否只使用语义令牌，没有组件内 hex/palette 类？
 - [ ] 布局 chrome、卡片、设置行、列表行、弹窗是否都没有常驻边框/ring？
-- [ ] 导航/会话选中态是否使用 `accent-soft` + `accent-text`；分段/选择卡是否使用 `choice-selected` + `foreground`，而不是左竖条/描边？
+- [ ] 导航/会话选中态是否使用 `accent-soft` + `accent-text`；分段控件是否使用 `choice-selected` + `foreground`，而不是左竖条/描边？
 - [ ] 确认卡/错误/警告是否同时有图标或文字，而不是只有彩色边框？
 - [ ] 相邻表面在 100% 亮度下是否可感知，但没有明显色块跳变？
 - [ ] light/dark 两套是否都完整且对比度通过？
