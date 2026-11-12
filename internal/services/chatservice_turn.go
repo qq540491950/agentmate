@@ -365,6 +365,14 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *genai.Content, titleFromText, turnContext, turnReasoning string) (err error) {
 	sessionID := target.ID
 	defer c.recoverRun(sessionID, &err)
+	// Register before any setup. IsRunning powers the frontend's session
+	// calibration and must already report this turn while the agent tree is
+	// being built; registering after the expensive setup (or after the user
+	// event) lets a concurrent probe see a false idle state.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	release := c.registerRun(sessionID, cancel)
+	defer release()
 	cfg := c.S.Store.Get()
 	sessionTerminal := c.terminalSettingsFor(sessionID, cfg.Settings.Terminal)
 	workspace := target.EffectiveWorkspaceFor(cfg)
@@ -536,11 +544,6 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	if turnContext != "" && target.TargetType == "remote" && msg != nil {
 		msg.Parts = append([]*genai.Part{genai.NewPartFromText(turnContext + "\n\n用户输入：")}, msg.Parts...)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	release := c.registerRun(sessionID, cancel)
-	defer release()
 
 	var turnUsage *UsageInfo
 	var sessionUsage *UsageInfo

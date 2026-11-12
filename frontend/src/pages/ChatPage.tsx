@@ -266,6 +266,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   // backend refuses turns past the token budget with error+done and a resolved
   // promise — without this flag the typed text would vanish without a trace.
   const turnStartedRef = useRef(false);
+  // Sessions with a turn started from this window. Chat.IsRunning can race
+  // the backend's run registration; a false probe must not clear the local
+  // optimistic running state and make the live turn look settled.
+  const localRunsRef = useRef<Set<string>>(new Set());
 
   // markRunning tracks in-flight turns PER SESSION so several sessions can
   // stream in parallel without blocking each other.
@@ -548,6 +552,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       });
     Chat.IsRunning(activeID).then((r) => {
       if (cancelled) return;
+      // The probe is asynchronous and can resolve before Chat.Send reaches
+      // registerRun on the backend. Never let that stale false overwrite a
+      // turn this window just started.
+      if (!r && localRunsRef.current.has(activeID)) return;
       markRunning(activeID, r);
       // A queued message stranded by a session switch (its turn finished in
       // the background) fires now: the user is back and nothing is running.
@@ -674,6 +682,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       // made it unreachable for non-active sessions.)
       if (ev.kind === "done" || ev.kind === "error") {
         if (ev.kind === "error" && ev.sessionId === activeID) streamedErrorRef.current = true;
+        localRunsRef.current.delete(ev.sessionId);
         markRunning(ev.sessionId, false);
         reloadSessions();
         // A queued message fires as soon as the turn settles — including
@@ -690,6 +699,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           else toast.error(`「${title}」本轮出错`, { action });
           setUnread((prev) => ({ ...prev, [ev.sessionId]: true }));
         }
+      }
+      if (ev.kind === "user") {
+        localRunsRef.current.add(ev.sessionId);
+        markRunning(ev.sessionId, true);
       }
       if (ev.sessionId !== activeID) return;
       if (ev.kind === "user") turnStartedRef.current = true;
@@ -1094,6 +1107,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       }
     }
     if (sid === activeID) setInput("");
+    localRunsRef.current.add(sid);
     markRunning(sid, true);
     const wasEditing = editing && sid === activeID;
     setEditing(false);
@@ -1123,6 +1137,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       // the round (e.g. token budget exhausted): restore what the user typed
       // instead of silently swallowing it. Only the active chat has drafts to
       // restore — background deliveries carry no UI state.
+      if (!turnStartedRef.current) {
+        localRunsRef.current.delete(sid);
+        markRunning(sid, false);
+      }
       if (fromComposer && !turnStartedRef.current) {
         setInput((cur) => (cur === "" ? text : cur));
         setPendingAtts((prev) => [...atts, ...prev]);
@@ -1135,6 +1153,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       const msg = errText(e);
       if (!streamedErrorRef.current) toast.error(`发送失败: ${msg}`);
       streamedErrorRef.current = false;
+      localRunsRef.current.delete(sid);
       markRunning(sid, false);
       if (fromComposer) {
         // Restore the draft and attachments (merging, not clobbering: the
@@ -1158,6 +1177,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   // optimistically; a failed resume reverts the card to pending.
   const answerConfirm = useCallback(async (msgId: string, callId: string | undefined, approved: boolean) => {
     if (!activeID || !callId || running) return;
+    localRunsRef.current.add(activeID);
     markRunning(activeID, true);
     setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, confirmStatus: approved ? "approved" : "rejected" } : m)));
     try {
@@ -1166,6 +1186,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       if (!streamedErrorRef.current) toast.error(`确认失败: ${errText(e)}`);
       streamedErrorRef.current = false;
       setMessages((prev) => prev.map((m) => (m.id === msgId && m.kind === "confirm" ? { ...m, confirmStatus: "pending" } : m)));
+      localRunsRef.current.delete(activeID);
       markRunning(activeID, false);
     }
   }, [activeID, running, markRunning]);
@@ -1293,6 +1314,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
 
   const regenerate = useCallback(async () => {
     if (!activeID || running) return;
+    localRunsRef.current.add(activeID);
     markRunning(activeID, true);
     setSessionUsage(null);
     setMessages((prev) => {
@@ -1307,6 +1329,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     } catch (e) {
       if (!streamedErrorRef.current) toast.error(`重新生成失败: ${errText(e)}`);
       streamedErrorRef.current = false;
+      localRunsRef.current.delete(activeID);
       markRunning(activeID, false);
     }
   }, [activeID, running, markRunning]);
