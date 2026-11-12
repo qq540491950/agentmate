@@ -3,6 +3,7 @@ import {
   CheckCircle2, ChevronRight, Loader2, ShieldAlert, XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { TooltipHint } from "@/components/ui/tooltip";
 import { ToolCallCard } from "@/components/ToolCallCard";
 import { ConfirmCard, ThinkingBlock } from "@/components/chat/MessageBubble";
 import { MessageMarkdown } from "@/components/MessageMarkdown";
@@ -150,12 +151,11 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
           </span>
         )}
         {summary.total > 0 && (
-          <span
-            className="shrink-0 whitespace-nowrap text-xs text-muted-foreground/70"
-            title={`本回合执行了 ${summary.total} 个步骤${breakdown ? `：${breakdown}` : ""}`}
-          >
-            · {summary.total} 个步骤
-          </span>
+          <TooltipHint content={`本回合执行了 ${summary.total} 个步骤${breakdown ? `：${breakdown}` : ""}`}>
+            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground/70">
+              · {summary.total} 个步骤
+            </span>
+          </TooltipHint>
         )}
         {summary.failed > 0 && status !== "failed" && (
           <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-danger-text">

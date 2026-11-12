@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TooltipHint } from "@/components/ui/tooltip";
 import { MessageMarkdown, CopyButton } from "@/components/MessageMarkdown";
 import { ToolCallCard } from "@/components/ToolCallCard";
 import { TodoListCard } from "@/components/chat/TodoCards";
@@ -193,14 +194,14 @@ export function UserQuote({ m, active, onEdit, canEdit, filterQ }: {
         {(m.attachments?.length ?? 0) > 0 && (
           <div className="flex flex-wrap justify-end gap-1.5">
             {m.attachments!.map((a, i) => (
-              <button
-                key={i}
-                type="button"
-                title={`查看 ${a.name} 大图`}
-                onClick={() => setLightbox(a.dataUrl)}
-              >
-                <img src={a.dataUrl} alt={a.name} className="h-20 cursor-zoom-in rounded-lg object-cover" />
-              </button>
+              <TooltipHint key={i} content={`查看 ${a.name} 大图`}>
+                <button
+                  type="button"
+                  onClick={() => setLightbox(a.dataUrl)}
+                >
+                  <img src={a.dataUrl} alt={a.name} className="h-20 cursor-zoom-in rounded-lg object-cover" />
+                </button>
+              </TooltipHint>
             ))}
           </div>
         )}
@@ -208,7 +209,6 @@ export function UserQuote({ m, active, onEdit, canEdit, filterQ }: {
           <div className="flex flex-col items-end gap-1">
             <div
               data-slot="user-bubble-body"
-              title={fmtTime(m.timestamp)}
               className={cn(
                 "whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl rounded-br-md px-4 py-2.5 text-md leading-[1.65] text-foreground transition-colors",
                 active ? "bg-accent-soft" : "bg-accent-soft/70",
@@ -218,20 +218,21 @@ export function UserQuote({ m, active, onEdit, canEdit, filterQ }: {
             </div>
             <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
               {canEdit && onEdit && (
-                <button
-                  type="button"
-                  className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  title="编辑并重发这条消息"
-                  aria-label="编辑并重发这条消息"
-                  onClick={() => onEdit(m.text)}
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
+                <TooltipHint content="编辑并重发这条消息">
+                  <button
+                    type="button"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    aria-label="编辑并重发这条消息"
+                    onClick={() => onEdit(m.text)}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                </TooltipHint>
               )}
               <CopyButton
                 text={m.text}
                 iconOnly
-                title="复制这条消息"
+                label="复制这条消息"
                 className="h-5 w-5 shrink-0 justify-center rounded border-0 bg-transparent p-0"
               />
             </div>
@@ -283,15 +284,16 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
         {highlightText(m.text, filterQ, "bg-danger-soft text-danger-text rounded-sm")}
         {canRegenerate && (
           <div className="mt-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-3 text-xs"
-              title="裁剪本轮并重试（不重复消耗这条错误）"
-              onClick={onRegenerate}
-            >
-              <RefreshCw className="mr-1 h-3 w-3" /> 重试本轮
-            </Button>
+            <TooltipHint content="裁剪本轮并重试（不重复消耗这条错误）">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-3 text-xs"
+                onClick={onRegenerate}
+              >
+                <RefreshCw className="mr-1 h-3 w-3" /> 重试本轮
+              </Button>
+            </TooltipHint>
           </div>
         )}
       </div>
@@ -339,7 +341,7 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
             <span className="text-xs font-medium text-muted-foreground">{m.author}</span>
           </div>
         )}
-        <div className="min-w-0" title={m.timestamp ? fmtTime(m.timestamp) : undefined}>
+        <div className="min-w-0">
           {m.streaming && !m.text ? (
             <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> 思考中…
@@ -362,46 +364,52 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
           >
             <div className="flex items-center gap-0.5">
               {m.usage && m.usage.totalTokens > 0 && (
-                <span className="mr-1 text-2xs tabular-nums text-muted-foreground/70" title={`输入 ${m.usage.promptTokens} + 输出 ${m.usage.completionTokens}`}>
-                  {m.usage.totalTokens.toLocaleString()} tokens{costOf(m.usage) && ` · ${costOf(m.usage)}`}
-                </span>
+                <TooltipHint content={`输入 ${m.usage.promptTokens} + 输出 ${m.usage.completionTokens}`}>
+                  <span className="mr-1 text-2xs tabular-nums text-muted-foreground/70">
+                    {m.usage.totalTokens.toLocaleString()} tokens{costOf(m.usage) && ` · ${costOf(m.usage)}`}
+                  </span>
+                </TooltipHint>
               )}
-              <button
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                title={copied ? "已复制" : "复制"}
-                aria-label={copied ? "已复制" : "复制这条回复"}
-                onClick={copyMsg}
-              >
-                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              </button>
-              {isLastAssistant && canRegenerate && (
+              <TooltipHint content={copied ? "已复制" : "复制"}>
                 <button
                   className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  title="重新生成最后一条回复"
-                  aria-label="重新生成最后一条回复"
-                  onClick={onRegenerate}
+                  aria-label={copied ? "已复制" : "复制这条回复"}
+                  onClick={copyMsg}
                 >
-                  <RefreshCw className="h-3.5 w-3.5" />
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 </button>
+              </TooltipHint>
+              {isLastAssistant && canRegenerate && (
+                <TooltipHint content="重新生成最后一条回复">
+                  <button
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    aria-label="重新生成最后一条回复"
+                    onClick={onRegenerate}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipHint>
               )}
-              <button
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                title="朗读这条回复"
-                aria-label="朗读这条回复"
-                onClick={() => onSpeak(m.text)}
-              >
-                <Volume2 className="h-3.5 w-3.5" />
-              </button>
+              <TooltipHint content="朗读这条回复">
+                <button
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  aria-label="朗读这条回复"
+                  onClick={() => onSpeak(m.text)}
+                >
+                  <Volume2 className="h-3.5 w-3.5" />
+                </button>
+              </TooltipHint>
             </div>
             {m.timestamp && (
-              <time
-                data-slot="completion-time"
-                dateTime={m.timestamp}
-                title={`输出完成于 ${fmtTime(m.timestamp)}`}
-                className="whitespace-nowrap text-xs tabular-nums text-muted-foreground"
-              >
-                {fmtTime(m.timestamp)}
-              </time>
+              <TooltipHint content={`输出完成于 ${fmtTime(m.timestamp)}`}>
+                <time
+                  data-slot="completion-time"
+                  dateTime={m.timestamp}
+                  className="whitespace-nowrap text-xs tabular-nums text-muted-foreground"
+                >
+                  {fmtTime(m.timestamp)}
+                </time>
+              </TooltipHint>
             )}
           </div>
         )}

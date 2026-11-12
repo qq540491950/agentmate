@@ -22,6 +22,7 @@ import { SegmentedControl } from "@/components/ui/choice";
 import { PolicyChoiceGroup } from "@/components/PolicyChoiceGroup";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { TooltipHint } from "@/components/ui/tooltip";
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -448,13 +449,15 @@ export function SettingsPage({
         <div className="mb-2 flex items-center justify-between px-4">
           <span className="text-sm font-semibold">设置</span>
           {onClose && (
-            <button
-              title="返回对话（Esc）"
-              onClick={() => requestLeave(onClose)}
-              className="rounded p-1 hover:bg-sidebar-accent/60"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
+            <TooltipHint content="返回对话（Esc）">
+              <button
+                aria-label="返回对话"
+                onClick={() => requestLeave(onClose)}
+                className="rounded p-1 hover:bg-sidebar-accent/60"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            </TooltipHint>
           )}
         </div>
         <nav aria-label="设置分类" className="flex flex-1 flex-col gap-3 overflow-y-auto px-2 pb-3">
@@ -967,9 +970,11 @@ export function SettingsPage({
                   新建知识文件
                 </Button>
                 {kbFiles.map((f) => (
-                  <Button key={f.name} variant="ghost" size="sm" title="预览文件" onClick={() => setKbPreviewPath(`knowledge/${f.name}`)}>
-                    {f.name}
-                  </Button>
+                  <TooltipHint key={f.name} content="预览文件">
+                    <Button variant="ghost" size="sm" onClick={() => setKbPreviewPath(`knowledge/${f.name}`)}>
+                      {f.name}
+                    </Button>
+                  </TooltipHint>
                 ))}
               </div>
               <div className="grid gap-1.5">
@@ -997,32 +1002,34 @@ export function SettingsPage({
                 <div className="grid gap-1 rounded-lg bg-panel/60 p-2">
                   {kbFiles.map((f) => (
                     <div key={f.name} className="flex items-center justify-between gap-2 text-xs">
-                      <button
-                        className="truncate font-mono text-left underline-offset-2 hover:underline"
-                        title="预览文件"
-                        onClick={() => setKbPreviewPath(`knowledge/${f.name}`)}
-                      >
-                        {f.name}
-                      </button>
+                      <TooltipHint content="预览文件">
+                        <button
+                          className="truncate font-mono text-left underline-offset-2 hover:underline"
+                          onClick={() => setKbPreviewPath(`knowledge/${f.name}`)}
+                        >
+                          {f.name}
+                        </button>
+                      </TooltipHint>
                       <span className="shrink-0 text-muted-foreground">
                         {(f.sizeBytes / 1024).toFixed(1)} KB · {f.modTime}
                       </span>
-                      <button
-                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-danger-text"
-                        title={`删除 ${f.name}`}
-                        onClick={async () => {
-                          if (!window.confirm(`删除知识文件「${f.name}」？索引将同步移除该文件。`)) return;
-                          try {
-                            await Config.DeleteKnowledgeFile(f.name);
-                            setKbFiles((prev) => (prev ?? []).filter((x) => x.name !== f.name));
-                            toast.success("已删除（下次检索自动从索引移除）");
-                          } catch (e) {
-                            toast.error(`删除失败: ${errText(e)}`);
-                          }
-                        }}
-                      >
-                        删除
-                      </button>
+                      <TooltipHint content={`删除 ${f.name}`}>
+                        <button
+                          className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-danger-text"
+                          onClick={async () => {
+                            if (!window.confirm(`删除知识文件「${f.name}」？索引将同步移除该文件。`)) return;
+                            try {
+                              await Config.DeleteKnowledgeFile(f.name);
+                              setKbFiles((prev) => (prev ?? []).filter((x) => x.name !== f.name));
+                              toast.success("已删除（下次检索自动从索引移除）");
+                            } catch (e) {
+                              toast.error(`删除失败: ${errText(e)}`);
+                            }
+                          }}
+                        >
+                          删除
+                        </button>
+                      </TooltipHint>
                     </div>
                   ))}
                 </div>

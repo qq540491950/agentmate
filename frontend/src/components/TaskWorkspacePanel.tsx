@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArtifactPreview } from "@/components/ToolCallCard";
 import { CopyButton } from "@/components/MessageMarkdown";
+import { TooltipHint } from "@/components/ui/tooltip";
 import {
   App, Artifact, errText, WorkspaceChangeStatus,
   WorkspaceFileKind,
@@ -68,7 +69,7 @@ function FileRowBody({ file }: { file: WorkspaceFileInfo }) {
             </Badge>
           )}
         </span>
-        <span className="mt-0.5 block truncate text-2xs text-muted-foreground" title={file.path}>{file.path}</span>
+        <span className="mt-0.5 block truncate text-2xs text-muted-foreground">{file.path}</span>
         <span className="mt-0.5 block text-3xs text-muted-foreground">
           {fmtSize(file.size)} · {fmtTime(file.modTime)}
           {!file.previewable && " · 需外部打开"}
@@ -92,28 +93,30 @@ function FileRow({ file, sessionID, onPreview }: {
       )}
       data-file-path={file.path}
     >
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-start gap-2 px-2.5 py-2 text-left"
-        disabled={!canPreview}
-        onClick={() => canPreview && onPreview(file.path)}
-        title={canPreview ? `预览 ${file.path}` : `${file.path}（不支持内嵌预览）`}
-      >
-        <FileRowBody file={file} />
-      </button>
-      {!canPreview && (
+      <TooltipHint content={canPreview ? `预览 ${file.path}` : `${file.path}（不支持内嵌预览）`}>
         <button
           type="button"
-          className="flex shrink-0 items-center gap-1 px-2.5 text-2xs text-muted-foreground transition-colors hover:text-foreground"
-          aria-label={`在文件管理器中显示 ${file.name}`}
-          title="在文件管理器中显示"
-          onClick={() => {
-            App.RevealWorkspaceFile(sessionID, file.path).catch((e) => toast.error(`打开失败: ${errText(e)}`));
-          }}
+          className="flex min-w-0 flex-1 items-start gap-2 px-2.5 py-2 text-left"
+          aria-disabled={!canPreview || undefined}
+          onClick={() => canPreview && onPreview(file.path)}
         >
-          <ExternalLink className="h-3.5 w-3.5" />
-          显示
+          <FileRowBody file={file} />
         </button>
+      </TooltipHint>
+      {!canPreview && (
+        <TooltipHint content="在文件管理器中显示">
+          <button
+            type="button"
+            className="flex shrink-0 items-center gap-1 px-2.5 text-2xs text-muted-foreground transition-colors hover:text-foreground"
+            aria-label={`在文件管理器中显示 ${file.name}`}
+            onClick={() => {
+              App.RevealWorkspaceFile(sessionID, file.path).catch((e) => toast.error(`打开失败: ${errText(e)}`));
+            }}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            显示
+          </button>
+        </TooltipHint>
       )}
     </div>
   );
@@ -235,29 +238,31 @@ function ChangeRow({ file, sessionID, onPreview }: {
   return (
     <div className={cn("rounded-lg bg-panel/60", diffOpen && "bg-accent-soft")} data-file-path={file.path}>
       <div className="flex items-stretch">
-        <button
-          type="button"
-          className={cn(
-            "flex min-w-0 flex-1 items-start gap-2 px-2.5 py-2 text-left",
-            canPreview && "hover:bg-accent",
-          )}
-          disabled={!canPreview}
-          onClick={() => canPreview && onPreview(file.path)}
-          title={canPreview ? `预览 ${file.path}` : `${file.path}（不支持内嵌预览）`}
-        >
-          <FileRowBody file={file} />
-        </button>
-        <button
-          type="button"
-          className="flex shrink-0 items-center gap-1 px-2.5 text-2xs text-muted-foreground transition-colors hover:text-foreground"
-          aria-expanded={diffOpen}
-          aria-label={diffOpen ? `收起 ${file.name} 的行级 diff` : `查看 ${file.name} 的行级 diff`}
-          title={file.status === WorkspaceChangeStatus.ChangeDeleted ? "查看被删除的内容" : "与任务基线对比"}
-          onClick={() => setDiffOpen((v) => !v)}
-        >
-          <FileDiff className={cn("h-3.5 w-3.5", diffOpen && "text-accent-text")} />
-          Diff
-        </button>
+        <TooltipHint content={canPreview ? `预览 ${file.path}` : `${file.path}（不支持内嵌预览）`}>
+          <button
+            type="button"
+            className={cn(
+              "flex min-w-0 flex-1 items-start gap-2 px-2.5 py-2 text-left",
+              canPreview && "hover:bg-accent",
+            )}
+            aria-disabled={!canPreview || undefined}
+            onClick={() => canPreview && onPreview(file.path)}
+          >
+            <FileRowBody file={file} />
+          </button>
+        </TooltipHint>
+        <TooltipHint content={file.status === WorkspaceChangeStatus.ChangeDeleted ? "查看被删除的内容" : "与任务基线对比"}>
+          <button
+            type="button"
+            className="flex shrink-0 items-center gap-1 px-2.5 text-2xs text-muted-foreground transition-colors hover:text-foreground"
+            aria-expanded={diffOpen}
+            aria-label={diffOpen ? `收起 ${file.name} 的行级 diff` : `查看 ${file.name} 的行级 diff`}
+            onClick={() => setDiffOpen((v) => !v)}
+          >
+            <FileDiff className={cn("h-3.5 w-3.5", diffOpen && "text-accent-text")} />
+            Diff
+          </button>
+        </TooltipHint>
       </div>
       {diffOpen && <DiffView sessionID={sessionID} path={file.path} />}
     </div>
@@ -363,20 +368,23 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
                 </Badge>
               )}
             </div>
-            <div className="truncate text-3xs text-muted-foreground" title={workspace}>{workspace || "未配置工作区"}</div>
+            <TooltipHint content={workspace || "未配置工作区"}>
+              <div className="truncate text-3xs text-muted-foreground">{workspace || "未配置工作区"}</div>
+            </TooltipHint>
           </div>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="h-7 w-7"
-            title="刷新任务结果"
-            aria-label="刷新任务结果"
-            disabled={loading}
-            onClick={() => setManualNonce((n) => n + 1)}
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-          </Button>
+          <TooltipHint content="刷新任务结果">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              aria-label="刷新任务结果"
+              disabled={loading}
+              onClick={() => setManualNonce((n) => n + 1)}
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+            </Button>
+          </TooltipHint>
           <Button type="button" size="icon" variant="ghost" className="h-7 w-7" aria-label="关闭任务结果区" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
           </Button>

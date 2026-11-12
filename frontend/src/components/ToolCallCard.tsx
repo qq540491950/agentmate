@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TooltipHint } from "@/components/ui/tooltip";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -97,17 +98,17 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
       )}
       data-toolcard={name}
     >
-      <button
-        className={cn(
-          "flex w-full items-center gap-2 text-left",
-          compact
-            ? "rounded-lg px-2 py-1.5 transition-colors hover:bg-accent-soft focus-visible:bg-accent-soft"
-            : "px-3 py-2.5",
-        )}
-        aria-label={`${running ? "正在运行" : failed ? "失败" : "完成"}：${display.action}${display.target ? ` ${display.target}` : ""}`}
-        title={compact ? `${display.action}${display.target ? ` ${display.target}` : ""}` : undefined}
-        onClick={() => setOpen((v) => !v)}
-      >
+      <TooltipHint content={compact ? `${display.action}${display.target ? ` ${display.target}` : ""}` : ""}>
+        <button
+          className={cn(
+            "flex w-full items-center gap-2 text-left",
+            compact
+              ? "rounded-lg px-2 py-1.5 transition-colors hover:bg-accent-soft focus-visible:bg-accent-soft"
+              : "px-3 py-2.5",
+          )}
+          aria-label={`${running ? "正在运行" : failed ? "失败" : "完成"}：${display.action}${display.target ? ` ${display.target}` : ""}`}
+          onClick={() => setOpen((v) => !v)}
+        >
         <span className="shrink-0">
           {running ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin text-accent-text" />
@@ -128,7 +129,6 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
                     "min-w-0 truncate text-xs text-foreground",
                     display.mono && "font-mono",
                   )}
-                  title={display.target}
                 >
                   {display.target}
                 </span>
@@ -149,15 +149,18 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
             )}
             <span className="hidden min-w-0 flex-1 items-center gap-1 overflow-hidden sm:flex">
               {argChips.map(({ k, text }) => (
-                <span key={k} className="truncate rounded bg-control px-1.5 py-0.5 text-xs text-muted-foreground" title={`${k}: ${text}`}>
-                  {text}
-                </span>
+                <TooltipHint key={k} content={`${k}: ${text}`}>
+                  <span className="truncate rounded bg-control px-1.5 py-0.5 text-xs text-muted-foreground">
+                    {text}
+                  </span>
+                </TooltipHint>
               ))}
             </span>
           </>
         )}
         <ChevronRight className={`ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} />
-      </button>
+        </button>
+      </TooltipHint>
       {open && (
         <div className={cn(
           "space-y-2",
@@ -169,7 +172,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
                 <span className="text-xs font-medium text-muted-foreground">输入</span>
                 <CopyButton
                   text={inputJSON}
-                  title="复制输入参数"
+                  label="复制输入参数"
                   className="border-0 bg-transparent px-1 py-0 text-3xs opacity-60 hover:opacity-100"
                 />
               </div>
@@ -184,7 +187,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
                 <span className="text-xs font-medium text-muted-foreground">输出</span>
                 <CopyButton
                   text={outputJSON}
-                  title="复制输出结果"
+                  label="复制输出结果"
                   className="border-0 bg-transparent px-1 py-0 text-3xs opacity-60 hover:opacity-100"
                 />
               </div>
@@ -310,7 +313,7 @@ export function ArtifactPreview({ path, sessionID, onClose }: { path: string | n
             </div>
           )}
           {!loading && !error && art?.kind === "pdf" && (
-            <iframe src={art.dataUrl ?? ""} title={art.name} className="h-[60vh] w-full rounded" />
+            <iframe src={art.dataUrl ?? ""} aria-label={art.name} className="h-[60vh] w-full rounded" />
           )}
           {!loading && !error && art?.kind === "markdown" && (
             <MessageMarkdown content={art.text ?? ""} />

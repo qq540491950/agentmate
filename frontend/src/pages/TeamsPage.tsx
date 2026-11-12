@@ -347,7 +347,12 @@ export function TeamsPage() {
                         <SelectTrigger><SelectValue placeholder="选择模型" /></SelectTrigger>
                         <SelectContent>
                           {(providerOf(editing.providerId)?.models ?? []).map((m) => (
-                            <SelectItem key={m.id} value={m.id} title={m.id}>{modelLabel(m)}</SelectItem>
+                            <SelectItem key={m.id} value={m.id}>
+                              {modelLabel(m)}
+                              {modelLabel(m) !== m.id && (
+                                <span className="text-muted-foreground"> · {m.id}</span>
+                              )}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>

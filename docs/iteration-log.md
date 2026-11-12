@@ -4,6 +4,24 @@
 
 ## 视觉测试与体验设计
 
+### 第二百七十八轮迭代：统一悬浮提示为自绘浮层（已实施）
+
+依据：用户截图显示项目内大量鼠标悬浮提示仍是 WebView2 原生 `title` 气泡（方角、细边、系统排版），与上下文占用提示的圆角浮层不一致。前端生产源码中约 96 处 `title=`，绝大多数会生成真实 DOM 悬浮提示；仅上下文占用使用 Radix Tooltip。
+
+**实现要点**
+
+- `TooltipContent` 默认改为 `overlay` 底、`shadow-pop`、8px 圆角、12px 文字、无箭头/边框的共享浮层；App 根部统一 `TooltipProvider`（450ms、跳过延迟 300ms），组件隔离渲染时自动回退同一配置。
+- 新增 `TooltipHint`，统一短提示、多行内容、长路径、Dropdown/Popover 触发器与 disabled 触发器；`Button` 补 ref 透传，保证 Radix 锚点稳定。
+- 清空生产 TSX 中用于悬停的原生 `title`，覆盖顶栏、会话侧栏、消息操作、工具调用、任务结果区、Composer、设置与管理页；TurnRail 手写标签复用同一浮层样式。
+- 特例处理：`SelectItem` 的模型 ID 改为选项内可见副文案；PDF iframe 的 `title` 改为 `aria-label`；移除整段用户消息上的冗余时间提示，避免巨大悬浮热区。
+- 新增 `tooltipAudit.test.ts`：用 TypeScript AST 禁止新的 DOM 原生 `title` 悬浮提示，并锁定 `bg-overlay` / `shadow-pop` / 无边框的外观契约。
+
+**测试证据**
+
+- 浏览器桩实测深色浮动层：背景 `rgb(76, 86, 106)`、文字 `rgb(236, 239, 244)`、8px 圆角、无箭头；Radix 为触发器写入 `aria-describedby`，内容 `role="tooltip"`。
+- 浅色主题实测为白色 `overlay` + 阴影，文字与圆角保持一致；Dropdown（更多操作、主题）与 Popover（权限、模型）触发器均能正常打开，未被 Tooltip 抢占点击。
+- `npx tsc --noEmit` 通过；`npm test` 42 个文件 / 299 个用例全绿；`npm run build` 通过（2336 modules）。
+
 ### 第二百七十七轮迭代：终端 Shell 测试按平台拆分（已实施）
 
 依据：`v0.6.11` 推送后，`main` CI 的 Ubuntu 后端任务在 `internal/terminal` 失败。用例用 Windows 绝对路径构造假 host，但 `filepath.IsAbs` / `Clean` / `Base` 按运行平台解析，Linux 上这些路径不被视为绝对路径，导致自动检测为空，PowerShell 与 Git Bash 的参数断言也不成立。

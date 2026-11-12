@@ -3,6 +3,7 @@ import { Plus, Trash2, Sparkles, FolderDown, ListTodo } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
+import { TooltipHint } from "@/components/ui/tooltip";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -109,7 +110,9 @@ export function SkillsPage() {
                   </div>
                 </div>
                 {readOnly ? (
-                  <span className="text-xs text-muted-foreground" title="来自 .agents/skills，修改请编辑对应目录的 SKILL.md">只读</span>
+                  <TooltipHint content="来自 .agents/skills，修改请编辑对应目录的 SKILL.md">
+                    <span className="text-xs text-muted-foreground">只读</span>
+                  </TooltipHint>
                 ) : (
                   <div className="flex items-center gap-1">
                     <Button variant="outline" size="sm" onClick={() => setEditing({ ...s })}>编辑</Button>

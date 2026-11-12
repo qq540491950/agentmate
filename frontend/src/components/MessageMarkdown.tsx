@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy } from "lucide-react";
+import { TooltipHint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /* ---------------------------------------------------------------------------
@@ -71,41 +72,43 @@ function HighlightedCode({ code, lang }: { code: string; lang?: string }) {
   );
 }
 
-function CopyButton({ text, className, iconOnly = false, title }: {
+function CopyButton({ text, className, iconOnly = false, label: accessibleLabel }: {
   text: string;
   className?: string;
   iconOnly?: boolean;
-  title?: string;
+  label?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const label = copied ? "已复制" : "复制";
+  const tooltip = accessibleLabel ?? label;
   return (
-    <button
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md bg-panel/80 px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-        className,
-      )}
-      title={title ?? label}
-      aria-label={title ?? label}
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(text);
-        } catch {
-          // Clipboard API may be unavailable; fall back silently.
-          const ta = document.createElement("textarea");
-          ta.value = text;
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand("copy");
-          ta.remove();
-        }
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-    >
-      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-      {!iconOnly && label}
-    </button>
+    <TooltipHint content={tooltip}>
+      <button
+        className={cn(
+          "inline-flex items-center gap-1 rounded-md bg-panel/80 px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+          className,
+        )}
+        aria-label={tooltip}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(text);
+          } catch {
+            // Clipboard API may be unavailable; fall back silently.
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            ta.remove();
+          }
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+      >
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        {!iconOnly && label}
+      </button>
+    </TooltipHint>
   );
 }
 

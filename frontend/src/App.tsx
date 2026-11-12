@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TopBar } from "@/components/layout/TopBar";
 import {
@@ -142,38 +143,39 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      <TopBar />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <main className="min-w-0 flex-1 overflow-hidden">
-          {/* key={view} resets the boundary on navigation: one crashed view must
-              not keep the other behind the error screen. */}
-          <ErrorBoundary key={view}>
-            <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
-              {view === "chat" ? (
-                <ChatPage
-                  themePreset={prefs.themePreset}
-                  themeMode={prefs.themeMode}
-                  onAppearanceChange={changeAppearance}
-                  onOpenHelp={() => setHelpOpen(true)}
-                  onOpenSettings={openSettings}
-                  version={version}
-                />
-              ) : (
-                <SettingsPage
-                  initialTab={settingsTab}
-                  onClose={() => setView("chat")}
-                  version={version}
-                  onAppearanceChange={onAppearanceChange}
-                  onRegisterLeaveGuard={registerSettingsLeaveGuard}
-                />
-              )}
-            </Suspense>
-          </ErrorBoundary>
-        </main>
-      </div>
+    <TooltipProvider delayDuration={450} skipDelayDuration={300}>
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+        <TopBar />
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <main className="min-w-0 flex-1 overflow-hidden">
+            {/* key={view} resets the boundary on navigation: one crashed view must
+                not keep the other behind the error screen. */}
+            <ErrorBoundary key={view}>
+              <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
+                {view === "chat" ? (
+                  <ChatPage
+                    themePreset={prefs.themePreset}
+                    themeMode={prefs.themeMode}
+                    onAppearanceChange={changeAppearance}
+                    onOpenHelp={() => setHelpOpen(true)}
+                    onOpenSettings={openSettings}
+                    version={version}
+                  />
+                ) : (
+                  <SettingsPage
+                    initialTab={settingsTab}
+                    onClose={() => setView("chat")}
+                    version={version}
+                    onAppearanceChange={onAppearanceChange}
+                    onRegisterLeaveGuard={registerSettingsLeaveGuard}
+                  />
+                )}
+              </Suspense>
+            </ErrorBoundary>
+          </main>
+        </div>
 
-      <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+        <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="text-base">快捷键与命令</DialogTitle>
@@ -205,7 +207,8 @@ export default function App() {
           </DialogContent>
         </Dialog>
 
-      <Toaster position="top-center" richColors />
-    </div>
+        <Toaster position="top-center" richColors />
+      </div>
+    </TooltipProvider>
   );
 }

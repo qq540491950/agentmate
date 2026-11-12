@@ -52,7 +52,7 @@ import { TurnRail, type RailTurn } from "@/components/chat/TurnRail";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
 import { SessionRowLabel } from "@/components/chat/SessionRowLabel";
 import { ContextRing } from "@/components/chat/ContextRing";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from "@/components/ui/tooltip";
 import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
 import { ReasoningEffortPanel } from "@/components/chat/ReasoningEffortPanel";
@@ -2210,39 +2210,42 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       <span className={SESSION_ROW_ACTIONS_CLASS} data-slot="session-row-actions">
         {/* Frequent state toggles stay one click; the rest collapse into one
             menu so the row keeps four controls instead of six. */}
-        <button
-          className="rounded p-0.5 hover:bg-foreground/10"
-          title={s.archived ? "取消归档" : "归档此会话"}
-          aria-label={s.archived ? "取消归档" : "归档此会话"}
-          onClick={(e) => {
-            e.stopPropagation();
-            Chat.ArchiveSession(s.id, !s.archived).then(reloadSessions).catch((e2) => toast.error(`归档失败: ${errText(e2)}`));
-          }}
-        >
-          <Archive className="h-3.5 w-3.5" />
-        </button>
-        <button
-          className="rounded p-0.5 hover:bg-foreground/10"
-          title={s.pinned ? "取消置顶" : "置顶此会话"}
-          aria-label={s.pinned ? "取消置顶" : "置顶此会话"}
-          onClick={(e) => {
-            e.stopPropagation();
-            Chat.PinSession(s.id, !s.pinned).then(reloadSessions).catch((e2) => toast.error(`置顶失败: ${errText(e2)}`));
-          }}
-        >
-          {s.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-        </button>
+        <TooltipHint content={s.archived ? "取消归档" : "归档此会话"}>
+          <button
+            className="rounded p-0.5 hover:bg-foreground/10"
+            aria-label={s.archived ? "取消归档" : "归档此会话"}
+            onClick={(e) => {
+              e.stopPropagation();
+              Chat.ArchiveSession(s.id, !s.archived).then(reloadSessions).catch((e2) => toast.error(`归档失败: ${errText(e2)}`));
+            }}
+          >
+            <Archive className="h-3.5 w-3.5" />
+          </button>
+        </TooltipHint>
+        <TooltipHint content={s.pinned ? "取消置顶" : "置顶此会话"}>
+          <button
+            className="rounded p-0.5 hover:bg-foreground/10"
+            aria-label={s.pinned ? "取消置顶" : "置顶此会话"}
+            onClick={(e) => {
+              e.stopPropagation();
+              Chat.PinSession(s.id, !s.pinned).then(reloadSessions).catch((e2) => toast.error(`置顶失败: ${errText(e2)}`));
+            }}
+          >
+            {s.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+          </button>
+        </TooltipHint>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className="rounded p-0.5 hover:bg-foreground/10"
-              title="会话操作"
-              aria-label="会话操作"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </button>
-          </DropdownMenuTrigger>
+          <TooltipHint content="会话操作" wrap>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="rounded p-0.5 hover:bg-foreground/10"
+                aria-label="会话操作"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+          </TooltipHint>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => forkSession(s)}>
               <GitFork className="mr-2 h-3.5 w-3.5" /> 分叉此会话
@@ -2270,33 +2273,36 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           <span className="text-xs font-semibold text-muted-foreground">
             项目
           </span>
-          <button
-            title="添加项目（选择一个目录）"
-            aria-label="添加项目"
-            onClick={addProject}
-            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <FolderPlus className="h-3.5 w-3.5" />
-          </button>
+          <TooltipHint content="添加项目（选择一个目录）">
+            <button
+              aria-label="添加项目"
+              onClick={addProject}
+              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <FolderPlus className="h-3.5 w-3.5" />
+            </button>
+          </TooltipHint>
           <div className="ml-auto flex items-center gap-1">
-            <button
-              title="新建对话（⌘N）"
-              aria-label="新建对话"
-              onClick={createDirectSession}
-              className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-panel/60 px-2 text-sm leading-5 font-medium text-foreground transition-colors hover:bg-accent"
-            >
-              <SquarePen className="h-3 w-3" />
-              新对话
-            </button>
-            <button
-              title="折叠对话列表（⌘B）"
-              aria-label="折叠对话列表"
-              aria-expanded={!sidebarCollapsed}
-              onClick={toggleSidebar}
-              className="flex h-7 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <PanelLeftClose className="h-3.5 w-3.5" />
-            </button>
+            <TooltipHint content="新建对话（⌘N）">
+              <button
+                aria-label="新建对话"
+                onClick={createDirectSession}
+                className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-panel/60 px-2 text-sm leading-5 font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                <SquarePen className="h-3 w-3" />
+                新对话
+              </button>
+            </TooltipHint>
+            <TooltipHint content="折叠对话列表（⌘B）">
+              <button
+                aria-label="折叠对话列表"
+                aria-expanded={!sidebarCollapsed}
+                onClick={toggleSidebar}
+                className="flex h-7 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <PanelLeftClose className="h-3.5 w-3.5" />
+              </button>
+            </TooltipHint>
           </div>
         </div>
         <div className="px-3 pb-3">
@@ -2346,61 +2352,64 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                             : "hover:bg-accent hover:text-foreground",
                         )}
                       >
-                        <button
-                          type="button"
-                          aria-expanded={!collapsed}
-                          aria-label={
-                            isDefault
-                              ? `对话分组，${collapsed ? "已收起" : "已展开"}`
-                              : isPinned
-                                ? `置顶对话，${collapsed ? "已收起" : "已展开"}`
-                                : `项目「${g.label}」，${collapsed ? "已收起" : "已展开"}`
-                          }
-                          title={collapsed ? `展开「${g.label}」` : `收起「${g.label}」`}
-                          data-project-state={collapsed ? "closed" : "open"}
-                          onClick={() => setCollapsedGroupKeys((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(g.key)) next.delete(g.key);
-                            else next.add(g.key);
-                            return next;
-                          })}
-                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-md leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                        >
-                          {isPinned
-                            ? <Pin className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                            : isDefault
-                              ? <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                              : collapsed
-                                ? <Folder className="h-4 w-4 shrink-0 opacity-70" />
-                                : <FolderOpen className="h-4 w-4 shrink-0 opacity-70" />}
-                          <span className="min-w-0 flex-1 truncate font-medium">{g.label}</span>
-                        </button>
+                        <TooltipHint content={collapsed ? `展开「${g.label}」` : `收起「${g.label}」`}>
+                          <button
+                            type="button"
+                            aria-expanded={!collapsed}
+                            aria-label={
+                              isDefault
+                                ? `对话分组，${collapsed ? "已收起" : "已展开"}`
+                                : isPinned
+                                  ? `置顶对话，${collapsed ? "已收起" : "已展开"}`
+                                  : `项目「${g.label}」，${collapsed ? "已收起" : "已展开"}`
+                            }
+                            data-project-state={collapsed ? "closed" : "open"}
+                            onClick={() => setCollapsedGroupKeys((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(g.key)) next.delete(g.key);
+                              else next.add(g.key);
+                              return next;
+                            })}
+                            className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-md leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                          >
+                            {isPinned
+                              ? <Pin className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                              : isDefault
+                                ? <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                                : collapsed
+                                  ? <Folder className="h-4 w-4 shrink-0 opacity-70" />
+                                  : <FolderOpen className="h-4 w-4 shrink-0 opacity-70" />}
+                            <span className="min-w-0 flex-1 truncate font-medium">{g.label}</span>
+                          </button>
+                        </TooltipHint>
                         {hasActions && (
                           <span className={SESSION_ROW_ACTIONS_CLASS} data-slot="project-row-actions">
                             {project && (
-                              <button
-                                className="rounded p-0.5 hover:bg-foreground/10"
-                                title="在此项目中新建对话"
-                                aria-label={`在项目「${g.label}」中新建对话`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  createProjectSession(project.id);
-                                }}
-                              >
-                                <Plus className="h-3.5 w-3.5" />
-                              </button>
+                              <TooltipHint content="在此项目中新建对话">
+                                <button
+                                  className="rounded p-0.5 hover:bg-foreground/10"
+                                  aria-label={`在项目「${g.label}」中新建对话`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    createProjectSession(project.id);
+                                  }}
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipHint>
                             )}
                             <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <button
-                                  title={project ? "管理项目" : "目录操作"}
-                                  aria-label={project ? `管理项目「${g.label}」` : `目录「${g.label}」操作`}
-                                  className="rounded p-0.5 hover:bg-foreground/10"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <MoreHorizontal className="h-3.5 w-3.5" />
-                                </button>
-                              </DropdownMenuTrigger>
+                              <TooltipHint content={project ? "管理项目" : "目录操作"} wrap>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    aria-label={project ? `管理项目「${g.label}」` : `目录「${g.label}」操作`}
+                                    className="rounded p-0.5 hover:bg-foreground/10"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <MoreHorizontal className="h-3.5 w-3.5" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                              </TooltipHint>
                               <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                                 {project ? (
                                   <>
@@ -2479,26 +2488,27 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                       >
                         <ChevronDown className="h-3 w-3" /> 已归档会话（{archivedSessions.length}）
                       </button>
-                      <button
-                        className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-accent hover:text-danger-text"
-                        title="删除全部已归档会话（任务文件保留）"
-                        onClick={() => setConfirmRequest({
-                          title: `清空全部已归档会话（${archivedSessions.length} 条）？`,
-                          description: "会话与消息将不可恢复，任务工作区中的文件会保留。",
-                          confirmText: "清空",
-                          action: async () => {
-                            try {
-                              const n = await Chat.DeleteArchivedSessions();
-                              toast.success(`已清空 ${n} 条归档会话`);
-                              reloadSessions();
-                            } catch (e) {
-                              toast.error(`清空失败: ${errText(e)}`);
-                            }
-                          },
-                        })}
-                      >
-                        清空
-                      </button>
+                      <TooltipHint content="删除全部已归档会话（任务文件保留）">
+                        <button
+                          className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-accent hover:text-danger-text"
+                          onClick={() => setConfirmRequest({
+                            title: `清空全部已归档会话（${archivedSessions.length} 条）？`,
+                            description: "会话与消息将不可恢复，任务工作区中的文件会保留。",
+                            confirmText: "清空",
+                            action: async () => {
+                              try {
+                                const n = await Chat.DeleteArchivedSessions();
+                                toast.success(`已清空 ${n} 条归档会话`);
+                                reloadSessions();
+                              } catch (e) {
+                                toast.error(`清空失败: ${errText(e)}`);
+                              }
+                            },
+                          })}
+                        >
+                          清空
+                        </button>
+                      </TooltipHint>
                       {archivedSessions.map((s) => renderSessionRow(s, false))}
                     </>
                   ) : (
@@ -2527,16 +2537,16 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       {/* Resize handle: a transparent 6px strip between chrome and canvas. Pointer capture
           keeps the drag alive outside the strip; the keyboard path keeps the
           splitter reachable without a mouse. */}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="拖动调整对话列表宽度"
-        aria-valuemin={SIDEBAR_MIN_WIDTH}
-        aria-valuemax={sidebarMaxWidth(window.innerWidth)}
-        aria-valuenow={sidebarWidth}
-        tabIndex={0}
-        title="拖动调整对话列表宽度"
-        onPointerDown={startSidebarResize}
+      <TooltipHint content="拖动调整对话列表宽度" side="right">
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="拖动调整对话列表宽度"
+          aria-valuemin={SIDEBAR_MIN_WIDTH}
+          aria-valuemax={sidebarMaxWidth(window.innerWidth)}
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          onPointerDown={startSidebarResize}
         onPointerMove={moveSidebarResize}
         onPointerUp={endSidebarResize}
         onPointerCancel={endSidebarResize}
@@ -2547,7 +2557,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           "hover:bg-ring/50 focus-visible:bg-ring/60 focus-visible:outline-none",
           resizingSidebar && "bg-ring/60",
         )}
-      />
+        />
+      </TooltipHint>
       </>
       )}
 
@@ -2556,15 +2567,16 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         <div className="flex h-12 items-center justify-between bg-canvas px-4">
           <div className="flex min-w-0 items-center gap-2">
             {sidebarCollapsed && (
-              <button
-                title="展开对话列表（⌘B）"
-                aria-label="展开对话列表"
-                aria-expanded={false}
-                onClick={toggleSidebar}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <PanelLeftOpen className="h-4 w-4" />
-              </button>
+              <TooltipHint content="展开对话列表（⌘B）">
+                <button
+                  aria-label="展开对话列表"
+                  aria-expanded={false}
+                  onClick={toggleSidebar}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </button>
+              </TooltipHint>
             )}
             <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="max-w-[360px] truncate text-sm font-semibold">{active ? active.title : "AgentMate"}</span>
@@ -2577,41 +2589,44 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 // Configurable targets deep-link into the settings hub.
                 const tab: SettingsTab | undefined = active.targetType === "agent" ? "agents" : active.targetType === "team" ? "teams" : undefined;
                 return (
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-md bg-panel px-1.5 py-0.5 text-2xs text-muted-foreground",
-                      tab && "cursor-pointer transition-colors hover:bg-accent hover:text-foreground",
-                    )}
-                    title={tab ? "管理此配置" : undefined}
-                    onClick={tab ? () => onOpenSettings(tab) : undefined}
-                  >
-                    {label}: {targetLabel}
-                  </span>
+                  <TooltipHint content={tab ? "管理此配置" : ""}>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-md bg-panel px-1.5 py-0.5 text-2xs text-muted-foreground",
+                        tab && "cursor-pointer transition-colors hover:bg-accent hover:text-foreground",
+                      )}
+                      onClick={tab ? () => onOpenSettings(tab) : undefined}
+                    >
+                      {label}: {targetLabel}
+                    </span>
+                  </TooltipHint>
                 );
               })()
             )}
             {active && (
-              <button
-                className={cn(
-                  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                  filterOpen && "bg-accent-soft text-accent-text",
-                )}
-                title="在会话内搜索消息（⌘F）"
-                aria-label="在会话内搜索消息"
-                onClick={toggleFilter}
-              >
-                <Search className="h-3.5 w-3.5" />
-              </button>
+              <TooltipHint content="在会话内搜索消息（⌘F）">
+                <button
+                  className={cn(
+                    "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                    filterOpen && "bg-accent-soft text-accent-text",
+                  )}
+                  aria-label="在会话内搜索消息"
+                  onClick={toggleFilter}
+                >
+                  <Search className="h-3.5 w-3.5" />
+                </button>
+              </TooltipHint>
             )}
             {active && (
-              <button
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                title="重命名会话"
-                aria-label="重命名会话"
-                onClick={() => { setRenaming(active); setRenameText(active.title); }}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
+              <TooltipHint content="重命名会话">
+                <button
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  aria-label="重命名会话"
+                  onClick={() => { setRenaming(active); setRenameText(active.title); }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              </TooltipHint>
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -2625,11 +2640,13 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 {/* Export/memory/stats live in one overflow menu: six icon
                     buttons crowded the header on narrow windows. */}
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" title="更多操作" aria-label="更多操作">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
+                  <TooltipHint content="更多操作" wrap>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon-sm" aria-label="更多操作">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipHint>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={copyConversation}>
                       <ClipboardCopy className="h-4 w-4" /> 复制整段对话
@@ -2657,15 +2674,16 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button
-                  variant={workspacePanelOpen ? "secondary" : "ghost"}
-                  size="icon-sm"
-                  title={workspacePanelOpen ? "收起任务结果区" : "打开任务结果区"}
-                  aria-label={workspacePanelOpen ? "收起任务结果区" : "打开任务结果区"}
-                  onClick={() => setWorkspacePanelOpen((v) => !v)}
-                >
-                  <PanelRightOpen className="h-4 w-4" />
-                </Button>
+                <TooltipHint content={workspacePanelOpen ? "收起任务结果区" : "打开任务结果区"}>
+                  <Button
+                    variant={workspacePanelOpen ? "secondary" : "ghost"}
+                    size="icon-sm"
+                    aria-label={workspacePanelOpen ? "收起任务结果区" : "打开任务结果区"}
+                    onClick={() => setWorkspacePanelOpen((v) => !v)}
+                  >
+                    <PanelRightOpen className="h-4 w-4" />
+                  </Button>
+                </TooltipHint>
               </>
             )}
           </div>
@@ -2685,13 +2703,14 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             {filterQ && (
               <span className="shrink-0 text-xs text-muted-foreground">{filteredMessages.length}/{messages.length} 条</span>
             )}
-            <button
-              className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
-              title="清除并关闭"
-              onClick={toggleFilter}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+            <TooltipHint content="清除并关闭">
+              <button
+                className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
+                onClick={toggleFilter}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </TooltipHint>
           </div>
         )}
         {/* The floater anchors to the message viewport: a growing composer
@@ -2700,11 +2719,11 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           {!atBottom && messages.length > 0 && (
             // Circular floater inside the message area: an arrow when idle,
             // breathing amber dots while the turn runs, arrow again on hover.
-            <button
-              type="button"
-              title={running ? "正在生成，回到底部" : "回到底部"}
-              aria-label="回到底部"
-              onClick={() => bottomRef.current?.scrollIntoView({ block: "end" })}
+            <TooltipHint content={running ? "正在生成，回到底部" : "回到底部"}>
+              <button
+                type="button"
+                aria-label="回到底部"
+                onClick={() => bottomRef.current?.scrollIntoView({ block: "end" })}
               className={cn(
                 "group absolute bottom-4 left-1/2 z-20 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full bg-overlay text-muted-foreground shadow-pop transition-all duration-200 hover:scale-105 hover:bg-accent hover:text-foreground active:scale-95",
                 running && "bg-warning-soft text-warning",
@@ -2727,6 +2746,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 )}
               />
             </button>
+            </TooltipHint>
           )}
           <div className="pointer-events-none absolute inset-0 z-10 hidden md:block">
             <TurnRail
@@ -3139,40 +3159,45 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               )}
               <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5">
                 <div className="flex items-center gap-0.5">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    title={!active || modelMultimodal
+                  <TooltipHint
+                    content={!active || modelMultimodal
                       ? "添加图片附件（png/jpeg/webp/gif，最大 6MB）"
                       : "添加图片附件；当前模型未标记多模态，图片可能无法被识别"}
-                    aria-label="添加图片附件"
-                    disabled={(!active && providerCount === 0) || running}
-                    onClick={() => fileRef.current?.click()}
+                    wrap
                   >
-                    <Plus className="h-4 w-4" />
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="添加图片附件"
+                      disabled={(!active && providerCount === 0) || running}
+                      onClick={() => fileRef.current?.click()}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </TooltipHint>
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        disabled={(!active && providerCount === 0) || executionPolicyBusy}
-                        aria-label={`本会话权限：${composerPolicyLabel}`}
-                        title={`本会话权限：${composerPolicyLabel}。点击切换`}
-                        className={cn(
-                          "flex h-7 max-w-[148px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
-                          composerExecutionPolicy.sandboxProfile === "danger-full-access"
-                            ? "bg-danger-soft text-danger-text hover:bg-overlay"
-                            : "text-muted-foreground hover:bg-overlay hover:text-foreground",
-                          ((!active && providerCount === 0) || executionPolicyBusy) && "cursor-not-allowed opacity-50",
-                        )}
-                      >
-                        <ComposerProfileIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                        <span className="truncate">
-                          {composerProfile ? (composerProfile.shortLabel ?? composerProfile.label) : "自定义"}
-                        </span>
-                        <ChevronDown className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
-                      </button>
-                    </DropdownMenuTrigger>
+                    <TooltipHint content={`本会话权限：${composerPolicyLabel}。点击切换`} wrap>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          disabled={(!active && providerCount === 0) || executionPolicyBusy}
+                          aria-label={`本会话权限：${composerPolicyLabel}`}
+                          className={cn(
+                            "flex h-7 max-w-[148px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
+                            composerExecutionPolicy.sandboxProfile === "danger-full-access"
+                              ? "bg-danger-soft text-danger-text hover:bg-overlay"
+                              : "text-muted-foreground hover:bg-overlay hover:text-foreground",
+                            ((!active && providerCount === 0) || executionPolicyBusy) && "cursor-not-allowed opacity-50",
+                          )}
+                        >
+                          <ComposerProfileIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          <span className="truncate">
+                            {composerProfile ? (composerProfile.shortLabel ?? composerProfile.label) : "自定义"}
+                          </span>
+                          <ChevronDown className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
+                        </button>
+                      </DropdownMenuTrigger>
+                    </TooltipHint>
                     <DropdownMenuContent align="start" className="w-80">
                       <DropdownMenuLabel>本会话权限</DropdownMenuLabel>
                       <DropdownMenuRadioGroup
@@ -3221,40 +3246,32 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5">
                   {contextTip && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          {/* A button (not a bare div) so the numbers are reachable
-                              by keyboard: Radix opens the card on focus, and the
-                              flattened aria-label carries them even when the
-                              hover card never renders. */}
-                          <button
-                            type="button"
-                            aria-label={contextTip.ariaLabel}
-                            className="hidden shrink-0 items-center rounded-md px-1 py-0.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 sm:flex"
-                          >
-                            {contextUsage
-                              ? <ContextRing usage={contextUsage} />
-                              : <Coins className="h-3.5 w-3.5 text-muted-foreground" />}
-                          </button>
-                        </TooltipTrigger>
-                        {/* Overlay surface per the design system (a rounded
-                            card, not an inverted block); text is centered like
-                            the reference bubble. hideArrow drops the pointer
-                            diamond entirely — the card is a panel, not a
-                            speech bubble. */}
-                        <TooltipContent
-                          side="top"
-                          hideArrow
-                          className="flex-col items-center gap-0.5 bg-overlay px-3 py-2 text-center text-foreground shadow-pop"
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        {/* A button (not a bare div) so the numbers are reachable
+                            by keyboard: Radix opens the card on focus, and the
+                            flattened aria-label carries them even when the
+                            hover card never renders. */}
+                        <button
+                          type="button"
+                          aria-label={contextTip.ariaLabel}
+                          className="hidden shrink-0 items-center rounded-md px-1 py-0.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 sm:flex"
                         >
-                          <span className="font-medium">{contextTip.title}</span>
-                          {contextTip.rows.map((line) => (
-                            <span key={line}>{line}</span>
-                          ))}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                          {contextUsage
+                            ? <ContextRing usage={contextUsage} />
+                            : <Coins className="h-3.5 w-3.5 text-muted-foreground" />}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="top"
+                        className="flex-col items-center gap-0.5 text-center"
+                      >
+                        <span className="font-medium">{contextTip.title}</span>
+                        {contextTip.rows.map((line) => (
+                          <span key={line}>{line}</span>
+                        ))}
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                   {composerModels.length > 0 && (
                     <Popover
@@ -3266,31 +3283,35 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         }
                       }}
                     >
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          className={cn(
-                            "flex h-8 min-w-0 max-w-[360px] items-center gap-1.5 rounded-lg bg-control px-2.5 text-ui text-foreground transition-colors hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 md:min-w-[180px]",
-                            intelligenceOpen && "text-muted-foreground",
-                          )}
-                          title={`${active ? "本会话" : "新会话"}模型与思考强度：${composerModelDisplay}${availableLevels.length > 0 ? ` · ${levelLabel(nextReasoningLevel)}` : ""}。点击调整`}
-                          aria-label={availableLevels.length > 0 ? "选择推理强度" : "选择模型"}
-                        >
-                          {intelligenceOpen ? (
-                            <span className="min-w-0 flex-1 truncate text-center">
-                              {intelligenceView === "model" ? "选择模型" : "选择推理强度"}
-                            </span>
-                          ) : (
-                            <>
-                              <span className="min-w-0 truncate">{composerModelDisplay}</span>
-                              {availableLevels.length > 0 && (
-                                <span className="shrink-0 text-muted-foreground">{nextReasoningLabel}</span>
-                              )}
-                            </>
-                          )}
-                          <ChevronDown className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
-                        </button>
-                      </PopoverTrigger>
+                      <TooltipHint
+                        content={`${active ? "本会话" : "新会话"}模型与思考强度：${composerModelDisplay}${availableLevels.length > 0 ? ` · ${levelLabel(nextReasoningLevel)}` : ""}。点击调整`}
+                        wrap
+                      >
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className={cn(
+                              "flex h-8 min-w-0 max-w-[360px] items-center gap-1.5 rounded-lg bg-control px-2.5 text-ui text-foreground transition-colors hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 md:min-w-[180px]",
+                              intelligenceOpen && "text-muted-foreground",
+                            )}
+                            aria-label={availableLevels.length > 0 ? "选择推理强度" : "选择模型"}
+                          >
+                            {intelligenceOpen ? (
+                              <span className="min-w-0 flex-1 truncate text-center">
+                                {intelligenceView === "model" ? "选择模型" : "选择推理强度"}
+                              </span>
+                            ) : (
+                              <>
+                                <span className="min-w-0 truncate">{composerModelDisplay}</span>
+                                {availableLevels.length > 0 && (
+                                  <span className="shrink-0 text-muted-foreground">{nextReasoningLabel}</span>
+                                )}
+                              </>
+                            )}
+                            <ChevronDown className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
+                          </button>
+                        </PopoverTrigger>
+                      </TooltipHint>
                       <PopoverContent
                         side="top"
                         align="end"
@@ -3327,14 +3348,16 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                                       setIntelligenceOpen(false);
                                     }}
                                   >
-                                    <span className="min-w-0 flex-1 truncate" title={`${rowLabel} · ${m.id}`}>
-                                      {modelLabel(m)}
-                                      {composerProviderName && (
-                                        <span className={cn("text-muted-foreground", selected && "text-accent-text/80")}>
-                                          {` · ${composerProviderName}`}
-                                        </span>
-                                      )}
-                                    </span>
+                                    <TooltipHint content={`${rowLabel} · ${m.id}`}>
+                                      <span className="min-w-0 flex-1 truncate">
+                                        {modelLabel(m)}
+                                        {composerProviderName && (
+                                          <span className={cn("text-muted-foreground", selected && "text-accent-text/80")}>
+                                            {` · ${composerProviderName}`}
+                                          </span>
+                                        )}
+                                      </span>
+                                    </TooltipHint>
                                     {selected && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
                                   </button>
                                 );
@@ -3355,27 +3378,29 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                     </Popover>
                   )}
                   {running ? (
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="h-7 w-7 rounded-full"
-                      title="停止生成（Esc）"
-                      aria-label="停止生成"
-                      onClick={cancel}
-                    >
-                      <Square className="h-3.5 w-3.5 fill-current" />
-                    </Button>
+                    <TooltipHint content="停止生成（Esc）">
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="h-7 w-7 rounded-full"
+                        aria-label="停止生成"
+                        onClick={cancel}
+                      >
+                        <Square className="h-3.5 w-3.5 fill-current" />
+                      </Button>
+                    </TooltipHint>
                   ) : (
-                    <Button
-                      size="icon"
-                      className="h-7 w-7 rounded-full"
-                      title={editing ? "重新发送（Enter）" : "发送（Enter）"}
-                      aria-label={editing ? "重新发送" : "发送"}
-                      onClick={() => send()}
-                      disabled={(!active && providerCount === 0) || !input.trim()}
-                    >
-                      <ArrowUp className="h-3.5 w-3.5" />
-                    </Button>
+                    <TooltipHint content={editing ? "重新发送（Enter）" : "发送（Enter）"} wrap>
+                      <Button
+                        size="icon"
+                        className="h-7 w-7 rounded-full"
+                        aria-label={editing ? "重新发送" : "发送"}
+                        onClick={() => send()}
+                        disabled={(!active && providerCount === 0) || !input.trim()}
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipHint>
                   )}
                 </div>
               </div>

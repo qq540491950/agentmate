@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { TooltipHint } from "@/components/ui/tooltip";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -364,22 +365,23 @@ export function AgentsPage() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  title="导出为分享文件"
-                  aria-label="导出为分享文件"
-                  onClick={async () => {
-                    try {
-                      const p = await App.ExportAgent(a.id);
-                      toast.success(`已导出: ${p}`);
-                    } catch (err) {
-                      toast.error(`导出失败: ${errText(err)}`);
-                    }
-                  }}
-                >
-                  <Upload className="h-4 w-4 text-muted-foreground" />
-                </Button>
+                <TooltipHint content="导出为分享文件">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="导出为分享文件"
+                    onClick={async () => {
+                      try {
+                        const p = await App.ExportAgent(a.id);
+                        toast.success(`已导出: ${p}`);
+                      } catch (err) {
+                        toast.error(`导出失败: ${errText(err)}`);
+                      }
+                    }}
+                  >
+                    <Upload className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </TooltipHint>
                 <Button
                   variant="outline"
                   size="sm"
@@ -387,15 +389,16 @@ export function AgentsPage() {
                 >
                   编辑
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  title="删除 Agent"
-                  aria-label="删除 Agent"
-                  onClick={() => remove(a)}
-                >
-                  <Trash2 className="h-4 w-4 text-muted-foreground" />
-                </Button>
+                <TooltipHint content="删除 Agent">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="删除 Agent"
+                    onClick={() => remove(a)}
+                  >
+                    <Trash2 className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </TooltipHint>
               </div>
             </div>
           );
@@ -458,41 +461,45 @@ export function AgentsPage() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium">{r.name}</span>
-                <span className="max-w-[280px] truncate font-mono text-xs text-muted-foreground" title={r.cardUrl}>{r.cardUrl}</span>
+                <TooltipHint content={r.cardUrl}>
+                  <span className="max-w-[280px] truncate font-mono text-xs text-muted-foreground">{r.cardUrl}</span>
+                </TooltipHint>
               </div>
               {r.description && (
                 <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{r.description}</p>
               )}
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                title="导出为分享文件"
-                aria-label="导出为分享文件"
-                onClick={async () => {
-                  try {
-                    const p = await App.ExportRemoteAgent(r.id);
-                    toast.success(`已导出: ${p}`);
-                  } catch (err) {
-                    toast.error(`导出失败: ${errText(err)}`);
-                  }
-                }}
-              >
-                <Upload className="h-4 w-4 text-muted-foreground" />
-              </Button>
+              <TooltipHint content="导出为分享文件">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="导出为分享文件"
+                  onClick={async () => {
+                    try {
+                      const p = await App.ExportRemoteAgent(r.id);
+                      toast.success(`已导出: ${p}`);
+                    } catch (err) {
+                      toast.error(`导出失败: ${errText(err)}`);
+                    }
+                  }}
+                >
+                  <Upload className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </TooltipHint>
               <Button variant="outline" size="sm" onClick={() => { setRemoteCheck(null); setRemoteEditing(r); }}>
                 编辑
               </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                title="删除远程 Agent"
-                aria-label="删除远程 Agent"
-                onClick={() => removeRemote(r)}
-              >
-                <Trash2 className="h-4 w-4 text-muted-foreground" />
-              </Button>
+              <TooltipHint content="删除远程 Agent">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="删除远程 Agent"
+                  onClick={() => removeRemote(r)}
+                >
+                  <Trash2 className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </TooltipHint>
             </div>
           </div>
         ))}
@@ -614,7 +621,12 @@ export function AgentsPage() {
                         <SelectContent>
                           <SelectItem value={MODEL_INHERIT}>默认（供应商第一个模型）</SelectItem>
                           {(providerOf(editing.providerId)?.models ?? []).map((m) => (
-                            <SelectItem key={m.id} value={m.id} title={m.id}>{modelLabel(m)}</SelectItem>
+                            <SelectItem key={m.id} value={m.id}>
+                              {modelLabel(m)}
+                              {modelLabel(m) !== m.id && (
+                                <span className="text-muted-foreground"> · {m.id}</span>
+                              )}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>

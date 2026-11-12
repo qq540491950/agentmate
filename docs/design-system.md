@@ -149,6 +149,7 @@
 | Composer | `panel` 底、16px 圆角、无 border；聚焦不显示整块包边/ring，靠文本光标与内部控件自身焦点提示；拖拽用 `accent-soft` |
 | Composer 模型/思考强度 | 模型与当前档位共用一个纯文字按钮，打开后按钮显示当前操作名（选择推理强度/选择模型），并在同一 `overlay` 浮层内切换「思考强度」与「选择模型」；模型行文案为「模型 · 供应商」，思考强度用单轨滑杆，标题显示当前档位，刻度只做位置提示 |
 | 菜单/Popover/Dialog | overlay 底 + shadow；无 ring/border；选中项 `accent-soft` |
+| 悬浮提示 | 统一使用 Radix Tooltip：`overlay` 底 + `shadow-pop`、8px 圆角、12px 文字、无箭头/边框；短提示居中，长路径与多行说明左对齐并自动换行；禁止原生 `title` 气泡 |
 | 任务结果区 | `chrome` 独立底色；标签、文件行、预览区用底纹/间距；无 `border-l` |
 | 空态 | panel/overlay 底 + 图标 + 标题 + 说明 + 主操作；禁止 dashed border |
 | Toast/更新卡 | 只用语义令牌；状态色只出现在图标、标签、进度和软底纹 |

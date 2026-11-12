@@ -4,6 +4,7 @@ import { Plus, Trash2, Wrench, Network } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
+import { TooltipHint } from "@/components/ui/tooltip";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -214,9 +215,11 @@ export function MCPPage() {
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {(st.tools ?? []).map((t) => (
-                            <Badge key={t.name} variant="secondary" className="font-normal" title={t.description}>
-                              {t.name}
-                            </Badge>
+                            <TooltipHint key={t.name} content={t.description} wrap>
+                              <Badge variant="secondary" className="font-normal">
+                                {t.name}
+                              </Badge>
+                            </TooltipHint>
                           ))}
                         </div>
                       </div>

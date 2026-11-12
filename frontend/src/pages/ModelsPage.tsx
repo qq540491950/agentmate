@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { TooltipHint } from "@/components/ui/tooltip";
 import { ModelRowEditor } from "@/components/ModelRowEditor";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -323,16 +324,17 @@ export function ModelsPage() {
               </div>
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {(p.models ?? []).map((m) => (
-                  <Badge
+                  <TooltipHint
                     key={m.id}
-                    variant="outline"
-                    className="gap-1 font-normal"
-                    title={[m.id, m.multimodal ? "多模态" : "", m.contextWindow ? `上下文 ${m.contextWindow}` : ""]
+                    content={[m.id, m.multimodal ? "多模态" : "", m.contextWindow ? `上下文 ${m.contextWindow}` : ""]
                       .filter(Boolean).join(" · ")}
+                    wrap
                   >
-                    {m.multimodal && <ImageIcon className="h-3 w-3 text-muted-foreground" />}
-                    {modelLabel(m)}
-                  </Badge>
+                    <Badge variant="outline" className="gap-1 font-normal">
+                      {m.multimodal && <ImageIcon className="h-3 w-3 text-muted-foreground" />}
+                      {modelLabel(m)}
+                    </Badge>
+                  </TooltipHint>
                 ))}
               </div>
             </div>
@@ -342,9 +344,11 @@ export function ModelsPage() {
                 测试
               </Button>
               <Button variant="outline" size="sm" onClick={() => openEditor(p)}>编辑</Button>
-              <Button variant="ghost" size="icon-sm" onClick={() => remove(p)} title="删除供应商" aria-label="删除供应商">
-                <Trash2 className="h-4 w-4 text-muted-foreground" />
-              </Button>
+              <TooltipHint content="删除供应商">
+                <Button variant="ghost" size="icon-sm" onClick={() => remove(p)} aria-label="删除供应商">
+                  <Trash2 className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </TooltipHint>
             </div>
           </div>
         ))}
@@ -428,15 +432,16 @@ export function ModelsPage() {
                       placeholder="sk-..."
                       className="pr-9"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowKey((v) => !v)}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
-                      title={showKey ? "隐藏 API Key" : "显示 API Key"}
-                      aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
-                    >
-                      {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </button>
+                    <TooltipHint content={showKey ? "隐藏 API Key" : "显示 API Key"}>
+                      <button
+                        type="button"
+                        onClick={() => setShowKey((v) => !v)}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+                        aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
+                      >
+                        {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    </TooltipHint>
                   </div>
                 </label>
 
@@ -514,16 +519,17 @@ export function ModelsPage() {
                                 {m.reasoning.levels?.length ?? 0} 档
                               </Badge>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="shrink-0 text-muted-foreground hover:text-danger-text"
-                              onClick={() => removeModel(i)}
-                              title="删除模型"
-                              aria-label="删除模型"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            <TooltipHint content="删除模型">
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="shrink-0 text-muted-foreground hover:text-danger-text"
+                                onClick={() => removeModel(i)}
+                                aria-label="删除模型"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipHint>
                           </div>
                           {open && (
                             <div className="bg-panel/40 px-3 py-4">

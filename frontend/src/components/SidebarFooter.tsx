@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TooltipHint } from "@/components/ui/tooltip";
 import { Popover, PopoverAnchor, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu,
@@ -69,6 +70,12 @@ type SidebarFooterProps = {
   onThemePresetChange: (preset: string) => void;
   onThemeModeChange: (mode: string) => void;
 };
+
+export function sidebarVersionTitle(version: string): string {
+  return version
+    ? `AgentMate v${version} · 基于 Google ADK Go v2 · Wails v3`
+    : "AgentMate · 基于 Google ADK Go v2 · Wails v3";
+}
 
 /**
  * SidebarFooter keeps the version, updater entry and utility actions on one
@@ -223,77 +230,81 @@ export function SidebarFooter({
     <Popover open={panelOpen} onOpenChange={onPanelOpenChange}>
       <PopoverAnchor asChild>
         <div className="relative flex h-9 items-center gap-1 bg-chrome px-3 text-md leading-5 text-muted-foreground">
-          <span
-            className="min-w-0 flex-1 truncate"
-            title={
-              currentVersion
-                ? `AgentMate v${currentVersion} · 基于 Google ADK Go v2 · Wails v3`
-                : "AgentMate · 基于 Google ADK Go v2 · Wails v3"
-            }
-          >
-            {currentVersion ? `v${currentVersion}` : "AgentMate"}
-          </span>
+          <TooltipHint content={sidebarVersionTitle(currentVersion)}>
+            <span className="min-w-0 flex-1 truncate">
+              {currentVersion ? `v${currentVersion}` : "AgentMate"}
+            </span>
+          </TooltipHint>
           {visible && badge && (
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                title={availableVersion ? `${title} v${availableVersion}` : title}
-                aria-label={
-                  availableVersion ? `${badge.label}，${title}，v${availableVersion}` : title
-                }
-                className={cn(
-                  "inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-md leading-5 font-semibold transition-colors",
-                  BADGE_TONE[badge.tone],
-                )}
-              >
-                {badge.tone === "ready" && <Check className="h-3.5 w-3.5" strokeWidth={2.4} />}
-                {badge.tone === "progress" && status?.state === "downloading" && (
-                  <span
-                    className="h-3.5 w-3.5 rounded-full"
-                    style={{
-                      background: `conic-gradient(currentColor 0 ${percent ?? 12}%, color-mix(in oklab, currentColor 18%, transparent) ${percent ?? 12}% 100%)`,
-                      mask: "radial-gradient(circle, transparent 42%, black 45%)",
-                      WebkitMask: "radial-gradient(circle, transparent 42%, black 45%)",
-                    }}
-                    aria-hidden="true"
-                  />
-                )}
-                {badge.tone === "progress" && status?.state !== "downloading" && (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                )}
-                {badge.tone === "error" && <TriangleAlert className="h-3.5 w-3.5" />}
-                {badge.tone === "brand" && (
-                  <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.4} />
-                )}
-                {badge.label}
-              </button>
-            </PopoverTrigger>
+            <TooltipHint
+              content={availableVersion ? `${title} v${availableVersion}` : title}
+              wrap
+            >
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={
+                    availableVersion ? `${badge.label}，${title}，v${availableVersion}` : title
+                  }
+                  className={cn(
+                    "inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-md leading-5 font-semibold transition-colors",
+                    BADGE_TONE[badge.tone],
+                  )}
+                >
+                  {badge.tone === "ready" && <Check className="h-3.5 w-3.5" strokeWidth={2.4} />}
+                  {badge.tone === "progress" && status?.state === "downloading" && (
+                    <span
+                      className="h-3.5 w-3.5 rounded-full"
+                      style={{
+                        background: `conic-gradient(currentColor 0 ${percent ?? 12}%, color-mix(in oklab, currentColor 18%, transparent) ${percent ?? 12}% 100%)`,
+                        mask: "radial-gradient(circle, transparent 42%, black 45%)",
+                        WebkitMask: "radial-gradient(circle, transparent 42%, black 45%)",
+                      }}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {badge.tone === "progress" && status?.state !== "downloading" && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  )}
+                  {badge.tone === "error" && <TriangleAlert className="h-3.5 w-3.5" />}
+                  {badge.tone === "brand" && (
+                    <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.4} />
+                  )}
+                  {badge.label}
+                </button>
+              </PopoverTrigger>
+            </TooltipHint>
           )}
           <span className="flex shrink-0 items-center gap-0.5">
-            <button
-              title="设置（⌘,）"
-              onClick={onOpenSettings}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <SettingsIcon className="h-3.5 w-3.5" />
-            </button>
-            <button
-              title="快捷键与命令"
-              onClick={onOpenHelp}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <CircleHelp className="h-3.5 w-3.5" />
-            </button>
+            <TooltipHint content="设置（⌘,）">
+              <button
+                aria-label="设置（⌘,）"
+                onClick={onOpenSettings}
+                className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <SettingsIcon className="h-3.5 w-3.5" />
+              </button>
+            </TooltipHint>
+            <TooltipHint content="快捷键与命令">
+              <button
+                aria-label="快捷键与命令"
+                onClick={onOpenHelp}
+                className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <CircleHelp className="h-3.5 w-3.5" />
+              </button>
+            </TooltipHint>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  title="主题与外观"
-                  aria-label="主题与外观"
-                  className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                >
-                  <Palette className="h-3.5 w-3.5" />
-                </button>
-              </DropdownMenuTrigger>
+              <TooltipHint content="主题与外观" wrap>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    aria-label="主题与外观"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <Palette className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+              </TooltipHint>
               <DropdownMenuContent side="top" align="start" className="w-56">
                 <DropdownMenuLabel>主题</DropdownMenuLabel>
                 <DropdownMenuRadioGroup value={themePreset} onValueChange={onThemePresetChange}>

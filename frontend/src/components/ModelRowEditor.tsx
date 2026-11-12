@@ -9,6 +9,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { TooltipHint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const COMMON_LEVELS = ["off", "low", "medium", "high", "max"];
@@ -137,11 +138,12 @@ export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericVal
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <ImageIcon className="h-3.5 w-3.5" /> 图片输入
               </span>
-              <Switch
-                checked={!!model.multimodal}
-                onCheckedChange={(v) => onChange({ multimodal: v })}
-                title="支持图片输入（文本始终可用）"
-              />
+              <TooltipHint content="支持图片输入（文本始终可用）" wrap>
+                <Switch
+                  checked={!!model.multimodal}
+                  onCheckedChange={(v) => onChange({ multimodal: v })}
+                />
+              </TooltipHint>
             </div>
           </Field>
           <Field label="输入价格" hint="¥ / 1M tokens，可选">
@@ -174,11 +176,12 @@ export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericVal
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <Switch
-              checked={!!r.enabled}
-              onCheckedChange={toggleReasoning}
-              title="该模型支持调整思考强度"
-            />
+            <TooltipHint content="该模型支持调整思考强度" wrap>
+              <Switch
+                checked={!!r.enabled}
+                onCheckedChange={toggleReasoning}
+              />
+            </TooltipHint>
             <div className="min-w-0">
               <div id={`reasoning-title-${index}`} className="text-sm font-medium">推理等级</div>
               <div className="truncate text-2xs text-muted-foreground">
@@ -238,16 +241,17 @@ export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericVal
                           className="font-mono text-xs"
                           aria-label={`档位 ${i + 1} 参数值`}
                         />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-7 text-muted-foreground opacity-40 transition-opacity hover:text-danger-text group-hover/level:opacity-100"
-                          onClick={() => removeLevel(i)}
-                          title="删除该档位"
-                          aria-label={`删除档位 ${i + 1}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <TooltipHint content="删除该档位">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-7 text-muted-foreground opacity-40 transition-opacity hover:text-danger-text group-hover/level:opacity-100"
+                            onClick={() => removeLevel(i)}
+                            aria-label={`删除档位 ${i + 1}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipHint>
                       </div>
                       {err && <p className="pl-0.5 text-2xs text-danger-text">{err}</p>}
                     </div>
@@ -276,9 +280,11 @@ export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericVal
                   </SelectContent>
                 </Select>
               </div>
-              <p className="text-2xs leading-relaxed text-muted-foreground" title="参数名为空时，参数值按 JSON 对象合并到请求体顶层，可一次下发多个字段；参数名支持点号路径，如 thinking.budget_tokens。档位仅在 OpenAI 兼容 / Anthropic 供应商的请求中注入。">
-                参数名为空时按 JSON 合并到请求体；支持点号路径。
-              </p>
+              <TooltipHint content="参数名为空时，参数值按 JSON 对象合并到请求体顶层，可一次下发多个字段；参数名支持点号路径，如 thinking.budget_tokens。档位仅在 OpenAI 兼容 / Anthropic 供应商的请求中注入。">
+                <p className="text-2xs leading-relaxed text-muted-foreground">
+                  参数名为空时按 JSON 合并到请求体；支持点号路径。
+                </p>
+              </TooltipHint>
             </div>
           </>
         )}

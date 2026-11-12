@@ -5,6 +5,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Copy, Minus, Sparkles, Square, X } from "lucide-react";
 import { Events } from "@wailsio/runtime";
 import { toast } from "sonner";
+import { TooltipHint } from "@/components/ui/tooltip";
 import { resolveTopbarLayout, detectTopbarPlatform, type TopbarLayout } from "@/lib/topbarLayout";
 import { resolveMaximiseIcon, wailsWindowOperations, type WindowOperations } from "@/lib/topbarWindow";
 
@@ -103,40 +104,43 @@ export function TopBar({ layout, ops, centerSlot, endSlot }: TopBarProps) {
         <div data-slot="topbar-window-buttons" className="flex items-center" style={nodragStyle}>
           {!isFullscreen && (
             <>
-              <button
-                type="button"
-                title="最小化"
-                aria-label="最小化"
-                onClick={resolvedOps.minimise}
-                className="flex h-10 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                title={maximiseLabel}
-                aria-label={maximiseLabel}
-                onClick={resolvedOps.toggleMaximise}
-                className="flex h-10 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                {resolveMaximiseIcon(isMaximised) === "restore" ? (
-                  <Copy className="h-3.5 w-3.5" />
-                ) : (
-                  <Square className="h-3.5 w-3.5" />
-                )}
-              </button>
-              <button
-                type="button"
-                title="关闭"
-                aria-label="关闭"
-                onClick={() => {
-                  resolvedOps.hide();
-                  toastHiddenToTrayOnce();
-                }}
-                className="flex h-10 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <TooltipHint content="最小化">
+                <button
+                  type="button"
+                  aria-label="最小化"
+                  onClick={resolvedOps.minimise}
+                  className="flex h-10 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+              </TooltipHint>
+              <TooltipHint content={maximiseLabel}>
+                <button
+                  type="button"
+                  aria-label={maximiseLabel}
+                  onClick={resolvedOps.toggleMaximise}
+                  className="flex h-10 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  {resolveMaximiseIcon(isMaximised) === "restore" ? (
+                    <Copy className="h-3.5 w-3.5" />
+                  ) : (
+                    <Square className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </TooltipHint>
+              <TooltipHint content="关闭">
+                <button
+                  type="button"
+                  aria-label="关闭"
+                  onClick={() => {
+                    resolvedOps.hide();
+                    toastHiddenToTrayOnce();
+                  }}
+                  className="flex h-10 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </TooltipHint>
             </>
           )}
         </div>
