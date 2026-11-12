@@ -4,6 +4,21 @@
 
 ## 视觉测试与体验设计
 
+### 第二百七十七轮迭代：终端 Shell 测试按平台拆分（已实施）
+
+依据：`v0.6.11` 推送后，`main` CI 的 Ubuntu 后端任务在 `internal/terminal` 失败。用例用 Windows 绝对路径构造假 host，但 `filepath.IsAbs` / `Clean` / `Base` 按运行平台解析，Linux 上这些路径不被视为绝对路径，导致自动检测为空，PowerShell 与 Git Bash 的参数断言也不成立。
+
+**实现要点**
+
+- Windows 路径语义相关用例移入 `terminal_windows_test.go`，仅在 Windows 构建运行；Windows CI job 仍执行完整 `go test ./internal/...`。
+- 新增 `terminal_unix_test.go`，用 POSIX 路径覆盖登录 Shell 自动选择与显式 bash 解析，Linux CI 不再只剩跳过。
+- 共用 fake host、WSL 列表解析与 `LegacySpec` 用例保留在 `terminal_test.go`，两个平台共享。
+
+**测试证据**
+
+- Linux（WSL + Go 1.27.3）：`go test -count=1 ./internal/...` 全部通过；终端包实际运行通用用例与 Unix 用例。
+- Windows：`go test ./internal/terminal/...`、`go vet ./internal/terminal/...` 通过。
+
 ### 第二百七十六轮迭代：会话标题不再混入思考内容（已实施）
 
 依据：用户截图中多条会话标题都是「我们需要回答标题，不超过12汉字」「我们需要回答用户。需要概括不超过」等 16 字片段。现场用标题模型配置重放同一条请求，返回 `content` 为空、`reasoning_content` 完整、`finish_reason` 为 `length`；把 `max_tokens` 提高到 512 后，`content` 正常返回「空指针报错排查」。确认标题侧调用把思考部分当成了答案，且 40 token 预算常被思考耗尽。
