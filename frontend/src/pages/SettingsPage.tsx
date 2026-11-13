@@ -111,6 +111,8 @@ export function SettingsPage({
   const [tab, setTab] = useState<SettingsTab>(() => resolveSettingsTab(initialTab));
   const [settings, setSettings] = useState<Settings | null>(null);
   const [savedSettings, setSavedSettings] = useState<Settings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [saving, setSaving] = useState(false);
@@ -149,6 +151,8 @@ export function SettingsPage({
     if (initialTab) setTab(resolveSettingsTab(initialTab));
   }, [initialTab]);
   const reload = useCallback(() => {
+    setLoading(true);
+    setLoadError("");
     Config.GetConfig()
       .then((c) => {
         const next = c.settings ?? null;
@@ -157,7 +161,12 @@ export function SettingsPage({
         setProviders(c.providers ?? []);
         setAgents(c.agents ?? []);
       })
-      .catch((e) => toast.error(errText(e)));
+      .catch((e) => {
+        const message = errText(e);
+        setLoadError(message);
+        toast.error(message);
+      })
+      .finally(() => setLoading(false));
   }, []);
   useEffect(reload, [reload]);
   const reloadTerminals = useCallback((sandboxProfile = "workspace-write") => {
@@ -374,6 +383,11 @@ export function SettingsPage({
       toast.error("请修正数字输入后再保存");
       return false;
     }
+    if (!settings.workspaceDir?.trim()) {
+      toast.error("请选择工作区目录");
+      setTab("data");
+      return false;
+    }
     const a2aError = a2aAutoStartError(settings);
     if (a2aError) {
       toast.error(a2aError);
@@ -395,6 +409,7 @@ export function SettingsPage({
       toast.success("设置已保存");
       return true;
     } catch (e) {
+      if (savedSettings) applySavedAppearance(savedSettings);
       toast.error(`保存失败: ${errText(e)}`);
       return false;
     } finally {
@@ -428,12 +443,12 @@ export function SettingsPage({
   };
 
   if (!settings) {
-    // 以前加载失败时会完全不渲染任何内容，留下一个没有出路的空白面板。现在改为
-    // 提供重试。
+    // 初次加载不能先显示失败：设置页打开时必然短暂处于 null。只有请求真正失败后
+    // 才展示错误与重试入口。
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-sm text-muted-foreground">
-        <div>设置加载失败</div>
-        <Button size="sm" variant="outline" onClick={reload}>重试</Button>
+        <div>{loading ? "正在加载设置…" : loadError || "设置加载失败"}</div>
+        {!loading && <Button size="sm" variant="outline" onClick={reload}>重试</Button>}
       </div>
     );
   }
@@ -487,7 +502,7 @@ export function SettingsPage({
                       "flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors",
                       tab === key
                         ? "bg-accent-soft font-medium text-accent-text"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                        : "text-muted-foreground hover:bg-overlay/60 hover:text-foreground",
                     )}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
@@ -946,7 +961,7 @@ export function SettingsPage({
                 <Input value={kbNewName} onChange={(e) => setKbNewName(e.target.value)} placeholder="文件名（如 meeting-notes.md）" />
                 <Input value={kbNewContent} onChange={(e) => setKbNewContent(e.target.value)} placeholder="初始内容（必填）" />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
                   disabled={!kbNewName.trim() || !kbNewContent.trim()}
@@ -978,7 +993,7 @@ export function SettingsPage({
                 ))}
               </div>
               <div className="grid gap-1.5">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Input
                     value={kbTestQuery}
                     onChange={(e) => setKbTestQuery(e.target.value)}
@@ -1307,7 +1322,7 @@ export function SettingsPage({
                   onValueChange={(a2aPort) => update({ a2aPort })}
                   onValidityChange={(valid) => reportNumericValidity("a2aPort", valid)}
                   placeholder="8080"
-                  hint="1–65535；0 表示随机端口。"
+                  hint="0–65535；0 表示随机端口。"
                 />
               </div>
             </div>
@@ -1316,8 +1331,8 @@ export function SettingsPage({
                 onClick={async () => {
                   if (!settings.a2aAgentId) { toast.error("请选择要发布的 Agent"); return; }
                   const port = Number(settings.a2aPort);
-                  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-                    toast.error("端口需为 1-65535 的整数");
+                  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+                    toast.error("端口需为 0-65535 的整数（0 表示随机端口）");
                     return;
                   }
                   try {

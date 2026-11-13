@@ -70,7 +70,7 @@ func TestConfigBackupRoundTrip(t *testing.T) {
 	if len(got.Agents) != 1 || len(got.RemoteAgents) != 1 || len(got.Teams) != 1 {
 		t.Fatalf("config not fully restored: %+v", got)
 	}
-	// 预置的存储也会附带默认技能；我们的技能必须也在其中。
+	// 备份必须保留自定义技能。
 	var haveSkill bool
 	for _, sk := range got.Skills {
 		if sk.ID == "skill_1" {

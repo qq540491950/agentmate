@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -575,22 +576,41 @@ func (k *Kit) skillToolset(ac config.AgentConfig, cfg config.Config, workspace s
 	for _, s := range selected {
 		name := config.NormalizeSkillName(s.Name)
 		dirSkill := filepath.Join(dir, name)
+		// 先清理再重建：技能内容或附带资源变更后，旧文件不能残留到新的
+		// SKILL.md 旁边（ADK 会把整个目录都当作技能资源）。
+		if err := os.RemoveAll(dirSkill); err != nil {
+			return nil, fmt.Errorf("reset skill dir %q: %w", s.Name, err)
+		}
 		if err := os.MkdirAll(dirSkill, 0o755); err != nil {
 			return nil, fmt.Errorf("create skill dir %q: %w", s.Name, err)
 		}
-		body, err := skill.Build(&skill.Frontmatter{Name: name, Description: s.Description}, s.Content)
+		desc := config.EffectiveSkillDescription(s.Name, s.Description, s.Content)
+		if err := config.ValidateSkillMetadata(name, desc); err != nil {
+			_ = os.RemoveAll(dirSkill)
+			return nil, fmt.Errorf("skill %q: %w", s.Name, err)
+		}
+		body, err := skill.Build(&skill.Frontmatter{Name: name, Description: desc}, s.Content)
 		if err != nil {
+			_ = os.RemoveAll(dirSkill)
 			return nil, fmt.Errorf("build skill %q: %w", s.Name, err)
 		}
 		// 原子替换：并发的预加载必须绝不把半写入（O_TRUNC）的 SKILL.md
 		// 读取为有效但为空的指令。
 		tmp := filepath.Join(dirSkill, "SKILL.md.tmp")
 		if err := os.WriteFile(tmp, body, 0o644); err != nil {
+			_ = os.RemoveAll(dirSkill)
 			return nil, fmt.Errorf("write skill %q: %w", s.Name, err)
 		}
 		if err := os.Rename(tmp, filepath.Join(dirSkill, "SKILL.md")); err != nil {
 			_ = os.Remove(tmp)
+			_ = os.RemoveAll(dirSkill)
 			return nil, fmt.Errorf("write skill %q: %w", s.Name, err)
+		}
+		if s.SourceDir != "" {
+			if err := copySkillResources(s.SourceDir, dirSkill); err != nil {
+				_ = os.RemoveAll(dirSkill)
+				return nil, fmt.Errorf("copy skill %q resources: %w", s.Name, err)
+			}
 		}
 	}
 	// 清理不再挂载到该 Agent 的技能（包括悬空
@@ -660,12 +680,73 @@ func skillAwareInstruction(base string) func(agent.ReadonlyContext) (string, err
 func RenderSkillMD(name, description, content string) (string, error) {
 	body, err := skill.Build(&skill.Frontmatter{
 		Name:        sanitizeSkillName(name),
-		Description: description,
+		Description: config.EffectiveSkillDescription(name, description, content),
 	}, content)
 	if err != nil {
 		return "", err
 	}
 	return string(body), nil
+}
+
+const (
+	maxSkillResourceFileBytes  = 10 << 20
+	maxSkillResourceTotalBytes = 64 << 20
+	maxSkillResourceFiles      = 5000
+)
+
+// copySkillResources 将发现项目录中的 scripts/ references/ assets/ 以及其他
+// 附属文件复制到按 Agent 隔离的物化目录。ADK 的 load_skill_resource 只读取
+// 该目录，因此不复制这些文件会让官方技能里的资源引用失效。
+func copySkillResources(src, dst string) error {
+	var files int
+	var total int64
+	return filepath.WalkDir(src, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == src {
+			return nil
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		if strings.EqualFold(rel, "SKILL.md") || strings.EqualFold(rel, "SKILL.md.tmp") {
+			return nil
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return os.MkdirAll(filepath.Join(dst, rel), 0o755)
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		files++
+		if files > maxSkillResourceFiles {
+			return fmt.Errorf("附属文件超过 %d 个", maxSkillResourceFiles)
+		}
+		if info.Size() > maxSkillResourceFileBytes {
+			return fmt.Errorf("附属文件 %q 超过 %d 字节", rel, maxSkillResourceFileBytes)
+		}
+		total += info.Size()
+		if total > maxSkillResourceTotalBytes {
+			return fmt.Errorf("附属文件总大小超过 %d 字节", maxSkillResourceTotalBytes)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dst, rel), data, info.Mode().Perm())
+	})
 }
 
 // RemoveMaterializedSkill 删除某个技能已物化的 SKILL.md 目录：每个 Agent

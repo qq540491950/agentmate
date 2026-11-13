@@ -14,7 +14,7 @@
 | Agents | 自定义名称、描述、系统提示词、Temperature / MaxTokens / 停止序列，挂载 Skills、MCP 工具与内置工具（时间查询、工作区文件读写、知识库检索、长期记忆、任务计划 plan_todos、终端命令 run_command）；安全护栏（密钥脱敏/注入检测）；运行护栏（工具调用上限、供应商请求自动重试）；写入文件与执行终端命令的 HITL 人工确认；单个导出/导入分享 |
 | 远程 Agent | A2A 协议（官方 a2a-go）：连接远程 Agent 直接对话（Agent Card 自动发现 + 连通性检查），也可作为团队成员参与协作；本应用亦可作为 A2A 服务端对外发布本地 Agent |
 | Agent 团队 | 多 Agent 协作：自动协调员模式（系统合成协调员分派任务）或指定负责人模式；基于 ADK 的 agent 转移机制（transfer）实现委派；支持远程 A2A 成员 |
-| Skills | 可复用技能指令包，保存为标准 SKILL.md（YAML frontmatter + Markdown），由 ADK Skill Toolset 以渐进式披露方式供模型按需加载；支持从工作区 skills/ 目录批量导入；自动发现项目/用户 `.agents/skills`（只读），`/` 菜单按当前会话工作区列出并可调用 |
+| Skills | 可复用技能指令包，保存为标准 SKILL.md（YAML frontmatter + Markdown），由 ADK Skill Toolset 以渐进式披露方式供模型按需加载；支持从工作区 `skills/`、`.claude/skills` 与 `~/.claude/skills` 批量导入；自动发现项目/用户 `.agents/skills`（只读），`/` 菜单按当前会话工作区列出并可调用 |
 | MCP 服务 | 通过 stdio（本地命令）或 Streamable HTTP（远程）连接 MCP 服务器，发现并列出工具，挂载到 Agent；远程服务器支持 Bearer / API Key / OAuth 2.1（授权码 + PKCE，令牌持久化静默刷新）认证 |
 | 知识库 | 工作区 knowledge/ 目录检索：可配置 Embedding 供应商升级为「向量语义 + 关键词」混合检索（本地增量向量索引，SQLite） |
 | 对话 | 流式输出（SSE）、`@` 引用工作区文件/目录作为当轮上下文并可直接指定助手、任务级工作区（自动独立目录或首轮前选择文件夹）、右侧结果区（产物/全部文件/变更/**行级 diff 与复制 Patch**/预览/**基线对比切换**）、工具调用/结果实时展示、团队对话中显示各成员输出、随时停止、工具执行人工确认（HITL）、会话置顶/分叉/并行运行、后台完成提示、上下文窗口占用指示与高水位提醒、Token 用量与成本（含按日明细）、任务计划清单卡与会话头计划入口、会话级模型选择、生成期间排队发送（**多条排队不覆盖**）、会话内消息过滤（⌘F）、图片粘贴/拖放/重生成保留附件、Markdown 导出、会话历史持久化（ADK Database Session Service + 纯 Go SQLite 驱动）、**↑ 编辑上一条 / Esc 停止 / ⌘⇧[⇧] 切换会话 / 长会话「显示更早」翻页 / 切换加载骨架屏** |
@@ -219,6 +219,7 @@ git push origin v0.5.0     # 触发 .github/workflows/release.yml
 - 结果区提供文件级变更、行级 diff（基线内容快照对比，二进制/超大文件自动降级为说明文案）与现有格式预览，不提供 Office 在线预览或网页运行预览
 - `@` 文件引用只读取当前会话工作区内的文本文件：单文件 48KB、单轮 96KB、最多 8 个；二进制、越界路径与缺失文件不会注入，改为提示模型使用文件工具
 - 项目/用户 `.agents/skills` 为只读发现，编辑需直接修改对应目录的 SKILL.md；应用内保存/删除会被拒绝
+- Skill 自动发现只覆盖 Codex 约定的 `.agents/skills`（工作区根 + `~/.agents/skills`）：不自动发现 Claude Code 的 `.claude/skills`、Codex 的祖先目录，也不执行 Claude 特有 frontmatter 策略（如 `disable-model-invocation`）；Claude 目录可通过「导入 Skill」转为应用内技能；发现项会复制 `references/assets/scripts`，导入的技能仍只保存 `SKILL.md` 正文
 - **产物未做付费签名**：Windows 会触发 SmartScreen 提示；macOS 未公证，首次打开需右键→「打开」，且自更新替换后的 `.app` 可能被 Gatekeeper 二次拦截（updater 原样搬运字节，不重新签名）
 - **`.deb` 安装版与「放在只读目录的 Windows exe」不支持自动安装更新**（updater 无提权路径），只提示并跳转下载
 - Windows 不提供安装程序：没有卸载项、开始菜单快捷方式与文件关联；把 exe 放进可写目录（如 `D:\Apps`）即可获得自更新能力
@@ -240,7 +241,7 @@ git push origin v0.5.0     # 触发 .github/workflows/release.yml
 main.go                    # 应用入口：服务注册、窗口、托盘+全局快捷键、SQLite 会话库、
                            # 知识索引、代理注入、A2A 自启动
 internal/
-  config/                  # 配置模型与 JSON 存储（0600；含 MCP OAuth 令牌缓存、默认 Skills 种子）
+  config/                  # 配置模型与 JSON 存储（0600；含 MCP OAuth 令牌缓存）
   agentkit/                # ADK 集成核心
     llm.go                 #   model.LLM 适配器（OpenAI 兼容 / Anthropic）
     kit.go                 #   Agent/团队构建、内置工具装配、提示词模板变量、SanitizeAgentName

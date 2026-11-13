@@ -258,6 +258,9 @@ func (c *ConfigService) DeleteTeam(id string) error {
 
 // SaveSkill 插入或更新一个技能（物化为 SKILL.md）。
 func (c *ConfigService) SaveSkill(s config.SkillConfig) error {
+	s.Name = strings.TrimSpace(s.Name)
+	s.Description = strings.TrimSpace(s.Description)
+	s.SourceDir = ""
 	if s.Name == "" {
 		return fmt.Errorf("请填写技能名称")
 	}
@@ -271,6 +274,12 @@ func (c *ConfigService) SaveSkill(s config.SkillConfig) error {
 	// 共用同一规范化名称的技能会共用同一个物化目录，并会静默覆盖彼此的
 	// SKILL.md——必须拒绝这种冲突。
 	newKey := agentkit.MaterializedSkillName(s.Name)
+	if s.Description == "" {
+		s.Description = config.EffectiveSkillDescription(s.Name, "", s.Content)
+	}
+	if err := config.ValidateSkillMetadata(newKey, s.Description); err != nil {
+		return fmt.Errorf("技能格式无效：%w", err)
+	}
 	for _, other := range c.S.Store.Get().Skills {
 		if other.ID != s.ID && agentkit.MaterializedSkillName(other.Name) == newKey {
 			return fmt.Errorf("技能名称「%s」与现有技能「%s」冲突（规范化后同名），请换个名字", s.Name, other.Name)
@@ -293,38 +302,61 @@ func (c *ConfigService) SaveSkill(s config.SkillConfig) error {
 	return err
 }
 
-// ImportSkillsFromWorkspace 扫描 <workspace>/skills/*/SKILL.md（agentskills.io
-// 布局），并导入所有规范化名称尚未存在的技能。返回导入的技能数量。
+// ImportSkillsFromWorkspace 扫描 <workspace>/skills、<workspace>/.claude/skills
+// 和 ~/.claude/skills 下的 <name>/SKILL.md（agentskills.io 布局），并导入所有
+// 规范化名称尚未存在的技能。返回导入的技能数量。
 func (c *ConfigService) ImportSkillsFromWorkspace() (int, error) {
 	workspace := c.S.Store.Get().Settings.WorkspaceDir
 	if workspace == "" {
 		return 0, fmt.Errorf("请先在设置中配置工作区目录")
 	}
-	root := filepath.Join(workspace, "skills")
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, fmt.Errorf("工作区中没有 skills/ 目录")
-		}
-		return 0, err
+	roots := []string{
+		filepath.Join(workspace, "skills"),
+		filepath.Join(workspace, ".claude", "skills"),
 	}
-
+	if root := config.GlobalClaudeSkillRoot(); root != "" {
+		roots = append(roots, root)
+	}
 	imported := 0
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue // agentskills.io 布局：skills/<name>/SKILL.md
-		}
-		data, err := os.ReadFile(filepath.Join(root, e.Name(), "SKILL.md"))
+	foundRoot := false
+	for _, root := range roots {
+		entries, err := os.ReadDir(root)
 		if err != nil {
-			continue
+			if os.IsNotExist(err) {
+				continue
+			}
+			return 0, err
 		}
-		name, desc, body := config.ParseSkillMarkdown(string(data))
-		if name == "" {
-			continue
+		foundRoot = true
+		for _, e := range entries {
+			dir := filepath.Join(root, e.Name())
+			info, err := os.Stat(dir)
+			if err != nil || !info.IsDir() {
+				continue // agentskills.io 布局：skills/<name>/SKILL.md
+			}
+			data, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+			if err != nil {
+				continue
+			}
+			name, desc, body := config.ParseSkillMarkdown(string(data))
+			name = strings.TrimSpace(name)
+			desc = strings.TrimSpace(desc)
+			if name == "" {
+				continue
+			}
+			if desc == "" {
+				desc = config.EffectiveSkillDescription(name, "", body)
+			}
+			if err := config.ValidateSkillMetadata(agentkit.MaterializedSkillName(name), desc); err != nil {
+				continue
+			}
+			if c.addSkillIfNew(name, desc, body) {
+				imported++
+			}
 		}
-		if c.addSkillIfNew(name, desc, body) {
-			imported++
-		}
+	}
+	if !foundRoot {
+		return 0, fmt.Errorf("工作区中没有 skills/、.claude/skills 或 ~/.claude/skills 目录")
 	}
 	return imported, nil
 }

@@ -504,6 +504,9 @@ type SkillConfig struct {
 	Description string    `json:"description"`
 	Content     string    `json:"content"` // 技能的 markdown 正文
 	CreatedAt   time.Time `json:"createdAt"`
+	// SourceDir 是只读发现项的原始目录，仅用于物化 references/ assets/ scripts/；
+	// 不写入 config.json，也不暴露给前端。
+	SourceDir string `json:"-"`
 }
 
 // MCPTransport 选择如何连接到 MCP 服务器。
@@ -1054,12 +1057,17 @@ func Default() Config {
 			Terminal:                 TerminalSettings{Mode: TerminalModeAuto},
 			CompactionContextPercent: &compactionPercent,
 		},
-		Skills: []SkillConfig{
-			{
-				ID:          "skill-weekly-report",
-				Name:        "weekly-report",
-				Description: "根据本周工作记录撰写结构化周报",
-				Content: `# 周报撰写技能
+	}
+}
+
+// legacySeededSkills 是旧版本首次启动时写入 config.json 的两个示例技能。
+// 只移除仍与原始内容完全一致的条目；用户改过名称、描述或正文的技能会保留。
+var legacySeededSkills = []SkillConfig{
+	{
+		ID:          "skill-weekly-report",
+		Name:        "weekly-report",
+		Description: "根据本周工作记录撰写结构化周报",
+		Content: `# 周报撰写技能
 
 按照以下结构撰写周报：
 1. 本周完成事项（按优先级排列，量化成果）
@@ -1068,12 +1076,12 @@ func Default() Config {
 4. 需要协调的问题
 
 语气专业简洁，使用中文，避免空话。`,
-			},
-			{
-				ID:          "skill-code-review",
-				Name:        "code-review",
-				Description: "系统化代码审查清单与输出格式",
-				Content: `# 代码审查技能
+	},
+	{
+		ID:          "skill-code-review",
+		Name:        "code-review",
+		Description: "系统化代码审查清单与输出格式",
+		Content: `# 代码审查技能
 
 审查代码时依次检查：
 - 正确性：边界条件、错误处理、并发安全
@@ -1082,8 +1090,48 @@ func Default() Config {
 - 安全：输入校验、敏感信息、权限
 
 输出格式：按严重程度（P0 阻断 / P1 应修 / P2 建议）分组列出问题，每条给出文件、位置与修复建议。`,
-			},
-		},
+	},
+}
+
+func isLegacySeededSkill(s SkillConfig) bool {
+	for _, seed := range legacySeededSkills {
+		if s.ID == seed.ID &&
+			s.Name == seed.Name &&
+			s.Description == seed.Description &&
+			strings.TrimSpace(s.Content) == strings.TrimSpace(seed.Content) {
+			return true
+		}
+	}
+	return false
+}
+
+// removeLegacySeededSkills 让旧安装不再显示两个示例技能；若某个 Agent
+// 曾经挂载过它们，同步移除悬空引用，避免下次构建报“技能不存在”。
+func (c *Config) removeLegacySeededSkills() {
+	if len(c.Skills) == 0 {
+		return
+	}
+	removed := make(map[string]bool)
+	out := c.Skills[:0]
+	for _, s := range c.Skills {
+		if isLegacySeededSkill(s) {
+			removed[s.ID] = true
+			continue
+		}
+		out = append(out, s)
+	}
+	c.Skills = out
+	if len(removed) == 0 {
+		return
+	}
+	for i := range c.Agents {
+		ids := c.Agents[i].SkillIDs[:0]
+		for _, id := range c.Agents[i].SkillIDs {
+			if !removed[id] {
+				ids = append(ids, id)
+			}
+		}
+		c.Agents[i].SkillIDs = ids
 	}
 }
 
@@ -1091,6 +1139,7 @@ func Default() Config {
 // 供应商级价格下移到每个模型，并丢弃未命名的模型条目。
 // 每次加载运行一次；结果由 Open 持久化。
 func (c *Config) migrateLegacy() {
+	c.removeLegacySeededSkills()
 	// 在执行策略出现之前创建的会话没有快照。为
 	// 每个此类会话恰好赋予一次当前默认值，因此后续设置变更不会
 	// 追溯性地改变现有聊天的边界。

@@ -249,9 +249,9 @@ describe("settings model", () => {
     expect(a2aAutoStartError({ ...baseSettings, a2aAutoStart: true, a2aAgentId: "", a2aPort: 8080 }))
       .toBe("开启自动启动前请先选择要发布的 Agent");
     expect(a2aAutoStartError({ ...baseSettings, a2aAutoStart: true, a2aAgentId: "agent_1", a2aPort: 0 }))
-      .toBe("端口需为 1-65535 的整数");
+      .toBeNull();
     expect(a2aAutoStartError({ ...baseSettings, a2aAutoStart: true, a2aAgentId: "agent_1", a2aPort: 70000 }))
-      .toBe("端口需为 1-65535 的整数");
+      .toBe("端口需为 0-65535 的整数（0 表示随机端口）");
     expect(a2aAutoStartError({ ...baseSettings, a2aAutoStart: true, a2aAgentId: "agent_1", a2aPort: 8080 }))
       .toBeNull();
   });

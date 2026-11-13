@@ -107,6 +107,59 @@ func TestGlobalSkillMaterialization(t *testing.T) {
 	}
 }
 
+// TestDiscoveredSkillMaterializesResources 固定官方技能目录的附带资源：ADK
+// 的 load_skill_resource 只读取物化目录，因此 references/ 等文件必须一起复制。
+func TestDiscoveredSkillMaterializesResources(t *testing.T) {
+	kit, store := newTestKit(t)
+	workspace := t.TempDir()
+	root := filepath.Join(workspace, ".agents", "skills")
+	writeAgentSkillMD(t, root, "resource-skill", "带资源的技能", "见 references/REFERENCE.md")
+	refDir := filepath.Join(root, "resource-skill", "references")
+	if err := os.MkdirAll(refDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(refDir, "REFERENCE.md"), []byte("参考内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ac := config.AgentConfig{
+		ID:       "agent_resource",
+		Name:     "Resource",
+		SkillIDs: []string{config.DiscoveredSkillID(config.SkillSourceProject, "resource-skill")},
+	}
+	if _, err := kit.skillToolset(ac, store.Get(), workspace); err != nil {
+		t.Fatalf("skillToolset: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(store.SkillsDir(), "agents", ac.ID, "resource-skill", "references", "REFERENCE.md"))
+	if err != nil {
+		t.Fatalf("materialized resource missing: %v", err)
+	}
+	if string(data) != "参考内容" {
+		t.Fatalf("resource = %q", data)
+	}
+}
+
+// TestAppSkillWithoutDescriptionStillBuilds 校验旧配置/标题型技能不会因空
+// description 在物化时让整个 Agent 构建失败。
+func TestAppSkillWithoutDescriptionStillBuilds(t *testing.T) {
+	kit, store := newTestKit(t)
+	if err := store.Update(func(cfg *config.Config) {
+		cfg.Skills = append(cfg.Skills, config.SkillConfig{
+			ID: "s-empty-desc", Name: "Empty Desc", Content: "# 正文标题\n\n正文",
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ac := config.AgentConfig{ID: "agent_empty_desc", Name: "Empty", SkillIDs: []string{"s-empty-desc"}}
+	if _, err := kit.skillToolset(ac, store.Get(), t.TempDir()); err != nil {
+		t.Fatalf("skillToolset: %v", err)
+	}
+	fm, _ := readMaterializedSkill(t, store, ac.ID, "empty-desc")
+	if fm.Description != "正文标题" {
+		t.Fatalf("description = %q", fm.Description)
+	}
+}
+
 // TestVanishedDiscoveredSkillIsSkipped：切换到不包含已挂载项目技能的工作区，不
 // 得使 Agent 无法构建（issue #52 #7）；缺失的 *app* 技能仍保留现有的硬错误。
 func TestVanishedDiscoveredSkillIsSkipped(t *testing.T) {

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,6 +77,27 @@ func TestDiscoveredSkillsMissingRootsAreSilent(t *testing.T) {
 	}
 }
 
+func TestDiscoveredSkillsFollowsSymlinkedDirectory(t *testing.T) {
+	workspace := t.TempDir()
+	projectRoot := filepath.Join(workspace, ".agents", "skills")
+	targetRoot := t.TempDir()
+	writeSkill(t, targetRoot, "alpha", skillMD("alpha", "符号链接技能", "# x"))
+	if err := os.MkdirAll(projectRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(targetRoot, "alpha"), filepath.Join(projectRoot, "alpha")); err != nil {
+		t.Skipf("当前平台无法创建符号链接: %v", err)
+	}
+
+	got := DiscoveredSkills(workspace, "")
+	if len(got) != 1 || got[0].Name != "alpha" {
+		t.Fatalf("symlinked skill = %+v", got)
+	}
+	if got[0].SourceDir == "" {
+		t.Fatal("symlinked skill must keep its resolved source directory")
+	}
+}
+
 func TestEffectiveSkillsPriorityProjectGlobalApp(t *testing.T) {
 	workspace := t.TempDir()
 	globalRoot := t.TempDir()
@@ -134,6 +156,48 @@ func TestParseSkillMarkdownBlockScalarDescription(t *testing.T) {
 	}
 	if body != "正文" {
 		t.Fatalf("body = %q", body)
+	}
+}
+
+func TestParseSkillMarkdownAcceptsFullYAML(t *testing.T) {
+	content := "---\n" +
+		"\"name\": alpha # YAML 注释\n" +
+		"description: >\n" +
+		"  第一行\n" +
+		"  第二行\n" +
+		"metadata:\n" +
+		"  author: example\n" +
+		"allowed-tools: Read Grep\n" +
+		"---\n\n正文\n"
+	name, desc, body := ParseSkillMarkdown(content)
+	if name != "alpha" {
+		t.Fatalf("name = %q", name)
+	}
+	if desc != "第一行 第二行" {
+		t.Fatalf("desc = %q", desc)
+	}
+	if body != "正文" {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+func TestDiscoveredSkillsRejectsMetadataOutsideSpec(t *testing.T) {
+	workspace := t.TempDir()
+	projectRoot := filepath.Join(workspace, ".agents", "skills")
+	writeSkill(t, projectRoot, "alpha", skillMD("beta", "目录名不一致", "# x"))
+	writeSkill(t, projectRoot, "long-desc", skillMD("long-desc", strings.Repeat("x", MaxSkillDescriptionLength+1), "# x"))
+
+	if got := DiscoveredSkills(workspace, ""); len(got) != 0 {
+		t.Fatalf("invalid metadata must be skipped, got %+v", got)
+	}
+}
+
+func TestEffectiveSkillDescriptionFallsBackToBody(t *testing.T) {
+	if got := EffectiveSkillDescription("weekly", "", "# 周报助手\n\n正文"); got != "周报助手" {
+		t.Fatalf("description fallback = %q", got)
+	}
+	if got := EffectiveSkillDescription("weekly", "", ""); got != "weekly" {
+		t.Fatalf("name fallback = %q", got)
 	}
 }
 

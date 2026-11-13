@@ -4,6 +4,58 @@
 
 ## 视觉测试与体验设计
 
+### 第二百八十七轮迭代：移除示例 Skill 并扩展导入目录（已实施）
+
+依据：用户确认内置的 `weekly-report` / `code-review` 两个示例 Skill 暂时不需要；同时希望保留可控的导入路径，而不是继续扩大自动发现范围。
+
+**实现要点**
+
+- `config.Default()` 不再预置两个示例 Skill；`migrateLegacy` 只移除 ID、名称、描述和正文仍与旧种子完全一致的条目，用户改过的 Skill 保留，并同步清理 Agent 上指向被移除种子的悬空引用。
+- `ImportSkillsFromWorkspace` 扩展为扫描 `<workspace>/skills`、`<workspace>/.claude/skills` 与 `~/.claude/skills`；`.agents/skills` 仍走既有的只读自动发现，不重复导入。
+- Skills 页按钮改为「导入 Skill」，提示扫描目录；空态文案同步为 `skills/`、`.claude/skills`。
+- 导入仍只保存 `SKILL.md` 正文；`references/`、`assets/`、`scripts/` 不会随导入复制（自动发现的技能会复制）。
+
+**测试证据**
+
+- 新增 `TestLegacySeededSkillsRemovedOnlyWhenUntouched`（只删未修改种子、保留修改过的 Skill、清理 Agent 引用）。
+- 新增 `TestImportSkillsFromClaudeDirectories`（工作区与用户级 `.claude/skills` 均可导入）；现有导入/碰撞用例保持通过。
+- `go test ./internal/... -count=1`、`go test ./internal/... -race -count=1`、`go test .`、`go vet ./internal/... .` 通过；前端 `npx tsc --noEmit`、`npm test`（43 文件 / 313 例）、`npm run build` 通过。
+
+### 第二百八十六轮迭代：设置中心交互与状态修正（已实施）
+
+依据：复核设置页时发现几处体验断点——首次打开会先闪现「设置加载失败」；A2A 端口字段提示 0 表示随机端口，但「发布 Agent」和自动启动校验都拒绝 0；保存失败后主题预览仍停留在未保存状态；设置行与导航 hover 使用了过强的 `accent`；知识库文件快捷按钮在文件较多时不换行。
+
+**实现要点**
+
+- `SettingsPage` 增加独立的 `loading` / `loadError` 状态：首次打开显示「正在加载设置…」，只有请求真正失败才显示可重试错误态，不再把加载中误报为失败。
+- A2A 端口统一允许 0（随机端口）：发布按钮、自动启动校验、字段提示和规格文档保持一致；仍拒绝负数与非整数。
+- 统一保存失败时重新应用已保存外观快照，避免预览主题与已持久化设置脱节；工作区为空时阻止保存并切到「数据与存储」。
+- 设置行与设置导航的 hover 从 `accent` 改为 `overlay` 表面；知识库文件快捷行增加 `flex-wrap`，避免文件数量增加后横向溢出。
+
+**测试证据**
+
+- 前端 `npx tsc --noEmit`、`npm test`（43 文件 / 313 例）、`npm run build` 全绿。
+- A2A 端口 0 的 `settingsModel` 校验用例已同步；本次无后端 schema 变更。
+
+### 第二百八十五轮迭代：Skill 发现层对齐官方 SKILL.md 格式（已实施）
+
+依据：核对 Agent Skills 官方规范与 Codex / Claude Code 文档后发现，原实现只支持精简的 `key: value` frontmatter 子集，官方允许的 YAML 注释、引号键、折行与块标量可能被误判；发现项目录只物化 `SKILL.md`，导致 `references/`、`assets/`、`scripts/` 在 ADK `load_skill_resource` 中缺失；应用内空描述或超长物化名称会通过保存校验，直到 Agent 构建时才失败。
+
+**实现要点**
+
+- `internal/config` 改用 `gopkg.in/yaml.v3` 解析 frontmatter，忽略未知扩展字段；保留无 frontmatter 时的一级标题回退，供工作区导入使用。
+- 发现层严格校验 agentskills.io 的 `name`（1-64、小写字母/数字/单连字符）与 `description`（1-1024），并要求 `name` 与父目录名一致；`SKILL.md` 分隔符必须独占一行。
+- `SaveSkill` / 工作区导入复用同一校验；应用内技能缺描述时回退到正文首行（再回退名称），确保物化出的 `SKILL.md` 始终可通过 ADK 校验。
+- 发现项新增仅运行时使用的 `SourceDir`（`json:"-"`，不写入 config.json、不进入前端绑定）；物化时复制 `scripts/`、`references/`、`assets/` 等附属文件，并限制单文件 10MB、总量 64MB、最多 5000 个文件；重建前清理旧目录，避免旧资源残留。
+- 明确范围：当前只发现 Codex 约定的项目/用户 `.agents/skills`；Claude Code 官方目录 `~/.claude/skills`、`.claude/skills` 尚未纳入发现，Codex 的祖先目录扫描也暂未实现。
+
+**测试证据**
+
+- 新增 `TestParseSkillMarkdownAcceptsFullYAML`（引号键、注释、块标量、未知字段）、发现层目录名/描述上限拒绝、符号链接目录（无权限时跳过）、描述回退用例。
+- 新增 `TestDiscoveredSkillMaterializesResources`（`references/REFERENCE.md` 随技能物化）、`TestAppSkillWithoutDescriptionStillBuilds`（空描述不再导致 Agent 构建失败）。
+- 新增 `TestSaveSkillValidatesMaterializedMetadata`（超长名称/描述拒绝、空描述回退）。
+- `go test ./internal/... -count=1`、`go test ./internal/... -race -count=1`、`go test .`、`go vet ./internal/... .` 全绿；前端 `npx tsc --noEmit`、`npm test`（43 文件 / 313 例）、`npm run build` 通过；`wails3 build` 成功生成 Windows 产物。
+
 ### 第二百八十四轮迭代：移除远端 issue 自动修复与批量发版（已实施）
 
 依据：维护者决定停用 GitHub issue 的自动认领、修复、批量发版与自动关票闭环，保留手工 issue 反馈和手工 tag 发布。原机制由提票 skill、本地定时运行手册、lease/queue 脚本和 GitHub Actions 发布列车组成，跨本地与 CI 的维护成本高于收益。

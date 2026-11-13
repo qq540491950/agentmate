@@ -18,6 +18,9 @@ import (
 func TestImportSkillsRejectsNormalizedCollisions(t *testing.T) {
 	dir := t.TempDir()
 	workspace := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	store, err := config.Open(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -62,6 +65,9 @@ func TestImportSkillsRejectsNormalizedCollisions(t *testing.T) {
 func TestImportSkillsFromWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	workspace := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	store, err := config.Open(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -125,6 +131,80 @@ func TestImportSkillsFromWorkspace(t *testing.T) {
 	if !foundTranslate || !foundWeekly {
 		t.Fatalf("imported skills incomplete: translate=%v weekly=%v", foundTranslate, foundWeekly)
 	}
+}
+
+func TestImportSkillsFromClaudeDirectories(t *testing.T) {
+	dir := t.TempDir()
+	workspace := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	store, err := config.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update(func(cfg *config.Config) {
+		cfg.Settings.WorkspaceDir = workspace
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc := &ConfigService{S: &Services{Store: store}}
+	mk := func(root, name string) {
+		t.Helper()
+		dir := filepath.Join(root, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		content := "---\nname: " + name + "\ndescription: " + name + " 说明\n---\n\n正文"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(filepath.Join(workspace, ".claude", "skills"), "project-claude")
+	mk(filepath.Join(home, ".claude", "skills"), "global-claude")
+
+	n, err := svc.ImportSkillsFromWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 Claude skills imported, got %d", n)
+	}
+}
+
+func TestSaveSkillValidatesMaterializedMetadata(t *testing.T) {
+	store, err := config.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := &ConfigService{S: &Services{Store: store}}
+	if err := svc.SaveSkill(config.SkillConfig{
+		Name:        "long-description",
+		Description: strings.Repeat("x", config.MaxSkillDescriptionLength+1),
+	}); err == nil {
+		t.Fatal("expected long description rejection")
+	}
+	if err := svc.SaveSkill(config.SkillConfig{
+		Name: strings.Repeat("a", config.MaxSkillNameLength+1),
+	}); err == nil {
+		t.Fatal("expected long normalized name rejection")
+	}
+	if err := svc.SaveSkill(config.SkillConfig{
+		Name:    "empty-description",
+		Content: "# 空描述技能\n\n正文",
+	}); err != nil {
+		t.Fatalf("missing description should fall back to the body title: %v", err)
+	}
+	cfg := store.Get()
+	for _, skill := range cfg.Skills {
+		if skill.Name == "empty-description" {
+			if skill.Description != "空描述技能" {
+				t.Fatalf("description = %q", skill.Description)
+			}
+			return
+		}
+	}
+	t.Fatalf("empty-description skill not stored: %+v", cfg.Skills)
 }
 
 // TestSaveSkillRejectsNormalizedCollision："API Review" 与 "api-review"

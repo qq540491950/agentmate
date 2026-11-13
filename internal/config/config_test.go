@@ -16,9 +16,9 @@ func TestStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 首次运行时会写入默认值。
-	if len(s.Get().Skills) == 0 {
-		t.Fatal("expected default skills to be seeded")
+	// 首次运行不再预置示例技能，Skill 由用户创建或导入。
+	if len(s.Get().Skills) != 0 {
+		t.Fatalf("fresh config must not seed sample skills: %+v", s.Get().Skills)
 	}
 	if s.Get().Settings.WorkspaceDir == "" {
 		t.Fatal("expected default workspace dir")
@@ -589,11 +589,50 @@ func TestOpenCorruptConfigKeepsBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Get().Skills) == 0 {
-		t.Fatal("expected fresh defaults after corrupt config")
+	if len(s.Get().Skills) != 0 {
+		t.Fatalf("fresh defaults must not seed sample skills: %+v", s.Get().Skills)
 	}
 	if _, err := os.Stat(path + ".bak"); err != nil {
 		t.Fatal("expected .bak backup of corrupt config")
+	}
+}
+
+func TestLegacySeededSkillsRemovedOnlyWhenUntouched(t *testing.T) {
+	dir := t.TempDir()
+	cfg := Default()
+	untouched := legacySeededSkills[0]
+	edited := legacySeededSkills[1]
+	edited.Description = "用户改过的代码审查说明"
+	custom := SkillConfig{ID: "skill_custom", Name: "custom", Description: "自定义", Content: "# 自定义"}
+	cfg.Skills = []SkillConfig{untouched, edited, custom}
+	cfg.Agents = []AgentConfig{{
+		ID:       "agent_1",
+		Name:     "A",
+		SkillIDs: []string{untouched.ID, edited.ID, custom.ID},
+	}}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := s.Get()
+	if len(got.Skills) != 2 {
+		t.Fatalf("skills = %+v, want edited + custom", got.Skills)
+	}
+	if got.Skills[0].ID != edited.ID || got.Skills[1].ID != custom.ID {
+		t.Fatalf("unexpected skills after migration: %+v", got.Skills)
+	}
+	if len(got.Agents) != 1 || len(got.Agents[0].SkillIDs) != 2 {
+		t.Fatalf("agent refs = %+v", got.Agents)
+	}
+	if got.Agents[0].SkillIDs[0] != edited.ID || got.Agents[0].SkillIDs[1] != custom.ID {
+		t.Fatalf("seeded ref not removed: %+v", got.Agents[0].SkillIDs)
 	}
 }
 
@@ -698,6 +737,13 @@ func TestUpdateFailedSaveDoesNotMutateMemory(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Update(func(cfg *Config) {
+		cfg.Skills = append(cfg.Skills, SkillConfig{
+			ID: "skill_test", Name: "test-skill", Description: "测试", Content: "# 测试",
+		})
+	}); err != nil {
 		t.Fatal(err)
 	}
 	before := s.Get().Skills[0].Name

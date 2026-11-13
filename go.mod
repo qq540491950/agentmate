@@ -15,6 +15,7 @@ require (
 	golang.org/x/sys v0.49.0
 	google.golang.org/adk/v2 v2.7.1
 	google.golang.org/genai v1.75.0
+	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.2
 )
 
@@ -66,7 +67,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
 	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.67.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

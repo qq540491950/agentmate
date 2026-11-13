@@ -37,7 +37,7 @@ func newSkillTestChat(t *testing.T) (*ChatService, <-chan string) {
 		cfg.Agents = append(cfg.Agents, config.AgentConfig{
 			ID: "a1", Name: "助手", ProviderID: "p1", Model: "m",
 		})
-		// 一个不会与预置默认技能冲突的名称。
+		// 使用一个独立的技能名称，避免与其他测试夹具冲突。
 		cfg.Skills = append(cfg.Skills, config.SkillConfig{
 			ID: "s1", Name: "Slash Test Skill", Description: "测试技能",
 			Content: "# 斜杠技能规则\n只输出一张表格。",

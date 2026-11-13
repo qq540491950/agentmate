@@ -65,18 +65,20 @@ export function SkillsPage() {
         description="可复用的技能指令包（SKILL.md 规范），可附加到任意 Agent"
         actions={
           <>
-            <Button variant="outline" onClick={async () => {
-              try {
-                const n = await Config.ImportSkillsFromWorkspace();
-                if (n > 0) toast.success(`已导入 ${n} 个 Skill`);
-                else toast.info("没有发现新的 Skill");
-                reload();
-              } catch (e) {
-                toast.error(`导入失败: ${errText(e)}`);
-              }
-            }}>
-              <FolderDown className="h-4 w-4" /> 从工作区导入
-            </Button>
+            <TooltipHint content="扫描工作区 skills/、.claude/skills 与 ~/.claude/skills；.agents/skills 会自动发现">
+              <Button variant="outline" onClick={async () => {
+                try {
+                  const n = await Config.ImportSkillsFromWorkspace();
+                  if (n > 0) toast.success(`已导入 ${n} 个 Skill`);
+                  else toast.info("没有发现新的 Skill");
+                  reload();
+                } catch (e) {
+                  toast.error(`导入失败: ${errText(e)}`);
+                }
+              }}>
+                <FolderDown className="h-4 w-4" /> 导入 Skill
+              </Button>
+            </TooltipHint>
             <Button onClick={() => setEditing(blankSkill())}>
               <Plus className="h-4 w-4" /> 新增 Skill
             </Button>
@@ -87,7 +89,7 @@ export function SkillsPage() {
       <div className="grid gap-3 md:grid-cols-2">
         {skills.length === 0 && (
           <div className="col-span-full rounded-xl bg-panel/40 p-8 text-center text-sm text-muted-foreground">
-            <EmptyState icon={ListTodo} title="还没有 Skill" desc="点击「新增 Skill」创建，或从工作区 knowledge 目录导入。" />
+            <EmptyState icon={ListTodo} title="还没有 Skill" desc="点击「新增 Skill」创建，或从 skills/、.claude/skills 导入。" />
           </div>
         )}
         {skills.map((s) => {

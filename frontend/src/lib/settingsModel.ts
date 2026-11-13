@@ -263,8 +263,8 @@ export function a2aAutoStartError(
     return "开启自动启动前请先选择要发布的 Agent";
   }
   const port = Number(settings.a2aPort);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    return "端口需为 1-65535 的整数";
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    return "端口需为 0-65535 的整数（0 表示随机端口）";
   }
   return null;
 }

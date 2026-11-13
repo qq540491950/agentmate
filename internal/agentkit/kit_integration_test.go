@@ -165,8 +165,7 @@ func TestBuildTeamMissingProvider(t *testing.T) {
 func TestSkillMaterialization(t *testing.T) {
 	kit, store := newTestKit(t)
 	err := store.Update(func(cfg *config.Config) {
-		// 替换预置的默认值："Weekly Report" 规范化后与预置的 weekly-report
-		// 技能的物化名称相同，且保存路径绝不允许同一配置中存在两个同名技能。
+		// 用一个可验证 frontmatter 的应用内技能。
 		cfg.Skills = []config.SkillConfig{
 			{ID: "s1", Name: "Weekly Report", Description: "写周报", Content: "# 步骤\n1. 收集"},
 		}

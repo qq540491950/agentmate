@@ -63,7 +63,7 @@ export function SettingRow({ label, description, children, className }: {
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center justify-between gap-4 rounded-lg px-3.5 py-3 transition-colors hover:bg-accent/60", className)}>
+    <div className={cn("flex items-center justify-between gap-4 rounded-lg px-3.5 py-3 transition-colors hover:bg-overlay/60", className)}>
       <div className="min-w-0">
         <div className="text-sm font-medium">{label}</div>
         {description && <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</div>}

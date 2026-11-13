@@ -1,16 +1,20 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
+
+	"gopkg.in/yaml.v3"
 )
 
 // 技能来源。应用技能存放在 config.json 中；项目级和全局技能在每次读取时从
-// <root>/.agents/skills 以只读方式发现，且绝不会写回配置文件：这些目录属于
-// 其他 agentskills.io 工具（Codex、Claude Code、OpenCode…），应用内编辑不得
-// 静默遮蔽这些工具读取的文件。
+// <root>/.agents/skills 以只读方式发现，且绝不会写回配置文件：该目录是
+// Codex 等工具共享的项目级约定，应用内编辑不得静默遮蔽这些工具读取的文件。
+// Claude Code 的官方目录是 .claude/skills，本发现层不扫描它。
 const (
 	SkillSourceProject = "project"
 	SkillSourceGlobal  = "global"
@@ -19,6 +23,13 @@ const (
 const (
 	discoveredProjectPrefix = "fs:project:"
 	discoveredGlobalPrefix  = "fs:global:"
+)
+
+const (
+	// MaxSkillNameLength / MaxSkillDescriptionLength 是 agentskills.io 规范
+	// 对 frontmatter 字段长度的上限。
+	MaxSkillNameLength        = 64
+	MaxSkillDescriptionLength = 1024
 )
 
 // skillNamePattern 是 agentskills.io 名称语法：由连字符分隔的组构成的小写 ASCII
@@ -33,6 +44,16 @@ func GlobalSkillRoot() string {
 		return ""
 	}
 	return filepath.Join(home, ".agents", "skills")
+}
+
+// GlobalClaudeSkillRoot 是 Claude Code 用户级技能目录，供“导入 Skill”使用。
+// 它不参与自动发现，导入后会成为可编辑的应用内技能。
+func GlobalClaudeSkillRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return ""
+	}
+	return filepath.Join(home, ".claude", "skills")
 }
 
 // DiscoveredSkillID 返回已发现技能的稳定标识。Agent 会存储此
@@ -117,19 +138,26 @@ func scanSkillRoot(root, source string) []SkillConfig {
 	seen := make(map[string]bool)
 	var out []SkillConfig
 	for _, e := range entries {
-		if !e.IsDir() {
-			continue // 根目录下的散落文件会被忽略
+		dir := filepath.Join(root, e.Name())
+		info, err := os.Stat(dir)
+		if err != nil || !info.IsDir() {
+			continue // 根目录下的散落文件会被忽略；符号链接目录按目标处理
 		}
-		name, desc, body, ok := readDiscoveredSkill(filepath.Join(root, e.Name()))
+		name, desc, body, ok := readDiscoveredSkill(dir)
 		if !ok || seen[name] {
 			continue
 		}
 		seen[name] = true
+		sourceDir := dir
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			sourceDir = resolved
+		}
 		out = append(out, SkillConfig{
 			ID:          DiscoveredSkillID(source, name),
 			Name:        name,
 			Description: desc,
 			Content:     body,
+			SourceDir:   sourceDir,
 		})
 	}
 	return out
@@ -155,7 +183,10 @@ func readDiscoveredSkill(dir string) (name, desc, body string, ok bool) {
 		name, desc, body = ParseSkillMarkdown(string(data))
 		name = strings.TrimSpace(name)
 		desc = strings.TrimSpace(desc)
-		if !validDiscoveredSkillName(name) || desc == "" {
+		if name != filepath.Base(dir) {
+			return "", "", "", false
+		}
+		if err := ValidateSkillMetadata(name, desc); err != nil {
 			return "", "", "", false
 		}
 		return name, desc, body, true
@@ -163,8 +194,27 @@ func readDiscoveredSkill(dir string) (name, desc, body string, ok bool) {
 	return "", "", "", false
 }
 
-func validDiscoveredSkillName(name string) bool {
-	return len(name) <= 64 && skillNamePattern.MatchString(name)
+// ValidateSkillMetadata 校验 agentskills.io frontmatter 的 name / description
+// 约束。发现层用它拒绝坏文件，保存层用它避免写入一个下次构建才会失败的技能。
+func ValidateSkillMetadata(name, description string) error {
+	name = strings.TrimSpace(name)
+	description = strings.TrimSpace(description)
+	if name == "" {
+		return fmt.Errorf("技能名称不能为空")
+	}
+	if utf8.RuneCountInString(name) > MaxSkillNameLength {
+		return fmt.Errorf("技能名称不能超过 %d 个字符", MaxSkillNameLength)
+	}
+	if !skillNamePattern.MatchString(name) {
+		return fmt.Errorf("技能名称只能包含小写字母、数字和单个连字符，且不能以连字符开头或结尾")
+	}
+	if description == "" {
+		return fmt.Errorf("技能描述不能为空")
+	}
+	if utf8.RuneCountInString(description) > MaxSkillDescriptionLength {
+		return fmt.Errorf("技能描述不能超过 %d 个字符", MaxSkillDescriptionLength)
+	}
+	return nil
 }
 
 // NormalizeSkillName 生成有效的 agentskills.io 技能名称：由小写 ASCII
@@ -191,20 +241,20 @@ func NormalizeSkillName(name string) string {
 }
 
 // ParseSkillMarkdown 从 SKILL.md 的 YAML frontmatter 块中提取
-// name/description，并返回 markdown 正文。该解析器刻意保持精简（不依赖
-// YAML）：支持顶层 `key: value` 键值对，以及 description 常用的 `|` / `>`
-// 块标量形式。没有 frontmatter
-// 时，由第一个标题提供回退名称（宽松处理，供工作区导入使用；发现层会拒绝
-// name/description 未通过校验的条目）。
+// name/description，并返回 markdown 正文。使用完整 YAML 解析，因此引号、
+// 注释、折行、块标量等官方允许的写法都能识别；未知字段会被忽略，以兼容
+// Claude Code / Codex 的扩展字段。没有 frontmatter 时，由第一个标题提供
+// 回退名称（宽松处理，供工作区导入使用；发现层会拒绝 name/description
+// 未通过校验的条目）。
 func ParseSkillMarkdown(content string) (name, desc, body string) {
 	content = strings.TrimPrefix(content, "\uFEFF")
 	if strings.HasPrefix(content, "---") {
-		if end := strings.Index(content[3:], "\n---"); end >= 0 {
-			front := content[3 : 3+end]
-			body = strings.TrimSpace(content[3+end+4:])
-			name, desc = parseSkillFrontmatter(front)
-			return name, desc, body
+		front, rest, ok := splitSkillFrontmatter(content)
+		if !ok {
+			return "", "", strings.TrimSpace(content)
 		}
+		name, desc = parseSkillFrontmatter(front)
+		return name, desc, strings.TrimSpace(rest)
 	}
 	for _, ln := range strings.Split(content, "\n") {
 		if strings.HasPrefix(ln, "# ") {
@@ -214,43 +264,52 @@ func ParseSkillMarkdown(content string) (name, desc, body string) {
 	return "", "", content
 }
 
-func parseSkillFrontmatter(front string) (name, desc string) {
-	lines := strings.Split(front, "\n")
-	for i := 0; i < len(lines); i++ {
-		k, v, ok := strings.Cut(lines[i], ":")
-		if !ok {
-			continue
-		}
-		key := strings.TrimSpace(strings.ToLower(k))
-		if key != "name" && key != "description" {
-			continue
-		}
-		v = strings.TrimSpace(v)
-		if key == "description" && isBlockScalarHeader(v) {
-			var parts []string
-			j := i + 1
-			for ; j < len(lines); j++ {
-				ln := lines[j]
-				trimmed := strings.TrimSpace(ln)
-				if trimmed == "" || strings.HasPrefix(ln, " ") || strings.HasPrefix(ln, "\t") {
-					parts = append(parts, trimmed)
-					continue
-				}
-				break
-			}
-			i = j - 1
-			v = strings.Join(parts, " ")
-		}
-		v = strings.Trim(strings.TrimSpace(v), `"'`)
-		if key == "name" {
-			name = v
-		} else {
-			desc = v
-		}
+// skillFrontmatterPattern 只接受独占一行的 `---` 分隔符；Markdown 正文中的
+// 水平线或缩进内容不会被误当成 frontmatter 结尾。
+var skillFrontmatterPattern = regexp.MustCompile(`(?s)\A---\r?\n(.*?)\r?\n---(?:\r?\n|\z)`)
+
+func splitSkillFrontmatter(content string) (front, body string, ok bool) {
+	m := skillFrontmatterPattern.FindStringSubmatchIndex(content)
+	if m == nil {
+		return "", "", false
 	}
-	return name, desc
+	return content[m[2]:m[3]], content[m[1]:], true
 }
 
-func isBlockScalarHeader(v string) bool {
-	return v != "" && (v[0] == '|' || v[0] == '>')
+func parseSkillFrontmatter(front string) (name, desc string) {
+	var fm struct {
+		Name        string `yaml:"name"`
+		Description string `yaml:"description"`
+	}
+	if err := yaml.Unmarshal([]byte(front), &fm); err != nil {
+		return "", ""
+	}
+	return strings.TrimSpace(fm.Name), strings.TrimSpace(fm.Description)
+}
+
+// EffectiveSkillDescription 返回可写入 SKILL.md 的描述。应用内旧技能或导入的
+// 标题型技能可能没有描述，这里回退到正文第一行（与 Claude Code 的行为一致），
+// 避免挂载到 Agent 时因空 description 构建失败。
+func EffectiveSkillDescription(name, description, body string) string {
+	if d := strings.TrimSpace(description); d != "" {
+		return truncateSkillRunes(d, MaxSkillDescriptionLength)
+	}
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.TrimSpace(strings.TrimLeft(line, "#>*-`"))
+		if line != "" {
+			return truncateSkillRunes(line, MaxSkillDescriptionLength)
+		}
+	}
+	if n := strings.TrimSpace(name); n != "" {
+		return truncateSkillRunes(n, MaxSkillDescriptionLength)
+	}
+	return "技能"
+}
+
+func truncateSkillRunes(s string, max int) string {
+	if utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	return string([]rune(s)[:max])
 }
