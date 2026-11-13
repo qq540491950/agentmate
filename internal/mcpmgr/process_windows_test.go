@@ -4,9 +4,8 @@ package mcpmgr
 
 import "testing"
 
-// TestStdioProcessAttrsHideConsole pins issue #67: the desktop app is a GUI
-// process without a console, so stdio MCP children started at injection time
-// must not allocate a visible console window over the app.
+// TestStdioProcessAttrsHideConsole 固定 issue #67：桌面应用是没有控制台的 GUI
+// 进程，因此在注入时启动的 stdio MCP 子进程不得在应用之上分配可见的控制台窗口。
 func TestStdioProcessAttrsHideConsole(t *testing.T) {
 	attrs := stdioProcessAttrs()
 	if attrs == nil {

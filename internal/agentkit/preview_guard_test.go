@@ -36,8 +36,7 @@ func TestPreviewGuardCheckWritePath(t *testing.T) {
 	if ok, code, reason := full.CheckWritePath(".git/config"); !ok {
 		t.Fatalf("danger full access rejected protected path: %s %s", code, reason)
 	}
-	// Built-in file tools stay rooted at the task workspace even when the OS
-	// sandbox is disabled; only the protected-path check is relaxed.
+	// 内置文件工具始终以任务工作区为根，即使 OS 沙箱已禁用；仅放宽受保护路径检查。
 	if ok, code, _ := full.CheckWritePath("../escape.txt"); ok || code != "outside_workspace" {
 		t.Fatalf("danger full access outside path = %v (%s)", ok, code)
 	}

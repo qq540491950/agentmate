@@ -41,13 +41,12 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 		m.Kind = role
 		m.Text = textBuf.String()
 		if role == "user" {
-			// The level rides on the user message's state delta; older
-			// turns recorded none and simply show none.
+			// 该级别承载于用户消息的状态增量上；较早的回合未记录任何级别，因此直接不显示
+			// 。
 			m.Reasoning = eventReasoning(ev)
-			// Inline images are parts of this same user event. Keep them on
-			// one message: splitting each image into its own user message
-			// duplicated the event ID and made the frontend render phantom
-			// turns that all highlighted together in the turn rail.
+			// 内联图像是同一个用户事件的一部分。将它们保留在一条消息中：把每个图像拆分成
+			// 各自的用户消息会重复事件
+			// ID，并使前端渲染出幽灵回合，而这些回合都会在回合栏中一起高亮。
 			m.Attachments = attachments
 		}
 		out = append(out, m)
@@ -120,8 +119,7 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 					DataURL: "data:" + p.InlineData.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(p.InlineData.Data),
 				})
 			} else {
-				// Assistant inline data is not rendered in chat history; keep
-				// the existing text-boundary behavior for those events.
+				// 助手内联数据不会在聊天历史中渲染；对这些事件保留现有的文本边界行为。
 				flushText()
 			}
 		case p.Text != "" && !p.Thought:
@@ -133,10 +131,10 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 	return out
 }
 
-// confirmRequestInfo extracts the original tool call and human-readable hint
-// from an adk_request_confirmation FunctionCall's args. The args survive a
-// JSON roundtrip once persisted, so the originalFunctionCall field may be a
-// *genai.FunctionCall (live) or a generic map (reloaded history).
+// confirmRequestInfo 从 adk_request_confirmation FunctionCall 的 args
+// 中提取原始工具调用和人类可读提示。args 在持久化后经过 JSON 往返仍会保留，因此
+// originalFunctionCall 字段可能是 *genai.FunctionCall（实时）或通用
+// map（重新加载的历史）。
 func confirmRequestInfo(args map[string]any) (*genai.FunctionCall, string) {
 	orig, err := toolconfirmation.OriginalCallFrom(&genai.FunctionCall{Args: args})
 	if err != nil {
@@ -149,10 +147,9 @@ func confirmRequestInfo(args map[string]any) (*genai.FunctionCall, string) {
 	return orig, hint
 }
 
-// confirmRequestHint replaces ADK's generic English prompt for run_command.
-// The card needs an unambiguous boundary label: an escalated call must say it
-// leaves the sandbox and carry the model's justification; an ordinary call
-// must not look like an escalation.
+// confirmRequestHint 替换 ADK 针对 run_command
+// 的通用英文提示。卡片需要一个无歧义的边界标签：升级后的调用必须说明其会离开沙
+// 箱，并携带模型的理由；普通调用不得看起来像一次升级。
 func confirmRequestHint(call *genai.FunctionCall, fallback string) string {
 	if call == nil || call.Name != "run_command" {
 		return fallback
@@ -169,9 +166,8 @@ func confirmRequestHint(call *genai.FunctionCall, fallback string) string {
 	return "脱离沙箱执行终端命令。理由：" + justification
 }
 
-// escalationAuditFields returns the stable fields the tool-audit trail uses
-// for a per-call sandbox escape. A nil result means the call is not an
-// escalated run_command.
+// escalationAuditFields 返回工具审计追踪用于单次调用沙箱逃逸的稳定字段。结果为
+// nil 表示该调用不是升级后的 run_command。
 func escalationAuditFields(call *genai.FunctionCall) map[string]any {
 	if call == nil || call.Name != "run_command" {
 		return nil
@@ -190,8 +186,8 @@ func escalationAuditFields(call *genai.FunctionCall) map[string]any {
 	return fields
 }
 
-// auditToolCallArgs preserves the original tool arguments and adds the
-// normalized escalation fields (notably escalated=true) for the call record.
+// auditToolCallArgs 保留原始工具参数，并为调用记录添加规范化后的升级字段（尤其是
+// escalated=true）。
 func auditToolCallArgs(call *genai.FunctionCall) map[string]any {
 	if call == nil {
 		return nil
@@ -210,8 +206,8 @@ func auditToolCallArgs(call *genai.FunctionCall) map[string]any {
 	return merged
 }
 
-// isConfirmationInterrupt reports whether the part is the adk_request_confirmation
-// interrupt declared long-running on this event (ADK HITL pause point).
+// isConfirmationInterrupt 报告该 part 是否是在此事件上声明为长时间运行的
+// adk_request_confirmation 中断（ADK HITL 暂停点）。
 func isConfirmationInterrupt(ev *session.Event, fc *genai.FunctionCall) bool {
 	if fc == nil {
 		return false
@@ -219,8 +215,7 @@ func isConfirmationInterrupt(ev *session.Event, fc *genai.FunctionCall) bool {
 	return fc.Name == toolconfirmation.FunctionCallName && slices.Contains(ev.LongRunningToolIDs, fc.ID)
 }
 
-// targetAgentConfig returns the AgentConfig behind a session (nil for teams
-// or when the target no longer exists).
+// targetAgentConfig 返回会话背后的 AgentConfig（团队或目标已不存在时为 nil）。
 func (c *ChatService) targetAgentConfig(cfg config.Config, target *config.ChatSession) *config.AgentConfig {
 	if target.TargetType != "agent" {
 		return nil
@@ -233,16 +228,13 @@ func (c *ChatService) targetAgentConfig(cfg config.Config, target *config.ChatSe
 	return nil
 }
 
-// directAgentConfig builds the implicit target behind a direct chat: the
-// default provider's first model, a workspace-aware prompt, the workspace
-// file tools and the terminal tool. Nothing is persisted — direct sessions
-// only materialize an agent per turn. Without the file tools a project chat
-// could only promise "我来查看项目" and stop: the model had no way to read the
-// directory it was asked about (issue #21). Without the shell tool the default
-// agent denied having any terminal capability and refused "git pull" (issue
-// #40) — the configured agents had run_command since #36, but this hardcoded
-// path still narrowed itself to files. Writes and commands stay behind HITL
-// confirmation, matching a new agent's defaults.
+// directAgentConfig 构建直接对话背后的隐式目标：默认供应商的第一个模型、感知
+// 工作区的提示词、工作区文件工具和终端工具。不会持久化任何内容——直接会话只在
+// 每回合临时物化一个 Agent。没有文件工具时，项目对话只能承诺「我来查看项目」
+// 然后停住：模型无法读取被问到的目录（issue #21）。没有 Shell 工具时，默认
+// Agent 会否认自己具备终端能力并拒绝执行「git pull」（issue #40）——配置的
+// Agent 自 #36 起已有 run_command，但这条硬编码路径仍把自己限制在文件操作上。
+// 写入和命令仍经过 HITL 确认，与新 Agent 的默认设置一致。
 func directAgentConfig(cfg config.Config) (config.AgentConfig, error) {
 	var provider *config.ModelProvider
 	for i := range cfg.Providers {
@@ -281,14 +273,13 @@ func directAgentConfig(cfg config.Config) (config.AgentConfig, error) {
 			"需要拉取代码、运行命令时直接调用 run_command，不要声称没有终端或 Shell 能力。" +
 			"写入文件和执行命令会先请用户确认。",
 		BuiltinTools: []string{"files", "shell", "todos"},
-		// Approval and the OS boundary come from the session's independent
-		// execution policy. Direct chats deliberately add no per-agent
-		// override, so auto-approve only asks for risk-detected commands.
+		// 审批和操作系统边界来自会话独立的执行策略。直接聊天有意不添加按 Agent
+		// 的覆盖配置，因此自动批准仅对检测到风险的命令请求确认。
 	}, nil
 }
 
-// mentionMatches reports whether body starts with the mention name followed
-// by a token boundary (end, space, newline or full-width space).
+// mentionMatches 报告 body 是否以提及名称开头，且其后为 token
+// 边界（结尾、空格、换行或全角空格）。
 func mentionMatches(body, name string) bool {
 	if !strings.HasPrefix(body, name) {
 		return false
@@ -297,10 +288,9 @@ func mentionMatches(body, name string) bool {
 	return rest == "" || rest[0] == ' ' || rest[0] == '\t' || rest[0] == '\n' || strings.HasPrefix(rest, "　")
 }
 
-// resolveMention parses a leading "@名称" mention and returns the turn-scoped
-// target it names. Candidates cover agents, teams and remote agents; the
-// longest matching name wins so "写手" does not shadow "写手助手". Unresolvable
-// mentions leave the turn on the session's own target.
+// resolveMention 解析开头的「@名称」提及，并返回它指向的回合级目标。候选包括
+// Agent、团队和远程 Agent；最长匹配优先，因此「写手」不会遮蔽「写手助手」。
+// 无法解析的提及会让该回合继续使用会话自身的目标。
 func resolveMention(cfg config.Config, text string) (targetType, targetID string, ok bool) {
 	if !strings.HasPrefix(text, "@") || len(text) < 2 {
 		return "", "", false
@@ -325,10 +315,9 @@ func resolveMention(cfg config.Config, text string) (targetType, targetID string
 	return targetType, targetID, bestLen > 0
 }
 
-// turnTargetFor resolves the per-turn target: a leading @mention in the user
-// text routes just this turn to the named agent/team/remote, everything else
-// stays on the session's own target. The mention stays in the message text —
-// history, Regenerate and EditAndResend re-parse it and re-route consistently.
+// turnTargetFor 解析每回合目标：用户文本开头的 @ 提及仅将本回合路由到指定的
+// Agent/团队/远程目标，其他内容仍留在会话自身的目标上。该提及会保留在消息文本中
+// ——历史记录、Regenerate 和 EditAndResend 会重新解析它并一致地重新路由。
 func turnTargetFor(cfg config.Config, target *config.ChatSession, userText string) *config.ChatSession {
 	turn := *target
 	if userText != "" {
@@ -339,20 +328,18 @@ func turnTargetFor(cfg config.Config, target *config.ChatSession, userText strin
 	return &turn
 }
 
-// effectiveSkillsFor is the slash-command view of the skill set for a chat
-// working in workspace: project/global discovery wins over same-named app
-// skills, exactly like the agent-build layer (config.EffectiveSkills).
+// effectiveSkillsFor 是工作区中聊天所用技能集的斜杠命令视图：项目/全局发现优先于同名应用技能，与
+// agent-build 层（config.EffectiveSkills）完全一致。
 func effectiveSkillsFor(cfg config.Config, workspace string) []config.SkillConfig {
 	return config.EffectiveSkills(cfg, workspace, config.GlobalSkillRoot())
 }
 
-// resolveSkillCommand parses a leading "/<skill-name>" command against the
-// effective skills (app config plus project/global .agents/skills discovery).
-// Matching uses the materialized name ADK would expose (lowercase, hyphenated)
-// and is case-insensitive, so "/Weekly_Report" finds a skill named
-// "Weekly Report". The remainder of the line is returned as the turn's user
-// input. Only the first token is considered: the text doubles as chat history,
-// so Regenerate and HITL resume can re-parse it verbatim.
+// resolveSkillCommand 会针对有效技能（应用配置加上项目/全局 .agents/skills
+// 发现）解析开头的 "/<skill-name>" 命令。匹配使用 ADK
+// 会暴露的物化名称（小写、连字符形式），并且不区分大小写，因此 "/Weekly_Report"
+// 能找到名为 "Weekly Report"
+// 的技能。该行的剩余部分作为本回合的用户输入返回。仅考虑第一个
+// token：该文本兼作聊天历史，因此 Regenerate 和 HITL 恢复可以逐字重新解析它。
 func resolveSkillCommand(skills []config.SkillConfig, text string) (*config.SkillConfig, string) {
 	t := strings.TrimLeft(text, " \t\r\n")
 	if !strings.HasPrefix(t, "/") {
@@ -377,20 +364,19 @@ func resolveSkillCommand(skills []config.SkillConfig, text string) (*config.Skil
 	return nil, ""
 }
 
-// buildSkillTurnContext renders the instruction block injected into a turn
-// started by a "/<skill-name>" command. args is the text after the command, so
-// the model gets the task spelled out even though the stored user message
-// keeps the full command line. The block is appended to the system
-// instruction by agentkit.skillAwareInstruction — never to the stored user
-// message — so history and exports keep showing what the user actually typed.
+// buildSkillTurnContext 渲染注入到由 "/<skill-name>"
+// 命令启动的回合中的指令块。args
+// 是命令之后的文本，因此即使存储的用户消息保留完整命令行，模型也能获得明确说明
+// 的任务。该块由 agentkit.skillAwareInstruction
+// 追加到系统指令中——绝不会追加到存储的用户消息——因此历史记录和导出内容始终显示
+// 用户实际输入的内容。
 func buildSkillTurnContext(s *config.SkillConfig, args string) string {
 	if s == nil {
 		return ""
 	}
 	md, err := agentkit.RenderSkillMD(s.Name, s.Description, s.Content)
 	if err != nil {
-		// Fall back to the raw body: a frontmatter rendering hiccup must not
-		// silently turn the invocation into a no-op.
+		// 回退到原始正文：frontmatter 渲染的小故障不得悄悄使调用变成空操作。
 		md = s.Content
 	}
 	out := "本轮用户消息以 /" + agentkit.MaterializedSkillName(s.Name) + " 命令开头；" +
@@ -401,11 +387,11 @@ func buildSkillTurnContext(s *config.SkillConfig, args string) string {
 	return out
 }
 
-// renderTodoList renders a plan_todos tool result as a compact checklist line
-// set for the export renderers (raw JSON payloads are unreadable in exports).
-// escape applies HTML escaping to the model-provided content: the HTML export
-// renders this straight into the page, and todo contents echo tool arguments
-// (model-controlled) — unescaped they would be a stored-XSS vector.
+// renderTodoList 将 plan_todos
+// 工具结果渲染为供导出渲染器使用的紧凑清单行集合（原始 JSON
+// 载荷在导出内容中不可读）。escape 对模型提供的内容应用 HTML 转义：HTML
+// 导出会将其直接渲染进页面，而 todo
+// 内容会回显工具参数（由模型控制）——不转义它们就会成为存储型 XSS 的攻击向量。
 func renderTodoList(resp map[string]any, escape bool) string {
 	todos, ok := resp["todos"].([]any)
 	if !ok || len(todos) == 0 {
@@ -442,9 +428,8 @@ func renderTodoList(resp map[string]any, escape bool) string {
 	return fmt.Sprintf("**任务计划**（%d/%d 完成）\n\n%s", done, len(lines), strings.Join(lines, "\n"))
 }
 
-// displayNameOf resolves a session target's display name from the config
-// (team / agent); unknown IDs fall back to the raw id. Shared by both export
-// renderers so Markdown and HTML never disagree.
+// displayNameOf 从配置中解析会话目标的显示名称（team / agent）；未知 ID
+// 回退为原始 id。由两个导出渲染器共享，因此 Markdown 与 HTML 绝不会出现不一致。
 func displayNameOf(cfg config.Config, targetType, id string) string {
 	if targetType == "team" {
 		for _, t := range cfg.Teams {

@@ -14,8 +14,8 @@ import (
 	"agentmate/internal/config"
 )
 
-// SetSessionWorkspace rebinds a task before its first event. The directory is
-// canonicalized and checked for writability and active-session conflicts.
+// SetSessionWorkspace 在任务的首次事件之前重新绑定任务。目录会被规范化，并检查其可写性和活动会话冲
+// 突。
 func (c *ChatService) SetSessionWorkspace(sessionID, workspaceDir string) error {
 	lock := c.sessionWorkspaceLock(sessionID)
 	lock.Lock()
@@ -93,9 +93,8 @@ func (c *ChatService) SetSessionWorkspace(sessionID, workspaceDir string) error 
 	return nil
 }
 
-// projectRootConflict rejects task directories that are registered project
-// roots: project chats share those via ProjectID, and a second exclusive
-// binding would make the two ownership models fight over the same directory.
+// projectRootConflict 拒绝已被注册为项目根目录的任务目录：项目聊天通过
+// ProjectID 共享这些目录，而第二个独占绑定会使两种所有权模型争夺同一目录。
 func projectRootConflict(cfg config.Config, dir string) error {
 	for _, p := range cfg.Projects {
 		if samePath(p.RootDir, dir) {
@@ -116,9 +115,8 @@ func (c *ChatService) sessionWorkspaceLock(sessionID string) *sync.Mutex {
 	return lock
 }
 
-// SessionWorkspace returns the effective task directory after checking that
-// it still exists and is readable. The UI uses this instead of reproducing the
-// legacy fallback rule.
+// SessionWorkspace 在检查任务目录仍然存在且可读后，返回有效的任务目录。UI
+// 使用它，而不是复现遗留的回退规则。
 func (c *ChatService) SessionWorkspace(sessionID string) (string, error) {
 	cfg := c.S.Store.Get()
 	for _, chatSession := range cfg.Sessions {
@@ -162,8 +160,7 @@ func (c *ChatService) sessionHasEvents(sessionID string) (bool, error) {
 	return false, nil
 }
 
-// validateTaskWorkspace canonicalizes a user-selected task directory and
-// verifies that it can be listed and written.
+// validateTaskWorkspace 会规范化用户选择的任务目录，并验证该目录可被列出且可写入。
 func validateTaskWorkspace(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -208,9 +205,9 @@ func workspaceConflict(cfg config.Config, workspace, excludeSessionID string) er
 	return nil
 }
 
-// workspaceConflictForUnarchive allows tasks in the same fork family to keep
-// sharing their inherited workspace, while still rejecting unrelated tasks
-// that began using the directory after the target was archived.
+// workspaceConflictForUnarchive 允许同一 fork
+// 家族中的任务继续共享其继承的工作区，同时仍然拒绝在目标被归档后才开始使用该目
+// 录的无关任务。
 func workspaceConflictForUnarchive(cfg config.Config, target config.ChatSession) error {
 	targetRoot := forkRootID(cfg, target.ID)
 	for _, s := range cfg.Sessions {

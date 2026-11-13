@@ -25,7 +25,7 @@ func TestSanitizeSecrets(t *testing.T) {
 			t.Errorf("SanitizeSecrets(%q) missing placeholder: %q", c.in, got)
 		}
 	}
-	// Normal text passes through untouched.
+	// 普通文本原样通过，不被修改。
 	plain := "今天天气不错，我们讨论一下项目计划。"
 	if SanitizeSecrets(plain) != plain {
 		t.Fatal("plain text was modified")
@@ -46,7 +46,7 @@ func TestInjectionRisk(t *testing.T) {
 	}
 	safe := []string{
 		"帮我写本周周报", "打印这份文档", "ignore the weather report",
-		// Everyday dev phrasings that the bare-verb pattern used to flag.
+		// 日常开发中常见的表述，过去会被裸动词模式误判。
 		"print the JSON payload", "reveal the report structure",
 	}
 	for _, s := range safe {

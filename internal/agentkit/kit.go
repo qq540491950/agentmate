@@ -31,17 +31,16 @@ import (
 	"agentmate/internal/terminal"
 )
 
-// ModelFactory builds the model.LLM for a provider/model pair.
+// NewModelFromProvider 为供应商/模型组合构建 model.LLM。
 func NewModelFromProvider(p config.ModelProvider, modelID string) (model.LLM, error) {
 	return newModelFromProvider(p, modelID, nil)
 }
 
-// NewModelFromProviderWithReasoning builds a model whose requests carry the
-// thinking fields resolved from the model's level table. level selects a level
-// by name; empty means the model's configured default. Models without a saved
-// table fall back to the built-in family table, but only when level is
-// non-empty — an unconfigured model keeps the provider default. Side calls
-// that should not think (auto-title) keep using NewModelFromProvider.
+// NewModelFromProviderWithReasoning 构建一个模型，其请求会携带由该模型级别表解析出的 thinking 字段。level
+// 按名称选择级别；为空表示使用该模型配置的默认值。没有已保存级别表的模型会回退
+// 到内置的家族表，但仅在 level
+// 非空时如此——未配置的模型保留供应商默认值。不应进行思考的旁路调用（自动标题）
+// 继续使用 NewModelFromProvider。
 func NewModelFromProviderWithReasoning(p config.ModelProvider, modelID, level string) (model.LLM, error) {
 	var extra map[string]any
 	if mi, ok := p.FindModel(modelID); ok {
@@ -61,58 +60,54 @@ func newModelFromProvider(p config.ModelProvider, modelID string, extra map[stri
 	case config.ProtocolAnthropic:
 		return NewAnthropic(AnthropicConfig{BaseURL: p.BaseURL, APIKey: p.APIKey, Model: modelID, ExtraBody: extra})
 	case config.ProtocolGemini:
-		// The genai SDK owns the request shape; arbitrary extra fields are not
-		// merged here. Gemini models therefore ignore the level table at run
-		// time (the configuration is still stored and editable).
+		// 请求的结构由 genai SDK 掌管；任意的额外字段不会在此合并。因此 Gemini
+		// 模型在运行时忽略级别表（配置仍会被存储且可编辑）。
 		return gemini.NewModel(context.Background(), modelID, &genai.ClientConfig{
 			APIKey: p.APIKey,
 			HTTPOptions: genai.HTTPOptions{
-				BaseURL: p.BaseURL, // empty => Google default
+				BaseURL: p.BaseURL, // 为空 => Google 默认值
 			},
 		})
-	default: // OpenAI-compatible Chat Completions
+	default: // OpenAI 兼容的 Chat Completions
 		return NewOpenAICompat(OpenAICompatConfig{BaseURL: p.BaseURL, APIKey: p.APIKey, Model: modelID, ExtraBody: extra})
 	}
 }
 
-// Kit assembles ADK agent trees from app configuration.
+// Kit 从应用配置组装 ADK Agent 树。
 type Kit struct {
 	store     *config.Store
 	mcp       *mcpmgr.Manager
-	memory    tool.Tool       // long-term memory search tool (nil if memory unavailable)
-	knowledge *KnowledgeIndex // workspace knowledge vector index (nil => keyword search)
-	// skillMu serializes skill materialization: parallel builds of the same
-	// agent (parallel sessions rebuild per turn) must not interleave the
-	// write/prune/preload sequence over the shared staging directory.
+	memory    tool.Tool       // 长期记忆搜索工具（记忆不可用时为 nil）
+	knowledge *KnowledgeIndex // 工作区知识向量索引（nil => 关键词搜索）
+	// skillMu 串行化技能物化：同一 agent
+	// 的并行构建（并行会话按回合重建）不得在共享暂存目录上交错执行写入/清理/预加载
+	// 序列。
 	skillMu sync.Mutex
-	// globalSkillRoot is the user-level agentskills.io discovery root
-	// (~/.agents/skills). Captured at construction; tests override it so agent
-	// builds never depend on the developer's real home directory.
+	// globalSkillRoot 是用户级 agentskills.io
+	// 发现根目录（~/.agents/skills）。在构造时捕获；测试会覆盖它，因此 agent
+	// 构建绝不依赖开发者的真实主目录。
 	globalSkillRoot string
-	// globalAgentsFile is the user-level engineering guide
-	// (~/.agents/AGENTS.md). Captured at construction, so tests seed it
-	// through the home-dir environment before building the Kit.
+	// globalAgentsFile 是用户级工程指南（~/.agents/AGENTS.md）。在构造时捕获，因此测试会在构建 Kit
+	// 之前通过 home-dir 环境预置它。
 	globalAgentsFile string
 }
 
-// NewKit creates a Kit.
+// NewKit 创建一个 Kit。
 func NewKit(store *config.Store, mcp *mcpmgr.Manager) *Kit {
 	return &Kit{store: store, mcp: mcp, globalSkillRoot: config.GlobalSkillRoot(), globalAgentsFile: config.GlobalAgentsFile()}
 }
 
-// SetMemoryTool attaches the long-term memory search tool.
+// SetMemoryTool 挂接长期记忆搜索工具。
 func (k *Kit) SetMemoryTool(t tool.Tool) { k.memory = t }
 
-// SetKnowledgeIndex attaches the persistent knowledge vector index; combined
-// with an embedding provider in settings this upgrades search_knowledge from
-// keyword to hybrid semantic retrieval.
+// SetKnowledgeIndex 挂接持久化的知识向量索引；与设置中的嵌入供应商结合后，这会将 search_knowledge
+// 从关键词检索升级为混合语义检索。
 func (k *Kit) SetKnowledgeIndex(idx *KnowledgeIndex) { k.knowledge = idx }
 
-// IndexStats exposes the knowledge index state for observability.
+// IndexStats 为可观测性暴露知识索引状态。
 func (k *Kit) IndexStats() KnowledgeIndexStats { return k.knowledge.Stats() }
 
-// TestKnowledgeSearch runs a one-off hybrid knowledge search with current
-// settings — a tuning aid for the embedding configuration.
+// TestKnowledgeSearch 使用当前设置运行一次性的混合知识搜索——这是用于嵌入配置调优的辅助手段。
 func (k *Kit) TestKnowledgeSearch(query string) (string, error) {
 	if strings.TrimSpace(query) == "" {
 		return "", fmt.Errorf("检索词不能为空")
@@ -128,11 +123,10 @@ func (k *Kit) TestKnowledgeSearch(query string) (string, error) {
 	return searchHybrid(opts, query)
 }
 
-// ResetKnowledgeIndex wipes the vector index; the next semantic search
-// rebuilds it from the workspace files.
+// ResetKnowledgeIndex 会清空向量索引；下一次语义搜索会从工作区文件重建它。
 func (k *Kit) ResetKnowledgeIndex() error { return k.knowledge.Reset() }
 
-// BuildAgent builds an ADK agent for the given agent config.
+// BuildAgent 为给定的 agent 配置构建一个 ADK agent。
 func (k *Kit) BuildAgent(ac config.AgentConfig) (agent.Agent, error) {
 	return k.BuildAgentWithModelAndWorkspace(ac, "", "")
 }
@@ -141,28 +135,24 @@ func (k *Kit) buildLLMAgent(ac config.AgentConfig, cfg config.Config, workspace,
 	return k.buildLLMAgentWithSubAgents(ac, cfg, nil, workspace, reasoningLevel)
 }
 
-// BuildAgentWithModel builds an agent pinned to a specific model of its
-// provider (per-session model override; empty modelID falls back to the
-// agent's configured model).
+// BuildAgentWithModel 构建一个固定使用其供应商特定模型的
+// agent（按会话的模型覆盖；modelID 为空时回退到 agent 配置的模型）。
 func (k *Kit) BuildAgentWithModel(ac config.AgentConfig, modelID string) (agent.Agent, error) {
 	return k.BuildAgentWithModelAndWorkspace(ac, modelID, "")
 }
 
-// BuildAgentWithModelAndWorkspace is the session-aware build entry: model
-// override and effective task workspace are resolved together so file tools
-// and prompt variables cannot disagree about the directory.
+// BuildAgentWithModelAndWorkspace 是会话感知的构建入口：模型覆盖和有效任务工作区会一起解析，因此文件工具与提示
+// 词变量不会对目录产生不一致。
 func (k *Kit) BuildAgentWithModelAndWorkspace(ac config.AgentConfig, modelID, workspace string) (agent.Agent, error) {
 	return k.BuildAgentWithModelWorkspaceAndReasoning(ac, modelID, workspace, "")
 }
 
-// BuildAgentWithModelWorkspaceAndReasoning is the session-aware build entry:
-// model override, effective task workspace and the chat's thinking level are
-// resolved together so the tools, prompt variables and request body cannot
-// disagree about the run.
+// BuildAgentWithModelWorkspaceAndReasoning 是会话感知的构建入口：模型覆盖、有效任务工作区以及聊天的思考级别会一起解析，
+// 因此工具、提示词变量和请求体不会对本次运行产生不一致。
 func (k *Kit) BuildAgentWithModelWorkspaceAndReasoning(ac config.AgentConfig, modelID, workspace, reasoningLevel string) (agent.Agent, error) {
 	cfg := k.store.Get()
-	// A blank provider/model inherits the global default before any override
-	// is clamped, so the per-session picker works on inherited models too.
+	// 为空的供应商/模型会在任何覆盖被钳制之前继承全局默认值，因此按会话的选择器也
+	// 能对继承的模型生效。
 	ac.ProviderID, ac.Model = cfg.ResolveAgentModel(ac)
 	if strings.TrimSpace(modelID) != "" {
 		ac.Model = EffectiveModel(cfg, ac.ProviderID, ac.Model, modelID)
@@ -173,10 +163,8 @@ func (k *Kit) BuildAgentWithModelWorkspaceAndReasoning(ac config.AgentConfig, mo
 	return k.buildLLMAgent(ac, cfg, workspace, reasoningLevel)
 }
 
-// EffectiveModel resolves the model a session actually runs: the per-session
-// override when the provider offers it, the agent's configured model
-// otherwise. The single clamp shared by agent building, stats pricing and the
-// auto-title side call.
+// EffectiveModel 解析会话实际运行的模型：当供应商提供按会话覆盖时使用该覆盖，否则使用 agent
+// 配置的模型。它是 agent 构建、统计定价和自动标题旁路调用共享的单一钳制点。
 func EffectiveModel(cfg config.Config, providerID, configuredModel, override string) string {
 	if override != "" && modelSupported(cfg, providerID, override) {
 		return override
@@ -184,8 +172,8 @@ func EffectiveModel(cfg config.Config, providerID, configuredModel, override str
 	return configuredModel
 }
 
-// ModelSupported reports whether the provider offers the given model id.
-// Exported for callers that only need the boolean check.
+// ModelSupported 报告供应商是否提供给定的模型
+// id。它导出供仅需要布尔检查的调用方使用。
 func ModelSupported(cfg config.Config, providerID, modelID string) bool {
 	return modelSupported(cfg, providerID, modelID)
 }
@@ -204,8 +192,8 @@ func modelSupported(cfg config.Config, providerID, modelID string) bool {
 	return false
 }
 
-// applyModelOutputLimit fills an unset agent output limit from the model's
-// configured MaxOutputTokens; an explicit agent value always wins.
+// applyModelOutputLimit 从模型配置的 MaxOutputTokens 填充未设置的 Agent
+// 输出上限；显式设置的 Agent 值始终优先。
 func applyModelOutputLimit(ac *config.AgentConfig, p config.ModelProvider) {
 	if ac.MaxTokens > 0 {
 		return
@@ -216,9 +204,8 @@ func applyModelOutputLimit(ac *config.AgentConfig, p config.ModelProvider) {
 }
 
 func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Config, subAgents []agent.Agent, workspace, reasoningLevel string) (agent.Agent, error) {
-	// Agents defined without an explicit model follow the global default
-	// (form: provider/model left blank). Historical configs with empty values
-	// are interpreted the same way instead of failing to run (#39).
+	// 定义时未显式指定模型的 Agent 遵循全局默认值（形式：provider/model
+	// 留空）。值为空的历史配置也按相同方式解释，而不是运行失败（#39）。
 	ac.ProviderID, ac.Model = cfg.ResolveAgentModel(ac)
 	var provider *config.ModelProvider
 	for i := range cfg.Providers {
@@ -237,23 +224,22 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 	if err != nil {
 		return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 	}
-	// The model's output ceiling is the fallback when the agent does not set
-	// one explicitly; the agent-level MaxTokens still wins.
+	// 当 Agent 未显式设置输出上限时，模型的输出上限作为回退；Agent 级别的
+	// MaxTokens 仍然优先。
 	applyModelOutputLimit(&ac, *provider)
 
 	var tools []tool.Tool
 	var toolsets []tool.Toolset
 
-	// Built-in tools. An agent without an explicit narrowing list gets the
-	// complete built-in set: full capability is the default, and removing a
-	// category is the explicit action (#38).
+	// 内置工具。没有显式收窄列表的 Agent
+	// 会获得完整的内置工具集：完整能力是默认值，移除某个类别是显式操作（#38）。
 	builtin, err := k.builtinToolsFor(ac, cfg, workspace)
 	if err != nil {
 		return nil, err
 	}
 	tools = append(tools, builtin...)
 
-	// Skills (progressive disclosure via ADK skill toolset).
+	// 技能（通过 ADK 技能工具集进行渐进式披露）。
 	if len(ac.SkillIDs) > 0 {
 		ts, err := k.skillToolset(ac, cfg, workspace)
 		if err != nil {
@@ -264,13 +250,10 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 		}
 	}
 
-	// MCP servers. The per-server 启用 switch is authoritative: enabled
-	// servers are injected into every session (direct chat included) without
-	// per-agent mounting; disabled ones stay off unless an agent explicitly
-	// mounts them. A server whose transport cannot even be built (missing
-	// command/URL, OAuth misconfiguration) is reported instead of silently
-	// running an agent that is missing tools — the same contract as the
-	// skill toolset above.
+	// MCP 服务器。每个服务器的「启用」开关是权威来源：启用的服务器会注入每个会话
+	// （包括直接对话），无需按 Agent 挂载；未启用的服务器保持关闭，除非某个 Agent
+	// 显式挂载它。连传输层都无法构建的服务器（缺少命令/URL、OAuth 配置错误）会被
+	// 报告，而不是静默运行一个缺少工具的 Agent——这与上面的技能工具集契约一致。
 	explicit := make(map[string]bool, len(ac.MCPServerIDs))
 	for _, id := range ac.MCPServerIDs {
 		explicit[id] = true
@@ -303,9 +286,8 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 	return llmagent.New(lc)
 }
 
-// llmConfig assembles the llmagent.Config for an agent config, using an
-// InstructionProvider so braces in user prompts are never treated as state
-// placeholders.
+// llmConfig 为 Agent 配置组装 llmagent.Config，使用
+// InstructionProvider，确保用户提示词中的花括号绝不会被视为状态占位符。
 func (k *Kit) llmConfig(ac config.AgentConfig, m model.LLM, tools []tool.Tool, toolsets []tool.Toolset, workspace string) llmagent.Config {
 	instruction := applyPromptVars(ac.SystemPrompt, workspace)
 	if strings.TrimSpace(instruction) == "" {
@@ -335,10 +317,10 @@ func (k *Kit) llmConfig(ac config.AgentConfig, m model.LLM, tools []tool.Tool, t
 	}
 }
 
-// appendAgentGuides joins the engineering-guide blocks (global
-// ~/.agents/AGENTS.md first, then the effective workspace root AGENTS.md)
-// onto a base instruction. Guides complement the role prompt and never block
-// a build; the per-turn skill context still appends after them.
+// appendAgentGuides 将工程指南块（先是全局
+// ~/.agents/AGENTS.md，然后是有效工作区根目录的
+// AGENTS.md）拼接到基础指令上。指南补充角色提示词，且绝不阻塞构建；每回合的技能
+// 上下文仍会在它们之后追加。
 func (k *Kit) appendAgentGuides(instruction, workspace string) string {
 	guides := config.EffectiveAgentGuides(workspace, k.globalAgentsFile)
 	if len(guides) == 0 {
@@ -347,22 +329,19 @@ func (k *Kit) appendAgentGuides(instruction, workspace string) string {
 	return instruction + "\n\n" + strings.Join(guides, "\n\n")
 }
 
-// BuildTeam builds the root agent for a team: lead agent with members as
-// sub-agents (ADK handles delegation/transfer between them), or an
-// auto-generated coordinator when requested.
+// BuildTeam 构建团队的根 Agent：主导 Agent 将成员作为子 Agent（ADK
+// 处理它们之间的委派/转移），或在请求时使用自动生成的协调器。
 func (k *Kit) BuildTeam(tc config.TeamConfig) (agent.Agent, string, error) {
 	return k.BuildTeamWithWorkspace(tc, "")
 }
 
-// BuildTeamWithWorkspace builds a team whose local members use the session's
-// task workspace.
+// BuildTeamWithWorkspace 构建一个团队，其本地成员使用会话的任务工作区。
 func (k *Kit) BuildTeamWithWorkspace(tc config.TeamConfig, workspace string) (agent.Agent, string, error) {
 	return k.BuildTeamWithWorkspaceAndReasoning(tc, workspace, "")
 }
 
-// BuildTeamWithWorkspaceAndReasoning applies the chat's thinking level to the
-// team's root agent (explicit lead or synthesized coordinator). Member agents
-// keep their own configured models and levels.
+// BuildTeamWithWorkspaceAndReasoning 将聊天的思考级别应用到团队的根
+// Agent（显式负责人或合成的协调器）。成员 Agent 保留各自配置的模型和级别。
 func (k *Kit) BuildTeamWithWorkspaceAndReasoning(tc config.TeamConfig, workspace, reasoningLevel string) (agent.Agent, string, error) {
 	return k.buildTeam(tc, workspace, reasoningLevel)
 }
@@ -377,8 +356,7 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 	for _, a := range cfg.Agents {
 		memberByID[a.ID] = a
 	}
-	// A chat shares one execution policy across its coordinator and every
-	// local member.
+	// 聊天在其协调器和每个本地成员之间共享同一执行策略。
 	approvalPolicy, sandboxProfile := config.ResolveExecutionPolicy(
 		tc.ApprovalPolicy, tc.SandboxProfile, tc.SandboxMode,
 	)
@@ -391,9 +369,9 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 
 	var members []agent.Agent
 	var memberNames []string
-	// memberByKey maps agent/remote IDs to their built agent, so the explicit
-	// lead path can assemble its peers without positional indexing (a dangling
-	// member ID used to shift the slice and mis-assign or panic).
+	// memberByKey 将 Agent/远程 ID 映射到其构建后的
+	// Agent，因此显式负责人路径无需按位置索引即可组装其同级 Agent（悬空的成员 ID
+	// 过去会导致切片偏移，并造成错误分配或 panic）。
 	memberByKey := map[string]agent.Agent{}
 	for _, id := range tc.MemberAgentIDs {
 		ac, ok := memberByID[id]
@@ -409,7 +387,7 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 		memberByKey[id] = a
 	}
 
-	// Remote A2A members join as sub-agents the coordinator can transfer to.
+	// 远程 A2A 成员作为协调器可转接到的子 Agent 加入。
 	for _, id := range tc.RemoteMemberIDs {
 		for _, r := range cfg.RemoteAgents {
 			if r.ID != id {
@@ -427,8 +405,8 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 
 	rootName := sanitizeAgentName(tc.Name)
 
-	// Explicit lead: use that agent as root; the other members — local AND
-	// remote — become transferable peers.
+	// 显式负责人：将该 Agent 用作根 Agent；其他成员（本地和远程）成为可转接的同级
+	// Agent。
 	if !tc.AutoCoordinate {
 		if _, ok := memberByID[tc.LeadAgentID]; ok {
 			var peers []agent.Agent
@@ -453,7 +431,7 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 		}
 	}
 
-	// Auto coordinator: synthesized team-lead agent.
+	// 自动协调器：合成的团队负责人 Agent。
 	var provider *config.ModelProvider
 	for i := range cfg.Providers {
 		if cfg.Providers[i].ID == tc.ProviderID {
@@ -499,17 +477,16 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 	return coord, rootName, nil
 }
 
-// searchOptions assembles the knowledge tool options from current settings:
-// workspace plus the configured embedding backend, if any.
+// searchOptions 根据当前设置组装知识工具选项：工作区加上已配置的嵌入后端（如果有）。
 func (k *Kit) searchOptions(cfg config.Config) SearchOptions {
 	opts := SearchOptions{Workspace: cfg.Settings.WorkspaceDir, Index: k.knowledge}
 	if cfg.Settings.EmbeddingProviderID == "" || cfg.Settings.EmbeddingModel == "" {
-		return opts // keyword-only
+		return opts // 仅关键字
 	}
 	for i := range cfg.Providers {
 		if cfg.Providers[i].ID == cfg.Settings.EmbeddingProviderID {
 			if cfg.Providers[i].Protocol == config.ProtocolAnthropic || cfg.Providers[i].Protocol == config.ProtocolGemini {
-				return opts // embeddings endpoint is OpenAI-compatible only
+				return opts // embeddings 端点仅与 OpenAI 兼容
 			}
 			opts.Embedding = &EmbeddingConfig{
 				BaseURL: cfg.Providers[i].BaseURL,
@@ -522,24 +499,21 @@ func (k *Kit) searchOptions(cfg config.Config) SearchOptions {
 	return opts
 }
 
-// skillToolset builds an ADK skill toolset covering the selected skills by
-// materializing them as SKILL.md under a per-agent staging directory. Failing
-// to write a skill is reported instead of silently running an agent that is
-// missing a capability the user attached.
+// skillToolset 将选中的技能物化为每个 Agent 暂存目录下的
+// SKILL.md，从而构建一个覆盖这些技能的 ADK
+// 技能工具集。写入技能失败会被上报，而不是静默运行一个缺少用户所挂载能力的
+// Agent。
 //
-// Mounted IDs resolve against the effective skill set: project/global skills
-// discovered under <workspace>/.agents/skills and ~/.agents/skills take
-// precedence over same-named app skills (issue #52), so an app skill that got
-// shadowed still materializes the winning definition instead of breaking the
-// build. A discovered skill whose directory vanished (workspace switch) is
-// skipped silently: external roots are transient by nature. A missing app
-// skill keeps the old hard error.
+// 挂载的 ID 按生效的技能集解析：在 <workspace>/.agents/skills 和
+// ~/.agents/skills 下发现的项目级/全局技能优先于同名的应用技能（issue
+// #52），因此被遮蔽的应用技能仍会物化胜出的定义，而不是让构建失败。目录已消失（
+// 切换工作区）的已发现技能会被静默跳过：外部根目录本质上是临时的。缺失的应用技
+// 能仍保持原有的硬错误。
 //
-// The staging directory is scoped per agent (skills/agents/<key>): the ADK
-// filesystem source exposes every skill in the tree it is pointed at, so a
-// shared directory would leak skills between agents and keep unmounted or
-// deleted skills loadable. Directories not in the wanted set are pruned before
-// loading, so detaching or deleting a skill takes effect on the next build.
+// 暂存目录按 Agent 划分作用域（skills/agents/<key>）：ADK
+// 文件系统源会暴露其所指向的目录树中的每一个技能，因此共享目录会在 Agent
+// 之间泄漏技能，并使未挂载或已删除的技能仍可加载。不在所需集合中的目录会在加载
+// 前被清理，因此解除挂载或删除技能会在下一次构建时生效。
 func (k *Kit) skillToolset(ac config.AgentConfig, cfg config.Config, workspace string) (tool.Toolset, error) {
 	k.skillMu.Lock()
 	defer k.skillMu.Unlock()
@@ -560,21 +534,19 @@ func (k *Kit) skillToolset(ac config.AgentConfig, cfg config.Config, workspace s
 	wantNames := map[string]bool{}
 	var selected []config.SkillConfig
 	seen := map[string]bool{}
-	// Same no-silent-degradation contract as MCP: a mounted app skill that no
-	// longer exists (imported share files are the usual source) is reported,
-	// not quietly dropped — the agent would otherwise claim capabilities it
-	// never had.
+	// 与 MCP
+	// 相同的不得静默降级约定：已挂载但不再存在的应用技能（导入的共享文件是常见来源
+	// ）会被上报，而不是被悄悄丢弃 —— 否则 Agent 会声称拥有它从未具备的能力。
 	var missing []string
 	for _, id := range ids {
 		s, ok := byID[id]
 		if !ok {
 			if _, discovered := config.DiscoveredSkillSource(id); discovered {
-				// The root may have moved with the workspace; fall back to a
-				// same-named skill if one is still visible.
+				// 根目录可能随工作区一起移动；如果仍能看到同名技能，则回退到该技能。
 				s, ok = byName[config.DiscoveredSkillName(id)]
 			} else if old, exists := cfgByID[id]; exists {
-				// App skill shadowed by a same-named discovered skill: mount
-				// the winning definition (project > global > app).
+				// 应用技能被同名的已发现技能遮蔽：挂载胜出的定义（project > global >
+				// app）。
 				s, ok = byName[config.NormalizeSkillName(old.Name)]
 			}
 			if !ok {
@@ -610,8 +582,8 @@ func (k *Kit) skillToolset(ac config.AgentConfig, cfg config.Config, workspace s
 		if err != nil {
 			return nil, fmt.Errorf("build skill %q: %w", s.Name, err)
 		}
-		// Atomic replace: a concurrent preload must never read a half-written
-		// (O_TRUNC) SKILL.md as valid-but-empty instructions.
+		// 原子替换：并发的预加载必须绝不把半写入（O_TRUNC）的 SKILL.md
+		// 读取为有效但为空的指令。
 		tmp := filepath.Join(dirSkill, "SKILL.md.tmp")
 		if err := os.WriteFile(tmp, body, 0o644); err != nil {
 			return nil, fmt.Errorf("write skill %q: %w", s.Name, err)
@@ -621,8 +593,8 @@ func (k *Kit) skillToolset(ac config.AgentConfig, cfg config.Config, workspace s
 			return nil, fmt.Errorf("write skill %q: %w", s.Name, err)
 		}
 	}
-	// Prune skills that are no longer attached to this agent (dangling IDs
-	// included: they materialize nothing, so any leftover dir is stale).
+	// 清理不再挂载到该 Agent 的技能（包括悬空
+	// ID：它们不会物化任何内容，因此任何残留目录都是过期的）。
 	if entries, err := os.ReadDir(dir); err == nil {
 		for _, e := range entries {
 			if e.IsDir() && !wantNames[e.Name()] {
@@ -635,7 +607,7 @@ func (k *Kit) skillToolset(ac config.AgentConfig, cfg config.Config, workspace s
 	if err != nil {
 		return nil, fmt.Errorf("load skills: %w", err)
 	}
-	_ = cleanup // sources live for the process lifetime
+	_ = cleanup // sources 在进程的整个生命周期内保持存活
 	ts, err := skilltoolset.New(context.Background(), skilltoolset.Config{Source: preloaded})
 	if err != nil {
 		return nil, fmt.Errorf("create skill toolset: %w", err)
@@ -643,9 +615,8 @@ func (k *Kit) skillToolset(ac config.AgentConfig, cfg config.Config, workspace s
 	return ts, nil
 }
 
-// agentSkillKey is the per-agent skill staging directory name. The stable
-// agent ID is preferred; the sanitized name covers configs without an ID
-// (tests, ad-hoc builds).
+// agentSkillKey 是每个 Agent 的技能暂存目录名。优先使用稳定的 Agent
+// ID；经过清理的名称用于覆盖没有 ID 的配置（测试、临时构建）。
 func agentSkillKey(ac config.AgentConfig) string {
 	if ac.ID != "" {
 		return ac.ID
@@ -653,25 +624,20 @@ func agentSkillKey(ac config.AgentConfig) string {
 	return sanitizeAgentName(ac.Name)
 }
 
-// MaterializedSkillName returns the on-disk directory name for a skill.
-// Exported so config validation can reject names that would collide with an
-// existing skill's materialized directory.
+// MaterializedSkillName 返回技能在磁盘上的目录名。导出该函数是为了让配置校验能够拒绝会与现有技能的物
+// 化目录发生冲突的名称。
 func MaterializedSkillName(name string) string { return sanitizeSkillName(name) }
 
-// SkillContextStateKey carries the turn context — a slash-invoked skill's
-// SKILL.md body and the inlined content of @-referenced workspace files — into
-// one run. The "temp:" prefix is ADK's temporary-state convention: the value
-// reaches the running invocation (so the instruction provider can append it)
-// but is trimmed before it is written back to the session, so the next turn
-// never inherits a previous turn's context.
+// SkillContextStateKey 将回合上下文——通过斜杠调用的技能的 SKILL.md 正文，以及 @
+// 引用的工作区文件的内联内容——带入一次运行。"temp:" 前缀是 ADK
+// 的临时状态约定：该值会到达正在运行的调用（因此指令提供方可以将其追加），但在
+// 被写回会话之前会被清除，因此下一回合绝不会继承上一回合的上下文。
 const SkillContextStateKey = session.KeyPrefixTemp + "agentmate.skill_context"
 
-// skillAwareInstruction wraps a base system instruction so a turn that was
-// started with a "/<skill-name>" command (or @-referenced files) gets that
-// turn context appended for the duration of the run. This is the per-turn
-// counterpart of mounting a
-// skill on an agent: the model sees the full instructions without the skill
-// body being stored as part of the user's chat history.
+// skillAwareInstruction 包装基础系统指令，使以 "/<skill-name>" 命令（或 @
+// 引用的文件）启动的回合在该次运行期间追加该回合上下文。这是将技能挂载到 Agent
+// 上的逐回合对应机制：模型会看到完整指令，而技能正文不会作为用户聊天历史的一部
+// 分被存储。
 func skillAwareInstruction(base string) func(agent.ReadonlyContext) (string, error) {
 	return func(ctx agent.ReadonlyContext) (string, error) {
 		out := base
@@ -688,9 +654,9 @@ func skillAwareInstruction(base string) func(agent.ReadonlyContext) (string, err
 	}
 }
 
-// RenderSkillMD renders a configured skill exactly as it is materialized on
-// disk (frontmatter + body), so a slash-invoked skill and an agent-mounted
-// skill receive identical instructions.
+// RenderSkillMD 完全按照技能在磁盘上的物化形式（frontmatter +
+// body）渲染已配置的技能，因此通过斜杠调用的技能和挂载到 Agent
+// 上的技能会收到完全相同的指令。
 func RenderSkillMD(name, description, content string) (string, error) {
 	body, err := skill.Build(&skill.Frontmatter{
 		Name:        sanitizeSkillName(name),
@@ -702,10 +668,10 @@ func RenderSkillMD(name, description, content string) (string, error) {
 	return string(body), nil
 }
 
-// RemoveMaterializedSkill deletes the materialized SKILL.md directories of a
-// skill: the per-agent staging dirs and the legacy shared layout. Best effort
-// — the next agent build prunes stale entries anyway. Runs under skillMu so a
-// concurrent build's write/prune/preload sequence is never torn apart.
+// RemoveMaterializedSkill 删除某个技能已物化的 SKILL.md 目录：每个 Agent
+// 的暂存目录和遗留的共享布局。这是尽力而为——下一次 Agent
+// 构建无论如何都会清理过时条目。该操作在 skillMu
+// 下运行，因此并发构建的写入/清理/预加载序列绝不会被打断。
 func (k *Kit) RemoveMaterializedSkill(skillName string) {
 	k.skillMu.Lock()
 	defer k.skillMu.Unlock()
@@ -721,9 +687,9 @@ func (k *Kit) RemoveMaterializedSkill(skillName string) {
 	_ = os.RemoveAll(filepath.Join(skillsDir, name))
 }
 
-// applyPromptVars resolves template variables in system prompts:
-// {{date}}, {{time}}, {{datetime}} and {{workspace}} (resolved at each agent
-// build, i.e. per turn, so long-running apps stay current).
+// applyPromptVars 解析系统提示词中的模板变量：{{date}}、{{time}}、{{datetime}}
+// 和 {{workspace}}（在每次 Agent
+// 构建时解析，即每回合解析，因此长时间运行的应用能保持最新）。
 func applyPromptVars(prompt, workspace string) string {
 	now := time.Now()
 	return strings.NewReplacer(
@@ -734,12 +700,12 @@ func applyPromptVars(prompt, workspace string) string {
 	).Replace(prompt)
 }
 
-// SanitizeAgentName makes a safe ADK agent name (identifier-like). Exported
-// so callers (tests, tooling) can predict the sub-agent name a team's
-// coordinator will transfer to.
+// SanitizeAgentName 生成安全的 ADK Agent
+// 名称（类标识符）。将其导出，是为了让调用方（测试、工具链）能够预测团队的协调
+// 器将会转交到的子 Agent 名称。
 func SanitizeAgentName(name string) string { return sanitizeAgentName(name) }
 
-// sanitizeAgentName makes a safe ADK agent name (identifier-like).
+// sanitizeAgentName 生成安全的 ADK Agent 名称（类标识符）。
 func sanitizeAgentName(name string) string {
 	var sb strings.Builder
 	for _, r := range strings.ToLower(name) {
@@ -752,7 +718,7 @@ func sanitizeAgentName(name string) string {
 	}
 	out := strings.Trim(sb.String(), "_")
 	if out == "" {
-		// Deterministic fallback for non-ASCII names.
+		// 针对非 ASCII 名称的确定性回退方案。
 		h := fnv.New32a()
 		_, _ = h.Write([]byte(name))
 		out = fmt.Sprintf("agent_%x", h.Sum32())
@@ -763,19 +729,18 @@ func sanitizeAgentName(name string) string {
 	return out
 }
 
-// sanitizeSkillName makes a valid agentskills.io skill name: lowercase
-// alphanumerics and hyphens only, no leading/trailing hyphen. The shared
-// implementation lives in config so discovery and materialization agree on
-// which names collide.
+// sanitizeSkillName 生成符合 agentskills.io
+// 规范的技能名称：仅使用小写字母数字和连字符，首尾不得有连字符。共享实现位于
+// config 中，以便发现与物化对哪些名称会冲突保持一致。
 func sanitizeSkillName(name string) string { return config.NormalizeSkillName(name) }
 
-// GuardrailsEnabled reports whether guardrails are on for an agent (default on).
+// GuardrailsEnabled 报告某个 Agent 的护栏是否开启（默认开启）。
 func GuardrailsEnabled(ac config.AgentConfig) bool {
 	return ac.EnableGuardrails == nil || *ac.EnableGuardrails
 }
 
-// confirmsTool reports whether a builtin tool category was marked as needing
-// human-in-the-loop confirmation for this agent.
+// confirmsTool 报告某个内置工具类别是否已被标记为需要该 Agent
+// 进行人工确认（HITL）。
 func confirmsTool(ac config.AgentConfig, category string) bool {
 	for _, c := range ac.ConfirmTools {
 		if c == category {
@@ -785,18 +750,17 @@ func confirmsTool(ac config.AgentConfig, category string) bool {
 	return false
 }
 
-// mcpToolsetForApproval keeps the manager's server-ID cache policy-free and
-// applies the session approval policy to a short-lived wrapper for this agent
-// build. MCP tools have no reliable risk detector, so every approval policy
-// except "never" keeps the confirmation gate.
+// mcpToolsetForApproval 保持管理器的服务器 ID 缓存不带策略，并为本次 Agent 构建
+// 的短生命周期包装器应用会话审批策略。MCP 工具没有可靠的风险检测器，因此除
+// "never" 外的所有审批策略都会保留确认门禁。
 func mcpToolsetForApproval(ts tool.Toolset, approvalPolicy string) tool.Toolset {
 	requireConfirmation := config.NormalizeApprovalPolicy(approvalPolicy) != config.ApprovalPolicyNever
 	return tool.WithConfirmation(ts, requireConfirmation, nil)
 }
 
-// builtinToolsFor assembles the built-in tools an agent runs with. An empty
-// narrowing list means the complete built-in set (config.AllBuiltinTools):
-// agents are full-featured unless the user explicitly removed categories.
+// builtinToolsFor 组装 Agent
+// 运行所用的内置工具。收窄列表为空表示完整的内置工具集（config.AllBuiltinTools
+// ）：Agent 默认功能齐全，除非用户显式移除了某些类别。
 func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspace string) ([]tool.Tool, error) {
 	var tools []tool.Tool
 	policy := k.sandboxPolicy(ac, workspace)
@@ -873,18 +837,16 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// SessionPolicy builds the execution policy shared by built-in tools and the
-// chat service's read-only confirmation preview. It is the single place that
-// maps an approval-independent sandbox profile + network setting onto a
-// sandbox.Policy, so a prompt can never disagree with the boundary that will
-// execute the call.
+// SessionPolicy 构建内置工具与聊天服务的只读确认预览共享的执行策略。它是唯一将独立于审批的沙
+// 箱配置 + 网络设置映射到 sandbox.Policy
+// 的位置，因此提示词绝不会与将要执行该调用的边界不一致。
 func SessionPolicy(workspace, profile, network string, protectedDirs ...string) sandbox.Policy {
 	policy := sandbox.DefaultPolicy(workspace)
 	switch config.NormalizeSandboxProfile(profile) {
 	case config.SandboxProfileDangerFullAccess:
 		policy.Mode = sandbox.ModeDangerFullAccess
-		// The direct backend has no AppContainer capability gate; report the
-		// effective network state instead of leaving a misleading "off".
+		// 直接后端没有 AppContainer 能力门控；应报告有效网络状态，而不是留下误导性的
+		// "off"。
 		policy.Network = sandbox.NetworkOn
 	case config.SandboxProfileReadOnly:
 		policy.Mode = sandbox.ModeReadOnly
@@ -897,8 +859,8 @@ func SessionPolicy(workspace, profile, network string, protectedDirs ...string) 
 		if strings.TrimSpace(dir) == "" {
 			continue
 		}
-		// Tests and unusual deployments can place the config store above the
-		// selected workspace; protecting an ancestor would block every write.
+		// 测试与特殊部署可能将配置存储放在所选工作区之上；保护祖先目录会阻止每一次写
+		// 入。
 		if !sandbox.Within(dir, policy.Workspace) {
 			policy = policy.WithProtected(dir)
 		}
@@ -906,16 +868,15 @@ func SessionPolicy(workspace, profile, network string, protectedDirs ...string) 
 	return policy
 }
 
-// PreviewGuard is a read-only view of the same workspace policy used by the
-// file and shell tools. The confirmation providers and the chat service's
-// hint builder share it: a preflight never creates, changes or removes files.
+// PreviewGuard 是文件与 shell
+// 工具所使用的同一工作区策略的只读视图。确认提供方与聊天服务的提示构建器共享它
+// ：预检绝不会创建、更改或删除文件。
 type PreviewGuard struct {
 	workspace string
 	policy    sandbox.Policy
 }
 
-// NewPreviewGuard builds a guard for a workspace and sandbox profile. It is
-// safe to call on every turn; no state is written.
+// NewPreviewGuard 为工作区和沙箱配置构建护栏。在每个回合调用都是安全的；不会写入任何状态。
 func NewPreviewGuard(workspace, profile, network string, protectedDirs ...string) PreviewGuard {
 	return PreviewGuard{
 		workspace: workspace,
@@ -923,14 +884,13 @@ func NewPreviewGuard(workspace, profile, network string, protectedDirs ...string
 	}
 }
 
-// NewPreviewGuardWithPolicy reuses a policy that was already built for the
-// tools, avoiding a second, potentially disagreeing resolution.
+// NewPreviewGuardWithPolicy 复用已为工具构建的策略，避免进行第二次可能不一致的解析。
 func NewPreviewGuardWithPolicy(workspace string, policy sandbox.Policy) PreviewGuard {
 	return PreviewGuard{workspace: workspace, policy: policy}
 }
 
-// CheckWritePath reports whether a workspace-relative path may be written.
-// It resolves traversal and symlinks but never touches the target file.
+// CheckWritePath 报告工作区相对路径是否可以写入。它会解析路径穿越和符号链接，但绝不接触目标文
+// 件。
 func (g PreviewGuard) CheckWritePath(rel string) (bool, string, string) {
 	root, err := safeWorkspacePath(g.workspace, rel)
 	if err != nil {
@@ -939,13 +899,13 @@ func (g PreviewGuard) CheckWritePath(rel string) (bool, string, string) {
 	return g.policy.CheckWrite(root)
 }
 
-// CheckCommand runs the shell preflight without starting a process.
+// CheckCommand 在不启动进程的情况下运行 shell 预检。
 func (g PreviewGuard) CheckCommand(command string) (bool, string, string) {
 	return g.policy.CheckCommand(command)
 }
 
 // ---------------------------------------------------------------------------
-// Built-in tools
+// 内置工具
 
 type timeArgs struct {
 	Timezone string `json:"timezone,omitempty" jsonschema:"IANA timezone such as Asia/Shanghai; empty for local time"`
@@ -955,8 +915,7 @@ type timeResult struct {
 	Timezone string `json:"timezone"`
 }
 
-// workspaceFileTools builds the list/read/write/edit set for the "files"
-// category.
+// workspaceFileTools 为 "files" 类别构建 list/read/write/edit 工具集。
 func workspaceFileTools(workspace string, requireConfirmation bool, policy sandbox.Policy) ([]tool.Tool, error) {
 	list, err := ListFilesTool(workspace)
 	if err != nil {
@@ -977,7 +936,7 @@ func workspaceFileTools(workspace string, requireConfirmation bool, policy sandb
 	return []tool.Tool{list, read, write, edit}, nil
 }
 
-// TimeTool reports the current time.
+// TimeTool 报告当前时间。
 func TimeTool() (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "get_current_time",
@@ -1001,26 +960,26 @@ type pathArgs struct {
 	Path string `json:"path" jsonschema:"relative path inside the workspace"`
 }
 
-// listArgs keeps Path optional: listing the workspace root is the common
-// first call and should not fail JSON-schema validation.
+// listArgs 保持 Path 为可选：列出工作区根目录是常见的首次调用，且不应使
+// JSON-schema 校验失败。
 type listArgs struct {
 	Path string `json:"path,omitempty" jsonschema:"relative path inside the workspace; omit for the workspace root"`
 }
 
-// SafeWorkspacePath resolves rel inside workspace and blocks traversal.
+// SafeWorkspacePath 在 workspace 内解析 rel，并阻止路径穿越。
 func SafeWorkspacePath(workspace, rel string) (string, error) {
 	return safeWorkspacePath(workspace, rel)
 }
 
 const (
 	maxReadBytes  = 64 * 1024
-	maxWriteBytes = 6 << 20 // single write cap, same order as image attachments
+	maxWriteBytes = 6 << 20 // 单次写入上限，与图片附件同量级
 )
 
-// ReadBoundedFile reads at most limit bytes from path, stopping as soon as
-// the cap is reached (a huge file must not be loaded into memory just to be
-// truncated). The returned bool reports truncation; truncated content is cut
-// back to the nearest UTF-8 rune boundary and carries a trailing marker.
+// ReadBoundedFile 从 path 最多读取 limit
+// 字节，一旦达到上限就停止（超大文件不得仅为截断而加载到内存中）。返回的 bool
+// 报告是否发生截断；截断后的内容会回退到最近的 UTF-8 rune
+// 边界，并带有尾部标记。
 func ReadBoundedFile(path string, limit int) (content string, truncated bool, err error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -1035,8 +994,8 @@ func ReadBoundedFile(path string, limit int) (content string, truncated bool, er
 	truncated = n > limit
 	if truncated {
 		buf = buf[:limit]
-		// Trim back to the last COMPLETE rune: a cut may land inside a
-		// multi-byte sequence (a bare lead byte is RuneStart too).
+		// 回退到最后一个完整 rune：截断可能落在多字节序列内部（裸前导字节也是
+		// RuneStart）。
 		for len(buf) > 0 {
 			if r, size := utf8.DecodeLastRune(buf); r != utf8.RuneError || size > 1 {
 				break
@@ -1049,8 +1008,8 @@ func ReadBoundedFile(path string, limit int) (content string, truncated bool, er
 	return string(buf[:n]), false, nil
 }
 
-// WriteBoundedFile refuses payloads above limit bytes up front so a runaway
-// generation cannot fill the disk; the file is not created on rejection.
+// WriteBoundedFile 会预先拒绝超过 limit
+// 字节的载荷，因此失控的生成无法占满磁盘；被拒绝时不会创建文件。
 func WriteBoundedFile(path, content string, limit int) error {
 	if len(content) > limit {
 		return fmt.Errorf("写入内容超过 %d MB 上限（%d 字节）", limit>>20, len(content))
@@ -1073,10 +1032,9 @@ func safeWorkspacePath(workspace, rel string) (string, error) {
 	if !strings.HasPrefix(full, absRoot+string(filepath.Separator)) && full != absRoot {
 		return "", fmt.Errorf("路径越出工作区范围")
 	}
-	// The lexical check above cannot see symlinks: a link inside the
-	// workspace pointing at ~/.ssh passes it. Resolve both sides and compare
-	// again. A path that does not exist yet (write target, possibly with new
-	// parent directories) is validated through its deepest existing ancestor.
+	// 上述词法检查无法识别符号链接：工作区内指向 ~/.ssh
+	// 的链接会通过该检查。解析两侧路径并再次比较。尚不存在的路径（写入目标，可能带
+	// 有新的父目录）会通过其最深的现存祖先进行校验。
 	realRoot, err := filepath.EvalSymlinks(absRoot)
 	if err != nil {
 		return "", err
@@ -1098,8 +1056,8 @@ func safeWorkspacePath(workspace, rel string) (string, error) {
 			if !isWithin(realRoot, realAncestor) {
 				return "", fmt.Errorf("路径越出工作区范围")
 			}
-			// Use the resolved root spelling for not-yet-existing targets so
-			// Windows 8.3 (short) and long paths compare as one workspace.
+			// 对于尚不存在的目标，使用解析后的根目录拼写，使 Windows
+			// 8.3（短）路径和长路径作为同一个工作区进行比较。
 			return filepath.Join(realRoot, rel), nil
 		}
 		if !os.IsNotExist(aerr) {
@@ -1113,14 +1071,14 @@ func safeWorkspacePath(workspace, rel string) (string, error) {
 	}
 }
 
-// isWithin reports whether target is root itself or lives under it.
+// isWithin 报告 target 是 root 本身还是位于其下。
 func isWithin(root, target string) bool {
 	return target == root || strings.HasPrefix(target, root+string(filepath.Separator))
 }
 
-// ListFilesTool lists workspace files. Path is optional so a model can ask
-// for the workspace root without having to guess "." (issue #21: the first
-// "look at the project" call is usually argument-less).
+// ListFilesTool 列出工作区文件。Path 为可选参数，因此模型无需猜测 "."
+// 就能请求工作区根目录（issue #21：首次 "look at the project"
+// 调用通常不带参数）。
 func ListFilesTool(workspace string) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "list_workspace_files",
@@ -1151,7 +1109,7 @@ type readFileResult struct {
 	Content string `json:"content"`
 }
 
-// ReadFileTool reads a file within the workspace.
+// ReadFileTool 读取工作区内的文件。
 func ReadFileTool(workspace string) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "read_workspace_file",
@@ -1194,17 +1152,16 @@ type editResult struct {
 	Diff         string `json:"diff"`
 }
 
-// WriteFileTool writes a file within the workspace. When requireConfirmation
-// is true the tool asks the human operator to approve each call first (ADK
-// HITL): the run pauses on an adk_request_confirmation interrupt and only
-// proceeds after a FunctionResponse with {"confirmed": true}.
+// WriteFileTool 写入工作区内的文件。当 requireConfirmation 为 true
+// 时，该工具会先请求人工操作员审批每次调用（ADK HITL）：运行会在
+// adk_request_confirmation 中断处暂停，并且仅在收到带有 {"confirmed": true} 的
+// FunctionResponse 后才继续。
 func WriteFileTool(workspace string, requireConfirmation bool) (tool.Tool, error) {
 	return WriteFileToolWithPolicy(workspace, requireConfirmation, sandbox.DefaultPolicy(workspace))
 }
 
-// WriteFileToolWithPolicy adds the session's protected-path policy to the
-// in-process write path. The OS sandbox covers child processes; this check is
-// the equivalent boundary for file tools, which do not spawn a process.
+// WriteFileToolWithPolicy 将会话的受保护路径策略加入进程内写入路径。操作系统沙箱覆盖子进程；此检查是文
+// 件工具的等效边界，因为这些工具不会生成进程。
 func WriteFileToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
 	guard := NewPreviewGuardWithPolicy(workspace, policy)
 	return functiontool.New(functiontool.Config{
@@ -1212,8 +1169,8 @@ func WriteFileToolWithPolicy(workspace string, requireConfirmation bool, policy 
 		Description:         "Create or overwrite a text file inside the user's workspace (single write up to 6MB).",
 		RequireConfirmation: requireConfirmation,
 		RequireConfirmationProvider: func(args writeArgs) bool {
-			// A path the handler will reject must not interrupt the user with a
-			// dead-end approval: skip HITL and let the handler return the error.
+			// 处理程序会拒绝的路径不得以死胡同式审批打断用户：跳过
+			// HITL，让处理程序返回错误。
 			if strings.TrimSpace(args.Path) == "" {
 				return false
 			}
@@ -1244,16 +1201,15 @@ func writeWorkspaceFile(workspace string, args writeArgs, policy sandbox.Policy)
 	return writeResult{OK: true, Bytes: len(args.Content)}, nil
 }
 
-// EditFileTool edits an existing workspace file by replacing oldText with
-// newText. It is deliberately separate from write_workspace_file: a targeted
-// replacement keeps unrelated bytes (notably CRLF line endings) intact and
-// gives the model a diff instead of forcing a full rewrite.
+// EditFileTool 通过将 oldText 替换为 newText 来编辑现有工作区文件。它刻意与
+// write_workspace_file 分开：定向替换会保持无关字节（尤其是 CRLF
+// 行尾）不变，并为模型提供 diff，而不是强制完整重写。
 func EditFileTool(workspace string, requireConfirmation bool) (tool.Tool, error) {
 	return EditFileToolWithPolicy(workspace, requireConfirmation, sandbox.DefaultPolicy(workspace))
 }
 
-// EditFileToolWithPolicy adds the session's protected-path policy to the
-// in-process edit path, the same boundary write_workspace_file uses.
+// EditFileToolWithPolicy 将会话的受保护路径策略添加到进程内编辑路径，其边界与
+// write_workspace_file 使用的相同。
 func EditFileToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
 	guard := NewPreviewGuardWithPolicy(workspace, policy)
 	return functiontool.New(functiontool.Config{
@@ -1329,9 +1285,8 @@ func editWorkspaceFile(workspace string, args editArgs, policy sandbox.Policy) (
 	}, nil
 }
 
-// writeFilePreservingMode writes through a sibling temporary file and renames
-// it over the target. The directory is the same, so the rename is atomic on
-// the same volume, and an interrupted write never leaves a half-written file.
+// writeFilePreservingMode 通过同目录的临时文件写入，并将其重命名覆盖目标文件。由于目录相同，重命名在同
+// 一卷上是原子操作，且被中断的写入绝不会留下写了一半的文件。
 func writeFilePreservingMode(path string, data []byte, mode os.FileMode) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".agentmate-edit-*")
 	if err != nil {
@@ -1372,13 +1327,13 @@ const (
 )
 
 type diffOp struct {
-	kind byte // ' ' context, '-' removed, '+' added
+	kind byte // ' ' 表示上下文，'-' 表示删除，'+' 表示新增
 	text string
 }
 
-// unifiedWorkspaceDiff renders a bounded unified diff with a small line LCS.
-// A pathological pair of large files falls back to a coarse remove/add block:
-// still a valid diff, but without spending quadratic memory.
+// unifiedWorkspaceDiff 使用小规模的行级 LCS 渲染有界的统一
+// diff。病态的大文件对会回退到粗粒度的删除/新增块：仍是有效的
+// diff，但不会消耗平方级内存。
 func unifiedWorkspaceDiff(path, oldText, newText string, lineLimit, byteLimit int) (string, int, int) {
 	ops := lineDiffOps(oldText, newText)
 	added, removed := 0, 0
@@ -1587,8 +1542,8 @@ func capDiffLines(lines []string, lineLimit, byteLimit int) string {
 	var b strings.Builder
 	written := 0
 	for i, line := range lines {
-		// Reserve room for the truncation marker unless this is the final
-		// line, so a diff that fits exactly is never marked as truncated.
+		// 除非这是最后一行，否则为截断标记预留空间，这样恰好放得下的 diff
+		// 绝不会被标记为已截断。
 		reserve := 0
 		if i < len(lines)-1 {
 			reserve = len(marker) + 1
@@ -1612,10 +1567,10 @@ func capDiffLines(lines []string, lineLimit, byteLimit int) string {
 }
 
 // ---------------------------------------------------------------------------
-// Session plan (todo list) tool
+// 会话计划（待办列表）工具
 
-// todosStateKey stores the plan in the ADK session state so it survives
-// restarts and stays scoped to the conversation.
+// todosStateKey 将计划存储在 ADK
+// 会话状态中，使其在重启后仍然存在，并保持在对话范围内。
 const todosStateKey = "agentmate.todos"
 
 type todoItem struct {
@@ -1624,8 +1579,7 @@ type todoItem struct {
 }
 
 type todosArgs struct {
-	// Todos is the FULL replacement list. Omitted => read the current plan
-	// without writing; empty => clear it.
+	// Todos 是完整替换列表。省略 => 读取当前计划但不写入；为空 => 清除它。
 	Todos []todoItem `json:"todos,omitempty"`
 }
 
@@ -1634,10 +1588,9 @@ type todosResult struct {
 	Todos []todoItem `json:"todos"`
 }
 
-// TodosTool gives the model a session-scoped plan (todo list) for multi-step
-// work: it rewrites the list as steps are created, started and completed, and
-// the user follows along on the tool-result card. Mirrors the plan tools of
-// the coding-agent desktops this app takes after.
+// TodosTool 为模型提供一个会话范围内的计划（待办列表），用于多步骤工作：随着步骤创建、开
+// 始和完成，它会重写该列表，用户可在工具结果卡片上跟进。它对应本应用所效仿的编
+// 码 Agent 桌面端的计划工具。
 func TodosTool() (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "plan_todos",
@@ -1647,10 +1600,10 @@ func TodosTool() (tool.Tool, error) {
 			return todosResult{}, fmt.Errorf("会话状态不可用")
 		}
 		if args.Todos == nil {
-			// Read-only: return the stored plan.
+			// 只读：返回已存储的计划。
 			cur, err := ctx.State().Get(todosStateKey)
 			if err != nil {
-				return todosResult{OK: true}, nil // no plan yet
+				return todosResult{OK: true}, nil // 尚无计划。
 			}
 			var todos []todoItem
 			b, _ := json.Marshal(cur)

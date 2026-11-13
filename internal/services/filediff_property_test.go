@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// replayHunks reconstructs the new file from hunks + old file using real
-// unified-diff semantics: rows between hunks are unchanged old rows, inside a
-// hunk context/del consume old rows contiguously, add/context emit.
+// replayHunks 使用真实的 unified-diff 语义，根据 hunks + 旧文件重建新文件：hunk
+// 之间的行是未更改的旧行；在 hunk 内部，context/del 会连续消费旧行，add/context
+// 会输出。
 func replayHunks(t *testing.T, hunks []FileDiffHunk, a []string) []string {
 	t.Helper()
 	rebuilt := []string{}

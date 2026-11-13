@@ -16,7 +16,7 @@ import { highlightText } from "@/components/chat/highlightText";
 import type { UsageInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-/** ConfirmCard renders a HITL tool-confirmation request with approve/reject. */
+/** ConfirmCard 渲染一个带批准/拒绝操作的 HITL 工具确认请求。 */
 export function ConfirmCard({ m, onConfirm }: {
   m: UIMessage;
   onConfirm: (msgId: string, callId: string | undefined, approved: boolean) => void;
@@ -24,8 +24,7 @@ export function ConfirmCard({ m, onConfirm }: {
 }) {
   const status = m.confirmStatus ?? "pending";
   const hint = (m.hint ?? "").trim();
-  // The backend owns the reason text; this only selects the warning
-  // presentation for boundary-crossing / preflight failures.
+  // 原因文本由后端提供；这里仅为跨越边界 / 预检失败选择警告的呈现方式。
   const riskyHint = /脱离沙箱|工作区外|受保护路径|只读模式|预检失败/.test(hint);
   return (
     <div className={cn(
@@ -80,16 +79,15 @@ export function ConfirmCard({ m, onConfirm }: {
 }
 
 /**
- * ThinkingBlock shows a model's reasoning. It streams expanded while the
- * model is still thinking, then collapses to a one-line summary — the answer
- * is what the reader came for, but nothing is discarded. Inside an execution
- * group (inline) it renders as a one-line row with a short preview and opens
- * its full text on demand, so a long run stays scannable without losing the
- * reasoning.
+ * ThinkingBlock
+ * 展示模型的推理。模型仍在思考时，它以展开状态流式显示，随后折叠为一行摘要——答
+ * 案才是读者真正想看的内容，但任何内容都不会被丢弃。在执行组（inline）内，它渲
+ * 染为带简短预览的单行，并按需展开全文，因此长时间运行仍便于快速浏览，且不会丢
+ * 失推理内容。
  */
 export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: { m: UIMessage; inline?: boolean }) {
-  // The standalone block opens while streaming; inside an execution group the
-  // row starts folded so a long run stays scannable (Codex-style timeline).
+  // 独立块在流式输出时展开；在执行组内，该行初始为折叠状态，因此长时间运行仍便
+  // 于扫读（Codex 风格时间线）。
   const [open, setOpen] = useState(!inline && !!m.streaming);
   useEffect(() => {
     if (!m.streaming && !inline) setOpen(false);
@@ -163,7 +161,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
   );
 });
 
-/** DaySeparator marks calendar-day boundaries in long conversations. */
+/** DaySeparator 在长对话中标记日历日边界。 */
 export function DaySeparator({ ts }: { ts: string | undefined }) {
   return (
     <div role="separator" aria-label={dayLabel(ts)} className="flex items-center justify-center py-2">
@@ -172,9 +170,11 @@ export function DaySeparator({ ts }: { ts: string | undefined }) {
   );
 }
 
-/** UserQuote renders a user input as a right-aligned bubble. It is the turn
- *  anchor (data-turn-anchor) that both scroll-follow and the turn rail key
- *  off; copy and edit-and-resend actions stay on hover. */
+/**
+ * UserQuote
+ * 将用户输入渲染为右对齐气泡。它是回合锚点（data-turn-anchor），滚动跟随和回合
+ * 轨道均以它为基准；复制与编辑后重发操作在悬停时显示。
+ */
 export function UserQuote({ m, active, onEdit, canEdit, filterQ }: {
   m: UIMessage;
   active?: boolean;
@@ -251,10 +251,10 @@ export function UserQuote({ m, active, onEdit, canEdit, filterQ }: {
   );
 }
 
-// MessageBubble is memoized: streaming appends a new message object for the
-// last bubble each token, and every other bubble must keep the same props to
-// skip re-rendering. Callers therefore pass stable callbacks and precomputed
-// flags instead of per-row closures.
+// MessageBubble 已进行 memo 化：流式输出每生成一个
+// token，都会为最后一个气泡追加一个新的消息对象，而其他每个气泡都必须保持相同的
+// props，才能跳过重新渲染。因此，调用方传入稳定的回调和预先计算好的标志，而不是
+// 每行闭包。
 export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, onRegenerate, canRegenerate, toolRunning, onSpeak, costOf, onEdit, canEdit, onConfirm, durationMs, sessionID, filterQ }: {
   m: UIMessage;
   isLastAssistant: boolean;
@@ -305,8 +305,9 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   if (m.kind === "tool_result" && m.toolName === "plan_todos") {
     return <TodoListCard resp={m.toolResp ?? null} />;
   }
-  // plan_todos is a state mutation, not a tool step: its result card is the
-  // only plan surface. A generic call card would duplicate the raw JSON args.
+  // plan_todos
+  // 是状态变更，而不是工具步骤：其结果卡片是唯一的计划展示面。通用调用卡片会重
+  // 复原始 JSON 参数。
   if (m.kind === "tool_call" && m.toolName === "plan_todos") {
     return null;
   }
@@ -318,8 +319,8 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
         args={m.toolArgs}
         resp={m.toolResp}
         running={m.kind === "tool_call" && toolRunning}
-        // durationMs comes from the parent's pairing pass; m.durationMs is
-        // never populated, so reading it silently hid every timing chip.
+        // durationMs 来自父组件的配对处理；m.durationMs
+        // 绝不会被填充，因此读取它会静默隐藏每一个计时标签。
         durationMs={durationMs}
       />
     );
@@ -333,10 +334,9 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
       </div>
     );
   }
-  // Direct-chat replies are self-evidently assistant output; the author/time
-  // header was pure chrome. Keep the author label only for named agents/team
-  // members, where attribution matters. All actions live at the output's
-  // bottom-right so they follow the content instead of competing with it.
+  // 直接聊天回复本身就是助手输出；作者/时间头部纯属装饰。仅对具名
+  // Agent/团队成员保留作者标签，因为这些场景中归属很重要。所有操作都放在输出的
+  // 右下角，让它们跟随内容，而不是与内容争抢注意力。
   const showAuthor = !!m.author && m.author !== "助手";
   return (
     <div className="group flex justify-start">
@@ -360,8 +360,7 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
             <div className="whitespace-pre-wrap break-words text-md leading-[1.7]">{m.text}</div>
           )}
         </div>
-        {/* Copy/regenerate/speak/usage work on every finished assistant
-            message. Only regenerate stays bound to the last reply. */}
+        {/* 复制/重新生成/朗读/用量适用于每条已完成的助手消息。仅重新生成始终绑定到最后一条回复。 */}
         {!m.streaming && m.text && (
           <div
             data-slot="assistant-actions"

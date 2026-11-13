@@ -8,9 +8,9 @@ import (
 	"agentmate/internal/config"
 )
 
-// TestAgentWithoutExplicitModelRunsOnDefault: an agent created from the
-// simplified form carries no provider/model; the session must still run on the
-// global default model, and the request body proves which model was used (#39).
+// TestAgentWithoutExplicitModelRunsOnDefault: 由简化形式创建的 Agent 不携带
+// provider/model；会话必须仍然运行在全局默认模型上，且请求体证明使用了哪个模型
+// （#39）。
 func TestAgentWithoutExplicitModelRunsOnDefault(t *testing.T) {
 	chat, store, bodies := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

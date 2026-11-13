@@ -21,7 +21,7 @@ func TestListOpenAIModels(t *testing.T) {
 			"data": []map[string]any{
 				{"id": "deepseek-reasoner"},
 				{"id": "deepseek-chat"},
-				{"id": ""}, // filtered out
+				{"id": ""}, // 已过滤掉
 			},
 		})
 	}))

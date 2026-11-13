@@ -20,13 +20,13 @@ import (
 
 func nowUTC() time.Time { return time.Now().UTC().Truncate(time.Second) }
 
-// appName/userID mirror ChatService's fixed local identity (single-user app).
+// appName/userID 镜像 ChatService 的固定本地身份（单用户应用）。
 const (
 	appName = "agentmate"
 	userID  = "local"
 )
 
-// AppService exposes generic app info.
+// AppService 暴露通用应用信息。
 type AppService struct {
 	S           *Services
 	logPath     string
@@ -36,13 +36,12 @@ type AppService struct {
 	gormDB      *gorm.DB
 }
 
-// SetLogPath points the diagnostics log reader at the app log file.
+// SetLogPath 将诊断日志读取器指向应用日志文件。
 func (a *AppService) SetLogPath(path string) { a.logPath = path }
 
-// NewAppService creates the service. Storage handles stay in the constructor
-// instead of an exported setter: every exported method is exposed as a Wails
-// RPC, and a *gorm.DB parameter would drag the whole GORM type graph into the
-// frontend bindings.
+// NewAppService 创建该服务。存储句柄保留在构造函数中，而不是通过导出的 setter
+// 传入：每个导出方法都会作为 Wails RPC 暴露，而 *gorm.DB 参数会将整个 GORM
+// 类型图拖入前端绑定。
 func NewAppService(s *Services, sessionsDB, knowledgeDB string, gormDB *gorm.DB) *AppService {
 	return &AppService{
 		S:           s,
@@ -52,11 +51,11 @@ func NewAppService(s *Services, sessionsDB, knowledgeDB string, gormDB *gorm.DB)
 	}
 }
 
-// AppVersion is injected by main (single source of truth).
+// AppVersion 由 main 注入（单一事实来源）。
 var AppVersion = "dev"
 
-// AppInfo returns static app metadata. platform feeds the issue-report
-// prefill so testers never hand-type their environment.
+// AppInfo 返回静态应用元数据。platform
+// 为问题报告预填提供数据，使测试人员绝不需要手动输入自己的环境。
 func (a *AppService) AppInfo() map[string]string {
 	return map[string]string{
 		"name":     "AgentMate",
@@ -66,31 +65,30 @@ func (a *AppService) AppInfo() map[string]string {
 	}
 }
 
-// backupSchemaVersion is the export format version. Bump on breaking changes;
-// ImportConfig rejects files from newer app versions.
+// backupSchemaVersion 是导出格式版本。发生破坏性变更时递增；ImportConfig
+// 会拒绝来自较新应用版本的文件。
 const backupSchemaVersion = 1
 
-// maxBackupBytes caps the import payload (10MB, far above any real config).
+// maxBackupBytes 为导入载荷设置上限（10MB，远超任何真实配置）。
 const maxBackupBytes = 10 << 20
 
-// maxLogTailLines caps RecentLogs output.
+// maxLogTailLines 限制 RecentLogs 的输出行数。
 const maxLogTailLines = 300
 
-// SetToolAuditPath points the diagnostics reader at the tool audit JSONL.
+// SetToolAuditPath 将诊断读取器指向工具审计 JSONL 文件。
 func (a *AppService) SetToolAuditPath(path string) { a.auditPath = path }
 
-// RecentLogs returns the last lines of the application log for in-app
-// diagnostics.
+// RecentLogs 返回应用日志的最后若干行，用于应用内诊断。
 func (a *AppService) RecentLogs(tail int) ([]string, error) {
 	return readTail(a.logPath, tail)
 }
 
-// RecentToolAudit returns the last lines of the tool audit JSONL.
+// RecentToolAudit 返回工具审计 JSONL 的最后若干行。
 func (a *AppService) RecentToolAudit(tail int) ([]string, error) {
 	return readTail(a.auditPath, tail)
 }
 
-// readTail returns the last non-empty lines of a text file.
+// readTail 返回文本文件末尾的非空行。
 func readTail(path string, tail int) ([]string, error) {
 	if path == "" {
 		return nil, fmt.Errorf("路径未配置")
@@ -112,13 +110,13 @@ func readTail(path string, tail int) ([]string, error) {
 	return lines, nil
 }
 
-// StorageInfo reports on-disk sizes of the app databases.
+// StorageInfo 报告各应用数据库在磁盘上的大小。
 type StorageInfo struct {
 	SessionsDBBytes  int64 `json:"sessionsDbBytes"`
 	KnowledgeDBBytes int64 `json:"knowledgeDbBytes"`
 }
 
-// StorageStats returns the current database file sizes (-1 when absent).
+// StorageStats 返回当前数据库文件大小（文件不存在时为 -1）。
 func (a *AppService) StorageStats() StorageInfo {
 	info := StorageInfo{SessionsDBBytes: -1, KnowledgeDBBytes: -1}
 	if st, err := os.Stat(a.sessionsDB); err == nil {
@@ -147,9 +145,9 @@ func (a *AppService) SandboxStatus() SandboxStatusInfo {
 	}
 }
 
-// VacuumSessions compacts the sessions database (reclaims space from
-// trimmed/regenerated history). Safe while no run is active; callers race
-// only on transient "database is locked" style errors which we surface.
+// VacuumSessions 压缩会话数据库（回收被裁剪/重新生成的历史所占用的空间）。在没有运行进行时是安
+// 全的；调用方仅会在瞬时的 "database is locked"
+// 类错误上发生竞态，我们会将这些错误上报。
 func (a *AppService) VacuumSessions() error {
 	if a.gormDB == nil {
 		return fmt.Errorf("会话数据库不可用")
@@ -157,12 +155,12 @@ func (a *AppService) VacuumSessions() error {
 	return a.gormDB.Exec("VACUUM").Error
 }
 
-// MemoryInfo reports the long-term memory store size.
+// MemoryInfo 报告长期记忆存储的大小。
 type MemoryInfo struct {
 	Count int64 `json:"count"`
 }
 
-// MemoryStats returns the number of long-term memory entries.
+// MemoryStats 返回长期记忆条目的数量。
 func (a *AppService) MemoryStats() (*MemoryInfo, error) {
 	if a.S.Memory == nil {
 		return nil, fmt.Errorf("记忆服务不可用")
@@ -174,7 +172,7 @@ func (a *AppService) MemoryStats() (*MemoryInfo, error) {
 	return &MemoryInfo{Count: n}, nil
 }
 
-// MemoryClear wipes all long-term memory entries for the local user.
+// MemoryClear 清空本地用户的全部长期记忆条目。
 func (a *AppService) MemoryClear() error {
 	if a.S.Memory == nil {
 		return fmt.Errorf("记忆服务不可用")
@@ -182,24 +180,23 @@ func (a *AppService) MemoryClear() error {
 	return a.S.Memory.Clear(appName, userID)
 }
 
-// agentShare is the portable per-agent share document. The referenced
-// provider id travels with it so the importer can re-link or flag it.
+// agentShare 是可移植的单个 Agent 共享文档。被引用的供应商 ID
+// 随其一起传递，以便导入器可以重新关联或标记该供应商 ID。
 type agentShare struct {
 	Version int                `json:"version"`
 	Agent   config.AgentConfig `json:"agent"`
 }
 
-// ImportAgentResult is the import outcome: the stored agent plus any
-// machine-local fixes applied during import (stripped dangling refs), so the
-// UI can surface what was adjusted.
+// ImportAgentResult 是导入结果：已存储的
+// Agent，以及导入期间应用的任何本机修复（剥离悬空引用），以便 UI
+// 能够展示调整了什么。
 type ImportAgentResult struct {
 	Agent    config.AgentConfig `json:"agent"`
 	Warnings []string           `json:"warnings,omitempty"`
 }
 
-// ExportAgent writes one agent (without secrets of its own — agents carry no
-// keys) as a shareable JSON file into <workspace>/exports/agents and returns
-// the file path.
+// ExportAgent 将一个 Agent（自身不含机密——Agent 不携带密钥）作为可共享的 JSON
+// 文件写入 <workspace>/exports/agents，并返回文件路径。
 func (a *AppService) ExportAgent(agentID string) (string, error) {
 	cfg := a.S.Store.Get()
 	var agent *config.AgentConfig
@@ -224,8 +221,8 @@ func (a *AppService) ExportAgent(agentID string) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	// The agent name comes from config (and from imported share files), so it
-	// may contain path separators. Sanitize it like chat exports do.
+	// Agent 名称来自配置（以及导入的共享文件），因此可能包含路径分隔符。像聊天导出那样对
+	// 其进行清理。
 	name := sanitizeExportName(agent.Name)
 	if name == "" {
 		name = "agent"
@@ -237,8 +234,8 @@ func (a *AppService) ExportAgent(agentID string) (string, error) {
 	return path, nil
 }
 
-// ImportAgent adds an agent from a share document with a fresh ID. When an
-// agent with the same name exists, a (2)/(3)… suffix is appended.
+// ImportAgent 使用全新 ID 从共享文档添加一个 Agent。当存在同名 Agent 时，会追加
+// (2)/(3)… 后缀。
 func (a *AppService) ImportAgent(data string) (ImportAgentResult, error) {
 	if len(data) > maxBackupBytes {
 		return ImportAgentResult{}, fmt.Errorf("文件过大")
@@ -256,9 +253,8 @@ func (a *AppService) ImportAgent(data string) (ImportAgentResult, error) {
 	if imported.Name == "" {
 		return ImportAgentResult{}, fmt.Errorf("分享文件缺少 Agent 名称")
 	}
-	// Strip references that do not exist on this machine BEFORE inserting:
-	// the strict build contract fails every turn of the imported agent
-	// otherwise, and the user has no way to know which refs to detach.
+	// 在插入之前，先剥离本机上不存在的引用：否则，严格构建契约会在导入的 Agent
+	// 的每个回合中失败，而用户无法知道应分离哪些引用。
 	cfg := a.S.Store.Get()
 	var warnings []string
 	knownSkills := make(map[string]bool, len(cfg.Skills))
@@ -296,8 +292,8 @@ func (a *AppService) ImportAgent(data string) (ImportAgentResult, error) {
 	return ImportAgentResult{Agent: imported, Warnings: warnings}, nil
 }
 
-// stripMissingRefs keeps only ids present in known and reports one warning
-// per stripped id. A nil/empty input is returned untouched.
+// stripMissingRefs 仅保留 known 中存在的 ids，并为每个被剥离的 id
+// 报告一条警告。nil/空输入会原样返回。
 func stripMissingRefs(ids []string, known map[string]bool, label string) (kept, warnings []string) {
 	if len(ids) == 0 {
 		return ids, nil
@@ -313,14 +309,14 @@ func stripMissingRefs(ids []string, known map[string]bool, label string) (kept, 
 	return kept, warnings
 }
 
-// remoteShare is the portable per-remote-agent share document.
+// remoteShare 是可移植的单个远程 Agent 分享文档。
 type remoteShare struct {
 	Version int                       `json:"version"`
 	Remote  *config.RemoteAgentConfig `json:"remote"`
 }
 
-// ExportRemoteAgent writes one remote A2A agent as a shareable JSON file
-// into <workspace>/exports/remotes and returns the file path.
+// ExportRemoteAgent 将一个远程 A2A Agent 作为可分享的 JSON 文件写入
+// <workspace>/exports/remotes，并返回该文件路径。
 func (a *AppService) ExportRemoteAgent(id string) (string, error) {
 	cfg := a.S.Store.Get()
 	var remote *config.RemoteAgentConfig
@@ -356,8 +352,8 @@ func (a *AppService) ExportRemoteAgent(id string) (string, error) {
 	return path, nil
 }
 
-// ImportRemoteAgent adds a remote agent from a share document with a fresh
-// ID; name conflicts get a numeric suffix.
+// ImportRemoteAgent 从分享文档中添加一个远程 Agent，并为其分配全新的
+// ID；名称冲突时会追加数字后缀。
 func (a *AppService) ImportRemoteAgent(data string) (config.RemoteAgentConfig, error) {
 	if len(data) > maxBackupBytes {
 		return config.RemoteAgentConfig{}, fmt.Errorf("文件过大")
@@ -401,8 +397,8 @@ func (a *AppService) ImportRemoteAgent(data string) (config.RemoteAgentConfig, e
 	return imported, nil
 }
 
-// configBackup is the portable backup document. Sessions are intentionally
-// excluded: they live in sessions.db and are never overwritten by an import.
+// configBackup 是可移植的备份文档。会话被有意排除：它们存放在 sessions.db
+// 中，且导入操作绝不会覆盖它们。
 type configBackup struct {
 	Version    int            `json:"version"`
 	ExportedAt time.Time      `json:"exportedAt"`
@@ -410,16 +406,15 @@ type configBackup struct {
 	Config     *config.Config `json:"config"`
 }
 
-// ExportConfig writes the current configuration (without chat sessions) as a
-// portable JSON backup into <workspace>/exports and returns the file path.
-// With includeSecrets=false all provider API keys are stripped so the file is
-// safe to share.
+// ExportConfig 将当前配置（不含聊天会话）作为可移植的 JSON 备份写入
+// <workspace>/exports，并返回文件路径。当 includeSecrets=false 时，所有供应商
+// API 密钥都会被剥离，因此该文件可以安全分享。
 func (a *AppService) ExportConfig(includeSecrets bool) (string, error) {
-	// Get returns an independent copy; the masking below must never reach the
-	// live config (that would blank the user's API keys in memory).
+	// Get 返回独立副本；下面的脱敏绝不能作用于运行中的配置（否则会把用户内存里的
+	// API 密钥清空）。
 	cfg := a.S.Store.Get()
 	cfg.Sessions = nil
-	// OAuth tokens are secrets AND machine-local: never exported.
+	// OAuth 令牌属于机密信息，并且仅存在于本机：绝不导出。
 	cfg.MCPTokens = nil
 	if !includeSecrets {
 		for i := range cfg.Providers {
@@ -427,9 +422,9 @@ func (a *AppService) ExportConfig(includeSecrets bool) (string, error) {
 		}
 		for i := range cfg.MCPServers {
 			cfg.MCPServers[i].AuthToken = ""
-			// stdio Env and streamable Headers routinely carry secrets
-			// (OPENAI_API_KEY, Authorization: Bearer …) — a "safe to share"
-			// backup must not carry them either.
+			// stdio Env 和 streamable Headers 经常携带机密信息
+			// （OPENAI_API_KEY、Authorization: Bearer …）——一份 "safe to share" 的
+			// 备份也不得携带它们。
 			cfg.MCPServers[i].Env = nil
 			cfg.MCPServers[i].Headers = nil
 		}
@@ -454,11 +449,10 @@ func (a *AppService) ExportConfig(includeSecrets bool) (string, error) {
 	}
 	perm := os.FileMode(0o644)
 	if includeSecrets {
-		perm = 0o600 // contains API keys
+		perm = 0o600 // 包含 API 密钥
 	}
-	// Distinct names: a masked (shareable) backup must never be mistaken for
-	// the secrets-bearing one, and same-second exports must not overwrite
-	// each other.
+	// 不同的名称：脱敏（可分享）备份绝不能被误认为
+	// 包含机密信息的那一份，并且同一秒内的导出不得互相覆盖。
 	suffix := "redacted"
 	if includeSecrets {
 		suffix = "secrets"
@@ -470,10 +464,9 @@ func (a *AppService) ExportConfig(includeSecrets bool) (string, error) {
 	return path, nil
 }
 
-// ImportConfig replaces the current configuration (providers, agents, remote
-// agents, teams, skills, MCP servers, settings) with the backup's contents.
-// Chat sessions are preserved and API keys come from the file as-is, so an
-// unmasked backup restores connectivity directly.
+// ImportConfig 用备份内容替换当前配置（供应商、Agent、远程
+// Agent、团队、技能、MCP 服务器、设置）。 聊天会话会保留，API
+// 密钥按文件原样导入，因此 未脱敏的备份可直接恢复连接。
 func (a *AppService) ImportConfig(data string) error {
 	if len(data) > maxBackupBytes {
 		return fmt.Errorf("备份文件过大（%d 字节，上限 10MB）", len(data))
@@ -491,14 +484,13 @@ func (a *AppService) ImportConfig(data string) error {
 	imported := *bak.Config
 	imported.Sessions = nil
 	imported.NormalizeImported()
-	// OAuth tokens are machine-local state, like sessions: an import must not
-	// wipe the local cache (it used to force re-consent on every OAuth server).
+	// OAuth 令牌是与会话类似的本机状态：导入不得 清空本地缓存（过去这会强制在每个
+	// OAuth 服务器上重新授权）。
 	imported.MCPTokens = a.S.Store.Get().MCPTokens
-	// Track which MCP servers vanish or change so their cached toolsets and
-	// connections are dropped — same contract as SaveMCPServer.
+	// 跟踪哪些 MCP 服务器消失或发生变化，以便丢弃其缓存的工具集和 连接——与
+	// SaveMCPServer 的约定相同。
 	oldServers := a.S.Store.Get().MCPServers
-	// Never import stale IDs into the live config: keep everything the file
-	// carries, sessions excluded.
+	// 绝不将过期的 ID 导入当前生效的配置：保留文件 所携带的全部内容，会话除外。
 	if err := a.S.Store.Update(func(cfg *config.Config) {
 		sessions := cfg.Sessions
 		*cfg = imported
@@ -518,20 +510,20 @@ func (a *AppService) ImportConfig(data string) error {
 	return nil
 }
 
-// MCPService exposes MCP server management to the frontend.
+// MCPService 向前端暴露 MCP 服务器管理。
 type MCPService struct{ S *Services }
 
-// NewMCPService creates the service.
+// NewMCPService 创建该服务。
 func NewMCPService(s *Services) *MCPService { return &MCPService{S: s} }
 
-// Status returns the current status of all configured MCP servers.
+// Status 返回所有已配置的 MCP 服务器的当前状态。
 func (m *MCPService) Status() []mcpmgr.ServerStatus {
 	cfg := m.S.Store.Get()
 	return m.S.MCP.AllStatus(cfg.MCPServers)
 }
 
-// Connect starts/verifies the connection for one MCP server and returns its
-// status including the discovered tool list.
+// Connect 启动/校验一个 MCP
+// 服务器的连接，并返回其状态，其中包含已发现的工具列表。
 func (m *MCPService) Connect(id string) (mcpmgr.ServerStatus, error) {
 	cfg := m.S.Store.Get()
 	for _, s := range cfg.MCPServers {
@@ -542,14 +534,13 @@ func (m *MCPService) Connect(id string) (mcpmgr.ServerStatus, error) {
 	return mcpmgr.ServerStatus{}, fmt.Errorf("MCP 服务器 %q 不存在", id)
 }
 
-// Disconnect drops the connection state of one MCP server.
+// Disconnect 丢弃一个 MCP 服务器的连接状态。
 func (m *MCPService) Disconnect(id string) {
 	m.S.MCP.Disconnect(id)
 }
 
-// revealCommand builds the OS command that shows path in the system file
-// manager: Finder selects the file, Explorer selects it, other platforms open
-// the containing directory (no selection API).
+// revealCommand 构建在系统文件管理器中显示 path 的操作系统命令：Finder
+// 会选中该文件，Explorer 会选中该文件，其他平台则打开所在目录（没有选中 API）。
 func revealCommand(goos, path string) *exec.Cmd {
 	switch goos {
 	case "darwin":
@@ -561,9 +552,8 @@ func revealCommand(goos, path string) *exec.Cmd {
 	}
 }
 
-// RevealWorkspaceFile shows one session workspace file in the system file
-// manager (Finder/Explorer). The path rules match ArtifactService previews:
-// resolved against the session's effective workspace, traversal blocked.
+// RevealWorkspaceFile 在系统文件管理器（Finder/Explorer）中显示一个会话工作区文件。路径规则与
+// ArtifactService 预览一致：相对该会话的有效工作区解析，阻止路径穿越。
 func (a *AppService) RevealWorkspaceFile(sessionID, relPath string) error {
 	ws, err := sessionWorkspaceOf(a.S.Store.Get(), sessionID)
 	if err != nil {

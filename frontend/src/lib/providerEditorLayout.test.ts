@@ -4,9 +4,8 @@ import {
   PROVIDER_EDITOR_DIALOG_CLASS,
 } from "./providerEditorLayout";
 
-// #32 regression guard: with enough models the provider editor grew past the
-// viewport and the 「保存」/「取消」 footer was unreachable. The dialog must cap
-// its height and the body — not the dialog — must own the scroll.
+// #32 回归防护：模型较多时，供应商编辑器曾超出视口，导致「保存」/「取消」
+// 页脚无法点击。对话框必须限制高度，并由主体——而不是对话框——负责滚动。
 describe("provider editor dialog layout", () => {
   it("caps the dialog height instead of letting the model list grow it", () => {
     expect(PROVIDER_EDITOR_DIALOG_CLASS).toContain("max-h-[85vh]");
@@ -20,8 +19,9 @@ describe("provider editor dialog layout", () => {
   });
 
   it("lets the body shrink below its content height inside the flex column", () => {
-    // Without `min-h-0` flexbox refuses to shrink the body below its content,
-    // and the capped dialog clips the footer instead of scrolling the list.
+    // 没有 `min-h-0` 时，flexbox
+    // 不会把主体收缩到低于其内容高度，而设置了高度上限的对话框会裁剪页脚，而不
+    // 是滚动列表。
     expect(PROVIDER_EDITOR_BODY_CLASS).toContain("min-h-0");
     expect(PROVIDER_EDITOR_BODY_CLASS).toContain("flex-1");
   });

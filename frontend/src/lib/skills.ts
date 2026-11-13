@@ -1,8 +1,7 @@
-// Skill sources mirror the Go discovery layer (internal/config/skills_discovery.go):
-// app skills live in config.json, while project/global skills are read-only
-// entries discovered from <workspace>/.agents/skills and ~/.agents/skills.
-// The backend keeps the source in the ID prefix so no extra binding field is
-// needed.
+// 技能来源与 Go 发现层（internal/config/skills_discovery.go）保持一致：
+// 应用技能位于 config.json 中，而项目/全局技能是从 <workspace>/.agents/skills
+// 和 ~/.agents/skills 发现的只读条目。 后端将来源信息保留在 ID
+// 前缀中，因此不需要额外的绑定字段。
 
 export type SkillSource = "project" | "global" | "app";
 
@@ -27,7 +26,7 @@ export function skillSourceLabel(source: SkillSource): string {
   }
 }
 
-/** Discovered skills are external files: the app only reads them. */
+/** 发现的技能是外部文件：应用仅读取它们。 */
 export function isReadOnlySkill(id: string | null | undefined): boolean {
   return skillSource(id) !== "app";
 }

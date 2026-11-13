@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-// osUserConfigDir resolves <user config dir>/<name>, creating it if needed.
+// osUserConfigDir 解析 <user config dir>/<name>，并在需要时创建它。
 func osUserConfigDir(name string) (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {

@@ -18,13 +18,11 @@ import (
 	"agentmate/internal/config"
 )
 
-// fakeEmbeddings serves the OpenAI-compatible /embeddings contract with
-// deterministic bag-of-words hashing vectors: shared vocabulary => high
-// cosine similarity, which is enough to exercise ranking, caching and
-// rebuild paths without a real model.
-// openTestKnowledgeIndex opens a temp-backed index and registers DB close so
-// the test's TempDir cleanup does not fail on Windows (open handles block
-// RemoveAll).
+// openTestKnowledgeIndex fakeEmbeddings 通过确定性的词袋哈希向量，提供 OpenAI
+// 兼容的 /embeddings 契约：共享词表 =>
+// 高余弦相似度，这足以在没有真实模型的情况下覆盖排序、缓存和重建路径。
+// openTestKnowledgeIndex 打开一个由临时目录支持的索引，并注册数据库关闭操作，以便测试的 TempDir 清理在
+// Windows 上不会失败（打开的句柄会阻塞 RemoveAll）。
 func openTestKnowledgeIndex(t *testing.T) (*KnowledgeIndex, error) {
 	t.Helper()
 	idx, err := OpenKnowledgeIndex(filepath.Join(t.TempDir(), "k.db"))
@@ -88,7 +86,7 @@ func fakeEmbeddings() http.HandlerFunc {
 }
 
 func sqrtApprox(x float64) float64 {
-	// Newton's method; the vectors are small so precision is irrelevant.
+	// 牛顿法；向量很小，因此精度无关紧要。
 	if x == 0 {
 		return 0
 	}
@@ -114,9 +112,8 @@ func seedKnowledge(t *testing.T, files map[string]string) string {
 	return ws
 }
 
-// TestDeletedKnowledgeDirClearsIndex: removing the whole knowledge directory
-// must wipe the index — stale vectors used to survive and searches kept
-// returning content of files that no longer exist.
+// TestDeletedKnowledgeDirClearsIndex：删除整个 knowledge
+// 目录必须清空索引——过去，过期向量会残留，搜索会不断返回已不存在文件的内容。
 func TestDeletedKnowledgeDirClearsIndex(t *testing.T) {
 	srv := httptest.NewServer(fakeEmbeddings())
 	defer srv.Close()
@@ -181,9 +178,8 @@ func TestPartialEmbeddingFailureKeepsGoodRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts := SearchOptions{Workspace: ws, Index: idx, Embedding: &EmbeddingConfig{BaseURL: srv.URL, Model: "fake-embed"}}
-	// The tool degrades to keyword search on error; what we pin is the INDEX
-	// state: good.md's rows must survive the bad.md failure, and the error
-	// must name the failed file for diagnosis.
+	// 该工具在出错时会降级为关键词搜索；我们锁定的是 INDEX 状态：good.md
+	// 的记录行必须在 bad.md 失败后保留，并且错误必须指出失败的文件以便诊断。
 	if err := idx.ensureIndexed(context.Background(), ws, opts.Embedding); err == nil {
 		t.Fatal("expected an aggregate embedding error")
 	} else if !strings.Contains(err.Error(), "bad.md") {
@@ -220,8 +216,7 @@ func TestSemanticSearchRanksAndCaches(t *testing.T) {
 	emb := &EmbeddingConfig{BaseURL: srv.URL, Model: "fake-embed"}
 	opts := SearchOptions{Workspace: ws, Index: idx, Embedding: emb}
 
-	// Count embedding inputs by wrapping the server: simpler to assert on
-	// stored rows after searches.
+	// 通过包装服务器来统计嵌入输入数量：在搜索后对已存储的记录行进行断言更简单。
 	res, err := searchHybrid(opts, "kubernetes pod 调度")
 	if err != nil {
 		t.Fatal(err)
@@ -236,8 +231,8 @@ func TestSemanticSearchRanksAndCaches(t *testing.T) {
 		t.Fatalf("irrelevant file leaked into results: %s", res)
 	}
 
-	// Indexed rows exist and a second search reuses them (no re-embed of
-	// unchanged files): row count stable and search still works.
+	// 存在已索引的记录行，且第二次搜索会复用它们（不会重新嵌入未更改的文件）：记录
+	// 行数稳定，搜索仍然正常工作。
 	var rows int64
 	if err := idx.DB.Model(&KnowledgeChunk{}).Count(&rows).Error; err != nil || rows == 0 {
 		t.Fatalf("expected indexed rows, rows=%d err=%v", rows, err)
@@ -250,7 +245,7 @@ func TestSemanticSearchRanksAndCaches(t *testing.T) {
 		t.Fatalf("unchanged files must not re-index: %d -> %d", before, after)
 	}
 
-	// Changing a file re-indexes just that file.
+	// 更改一个文件仅会重新索引该文件。
 	if err := os.WriteFile(filepath.Join(ws, "knowledge", "cooking.md"),
 		[]byte("# 烹饪\n\n新版本：红烧肉做法，加豆腐乳更香。"), 0o644); err != nil {
 		t.Fatal(err)
@@ -278,9 +273,9 @@ func rowCount(t *testing.T, idx *KnowledgeIndex) int64 {
 	return n
 }
 
-// TestSemanticShrinkingFileDropsStaleChunks: editing a file down to fewer
-// chunks must delete the surplus rows. Leaving them behind grew the index on
-// every edit and could surface content the user had already deleted.
+// TestSemanticShrinkingFileDropsStaleChunks：将文件编辑到更少的分块时，必须删除
+// 多余的行。把这些行留下会让索引在每次编辑时增长，并可能暴露出用户已经删除的内
+// 容。
 func TestSemanticShrinkingFileDropsStaleChunks(t *testing.T) {
 	srv := httptest.NewServer(fakeEmbeddings())
 	defer srv.Close()
@@ -305,8 +300,7 @@ func TestSemanticShrinkingFileDropsStaleChunks(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "knowledge", "doc.md"), []byte("# 短\n\n只剩一句。"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// mtimes have second resolution; bump it so the edit is visible even when
-	// the test runs within the same second as the initial index.
+	// mtime 具有秒级分辨率；将其调大，使编辑即使在测试与初始索引在同一秒内运行时也可见。
 	future := time.Now().Add(2 * time.Second)
 	if err := os.Chtimes(filepath.Join(ws, "knowledge", "doc.md"), future, future); err != nil {
 		t.Fatal(err)
@@ -333,7 +327,7 @@ func TestSemanticModelChangeRebuilds(t *testing.T) {
 	}
 	first := rowCount(t, idx)
 
-	// Switching models wipes and rebuilds: rows carry the new model only.
+	// 切换模型会清空并重建：行仅携带新模型。
 	opts.Embedding.Model = "model-b"
 	if _, err := searchHybrid(opts, "向量检索"); err != nil {
 		t.Fatal(err)
@@ -351,7 +345,7 @@ func TestSemanticModelChangeRebuilds(t *testing.T) {
 func TestSemanticFallbacks(t *testing.T) {
 	ws := seedKnowledge(t, map[string]string{"a.md": "部署手册 deploy guide\n\n部署 deploy 步骤说明。"})
 
-	// No embedding configured: pure keyword behaviour, no marker.
+	// 未配置嵌入：纯关键词行为，无标记。
 	idx, err := openTestKnowledgeIndex(t)
 	if err != nil {
 		t.Fatal(err)
@@ -364,7 +358,7 @@ func TestSemanticFallbacks(t *testing.T) {
 		t.Fatalf("expected keyword-only output, got: %s", res)
 	}
 
-	// Embedding backend error: graceful keyword fallback with a note.
+	// 嵌入后端出错：优雅地回退到关键词，并附带说明。
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
@@ -382,7 +376,7 @@ func TestSemanticFallbacks(t *testing.T) {
 }
 
 func TestChunkText(t *testing.T) {
-	long := strings.Repeat("行内容\n", 500) // 1500 runes
+	long := strings.Repeat("行内容\n", 500) // 1500 个 rune
 	chunks := chunkText(long)
 	if len(chunks) < 2 {
 		t.Fatalf("expected multiple chunks, got %d", len(chunks))
@@ -403,8 +397,8 @@ func TestChunkText(t *testing.T) {
 	}
 }
 
-// TestEmbeddingsProtocolContract pins the request/response handling to the
-// OpenAI shape: batch order restored via the index field, auth header set.
+// TestEmbeddingsProtocolContract 将请求/响应处理固定为 OpenAI 形态：通过 index
+// 字段恢复批次顺序，设置认证头。
 func TestEmbeddingsProtocolContract(t *testing.T) {
 	var gotAuth, gotPath string
 	var gotModel string
@@ -419,7 +413,7 @@ func TestEmbeddingsProtocolContract(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		gotModel = req.Model
 		gotInputs = len(req.Input)
-		// Return out of order on purpose; client must restore by index.
+		// 故意乱序返回；客户端必须根据 index 恢复顺序。
 		fmt.Fprint(w, `{"object":"list","data":[`+
 			`{"object":"embedding","index":1,"embedding":[0.4,0.0]},`+
 			`{"object":"embedding","index":0,"embedding":[0.0,1.0]}],"model":"m","usage":{}}`)
@@ -486,7 +480,7 @@ func TestKnowledgeIndexReset(t *testing.T) {
 	if n := rowCount(t, idx); n != 0 {
 		t.Fatalf("reset must wipe rows, got %d", n)
 	}
-	// Next search rebuilds automatically.
+	// 下一次搜索会自动重建。
 	if _, err := searchHybrid(opts, "内容"); err != nil {
 		t.Fatal(err)
 	}
@@ -495,8 +489,8 @@ func TestKnowledgeIndexReset(t *testing.T) {
 	}
 }
 
-// TestKitTestKnowledgeSearch: the settings-page debugger path resolves
-// workspace + embedding settings through the Kit and returns search output.
+// TestKitTestKnowledgeSearch：设置页调试器路径通过 Kit 解析工作区 +
+// 嵌入设置，并返回搜索输出。
 func TestKitTestKnowledgeSearch(t *testing.T) {
 	srv := httptest.NewServer(fakeEmbeddings())
 	defer srv.Close()
@@ -532,8 +526,8 @@ func TestKitTestKnowledgeSearch(t *testing.T) {
 	}
 }
 
-// TestSemanticNestedDirectories: semantic indexing walks nested knowledge
-// directories and keys rows by relative path.
+// TestSemanticNestedDirectories：语义索引会遍历嵌套的知识目录，并以相对路径作为
+// 行的键。
 func TestSemanticNestedDirectories(t *testing.T) {
 	srv := httptest.NewServer(fakeEmbeddings())
 	defer srv.Close()

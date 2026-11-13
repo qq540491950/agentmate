@@ -11,7 +11,7 @@ export type NumericValidation =
   | { valid: true; value: number; empty: boolean }
   | { valid: false; error: string };
 
-/** True while the text is a legal prefix of a number of this rule. */
+/** 当文本是该规则下某个数字的合法前缀时，返回 true。 */
 export function isPartialNumericText(raw: string, rule: NumericRule): boolean {
   if (raw === "") return true;
   return rule.integer !== false ? /^\d*$/.test(raw) : /^\d*(?:\.\d*)?$/.test(raw);
@@ -28,7 +28,7 @@ function rangeLabel(rule: NumericRule): string {
   return "";
 }
 
-/** Strict validation used on blur/Enter; partial text is handled by the field. */
+/** 在失焦/回车时使用的严格校验；部分文本由字段处理。 */
 export function validateNumericDraft(raw: string, rule: NumericRule): NumericValidation {
   if (raw === "") {
     if (rule.allowEmpty === false) return { valid: false, error: "不能为空" };
@@ -61,7 +61,7 @@ export function validateNumericDraft(raw: string, rule: NumericRule): NumericVal
   return { valid: true, value, empty: false };
 }
 
-/** Formats a stored value into the controlled input's draft text. */
+/** 将存储的值格式化为受控输入的草稿文本。 */
 export function numericDraft(value: number | null | undefined): string {
   return value === null || value === undefined || Number.isNaN(value) ? "" : String(value);
 }

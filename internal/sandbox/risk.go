@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// commandRisk describes one heuristic match. The OS boundary remains the hard
-// control; this only decides when auto-approve should pause for the user.
+// commandRisk 描述一次启发式匹配。操作系统边界仍是硬性控制；这仅决定自动审批应在何时暂停以
+// 等待用户。
 type commandRisk struct {
 	pattern *regexp.Regexp
 	reason  string
@@ -26,10 +26,9 @@ var commandRisks = []commandRisk{
 	{regexp.MustCompile(`(?i)(\.ssh|id_rsa|\.aws[\\/]credentials|\.kube[\\/]config|\.gnupg)`), "会访问凭据或密钥路径"},
 }
 
-// AssessCommand reports whether a shell command looks risky enough to require
-// confirmation in auto-approve mode. It intentionally errs on the side of
-// asking: false negatives are mitigated by the OS sandbox, while false
-// positives only cost one approval.
+// AssessCommand 报告某个 shell
+// 命令是否看起来风险足够高，以至于在自动审批模式下需要确认。它有意偏向请求确认
+// ：假阴性由操作系统沙箱缓解，而假阳性仅需付出一次审批代价。
 func AssessCommand(command string) (bool, string) {
 	normalized := strings.ToLower(strings.Join(strings.Fields(command), " "))
 	if normalized == "" {

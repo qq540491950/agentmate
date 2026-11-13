@@ -11,18 +11,17 @@ import (
 	"agentmate/internal/config"
 )
 
-// Composer @-reference limits. A mention is inlined into the turn's system
-// instruction, not stored in history, so the caps keep one pasted reference
-// list from crowding out the actual conversation.
+// maxMentionFiles 是 Composer 的 @
+// 引用限制。提及会被内联到回合的系统指令中，不会存入历史，因此这些上限可防止一
+// 份粘贴的引用列表挤占实际对话。
 const (
 	maxMentionFiles      = 8
 	maxMentionFileBytes  = 48 << 10
 	maxMentionTotalBytes = 96 << 10
 )
 
-// joinTurnContexts concatenates the non-empty turn-scoped instruction blocks
-// (slash-invoked skill body and @-referenced file content) with one blank line
-// between them.
+// joinTurnContexts 将非空的回合级指令块（通过斜杠调用的技能正文和 @
+// 引用的文件内容）拼接起来，并在它们之间保留一个空行。
 func joinTurnContexts(parts ...string) string {
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
@@ -33,11 +32,9 @@ func joinTurnContexts(parts ...string) string {
 	return strings.Join(out, "\n\n")
 }
 
-// buildFileMentionContext resolves the @path references in a user message
-// against the chat's effective workspace and renders their content as a
-// turn-scoped instruction block. Unreadable references are listed separately
-// instead of failing the turn: the user may have typed a path that the model
-// can still reach through the workspace file tools.
+// buildFileMentionContext 基于聊天实际生效的工作区解析用户消息中的 @path
+// 引用，并将其内容渲染为回合级指令块。无法读取的引用会被单独列出，而不会使回合
+// 失败：用户可能输入了模型仍可通过工作区文件工具访问的路径。
 func buildFileMentionContext(workspace, text string) string {
 	if strings.TrimSpace(workspace) == "" || !strings.Contains(text, "@") {
 		return ""
@@ -115,11 +112,9 @@ func buildFileMentionContext(workspace, text string) string {
 	return b.String()
 }
 
-// fileMentionPaths extracts @path and @"quoted path" references from the user
-// text. A mention must start at a rune boundary so e-mail addresses do not
-// become file references, and traversal/absolute paths are rejected here (the
-// read path is checked again by SafeWorkspacePath). Duplicates collapse to the
-// first occurrence.
+// fileMentionPaths 从用户文本中提取 @path 和 @"quoted path" 引用。提及必须从
+// rune 边界开始，以免电子邮件地址变成文件引用；路径遍历/绝对路径会在此处被拒绝（读取
+// 路径会由 SafeWorkspacePath 再次检查）。重复项会合并到首次出现项。
 func fileMentionPaths(text string) []string {
 	var out []string
 	seen := make(map[string]bool)
@@ -140,8 +135,8 @@ func fileMentionPaths(text string) []string {
 				raw = text[start+1 : start+1+q]
 				next = start + 1 + q + 1
 			} else {
-				// Unterminated quote while the user is still typing: take the
-				// rest of the line so a mid-typing send still resolves.
+				// 用户仍在输入时出现未闭合引号：取该行剩余部分，以便输入中途发送时仍能解析
+				// 。
 				raw = text[start+1:]
 				next = len(text)
 			}
@@ -153,9 +148,9 @@ func fileMentionPaths(text string) []string {
 				if mentionTerminator(r) {
 					break
 				}
-				// "notes.md后再回答": a CJK word glued to a dotted file name
-				// is prose, not part of the path. CJK inside the path stays
-				// (目录/报告.md) because the preceding rune is a separator.
+				// 「notes.md 后再回答」：紧贴在带点文件名后的中文词是正文，不属于
+				// 路径。路径内部的中文会保留（如 目录/报告.md），因为前一个字符是
+				// 分隔符。
 				if seenDot && r >= utf8.RuneSelf && end > start {
 					prev, _ := utf8.DecodeLastRuneInString(text[start:end])
 					if isASCIIAlnum(prev) {
@@ -167,8 +162,8 @@ func fileMentionPaths(text string) []string {
 				}
 				end += size
 			}
-			// A drive-qualified path ("C:\...") must be rejected whole, not
-			// truncated at the colon into a bogus single-letter file.
+			// 带驱动器限定符的路径（"C:\\..."）必须整体拒绝，不得在冒号处被截断成一个无
+			// 效的单字母文件。
 			if end == start+1 && end < len(text) && text[end] == ':' && isASCIIAlnum(rune(text[start])) {
 				i = end + 1
 				continue
@@ -194,10 +189,9 @@ func isASCIIAlnum(r rune) bool {
 	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
 }
 
-// mentionBoundaryBefore reports whether an @ at byte offset at starts a new
-// token. ASCII word characters (e-mail/URL context) suppress the mention;
-// whitespace, punctuation and CJK text are boundaries, so「参考@notes.md」
-// works without a space before the @.
+// mentionBoundaryBefore 报告字节偏移 at 处的 @ 是否开启一个新 token。ASCII 单词
+// 字符（电子邮件/URL 上下文）会抑制提及；空白、标点和中文都是边界，因此
+// 「参考@notes.md」无需在 @ 前加空格也能生效。
 func mentionBoundaryBefore(text string, at int) bool {
 	r, _ := utf8.DecodeLastRuneInString(text[:at])
 	if r == utf8.RuneError {
@@ -214,9 +208,8 @@ func mentionBoundaryBefore(text string, at int) bool {
 	return true
 }
 
-// mentionTerminator ends an unquoted path token. Dots, slashes, backslashes,
-// hyphens and underscores stay inside the token; sentence punctuation and
-// brackets do not.
+// mentionTerminator 结束一个未加引号的路径标记。点、斜杠、反斜杠、连字符和下划线会保留在该标记内
+// ；句子标点和括号则不会保留在该标记内。
 func mentionTerminator(r rune) bool {
 	switch r {
 	case ' ', '\t', '\n', '\r', '\f', '\v', '@', '"':
@@ -229,9 +222,9 @@ func mentionTerminator(r rune) bool {
 	return false
 }
 
-// normalizeMentionPath turns the raw token into a workspace-relative slash
-// path: Windows separators are normalized, a leading "./" is dropped and a
-// trailing sentence period is trimmed. Quoted tokens keep their spaces.
+// normalizeMentionPath 将原始标记转换为相对于工作区的斜杠路径：Windows
+// 分隔符会被规范化，开头的 "./"
+// 会被去掉，末尾的句点会被去掉。带引号的标记会保留其空格。
 func normalizeMentionPath(raw string) string {
 	p := strings.TrimSpace(raw)
 	p = strings.Trim(p, `"'`)
@@ -241,8 +234,8 @@ func normalizeMentionPath(raw string) string {
 	return p
 }
 
-// usableFileMention rejects absolute, drive-qualified, home and traversal
-// paths before they reach the filesystem layer.
+// usableFileMention 会拒绝绝对路径、带盘符路径、home
+// 路径和遍历路径，使它们无法到达文件系统层。
 func usableFileMention(p string) bool {
 	if p == "" || strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~") || strings.HasPrefix(p, "@") {
 		return false
@@ -258,15 +251,15 @@ func usableFileMention(p string) bool {
 	return true
 }
 
-// looksLikePath keeps the "not found" note for file-looking references only;
-// an @助手 agent mention must not be reported as a missing file.
+// looksLikePath 只对看起来像文件的引用保留「未找到」提示；@助手 这类 Agent
+// 提及不得被报告为缺失文件。
 func looksLikePath(p string) bool {
 	return strings.Contains(p, "/") || strings.Contains(p, ".")
 }
 
-// contextWorkspace resolves the directory a composer context belongs to: an
-// active session's effective workspace (project root or task directory), an
-// explicit draft project's root, or the global workspace.
+// contextWorkspace 解析 composer
+// 上下文所属的目录：活动会话的有效工作区（项目根目录或任务目录）、显式草稿项目
+// 的根目录，或全局工作区。
 func contextWorkspace(cfg config.Config, sessionID, projectID string) string {
 	if strings.TrimSpace(sessionID) != "" {
 		for i := range cfg.Sessions {

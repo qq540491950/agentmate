@@ -15,9 +15,8 @@ import (
 	"agentmate/internal/sandbox"
 )
 
-// newDirectChat wires a ChatService against a fake model server with ONLY a
-// default provider (no agents), so tests can exercise target-less direct
-// sessions and @mention routing.
+// newDirectChat 将 ChatService 接入一个仅带默认供应商（无
+// Agent）的假模型服务器，使测试能够执行无目标的直接会话和 @mention 路由。
 func newDirectChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *config.Store, *[]string) {
 	t.Helper()
 	var bodies []string
@@ -49,9 +48,8 @@ func newDirectChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *confi
 	return NewChatService(svc, sessions, db), store, &bodies
 }
 
-// TestDirectChatWithoutAgent pins the zero-config chat contract: a session
-// with no target runs on the default provider's model and never mutates the
-// session binding.
+// TestDirectChatWithoutAgent 锁定零配置聊天契约：无目标的会话在默认供应商的模型上运行，且绝不修改会话绑定
+// 。
 func TestDirectChatWithoutAgent(t *testing.T) {
 	chat, store, bodies := newDirectChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -149,8 +147,8 @@ func TestMentionRoutesTurnToAgent(t *testing.T) {
 	}
 }
 
-// TestMentionUnknownFallsBackToDirect: an @name matching nothing runs the
-// turn as a plain direct chat instead of failing.
+// TestMentionUnknownFallsBackToDirect：未匹配任何对象的 @name
+// 会将该回合作为普通直接聊天运行，而不是失败。
 func TestMentionUnknownFallsBackToDirect(t *testing.T) {
 	chat, _, _ := newDirectChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -215,8 +213,7 @@ func TestDirectChatReadsWorkspaceFiles(t *testing.T) {
 		t.Fatalf("expected 3 model calls (list, read, answer), got %d", len(*bodies))
 	}
 
-	// The direct agent must advertise the workspace read tools and tell the
-	// model which directory it may inspect.
+	// 直接 Agent 必须公布工作区读取工具，并告知模型它可以检查哪个目录。
 	first := (*bodies)[0]
 	if !strings.Contains(first, `"name":"list_workspace_files"`) || !strings.Contains(first, `"name":"read_workspace_file"`) {
 		t.Fatalf("direct chat request is missing workspace tools: %s", first)
@@ -230,9 +227,9 @@ func TestDirectChatReadsWorkspaceFiles(t *testing.T) {
 	if err := json.Unmarshal([]byte(first), &req); err != nil {
 		t.Fatal(err)
 	}
-	// The model needs the real argument schema to call the tools correctly;
-	// declaring them as an argument-less object (the issue #23 symptom) makes
-	// read_workspace_file unusable.
+	// 模型需要真实的参数 schema
+	// 才能正确调用这些工具；将它们声明为无参数对象（issue #23 的症状）会使
+	// read_workspace_file 无法使用。
 	if !strings.Contains(first, `"properties":{"path"`) || !strings.Contains(first, `"required":["path","content"]`) {
 		t.Fatalf("direct chat tools lost their parameter schema: %s", first)
 	}
@@ -248,8 +245,7 @@ func TestDirectChatReadsWorkspaceFiles(t *testing.T) {
 		t.Fatalf("system prompt does not mention the workspace %q: %q", root, sys)
 	}
 
-	// The tool result streams back into the next model call: first the
-	// directory listing, then the file content.
+	// 工具结果会流式回传到下一次模型调用：先是目录列表，然后是文件内容。
 	if !strings.Contains((*bodies)[1], "README.md") {
 		t.Fatalf("listing result missing from second model call: %s", (*bodies)[1])
 	}
@@ -298,9 +294,8 @@ func TestDirectChatReadsWorkspaceFiles(t *testing.T) {
 	}
 }
 
-// TestDirectChatWriteAsksConfirmation: direct chats get the file tools too,
-// but writes stay behind the HITL confirmation contract (same as configured
-// agents) — nothing is written before the user approves.
+// TestDirectChatWriteAsksConfirmation：直接聊天也会获得文件工具，但写入仍受
+// HITL 确认契约约束（与已配置 Agent 相同）——在用户批准前不会写入任何内容。
 func TestDirectChatWriteAsksConfirmation(t *testing.T) {
 	root := t.TempDir()
 	chat, _, _ := newDirectChat(t, func(w http.ResponseWriter, r *http.Request) {
@@ -331,9 +326,9 @@ func TestDirectChatWriteAsksConfirmation(t *testing.T) {
 	}
 }
 
-// TestDirectChatAdvertisesShellTool pins the issue #40 regression: the
-// implicit default agent behind a target-less chat must mount run_command and
-// tell the model it has terminal capability, not only workspace file tools.
+// TestDirectChatAdvertisesShellTool 锁定 issue #40
+// 的回归：无目标聊天背后的隐式默认 Agent 必须挂载
+// run_command，并告知模型其具备终端能力，而不只是工作区文件工具。
 func TestDirectChatAdvertisesShellTool(t *testing.T) {
 	chat, _, bodies := newDirectChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -363,9 +358,9 @@ func TestDirectChatAdvertisesShellTool(t *testing.T) {
 	}
 }
 
-// TestDirectChatShellAsksConfirmation: a direct chat gets the terminal tool
-// behind the same HITL gate as a new agent — nothing runs before the user
-// approves, and the command executes in the session workspace afterwards.
+// TestDirectChatShellAsksConfirmation：直接会话通过与新 Agent 相同的 HITL
+// 门控获得终端工具——在用户批准之前不会运行任何内容，随后命令会在会话工作区中执
+// 行。
 func TestDirectChatShellAsksConfirmation(t *testing.T) {
 	if !sandbox.Available() {
 		t.Skipf("OS sandbox unavailable: %s", sandbox.BackendStatus().Error)
@@ -413,8 +408,8 @@ func TestDirectChatShellAsksConfirmation(t *testing.T) {
 	if err := chat.ConfirmToolCall(sess.ID, req.CallID, true); err != nil {
 		t.Fatal(err)
 	}
-	// The resumed model call must carry the executed result (exitCode 0), not
-	// the bare confirmation roundtrip ADK hides from the model.
+	// 恢复后的模型调用必须携带已执行的结果（exitCode 0），而不是 ADK
+	// 对模型隐藏的仅确认往返。
 	if len(*bodies) < 2 || !strings.Contains((*bodies)[1], `\"exitCode\":0`) {
 		t.Fatalf("resume request missing successful shell result: %v", *bodies)
 	}
@@ -423,8 +418,8 @@ func TestDirectChatShellAsksConfirmation(t *testing.T) {
 	}
 }
 
-// TestDirectChatWithoutProviderFails: with no provider configured the turn
-// is refused with an actionable message instead of a generic error.
+// TestDirectChatWithoutProviderFails：在未配置供应商时，该回合会被拒绝，并给出
+// 可操作的提示消息，而不是泛化错误。
 func TestDirectChatWithoutProviderFails(t *testing.T) {
 	chat, store, _ := newDirectChat(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("model must not be called without a provider")

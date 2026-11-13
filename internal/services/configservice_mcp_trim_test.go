@@ -8,9 +8,8 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// TestSaveMCPServerNormalizesWhitespace: UI-pasted whitespace must not reach
-// the persisted config — exec on "npx " fails LookPath even though npx is
-// installed.
+// TestSaveMCPServerNormalizesWhitespace: 从 UI 粘贴的空白不得进入持久化配置——对
+// "npx " 执行 exec 时，即使已安装 npx，LookPath 也会失败。
 func TestSaveMCPServerNormalizesWhitespace(t *testing.T) {
 	dir := t.TempDir()
 	store, err := config.Open(dir)

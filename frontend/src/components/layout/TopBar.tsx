@@ -20,8 +20,8 @@ interface TopBarProps {
   endSlot?: ReactNode;
 }
 
-// 首次隐藏到托盘的一次性提示（#77）：本地标记去重，自绘关闭按钮与
-// Alt+F4（Go 关闭钩子经 shell:hidden-to-tray 事件）两条路径共用。
+// 首次隐藏到托盘的一次性提示（#77）：本地标记去重，自绘关闭按钮与 Alt+F4（Go
+// 关闭钩子经 shell:hidden-to-tray 事件）两条路径共用。
 function toastHiddenToTrayOnce() {
   try {
     if (localStorage.getItem("wb-hidden-to-tray-once")) return;

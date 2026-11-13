@@ -41,18 +41,19 @@ function Field({ label, hint, error, className, children }: {
 interface ModelRowEditorProps {
   model: ModelInfo;
   index: number;
-  /** onSuggest asks the backend for built-in defaults for this model ID.
-   * force=true (the button) also replaces an existing table; a blur only
-   * fills missing defaults. */
+  /**
+   * onSuggest 会向后端请求此模型 ID
+   * 的内置默认值。force=true（按钮）还会替换已有表格；失焦仅填充缺失的默认值。
+   */
   onSuggest: (force?: boolean) => void;
   onChange: (patch: Partial<ModelInfo>) => void;
   onNumericValidityChange?: (fieldName: string, valid: boolean) => void;
 }
 
 /**
- * ModelRowEditor is the expanded body of one model card: identity, limits,
- * input type, prices and the per-model thinking-level table. The table is
- * stored as data only — the request merge lives in the Go adapters.
+ * ModelRowEditor
+ * 是单个模型卡片的展开主体：标识、限制、输入类型、价格以及按模型划分的思考级别
+ * 表格。该表格仅作为数据存储——请求合并位于 Go 适配器中。
  */
 export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericValidityChange }: ModelRowEditorProps) {
   const r = reasoningOf(model);
@@ -80,15 +81,15 @@ export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericVal
   };
 
   const onIdChange = (id: string) => {
-    // Keep the display name in step with the ID until the user customizes it
-    // (the same "ID as default label" rule used by 拉取模型).
+    // 在用户自定义之前，保持显示名称与 ID 同步（与拉取模型使用的“将 ID
+    // 作为默认标签”规则相同）。
     const follow = !model.displayName?.trim() || model.displayName.trim() === model.id.trim();
     onChange(follow ? { id, displayName: id } : { id });
   };
 
   return (
     <div className="grid gap-5">
-      {/* Identity and limits */}
+      {/* 标识与限制 */}
       <div className="grid gap-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="模型 ID" hint="请求体中使用，区分大小写">
@@ -169,7 +170,7 @@ export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericVal
         </div>
       </div>
 
-      {/* Thinking levels */}
+      {/* 思考级别 */}
       <section
         className="grid gap-3 rounded-xl bg-panel/60 p-3"
         aria-labelledby={`reasoning-title-${index}`}

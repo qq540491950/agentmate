@@ -13,28 +13,26 @@ import (
 	"agentmate/internal/config"
 )
 
-// NewSession creates a task session with an automatically isolated workspace.
+// NewSession 创建一个带有自动隔离工作区的任务会话。
 func (c *ChatService) NewSession(targetType, targetID, title string) (config.ChatSession, error) {
 	return c.newSession(targetType, targetID, title, "", "")
 }
 
-// NewSessionWithWorkspace creates a task session. An empty workspaceDir asks
-// the backend to create a unique directory under the global workspace.
+// NewSessionWithWorkspace 创建一个任务会话。workspaceDir
+// 为空时，会请求后端在全局工作区下创建一个唯一目录。
 func (c *ChatService) NewSessionWithWorkspace(targetType, targetID, title, workspaceDir string) (config.ChatSession, error) {
 	return c.newSession(targetType, targetID, title, workspaceDir, "")
 }
 
-// NewSessionWithProject creates a chat bound to a registered project. Project
-// chats share the project root as their workspace and own no task directory,
-// so many sessions can work in one project side by side.
+// NewSessionWithProject 创建一个绑定到已注册项目的聊天。项目聊天共享项目根目录作为其工作区，且不拥有
+// 任务目录，因此多个会话可以在同一项目中并行工作。
 func (c *ChatService) NewSessionWithProject(targetType, targetID, title, projectID string) (config.ChatSession, error) {
 	return c.newSession(targetType, targetID, title, "", projectID)
 }
 
 func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, projectID string) (config.ChatSession, error) {
-	// An empty target is a direct chat: the turn runs on the default
-	// provider's model with no persisted AgentConfig until the user
-	// @-mentions one.
+	// 空 target 表示直接聊天：回合在默认供应商的模型上运行，且在用户 @ 提及某个
+	// AgentConfig 之前，没有已持久化的 AgentConfig。
 	if targetType != "" && targetType != "agent" && targetType != "team" && targetType != "remote" {
 		return config.ChatSession{}, fmt.Errorf("invalid target type %q", targetType)
 	}
@@ -81,11 +79,9 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 			cleanupCreatedDir(createdDir)
 			return config.ChatSession{}, err
 		}
-		// Task sessions own their explicit directory exclusively. Project
-		// chats share the project root by design, including with legacy task
-		// sessions bound to that root before the directory was registered as a
-		// project — those must not block new project chats (issue #24: the
-		// project row's + reported "工作区已被任务…使用" and created nothing).
+		// 任务会话独占其显式目录。项目对话按设计共享项目根目录，包括在该目录注册为
+		// 项目之前就绑定到该根目录的遗留任务会话——这些会话不得阻止新建项目对话
+		// （issue #24：项目行的「+」曾报「工作区已被任务…使用」且没有创建任何内容）。
 		if err := workspaceConflict(cfg, workspaceDir, ""); err != nil {
 			cleanupCreatedDir(createdDir)
 			return config.ChatSession{}, err
@@ -96,9 +92,9 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 		removeTaskBaseline(c.S.Store, id)
 		return config.ChatSession{}, err
 	}
-	// Project chats keep WorkspaceDir empty: their workspace resolves through
-	// ProjectID (see EffectiveWorkspaceFor), so re-rooting a project
-	// propagates to every chat without rewriting session rows.
+	// 项目聊天会让 WorkspaceDir 保持为空：其工作区通过 ProjectID 解析（见
+	// EffectiveWorkspaceFor），因此重新设置项目根目录会传播到每个聊天，而无需重写
+	// 会话行。
 	approvalPolicy, sandboxProfile := settings.EffectiveExecutionPolicy()
 	storedWorkspace := workspaceDir
 	if projectID != "" {
@@ -149,23 +145,23 @@ func (c *ChatService) newSession(targetType, targetID, title, workspaceDir, proj
 	return cs, err
 }
 
-// ListProjects returns the registered projects in creation order.
+// ListProjects 按创建顺序返回已注册的项目。
 func (c *ChatService) ListProjects() []config.Project {
 	return c.S.Store.Get().Projects
 }
 
-// EffectiveSkills returns the skills the composer's "/" menu can invoke for a
-// chat context. The workspace is resolved server-side (session > project >
-// global) and merged with project/global .agents/skills discovery, so an
-// editor does not have to guess which directory a chat will run in.
+// EffectiveSkills 返回输入框的 "/"
+// 菜单在聊天上下文中可以调用的技能。工作区在服务端解析（会话 > 项目 >
+// 全局），并与项目/全局 .agents/skills
+// 发现结果合并，因此编辑器无需猜测聊天将在哪个目录中运行。
 func (c *ChatService) EffectiveSkills(sessionID, projectID string) []config.SkillConfig {
 	cfg := c.S.Store.Get()
 	return effectiveSkillsFor(cfg, contextWorkspace(cfg, sessionID, projectID))
 }
 
-// SaveProject creates a project (empty id) or updates name/root of an
-// existing one (blank fields keep the stored value). The root must exist and
-// be writable and may not be claimed by another project.
+// SaveProject 创建项目（空
+// id），或更新现有项目的名称/根目录（空白字段保留已存储的值）。根目录必须存在且
+// 可写，并且不得被另一个项目占用。
 func (c *ChatService) SaveProject(id, name, rootDir string) (config.Project, error) {
 	c.workspaceMu.Lock()
 	defer c.workspaceMu.Unlock()
@@ -236,9 +232,8 @@ func (c *ChatService) SaveProject(id, name, rootDir string) (config.Project, err
 	return updated, nil
 }
 
-// DeleteProject unregisters a project. Its chats fall back to the default
-// workspace and their baselines reset to the new directory; task files are
-// never touched. Projects with running chats are refused.
+// DeleteProject 注销项目。其会话回退到默认工作区，其基线重置为新目录；任务文件绝不会被触碰。
+// 存在运行中会话的项目会被拒绝。
 func (c *ChatService) DeleteProject(id string) error {
 	c.workspaceMu.Lock()
 	defer c.workspaceMu.Unlock()
@@ -274,8 +269,8 @@ func (c *ChatService) DeleteProject(id string) error {
 	}); err != nil {
 		return err
 	}
-	// Baselines restart from the session's new effective (global) workspace
-	// so the task panel does not report the project's files as mass deletions.
+	// 基线从该会话新生效的（全局）工作区重新开始，因此任务面板不会将项目文件报告为
+	// 大规模删除。
 	for _, s := range cfg.Sessions {
 		if s.ProjectID != id {
 			continue
@@ -293,7 +288,7 @@ func (c *ChatService) sessionRunning(sessionID string) bool {
 	return len(c.active[sessionID]) > 0
 }
 
-// ListSessions returns all chat sessions, pinned first, then newest first.
+// ListSessions 返回所有聊天会话，置顶的在前，然后最新的在前。
 func (c *ChatService) ListSessions() []config.ChatSession {
 	sessions := c.S.Store.Get().Sessions
 	sorted := make([]config.ChatSession, len(sessions))
@@ -307,9 +302,8 @@ func (c *ChatService) ListSessions() []config.ChatSession {
 	return sorted
 }
 
-// SearchSessions filters sessions by title OR by message content (a LIKE
-// probe over the stored event payloads). Empty query = all sessions
-// (pinned first, then most recently active).
+// SearchSessions 按标题或消息内容筛选会话（对已存储的事件负载进行 LIKE
+// 探测）。空查询 = 所有会话（置顶的在前，然后最近活跃的在前）。
 func (c *ChatService) SearchSessions(query string) []config.ChatSession {
 	sessions := c.ListSessions()
 	q := strings.TrimSpace(query)
@@ -324,8 +318,8 @@ func (c *ChatService) SearchSessions(query string) []config.ChatSession {
 	}
 	if c.db != nil {
 		var ids []string
-		// Escape LIKE wildcards so searching "50%" matches the literal text,
-		// not every content containing "50".
+		// 转义 LIKE 通配符，以便搜索 "50%" 时匹配字面文本，而不是匹配所有包含 "50"
+		// 的内容。
 		escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
 		pattern := "%" + escaped + "%"
 		if err := c.db.Raw("SELECT DISTINCT session_id FROM events WHERE content LIKE ? ESCAPE '\\' AND app_name = ? AND user_id = ?",
@@ -344,9 +338,9 @@ func (c *ChatService) SearchSessions(query string) []config.ChatSession {
 	return out
 }
 
-// SetSessionModel pins a chat to a specific model of its target agent's
-// provider (per-session model override); empty clears the override. The
-// previous thinking level is cleared too: the new model may not offer it.
+// SetSessionModel 将会话固定到目标 Agent
+// 的供应商下的特定模型（按会话的模型覆盖）；空值会清除该覆盖。先前的思考级别也
+// 会被清除：新模型可能不提供该级别。
 func (c *ChatService) SetSessionModel(sessionID, modelID string) error {
 	err := c.mutateSession(sessionID, func(s *config.ChatSession) {
 		s.ModelOverride = strings.TrimSpace(modelID)
@@ -358,9 +352,8 @@ func (c *ChatService) SetSessionModel(sessionID, modelID string) error {
 	return err
 }
 
-// SetSessionReasoningLevel remembers this chat's thinking level (a level name
-// from the effective model's table; empty restores the model default). It is
-// a per-chat choice and never writes back to provider configuration.
+// SetSessionReasoningLevel 记住此会话的思考级别（级别名称来自实际生效模型的表；空值会恢复模型默认值）。
+// 这是按会话做出的选择，绝不写回供应商配置。
 func (c *ChatService) SetSessionReasoningLevel(sessionID, level string) error {
 	err := c.mutateSession(sessionID, func(s *config.ChatSession) { s.ReasoningLevel = strings.TrimSpace(level) })
 	if err == nil {
@@ -369,17 +362,14 @@ func (c *ChatService) SetSessionReasoningLevel(sessionID, level string) error {
 	return err
 }
 
-// SessionExecutionPolicy is the independent approval and OS-boundary
-// dimensions a chat will use on its next turn.
+// SessionExecutionPolicy 是会话在下一回合将使用的独立审批维度和操作系统边界维度。
 type SessionExecutionPolicy struct {
 	ApprovalPolicy string `json:"approvalPolicy"`
 	SandboxProfile string `json:"sandboxProfile"`
 }
 
-// SetSessionExecutionPolicy changes this chat's approval and sandbox
-// dimensions independently. The pair is persisted, so switching chats or
-// restarting keeps it; other sessions are untouched. It applies from the next
-// turn when a turn is already running.
+// SetSessionExecutionPolicy 独立更改此聊天的审批与沙箱维度。这对设置会被持久化，因此切换聊天或重启后仍会
+// 保留；其他会话不受影响。若已有回合正在运行，则从下一个回合起生效。
 func (c *ChatService) SetSessionExecutionPolicy(sessionID, approvalPolicy, sandboxProfile, source string) error {
 	approval, err := validateSessionApprovalPolicy(approvalPolicy)
 	if err != nil {
@@ -392,8 +382,8 @@ func (c *ChatService) SetSessionExecutionPolicy(sessionID, approvalPolicy, sandb
 	return c.setSessionExecutionPolicy(sessionID, approval, profile, source, "session_execution_policy_set", "")
 }
 
-// SetSessionSandboxMode is the legacy three-profile wrapper. It maps each old
-// combined mode onto the independent pair while keeping the old audit phase.
+// SetSessionSandboxMode 是遗留的三配置档包装器。它将每个旧的组合模式映射到独立的一对设置上，同时保留
+// 旧的审计阶段。
 func (c *ChatService) SetSessionSandboxMode(sessionID, mode, source string) error {
 	normalized, err := validateSessionSandboxMode(mode)
 	if err != nil {
@@ -408,9 +398,9 @@ func (c *ChatService) setSessionExecutionPolicy(sessionID, approvalPolicy, sandb
 		s.ApprovalPolicy = approvalPolicy
 		s.SandboxProfile = sandboxProfile
 		s.SandboxMode = config.LegacySandboxMode(approvalPolicy, sandboxProfile)
-		// SandboxNetwork is the user's persisted preference. Danger reports
-		// "on" through EffectiveSandboxNetwork without overwriting it, so a
-		// later switch back to workspace-write restores the original value.
+		// SandboxNetwork 是用户持久化的偏好设置。Danger 会通过
+		// EffectiveSandboxNetwork 报告为 "on"，但不会覆盖它，因此之后切回
+		// workspace-write 时会恢复原来的值。
 	})
 	if err == nil {
 		payload := map[string]any{
@@ -426,8 +416,7 @@ func (c *ChatService) setSessionExecutionPolicy(sessionID, approvalPolicy, sandb
 	return err
 }
 
-// SessionExecutionPolicy reports the split policy the chat will use on its
-// next turn.
+// SessionExecutionPolicy 报告此聊天在下一个回合将使用的拆分策略。
 func (c *ChatService) SessionExecutionPolicy(sessionID string) (*SessionExecutionPolicy, error) {
 	cfg := c.S.Store.Get()
 	for _, s := range cfg.Sessions {
@@ -439,9 +428,8 @@ func (c *ChatService) SessionExecutionPolicy(sessionID string) (*SessionExecutio
 	return nil, fmt.Errorf("会话 %q 不存在", sessionID)
 }
 
-// SessionSandboxMode reports the legacy combined mode the chat projects for
-// old frontends.
-// Unknown IDs are an error, like the other session-setting RPCs.
+// SessionSandboxMode 报告此聊天为旧前端投影出的遗留组合模式。 未知 ID
+// 会报错，与其他会话设置 RPC 一样。
 func (c *ChatService) SessionSandboxMode(sessionID string) (string, error) {
 	cfg := c.S.Store.Get()
 	for _, s := range cfg.Sessions {
@@ -499,8 +487,7 @@ func normalizeSandboxModeSource(source string) string {
 	return "unknown"
 }
 
-// ArchiveSession toggles the archived flag of a session (archived sessions
-// are hidden from the default sidebar list but never deleted).
+// ArchiveSession 切换会话的归档标志（已归档会话会从默认侧边栏列表中隐藏，但绝不会被删除）。
 func (c *ChatService) ArchiveSession(id string, archived bool) error {
 	if !archived {
 		c.workspaceMu.Lock()
@@ -528,14 +515,13 @@ func (c *ChatService) ArchiveSession(id string, archived bool) error {
 	return err
 }
 
-// PinSession toggles the pinned flag of a session.
+// PinSession 切换会话的置顶标志。
 func (c *ChatService) PinSession(id string, pinned bool) error {
 	return c.mutateSession(id, func(s *config.ChatSession) { s.Pinned = pinned })
 }
 
-// mutateSession applies fn to one stored session and reports unknown IDs as
-// errors — the shared found/notFound shape behind rename, model override,
-// pin and archive.
+// mutateSession 将 fn 应用于一个已存储的会话，并将未知 ID
+// 报告为错误——这是重命名、模型覆盖、置顶和归档背后共享的 found/notFound 形态。
 func (c *ChatService) mutateSession(id string, fn func(*config.ChatSession)) error {
 	return c.mutateSessionGuarded(id, func(s *config.ChatSession, _ *config.Config) error {
 		fn(s)
@@ -543,8 +529,8 @@ func (c *ChatService) mutateSession(id string, fn func(*config.ChatSession)) err
 	})
 }
 
-// mutateSessionGuarded is mutateSession with a validation hook that can abort
-// the mutation (used by unarchive's workspace ownership check).
+// mutateSessionGuarded 是 mutateSession，带有一个可中止变更的验证钩子（由
+// unarchive 的工作区归属检查使用）。
 func (c *ChatService) mutateSessionGuarded(id string, fn func(*config.ChatSession, *config.Config) error) error {
 	var notFound error
 	var guardErr error
@@ -571,9 +557,9 @@ func (c *ChatService) mutateSessionGuarded(id string, fn func(*config.ChatSessio
 	return err
 }
 
-// RenameSession updates a session title. Unknown IDs are an error, and the
-// audit record is only written on success so a failed rename does not leave a
-// false "renamed" entry behind.
+// RenameSession 更新会话标题。未知 ID
+// 视为错误，且审计记录仅在成功时写入，因此失败的改名不会留下虚假的 "renamed"
+// 条目。
 func (c *ChatService) RenameSession(id, title string) error {
 	err := c.mutateSession(id, func(s *config.ChatSession) { s.Title = title })
 	if err == nil {
@@ -582,18 +568,15 @@ func (c *ChatService) RenameSession(id, title string) error {
 	return err
 }
 
-// DeleteSession removes a chat and its stored events. The config entry is
-// dropped only after the database delete succeeds; otherwise the session
-// would vanish from the sidebar while its rows stayed behind (and could be
-// resurrected by fork/search). An in-flight run is cancelled first: an
-// orphaned turn would keep burning tokens and re-create events for the
-// deleted session until its timeout.
+// DeleteSession 删除聊天及其存储的事件。仅在数据库删除成功后才会移除配置条目；否则会话会从侧
+// 边栏消失，而它的行仍留在原处（还可能被 fork/search
+// 复活）。先取消进行中的运行：孤立的回合会持续消耗
+// token，并为已删除的会话重新创建事件，直到其超时。
 func (c *ChatService) DeleteSession(id string) error {
 	return c.deleteSessionInternal(id)
 }
 
-// DeleteArchivedSessions deletes every archived session (cancel-first, events
-// included) and returns how many were removed.
+// DeleteArchivedSessions 删除所有已归档会话（先取消，包含事件），并返回删除了多少条。
 func (c *ChatService) DeleteArchivedSessions() (int, error) {
 	var ids []string
 	for _, s := range c.S.Store.Get().Sessions {
@@ -620,10 +603,9 @@ func (c *ChatService) deleteSessionInternal(id string) error {
 	}); err != nil {
 		return fmt.Errorf("delete session events: %w", err)
 	}
-	// The ADK session service deletes only the sessions row — event rows are
-	// left behind as orphans that full-text session search keeps matching
-	// forever. Remove them explicitly once the in-flight run has unwound (so
-	// nothing can write new rows after this).
+	// ADK 会话服务只删除 sessions
+	// 行——事件行会作为孤儿残留，全文会话搜索会一直匹配到它们。在进行中的运行回退之
+	// 后（这样之后就没有任何东西能写入新行）显式删除它们。
 	if c.db != nil {
 		if err := c.db.WithContext(context.Background()).Exec(
 			"DELETE FROM events WHERE app_name = ? AND user_id = ? AND session_id = ?",
@@ -660,7 +642,7 @@ func (c *ChatService) deleteSessionInternal(id string) error {
 	return nil
 }
 
-// GetSessionMessages renders the stored ADK events for a session.
+// GetSessionMessages 渲染会话已存储的 ADK 事件。
 func (c *ChatService) GetSessionMessages(sessionID string) ([]ChatMessage, error) {
 	resp, err := c.sessions.Get(context.Background(), &session.GetRequest{
 		AppName: c.appName, UserID: c.userID, SessionID: sessionID,
@@ -685,9 +667,9 @@ func (c *ChatService) GetSessionMessages(sessionID string) ([]ChatMessage, error
 	return out, nil
 }
 
-// ForkSession duplicates a session's full ADK event history into a new chat
-// (branching): the user can regenerate/edit/confirm differently in the fork
-// without touching the original timeline.
+// ForkSession 将会话的完整 ADK
+// 事件历史复制到新聊天（分支）：用户可以在分支中重新生成/编辑/确认，而不触碰原
+// 始时间线。
 func (c *ChatService) ForkSession(sessionID string) (config.ChatSession, error) {
 	if c.db == nil {
 		return config.ChatSession{}, fmt.Errorf("会话数据库不可用")
@@ -723,9 +705,9 @@ func (c *ChatService) ForkSession(sessionID string) (config.ChatSession, error) 
 		return config.ChatSession{}, err
 	}
 
-	// Copy every stored event row to the new session. The events table key
-	// includes session_id, so ids may repeat across sessions. The column list
-	// comes from the schema itself to survive ADK schema updates.
+	// 将每个已存储的事件行复制到新会话。events 表的键包含 session_id，因此 id
+	// 可以在不同会话间重复。列清单取自 schema 本身，以便在 ADK schema
+	// 更新后仍能工作。
 	var cols []string
 	if err := c.db.Raw("SELECT name FROM pragma_table_info('events')").Pluck("name", &cols).Error; err != nil {
 		cleanupBranch()

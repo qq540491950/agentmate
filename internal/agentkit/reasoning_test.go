@@ -47,7 +47,7 @@ func TestReasoningInjectionOpenAI(t *testing.T) {
 	srv, captured := captureOpenAI(t)
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)}}
 
-	// No level: the model's configured default (high) is sent.
+	// 未指定级别：发送模型配置的默认值（high）。
 	llm, err := NewModelFromProviderWithReasoning(openAIReasoningProvider(srv.URL), "deepseek-v3.2", "")
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +64,7 @@ func TestReasoningInjectionOpenAI(t *testing.T) {
 		t.Fatalf("unexpected thinking field: %v", (*captured)["thinking"])
 	}
 
-	// A per-session override wins and can switch the shape entirely.
+	// 会话级覆盖优先，并且可以完全切换形态。
 	llm, err = NewModelFromProviderWithReasoning(openAIReasoningProvider(srv.URL), "deepseek-v3.2", "off")
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestReasoningInjectionOpenAI(t *testing.T) {
 		t.Fatalf("off level must not send reasoning_effort: %v", (*captured)["reasoning_effort"])
 	}
 
-	// An unknown level is ignored rather than sending a stale override.
+	// 未知级别会被忽略，而不是发送过期的覆盖值。
 	llm, err = NewModelFromProviderWithReasoning(openAIReasoningProvider(srv.URL), "deepseek-v3.2", "turbo")
 	if err != nil {
 		t.Fatal(err)
@@ -171,7 +171,7 @@ func TestReasoningExtraBodyValidation(t *testing.T) {
 		t.Fatalf("nested extra = %#v", extra)
 	}
 
-	// A plain scalar stays a string when it is not valid JSON.
+	// 普通标量在不是有效 JSON 时仍保持为字符串。
 	mi.Reasoning.Levels = []config.ReasoningLevel{{Level: "nested", Param: "reasoning_effort", Value: "high"}}
 	extra, _ = reasoningExtraBody(mi, "")
 	if extra["reasoning_effort"] != "high" {
@@ -198,10 +198,10 @@ func TestApplyModelOutputLimit(t *testing.T) {
 	}
 }
 
-// TestReasoningFallbackOnlyExplicit pins the upgrade contract: a reasoning
-// family saved without a level table (the state of configs written before
-// level tables, and the reporter's `codearts/glm-5.3-flash`) provides levels
-// for the picker, but sends nothing until a level is actually chosen.
+// TestReasoningFallbackOnlyExplicit 锁定升级契约：未保存级别表的推理系列（级别表出现之前写入的配置状态，以及报告
+// 者的
+// `codearts/glm-5.3-flash`）会为选择器提供级别，但在实际选择级别之前不发送任何
+// 内容。
 func TestReasoningFallbackOnlyExplicit(t *testing.T) {
 	srv, captured := captureOpenAI(t)
 	provider := config.ModelProvider{

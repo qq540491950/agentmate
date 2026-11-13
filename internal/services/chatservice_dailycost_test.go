@@ -12,8 +12,8 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// TestSessionStatsDailyCost verifies the per-day token breakdown and the
-// cost estimate derived from the target model's configured prices.
+// TestSessionStatsDailyCost 验证按天统计的 token
+// 明细，以及根据目标模型已配置价格得出的成本估算。
 func TestSessionStatsDailyCost(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -27,7 +27,7 @@ func TestSessionStatsDailyCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Price: ¥2/1M input, ¥8/1M output.
+	// 价格：¥2/1M 输入，¥8/1M 输出。
 	err = store.Update(func(cfg *config.Config) {
 		cfg.Providers = append(cfg.Providers, config.ModelProvider{
 			ID: "p1", Name: "P", Protocol: config.ProtocolOpenAI,
@@ -72,7 +72,7 @@ func TestSessionStatsDailyCost(t *testing.T) {
 	if d.PromptTokens != 1000000 || d.CompletionTokens != 500000 {
 		t.Fatalf("day tokens wrong: %+v", d)
 	}
-	// Per-author breakdown: single assistant author owns all tokens.
+	// 按作者拆分的明细：单个 assistant 作者拥有全部 token。
 	if len(st.Authors) != 1 || st.Authors[0].Author != "a" || st.Authors[0].Tokens != 1500000 || st.Authors[0].Turns != 1 {
 		t.Fatalf("author stats wrong: %+v", st.Authors)
 	}

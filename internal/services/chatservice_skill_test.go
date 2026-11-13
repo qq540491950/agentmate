@@ -12,8 +12,8 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// newSkillTestChat wires a ChatService against a scripted SSE model server.
-// The returned channel receives each request body in turn order.
+// newSkillTestChat 将 ChatService 接入一个按预先脚本响应的 SSE 模型服务器。
+// 返回的通道按回合顺序接收每个请求体。
 func newSkillTestChat(t *testing.T) (*ChatService, <-chan string) {
 	t.Helper()
 	bodies := make(chan string, 8)
@@ -37,7 +37,7 @@ func newSkillTestChat(t *testing.T) (*ChatService, <-chan string) {
 		cfg.Agents = append(cfg.Agents, config.AgentConfig{
 			ID: "a1", Name: "助手", ProviderID: "p1", Model: "m",
 		})
-		// A name that cannot collide with the seeded default skills.
+		// 一个不会与预置默认技能冲突的名称。
 		cfg.Skills = append(cfg.Skills, config.SkillConfig{
 			ID: "s1", Name: "Slash Test Skill", Description: "测试技能",
 			Content: "# 斜杠技能规则\n只输出一张表格。",
@@ -54,10 +54,9 @@ func newSkillTestChat(t *testing.T) (*ChatService, <-chan string) {
 	return NewChatService(svc, sessions, db), bodies
 }
 
-// TestSkillSlashCommandInjectsSkill asserts a "/<skill>" command reaches the
-// model as an injected SKILL.md instruction while the stored user message
-// stays exactly what the user typed, and that the injection does not leak into
-// the next turn.
+// TestSkillSlashCommandInjectsSkill 断言 "/<skill>" 命令会作为注入的 SKILL.md
+// 指令到达模型，同时存储的用户消息与用户输入的内容完全一致，并且该注入不会泄漏
+// 到下一回合。
 func TestSkillSlashCommandInjectsSkill(t *testing.T) {
 	chat, bodies := newSkillTestChat(t)
 	sess, err := chat.newLegacySession("agent", "a1", "")
@@ -79,7 +78,7 @@ func TestSkillSlashCommandInjectsSkill(t *testing.T) {
 		t.Fatalf("command arguments must reach the model as the actual task, got: %s", first)
 	}
 
-	// History shows the command, never the injected SKILL.md body.
+	// 历史记录会显示该命令，绝不显示注入的 SKILL.md 正文。
 	msgs, err := chat.GetSessionMessages(sess.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -101,8 +100,7 @@ func TestSkillSlashCommandInjectsSkill(t *testing.T) {
 		t.Fatalf("user message missing from history: %+v", msgs)
 	}
 
-	// The next plain turn must not inherit the skill instruction ("temp:"
-	// state is applied per invocation, not persisted).
+	// 下一个普通回合不得继承技能指令（"temp:" 状态按每次调用应用，不持久化）。
 	if err := chat.Send(sess.ID, "继续", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -112,8 +110,7 @@ func TestSkillSlashCommandInjectsSkill(t *testing.T) {
 	}
 }
 
-// TestResolveSkillCommand covers command matching: materialized-name
-// normalization, case-insensitivity, arguments and misses.
+// TestResolveSkillCommand 覆盖命令匹配：物化名称规范化、大小写不敏感、参数以及未命中的情况。
 func TestResolveSkillCommand(t *testing.T) {
 	cfg := config.Config{Skills: []config.SkillConfig{
 		{ID: "s1", Name: "Weekly Report"},

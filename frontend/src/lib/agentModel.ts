@@ -6,11 +6,10 @@ export type ResolvedAgentModel = {
 };
 
 /**
- * resolveAgentModel mirrors the backend's config.ResolveAgentModel: an agent
- * with a blank provider follows the global default provider, and a blank
- * model that provider's first model. Explicit IDs that no longer exist stay
- * unresolved so the UI can show an unknown provider instead of silently
- * rebinding the agent (#39).
+ * resolveAgentModel 镜像后端的 config.ResolveAgentModel：供应商为空的 Agent
+ * 会跟随全局默认供应商，而模型为空时会使用该供应商的第一个模型。已不存在的显式
+ * ID 会保持未解析状态，以便 UI 能显示未知供应商，而不是静默地重新绑定
+ * Agent（#39）。
  */
 export function resolveAgentModel(
   agent: Pick<AgentConfig, "providerId" | "model"> | null | undefined,

@@ -13,7 +13,7 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// newTestKit builds a Kit over a temp config store.
+// newTestKit 基于临时配置存储构建一个 Kit。
 func newTestKit(t *testing.T) (*Kit, *config.Store) {
 	t.Helper()
 	store, err := config.Open(t.TempDir())
@@ -21,9 +21,9 @@ func newTestKit(t *testing.T) (*Kit, *config.Store) {
 		t.Fatal(err)
 	}
 	kit := NewKit(store, mcpmgr.New())
-	// Keep discovery hermetic: never read the developer's real ~/.agents/skills.
+	// 保持发现流程封闭：绝不读取开发者真实的 ~/.agents/skills。
 	kit.globalSkillRoot = t.TempDir()
-	kit.globalAgentsFile = "" // never read the developer's real ~/.agents/AGENTS.md
+	kit.globalAgentsFile = "" // 绝不读取开发者真实的 ~/.agents/AGENTS.md
 	return kit, store
 }
 
@@ -68,10 +68,9 @@ func TestBuiltinToolsDefaultToFullSet(t *testing.T) {
 		return out
 	}
 
-	// A custom agent that never picked tools inherits every built-in
-	// category: file access, command execution, knowledge, todos and time.
-	// (The long-term memory tool only exists when a memory service is wired
-	// in, so it is absent here.)
+	// 一个绝不选择任何工具的自定义 Agent
+	// 会继承每一个内置类别：文件访问、命令执行、知识、待办事项和时间。（长期记忆工
+	// 具仅在接入记忆服务时才存在，因此此处没有。）
 	all, err := kit.builtinToolsFor(config.AgentConfig{Name: "默认全量"}, cfg, workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +91,7 @@ func TestBuiltinToolsDefaultToFullSet(t *testing.T) {
 		}
 	}
 
-	// A non-empty list is an explicit narrowing: only the chosen category.
+	// 非空列表是显式收窄：仅包含所选的类别。
 	narrowed, err := kit.builtinToolsFor(config.AgentConfig{
 		Name: "仅时间", BuiltinTools: []string{"time"},
 	}, cfg, workspace)
@@ -137,7 +136,7 @@ func TestBuildTeamAutoCoordinator(t *testing.T) {
 		t.Fatalf("expected 2 sub-agents, got %d", len(subs))
 	}
 
-	// Explicit lead mode: lead is root, the other member is a peer.
+	// 显式 lead 模式：lead 为根，另一成员为对等成员。
 	team2 := team
 	team2.AutoCoordinate = false
 	team2.LeadAgentID = "m1"
@@ -157,7 +156,7 @@ func TestBuildTeamMissingProvider(t *testing.T) {
 	kit, store := newTestKit(t)
 	team := config.TeamConfig{ID: "t", Name: "T", AutoCoordinate: true, ProviderID: "nope"}
 	if _, _, err := kit.BuildTeam(team); err == nil {
-		// store has a default agent list, provider missing -> must error
+		// store 有默认 Agent 列表，供应商缺失 -> 必须报错
 		_ = store
 		t.Fatal("expected error for missing provider")
 	}
@@ -166,9 +165,8 @@ func TestBuildTeamMissingProvider(t *testing.T) {
 func TestSkillMaterialization(t *testing.T) {
 	kit, store := newTestKit(t)
 	err := store.Update(func(cfg *config.Config) {
-		// Replace the seeded defaults: "Weekly Report" normalizes to the same
-		// materialized name as the seeded weekly-report skill, and save paths
-		// never allow two same-named skills in one config.
+		// 替换预置的默认值："Weekly Report" 规范化后与预置的 weekly-report
+		// 技能的物化名称相同，且保存路径绝不允许同一配置中存在两个同名技能。
 		cfg.Skills = []config.SkillConfig{
 			{ID: "s1", Name: "Weekly Report", Description: "写周报", Content: "# 步骤\n1. 收集"},
 		}
@@ -184,8 +182,8 @@ func TestSkillMaterialization(t *testing.T) {
 	if ts == nil {
 		t.Fatal("expected skill toolset, got nil")
 	}
-	// The skill must be materialized as valid SKILL.md inside the per-agent
-	// staging dir (agents/<id>/<skill>/SKILL.md), not the shared root.
+	// 技能必须物化为有效的 SKILL.md，位于每个 Agent
+	// 的暂存目录（agents/<id>/<skill>/SKILL.md）内，而不是共享根目录。
 	path := filepath.Join(store.SkillsDir(), "agents", ac.ID, "weekly-report", "SKILL.md")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -203,9 +201,9 @@ func TestSkillMaterialization(t *testing.T) {
 	}
 }
 
-// TestSkillToolsetPrunesUnmountedSkills pins the per-agent isolation: a skill
-// materialized for one agent must not appear in another agent's toolset, and
-// detaching a skill removes its files on the next build.
+// TestSkillToolsetPrunesUnmountedSkills 固定每个 Agent 的隔离性：为一个 Agent
+// 物化的技能不得出现在另一个 Agent
+// 的工具集中，并且解除挂载技能会在下一次构建时移除其文件。
 func TestSkillToolsetPrunesUnmountedSkills(t *testing.T) {
 	kit, store := newTestKit(t)
 	err := store.Update(func(cfg *config.Config) {
@@ -225,7 +223,7 @@ func TestSkillToolsetPrunesUnmountedSkills(t *testing.T) {
 	if _, err := kit.skillToolset(mountOne, store.Get(), t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	// Agent B's staging dir must only contain the mounted skill.
+	// Agent B 的暂存目录必须仅包含已挂载的技能。
 	entries, err := os.ReadDir(filepath.Join(store.SkillsDir(), "agents", "agent_b"))
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +235,7 @@ func TestSkillToolsetPrunesUnmountedSkills(t *testing.T) {
 	if len(names) != 1 || names[0] != "shared-skill" {
 		t.Fatalf("agent B staging dir = %v, want [shared-skill]", names)
 	}
-	// Detaching s2 from agent A prunes it on the next build.
+	// 从 Agent A 解除挂载 s2 会在下一次构建时清理它。
 	mountAll.SkillIDs = []string{"s1"}
 	if _, err := kit.skillToolset(mountAll, store.Get(), t.TempDir()); err != nil {
 		t.Fatal(err)
@@ -253,7 +251,7 @@ func TestSkillToolsetPrunesUnmountedSkills(t *testing.T) {
 		}
 		t.Fatalf("agent A staging dir after detach = %v, want [shared-skill]", names)
 	}
-	// RemoveMaterializedSkill clears every agent's copy of a deleted skill.
+	// RemoveMaterializedSkill 会清除每个 Agent 中已删除技能的副本。
 	kit.RemoveMaterializedSkill("Shared Skill")
 	for _, id := range []string{"agent_a", "agent_b"} {
 		if _, err := os.Stat(filepath.Join(store.SkillsDir(), "agents", id, "shared-skill")); !os.IsNotExist(err) {
@@ -270,9 +268,8 @@ func TestAgentNameUniquenessAcrossBuilds(t *testing.T) {
 	}
 }
 
-// TestBuildAgentReportsMCPFailures pins the no-silent-skip contract: a server
-// whose transport cannot be built and a dangling server ID both surface in the
-// build error instead of quietly running an agent without its tools.
+// TestBuildAgentReportsMCPFailures 固定不静默跳过的契约：传输层无法构建的服务器和悬空的服务器 ID
+// 都会在构建错误中暴露，而不是静默运行一个缺少其工具的 Agent。
 func TestBuildAgentReportsMCPFailures(t *testing.T) {
 	kit, store := newTestKit(t)
 	if err := store.Update(func(cfg *config.Config) {
@@ -300,9 +297,8 @@ func TestBuildAgentReportsMCPFailures(t *testing.T) {
 	}
 }
 
-// TestBuildAgentReportsDanglingSkills: mounted skills that no longer exist
-// (imported share files are the usual source) must be reported, not quietly
-// dropped — same no-silent-degradation contract as MCP servers.
+// TestBuildAgentReportsDanglingSkills：已挂载但不再存在的技能（导入的共享文件是
+// 常见来源）必须被报告，而不是被静默丢弃——与 MCP 服务器相同的不静默降级契约。
 func TestBuildAgentReportsDanglingSkills(t *testing.T) {
 	kit, store := newTestKit(t)
 	if err := store.Update(func(cfg *config.Config) {
@@ -321,10 +317,8 @@ func TestBuildAgentReportsDanglingSkills(t *testing.T) {
 	}
 }
 
-// TestBuildTeamLeadPeersIncludeRemoteMembers pins the explicit-lead path: the
-// lead's transferable peers must include local AND remote members (the remote
-// ones used to be silently dropped), with dangling member IDs skipped instead
-// of shifting positional indexes.
+// TestBuildTeamLeadPeersIncludeRemoteMembers 固定显式负责人路径：负责人的可转移对等成员必须同时包含本地成员和远程成员（远
+// 程成员过去会被静默丢弃），并跳过悬空的成员 ID，而不是移动位置索引。
 func TestBuildTeamLeadPeersIncludeRemoteMembers(t *testing.T) {
 	kit, store := newTestKit(t)
 	if err := store.Update(func(cfg *config.Config) {
@@ -336,7 +330,7 @@ func TestBuildTeamLeadPeersIncludeRemoteMembers(t *testing.T) {
 			config.AgentConfig{ID: "a_peer", Name: "本地队员", ProviderID: "p1", Model: "m1"},
 		)
 		cfg.RemoteAgents = append(cfg.RemoteAgents, config.RemoteAgentConfig{
-			ID: "ra_1", Name: "远程队员", CardURL: "http://127.0.0.1:1/card", // lazy: never fetched at build time
+			ID: "ra_1", Name: "远程队员", CardURL: "http://127.0.0.1:1/card", // 惰性：构建时绝不获取
 		})
 	}); err != nil {
 		t.Fatal(err)
@@ -366,9 +360,9 @@ func TestBuildTeamLeadPeersIncludeRemoteMembers(t *testing.T) {
 	}
 }
 
-// TestBuildAgentInheritsDefaultModel: an Agent saved with only the three
-// semantic fields (name/description/system prompt) must build on the global
-// default provider and model, and the per-session picker must still work (#39).
+// TestBuildAgentInheritsDefaultModel：仅保存三个语义字段（name/description/syst
+// em prompt）的 Agent
+// 必须在全局默认供应商和模型上构建，且按会话的选择器必须仍然可用（#39）。
 func TestBuildAgentInheritsDefaultModel(t *testing.T) {
 	kit, store := newTestKit(t)
 	if err := store.Update(func(cfg *config.Config) {
@@ -389,13 +383,13 @@ func TestBuildAgentInheritsDefaultModel(t *testing.T) {
 		t.Fatal("agent name empty")
 	}
 
-	// The header model picker clamps against the resolved default provider,
-	// not against the blank configured provider.
+	// 头部模型选择器以解析后的默认供应商为基准进行钳制，而不是以配置为空的供应商为
+	// 基准。
 	if _, err := kit.BuildAgentWithModel(ac, "m2"); err != nil {
 		t.Fatalf("per-session override should resolve against the default provider: %v", err)
 	}
 
-	// No provider configured: the error must tell the user what to do.
+	// 未配置供应商：错误必须告诉用户该做什么。
 	emptyKit, _ := newTestKit(t)
 	_, err = emptyKit.BuildAgent(ac)
 	if err == nil || !strings.Contains(err.Error(), "尚未配置模型供应商") {

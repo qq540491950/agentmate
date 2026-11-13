@@ -29,8 +29,8 @@ func TestDetectUpdateMode(t *testing.T) {
 			wantMode: UpdateModeAutoInstall,
 		},
 		{
-			// The machine-scope NSIS install lands in %ProgramFiles% and the
-			// updater has no elevation path, so the swap target is unreachable.
+			// 机器范围的 NSIS 安装会落到
+			// %ProgramFiles%，而更新器没有提权路径，因此替换目标不可达。
 			name: "windows program files cannot self-update", goos: "windows", exeDirWritable: false,
 			wantMode: UpdateModeNotifyOnly, wantReasonHas: "Program Files",
 		},
@@ -43,7 +43,7 @@ func TestDetectUpdateMode(t *testing.T) {
 			wantMode: UpdateModeNotifyOnly, wantReasonHas: "不可写",
 		},
 		{
-			// deb/rpm installs put the binary in /usr/local/bin (root-owned).
+			// deb/rpm 安装会把二进制文件放到 /usr/local/bin（归 root 所有）。
 			name: "linux deb is notify-only", goos: "linux", appImage: "", exeDirWritable: true,
 			wantMode: UpdateModeNotifyOnly, wantReasonHas: "deb/rpm",
 		},
@@ -92,7 +92,7 @@ func TestParseUpdatePublicKey(t *testing.T) {
 	if err != nil || string(got) != string(raw) {
 		t.Fatalf("hex key = %x, %v", got, err)
 	}
-	// Pasted with a line break, as terminals wrap long base64.
+	// 粘贴时带有一个换行，因为终端会折行较长的 base64。
 	wrapped := base64.StdEncoding.EncodeToString(raw)
 	wrapped = wrapped[:20] + "\n" + wrapped[20:]
 	if got, err = parseUpdatePublicKey(wrapped); err != nil || string(got) != string(raw) {
@@ -106,8 +106,9 @@ func TestParseUpdatePublicKey(t *testing.T) {
 	}
 }
 
-// Status must be renderable before Bind: the settings page calls it on mount,
-// and a failed updater init must not turn into a blank or panicking page.
+// TestUpdateStatusBeforeBind Status 必须在 Bind
+// 之前可渲染：设置页会在挂载时调用它，且更新器初始化失败不得变成空白页面或发生
+// panic 的页面。
 func TestUpdateStatusBeforeBind(t *testing.T) {
 	t.Cleanup(func() { AppVersion = "dev" })
 	AppVersion = "1.2.3"
@@ -127,8 +128,8 @@ func TestUpdateStatusBeforeBind(t *testing.T) {
 	}
 }
 
-// Skip and SetAutoCheck persist into config.json; both must survive a reload
-// and must not disturb unrelated settings.
+// TestSkipAndAutoCheckPersist Skip 和 SetAutoCheck 会持久化到
+// config.json；两者都必须在重新加载后保留，且不得干扰无关设置。
 func TestSkipAndAutoCheckPersist(t *testing.T) {
 	store, err := config.Open(t.TempDir())
 	if err != nil {
@@ -159,7 +160,7 @@ func TestSkipAndAutoCheckPersist(t *testing.T) {
 	if !store.Get().Settings.UpdateAutoCheckEnabled() {
 		t.Fatal("autoCheck must be on after SetAutoCheck(true)")
 	}
-	// Reopening the store (a restart) must see the same values.
+	// 重新打开存储（也就是重启）时必须看到相同的值。
 	reopened, err := config.Open(store.Dir())
 	if err != nil {
 		t.Fatal(err)
@@ -176,8 +177,9 @@ func TestSkipRejectsEmptyVersion(t *testing.T) {
 	}
 }
 
-// helperAwaitingExit decides whether a forced exit is safe, so it must read
-// only the handshake of *this* process and only the "ready" payload.
+// TestHelperAwaitingExit helperAwaitingExit
+// 决定强制退出是否安全，因此它必须仅读取 *此* 进程的握手，并且仅读取 "ready"
+// 载荷。
 func TestHelperAwaitingExit(t *testing.T) {
 	const pid = 4242
 	write := func(t *testing.T, dir, name, content string) {
@@ -215,8 +217,8 @@ func TestHelperAwaitingExit(t *testing.T) {
 	})
 }
 
-// A restart that returns must never force an exit while it can still fail:
-// success arms the post-restart grace exit, an error keeps the app running.
+// TestApplyWithWatchdogRestartResult 返回的重启在其仍可能失败时，必须绝不强制退出：
+// 成功会启用重启后的宽限退出，错误则让应用保持运行。
 func TestApplyWithWatchdogRestartResult(t *testing.T) {
 	t.Run("success arms the grace exit", func(t *testing.T) {
 		forced := make(chan string, 4)
@@ -241,7 +243,7 @@ func TestApplyWithWatchdogRestartResult(t *testing.T) {
 		var forced atomic.Bool
 		err := applyWithWatchdog(
 			func() error { return wantErr },
-			func() bool { return true }, // even a ready helper must not exit on failure
+			func() bool { return true }, // 即使辅助进程已就绪，也不得在失败时退出
 			20*time.Millisecond, 5*time.Millisecond, 20*time.Millisecond,
 			func(string) { forced.Store(true) },
 		)
@@ -255,10 +257,9 @@ func TestApplyWithWatchdogRestartResult(t *testing.T) {
 	})
 }
 
-// The reported defect: the old process hangs in shutdown, so the helper's
-// parent wait lapses and the update degenerates into a second app. Once the
-// helper acknowledges it is waiting for this PID, ApplyUpdate must exit
-// instead of waiting for the wedged quit.
+// TestApplyWithWatchdogExitsWhenHelperStandsBy 所报告的缺陷：旧进程在关闭时挂起，导致辅助进程对父进程的等待超时，更新退化成
+// 启动第二个应用。一旦辅助进程确认它正在等待此 PID，ApplyUpdate
+// 必须退出，而不是继续等待卡死的退出流程。
 func TestApplyWithWatchdogExitsWhenHelperStandsBy(t *testing.T) {
 	block := make(chan struct{})
 	t.Cleanup(func() { close(block) })
@@ -266,7 +267,7 @@ func TestApplyWithWatchdogExitsWhenHelperStandsBy(t *testing.T) {
 	readyAfter := time.Now().Add(50 * time.Millisecond)
 
 	err := applyWithWatchdog(
-		func() error { <-block; return nil }, // the app's Quit never returns
+		func() error { <-block; return nil }, // 应用的 Quit 绝不返回
 		func() bool { return time.Now().After(readyAfter) },
 		10*time.Millisecond, 5*time.Millisecond, 0,
 		func(reason string) { forced <- reason },
@@ -284,8 +285,8 @@ func TestApplyWithWatchdogExitsWhenHelperStandsBy(t *testing.T) {
 	}
 }
 
-// A slow helper startup is not a wedged quit: if it never signals readiness
-// and Restart eventually fails, the error is returned and nothing is forced.
+// TestApplyWithWatchdogSlowHelperFailure 辅助进程启动缓慢并不等同于退出卡死：如果它绝不发出就绪信号，且 Restart
+// 最终失败，则会返回该错误，并且不会强制执行任何操作。
 func TestApplyWithWatchdogSlowHelperFailure(t *testing.T) {
 	wantErr := errors.New("updater: helper did not signal readiness")
 	var forced atomic.Bool

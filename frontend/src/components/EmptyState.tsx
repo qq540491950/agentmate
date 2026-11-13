@@ -1,9 +1,8 @@
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// EmptyState is the shared empty placeholder for list views: one visual
-// language (centered icon + title + hint) instead of each page improvising
-// its own muted paragraph.
+// EmptyState 是列表视图共享的空占位符：统一采用一种视觉语言（居中的图标 + 标题
+// + 提示）， 而不是让每个页面各自临时编写一段自己的 muted 段落。
 export function EmptyState({ icon: Icon, title, desc, className }: {
   icon: LucideIcon;
   title: string;

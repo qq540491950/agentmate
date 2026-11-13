@@ -15,8 +15,7 @@ import { toolResultFailed, toolStepDisplay } from "@/lib/chatUtils";
 import { Artifact, errText, type Artifact as ArtifactData } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-/** extractArtifactPaths finds workspace-relative file references in tool
- *  arguments/results so their outputs can be previewed. */
+/** extractArtifactPaths 在工具参数/结果中查找相对于工作区的文件引用，以便预览它们的输出。 */
 export function extractArtifactPaths(...objs: (unknown | null | undefined)[]): string[] {
   const out = new Set<string>();
   const re = /"(?:path|file|file_path|filename|image_path|artifact|output|refs)"\s*:\s*"([^"]+\.(?:png|jpe?g|gif|webp|svg|bmp|ico|pdf|md|markdown|txt|log|csv|json|ya?ml|xml|html?|go|ts|tsx|js|py|rs|java|sh|sql|toml|ini|css))"/gi;
@@ -37,13 +36,13 @@ type ToolCallProps = {
   running: boolean;
   durationMs?: number;
   filterQ?: string;
-  /** compact renders one lightweight execution-row instead of a card. */
+  /** compact 渲染一条轻量级执行行，而不是一张卡片。 */
   compact?: boolean;
 };
 
 /**
- * formatDuration renders a tool runtime. A HITL confirmation can sit pending
- * for days, so long waits get a coarse unit instead of "2804084.6s".
+ * formatDuration 渲染工具的运行时长。HITL
+ * 确认可能待处理数天，因此长时间等待会使用粗粒度单位，而不是 "2804084.6s"。
  */
 export function formatDuration(ms: number): string {
   const s = ms / 1000;
@@ -54,14 +53,15 @@ export function formatDuration(ms: number): string {
   return `${h}h${String(m).padStart(2, "0")}m`;
 }
 
-/** ToolCallCard renders one tool invocation with live status visualization.
- *  Memoized because extractArtifactPaths JSON-stringifies args/results and
- *  would otherwise run for every visible tool on each streamed token. */
+/**
+ * ToolCallCard 渲染单次工具调用，并带有实时状态可视化。之所以使用 memo
+ * 缓存，是因为 extractArtifactPaths 会对 args/results 执行 JSON
+ * 字符串化，否则每流式输出一个 token 时，它都会对每个可见工具运行一次。
+ */
 export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, resp, running, durationMs, filterQ, compact = false }: ToolCallProps) {
   const [open, setOpen] = useState(false);
-  // Inspect the parsed payload: substring matching used to flag successful
-  // envelopes that merely carry an "error": null field, and missed MCP's
-  // camelCase isError.
+  // 检查解析后的 payload：子字符串匹配曾用于标记仅带有 "error": null
+  // 字段的成功信封，并漏掉了 MCP 的 camelCase isError。
   const failed = useMemo(() => toolResultFailed(resp), [resp]);
 
   const display = useMemo(() => toolStepDisplay(name, args), [name, args]);
@@ -83,9 +83,9 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
   const outputJSON = useMemo(() => (resp == null ? "" : JSON.stringify(resp, null, 2)), [resp]);
   const showInput = args != null;
   const showOutput = resp != null;
-  // A read/list input path is not an output artifact. Inside the compact
-  // execution list only write/search/unknown tools keep the preview strip;
-  // otherwise every read row grows another line and the run becomes noisy.
+  // 读取/列出工具的输入路径不是输出产物。在紧凑执行列表中，仅
+  // write/search/unknown
+  // 工具保留预览条；否则每个读取行都会多出一行，运行记录会显得杂乱。
   const showPaths = paths.length > 0 && (
     !compact || display.kind === "write" || display.kind === "search" || display.kind === "other"
   );
@@ -238,9 +238,11 @@ export function ArtifactOpenButton({ path, label, sessionID }: { path: string; l
 const kindIcon = (kind: string) =>
   kind === "image" ? <FileImage className="h-4 w-4" /> : <FileText className="h-4 w-4" />;
 
-/** ArtifactPreview shows workspace files: images, PDF, markdown and text.
- *  Session-scoped text files can switch to the line-level diff against the
- *  task baseline (Codex-style review) without leaving the dialog. */
+/**
+ * ArtifactPreview 展示工作区文件：图片、PDF、Markdown
+ * 和文本。会话范围内的文本文件可以切换到相对于任务基线的行级差异（Codex
+ * 风格审查），而无需离开对话框。
+ */
 export function ArtifactPreview({ path, sessionID, onClose }: { path: string | null | undefined; sessionID?: string; onClose: () => void }) {
   const [art, setArt] = useState<ArtifactData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -254,8 +256,8 @@ export function ArtifactPreview({ path, sessionID, onClose }: { path: string | n
       setError("");
       return;
     }
-    // Stale-response guard: a slow open for file A must not paint under file
-    // B when the user re-targets quickly (knowledge-base previews do this).
+    // 过期响应防护：当用户快速重新定位目标时，针对文件 A
+    // 的缓慢打开操作不得在文件 B 下渲染（知识库预览会这样做）。
     let cancelled = false;
     setLoading(true);
     (sessionID ? Artifact.OpenForSession(sessionID, path) : Artifact.Open(path))

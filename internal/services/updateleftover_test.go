@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// The updater replaces the bundle on macOS and the binary elsewhere; the
-// sweep must look where it actually leaves files.
+// TestUpdateTargetForExe 更新器在 macOS 上替换
+// bundle，在其他平台上替换二进制文件；清理必须查找它实际留下文件的位置。
 func TestUpdateTargetForExe(t *testing.T) {
 	cases := []struct{ name, exe, goos, want string }{
 		{"windows desktop exe", `C:\Users\u\Desktop\AgentMate-Agent-windows-amd64.exe`, "windows", `C:\Users\u\Desktop\AgentMate-Agent-windows-amd64.exe`},
@@ -40,9 +40,8 @@ func asideName(base string, ts time.Time) string {
 	return fmt.Sprintf("%s.old.%d", base, ts.UnixNano())
 }
 
-// The reported defect: after an update the previous version's copy is left
-// next to the app. Once it is no longer held, the running build must delete
-// it so it does not stay on the user's desktop forever.
+// TestSweepUpdateLeftovers 报告的缺陷：更新后，上一版本的副本被留在应用旁边。一旦它不再被占用，正在运行
+// 的构建必须将其删除，以免它永远留在用户桌面上。
 func TestSweepUpdateLeftovers(t *testing.T) {
 	now := time.Now()
 
@@ -52,8 +51,8 @@ func TestSweepUpdateLeftovers(t *testing.T) {
 		stale := filepath.Join(dir, asideName("AgentMate.exe", now.Add(-time.Hour)))
 		fresh := filepath.Join(dir, asideName("AgentMate.exe", now.Add(-time.Second)))
 		foreign := []string{
-			filepath.Join(dir, "AgentMate.exe.old.123"),        // pre-2020 stamp
-			filepath.Join(dir, "AgentMate.exe.old.notanumber"), // not ours
+			filepath.Join(dir, "AgentMate.exe.old.123"),        // 2020 年之前的时间戳
+			filepath.Join(dir, "AgentMate.exe.old.notanumber"), // 不是我们的
 			filepath.Join(dir, "Other.exe.old."+fmt.Sprint(now.UnixNano())),
 			filepath.Join(dir, "AgentMate.exe.old"),
 			filepath.Join(dir, "AgentMate.exe.old2."),
@@ -134,8 +133,7 @@ func TestSweepUpdateLeftovers(t *testing.T) {
 		}
 	})
 
-	// A missing target means the swap is broken and the leftover may be the
-	// only surviving copy: never delete in that state.
+	// 目标缺失意味着交换已损坏，遗留文件可能是唯一幸存的副本：在该状态下绝不删除。
 	t.Run("keeps everything when the installed target is missing", func(t *testing.T) {
 		dir := t.TempDir()
 		target := filepath.Join(dir, "AgentMate.exe")
@@ -158,8 +156,7 @@ func TestSweepUpdateLeftovers(t *testing.T) {
 		}
 	})
 
-	// The app may sit in a folder whose name contains glob syntax; matching
-	// must be literal, not a pattern.
+	// 应用可能位于名称包含 glob 语法的文件夹中；匹配必须按字面进行，而不是按模式。
 	t.Run("directory with glob metacharacters", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "apps[1]")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -182,9 +179,8 @@ func imageInsideBundle(t *testing.T, bundle string) string {
 	return filepath.Join(bundle, "Contents", "MacOS")
 }
 
-// A leftover that is still too young (the helper may still be handing off)
-// must be retried: the new build normally starts within a second of the swap,
-// so the next attempt is what actually removes it.
+// TestSweepUpdateLeftoversLoopRetriesUntilUnlocked 仍然太新的遗留文件（辅助程序可能仍在交接）必须重试：新构建通常会在交换后一秒
+// 内启动，因此下一次尝试才会真正将其删除。
 func TestSweepUpdateLeftoversLoopRetriesUntilUnlocked(t *testing.T) {
 	dir := t.TempDir()
 	target := writeTarget(t, dir, "AgentMate.exe")

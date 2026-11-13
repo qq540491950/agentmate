@@ -88,7 +88,7 @@ describe("skill commands in the send path", () => {
 
   it("rejects built-ins, unknown tokens and non-commands", () => {
     expect(skillCommandNameFor("/new")).toBe("new");
-    // "/new" also names a skill here, but the send path checks built-ins first.
+    // "/new" 在这里也命名了一个技能，但发送路径会先检查内置项。
     expect(isSkillCommand("/nope", SKILLS)).toBe(false);
     expect(isSkillCommand("hello /weekly-report", SKILLS)).toBe(false);
     expect(isSkillCommand("/", SKILLS)).toBe(false);

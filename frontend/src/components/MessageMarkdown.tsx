@@ -5,13 +5,13 @@ import { Check, Copy } from "lucide-react";
 import { TooltipHint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-/* ---------------------------------------------------------------------------
- * Zero-dependency syntax highlighting for fenced code blocks. A combined
- * regex tokenizes comments / strings / numbers / identifiers; identifiers are
- * checked against a shared keyword set, while non-keywords stay plain text.
- * Display-only — the merged text is always the original code, so a tokenizer
- * miss never corrupts output.
- * ------------------------------------------------------------------------- */
+/*
+ * ---------------------------------------------------------------------------
+ * 围栏代码块的零依赖语法高亮。一个组合正则对注释 / 字符串 / 数字 /
+ * 标识符进行分词； 标识符会与共享关键字集合比对，非关键字则保持纯文本。
+ * 仅用于展示——合并后的文本始终是原始代码，因此分词遗漏绝不会破坏输出。
+ * -------------------------------------------------------------------------
+ */
 
 const KEYWORDS = new Set([
   // js / ts
@@ -53,7 +53,7 @@ function tokenize(code: string): Token[] {
       out.push({ text: ident, kind: KEYWORDS.has(ident) ? "kw" : undefined });
     }
     last = m.index + m[0].length;
-    if (out.length > 4000) break; // safety valve for pathological input
+    if (out.length > 4000) break; // 针对病态输入的安全阀
   }
   if (last < code.length) out.push({ text: code.slice(last) });
   return out;
@@ -93,7 +93,7 @@ function CopyButton({ text, className, iconOnly = false, label: accessibleLabel 
           try {
             await navigator.clipboard.writeText(text);
           } catch {
-            // Clipboard API may be unavailable; fall back silently.
+            // 剪贴板 API 可能不可用；静默回退。
             const ta = document.createElement("textarea");
             ta.value = text;
             document.body.appendChild(ta);
@@ -112,8 +112,8 @@ function CopyButton({ text, className, iconOnly = false, label: accessibleLabel 
   );
 }
 
-// `node` is react-markdown's hast element — spreading it onto the DOM trips
-// React's unknown-prop warning on every code fragment, so it is dropped.
+// `node` 是 react-markdown 的 hast 元素——将其展开到 DOM
+// 上会在每个代码片段上触发 React 的未知属性警告，因此它被丢弃。
 function CodeBlock({ children, className, node, ...rest }: any) {
   const raw = typeof children === "string" ? children : "";
   const match = /language-(\w+)/.exec(className || "");
@@ -140,7 +140,7 @@ function CodeBlock({ children, className, node, ...rest }: any) {
   );
 }
 
-/** MessageMarkdown renders assistant text as GitHub-flavored Markdown. */
+/** MessageMarkdown 将助手文本渲染为 GitHub 风格 Markdown。 */
 export const MessageMarkdown = memo(function MessageMarkdown({ content, className }: { content: string; className?: string }) {
   return (
     <div className={cn("message-md space-y-2 break-words text-md leading-[1.7]", className)}>

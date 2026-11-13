@@ -15,8 +15,8 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// newGuardrailTestChat wires a ChatService against a scripted model server
-// with an agent carrying the given run guardrails.
+// newGuardrailTestChat 将 ChatService 接入一个脚本化的模型服务器，并让 Agent
+// 携带指定的运行护栏。
 func newGuardrailTestChat(t *testing.T, maxToolCalls int, handler http.HandlerFunc) (*ChatService, *[]ChatStreamEvent, string) {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -54,15 +54,14 @@ func newGuardrailTestChat(t *testing.T, maxToolCalls int, handler http.HandlerFu
 	return chat, &events, dir
 }
 
-// TestGuardrailMaxToolCalls stops the turn after the configured number of
-// tool calls instead of letting the model loop forever.
+// TestGuardrailMaxToolCalls 在达到配置的工具调用次数后停止回合，而不是让模型无限循环。
 func TestGuardrailMaxToolCalls(t *testing.T) {
 	var calls atomic.Int64
 	chat, events, _ := newGuardrailTestChat(t, 2, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		if calls.Add(1) <= 4 {
-			// Keep requesting the time tool: rounds 1..4 alternate
-			// tool_call → result; the guardrail must stop round 3+.
+			// 持续请求时间工具：第 1..4 轮交替出现 tool_call → result；护栏必须在第 3
+			// 轮及之后停止。
 			_, _ = w.Write([]byte(sseToolCall("c"+fmt.Sprint(calls.Load()), "get_current_time", `"{}"`) + sseDone))
 			return
 		}
@@ -91,7 +90,7 @@ func TestGuardrailMaxToolCalls(t *testing.T) {
 	}
 }
 
-// TestGuardrailUnlimitedKeepsOldBehavior: zero means no tool-call guardrail.
+// TestGuardrailUnlimitedKeepsOldBehavior：0 表示不设工具调用护栏。
 func TestGuardrailUnlimitedKeepsOldBehavior(t *testing.T) {
 	chat, events, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -121,8 +120,8 @@ func TestGuardrailUnlimitedKeepsOldBehavior(t *testing.T) {
 	}
 }
 
-// TestGuardrailSessionTokenBudget: cumulative session spend over a budget is
-// allowed to finish the crossing turn, then new user turns are refused.
+// TestGuardrailSessionTokenBudget：会话累计消耗超出预算时，允许完成跨过预算的那
+// 个回合，之后拒绝新的用户回合。
 func TestGuardrailSessionTokenBudget(t *testing.T) {
 	var modelCalls atomic.Int64
 	chat, events, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +130,7 @@ func TestGuardrailSessionTokenBudget(t *testing.T) {
 		_, _ = w.Write([]byte(`data: {"choices":[],"usage":{"prompt_tokens":300,"completion_tokens":200,"total_tokens":500}}` + "\n\n"))
 		_, _ = w.Write([]byte(sseText("回答") + sseDone))
 	})
-	// Raise the budget to 600 via the agent config.
+	// 通过 Agent 配置将预算提高到 600。
 	if err := chat.S.Store.Update(func(cfg *config.Config) {
 		cfg.Agents[0].MaxSessionTokens = 600
 	}); err != nil {
@@ -149,7 +148,7 @@ func TestGuardrailSessionTokenBudget(t *testing.T) {
 		t.Fatalf("turn 1 model calls = %d", modelCalls.Load())
 	}
 
-	// Turn 2 crosses the budget mid-turn: it completes, then warns.
+	// 第 2 回合在回合中途超出预算：该回合会完成，随后发出警告。
 	if err := chat.Send(sess.ID, "第二轮", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +162,7 @@ func TestGuardrailSessionTokenBudget(t *testing.T) {
 		t.Fatalf("crossing-turn warning missing: %+v", *events)
 	}
 
-	// Turn 3 is refused before hitting the model.
+	// 第 3 回合在调用模型之前就被拒绝。
 	before := modelCalls.Load()
 	if err := chat.Send(sess.ID, "第三轮", nil); err != nil {
 		t.Fatal(err)
@@ -182,8 +181,8 @@ func TestGuardrailSessionTokenBudget(t *testing.T) {
 	}
 }
 
-// TestToolAuditTrail: with the audit enabled, a tool loop writes call and
-// result records to the JSONL file; disabled sessions write nothing.
+// TestToolAuditTrail：启用审计后，工具循环会将调用记录和结果记录写入 JSONL
+// 文件；禁用审计的会话不写入任何内容。
 func TestToolAuditTrail(t *testing.T) {
 	auditPath := filepath.Join(t.TempDir(), "tools-audit.jsonl")
 	turn := 0
@@ -231,13 +230,13 @@ func TestToolAuditTrail(t *testing.T) {
 	}
 }
 
-// TestCompactionIntervalSummarizes: with the sliding window enabled the
-// runner performs an extra summarization model call after the turn.
+// TestCompactionIntervalSummarizes：启用滑动窗口后，运行器会在回合结束后执行一
+// 次额外的摘要模型调用。
 func TestCompactionIntervalSummarizes(t *testing.T) {
 	var modelCalls atomic.Int64
 	chat, events, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
 		modelCalls.Add(1)
-		// The compaction summarizer calls the model non-streamingly.
+		// 压缩摘要器以非流式方式调用模型。
 		if strings.Contains(readAll(r), `"stream":false`) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"摘要"},"finish_reason":"stop"}]}`))
@@ -260,7 +259,7 @@ func TestCompactionIntervalSummarizes(t *testing.T) {
 	if err := chat.Send(sess.ID, "你好", nil); err != nil {
 		t.Fatal(err)
 	}
-	// One answer call + at least one summarization call.
+	// 一次回答调用 + 至少一次摘要调用。
 	if modelCalls.Load() < 2 {
 		t.Fatalf("expected summarization model call, got %d total", modelCalls.Load())
 	}
@@ -274,7 +273,7 @@ func TestCompactionIntervalSummarizes(t *testing.T) {
 		t.Fatalf("answer missing under compaction: %+v", *events)
 	}
 
-	// Default off: a fresh session with interval 0 makes exactly one call.
+	// 默认关闭：间隔为 0 的新会话恰好发起一次调用。
 	if err := chat.S.Store.Update(func(cfg *config.Config) {
 		cfg.Settings.CompactionInterval = 0
 	}); err != nil {
@@ -289,8 +288,8 @@ func TestCompactionIntervalSummarizes(t *testing.T) {
 	}
 }
 
-// TestSearchSessionsMatchesContent: content LIKE probe finds sessions whose
-// history contains the query even when the title does not.
+// TestSearchSessionsMatchesContent：content LIKE
+// 探针会找出历史记录包含查询的会话，即使标题不包含查询。
 func TestSearchSessionsMatchesContent(t *testing.T) {
 	turn := 0
 	chat, _, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
@@ -323,8 +322,8 @@ func TestSearchSessionsMatchesContent(t *testing.T) {
 	}
 }
 
-// TestToolAuditRotation: when the audit file reaches the cap it rotates to
-// <path>.old and new records continue in a fresh file.
+// TestToolAuditRotation：当审计文件达到上限时，会轮转至
+// <path>.old，新记录继续写入新文件。
 func TestToolAuditRotation(t *testing.T) {
 	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
 	turn := 0
@@ -341,7 +340,7 @@ func TestToolAuditRotation(t *testing.T) {
 	if err := chat.S.Store.Update(func(cfg *config.Config) { cfg.Settings.ToolsAudit = true }); err != nil {
 		t.Fatal(err)
 	}
-	// Pre-fill the audit file so the next record crosses the cap.
+	// 预先填充审计文件，使下一条记录超过上限。
 	if err := os.WriteFile(auditPath, []byte(strings.Repeat("x", auditMaxBytes-2)), 0o640); err != nil {
 		t.Fatal(err)
 	}

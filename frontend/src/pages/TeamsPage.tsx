@@ -20,7 +20,7 @@ import {
 import { modelLabel } from "@/lib/modelLabel";
 import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
-/** TeamTopology renders a lead→members hierarchy for a team. */
+/** TeamTopology 为团队渲染 lead→members 层级结构。 */
 function TeamTopology({ team, agentName, remoteName, modelName }: {
   team: TeamConfig;
   agentName: (id: string) => string;
@@ -126,8 +126,7 @@ export function TeamsPage() {
       return;
     }
     if (!editing.autoCoordinate) {
-      // A missing lead (never picked, or picked then removed from members)
-      // leaves the team without a root coordinator.
+      // 缺少负责人（从未选择，或选择后又从成员中移除）会让团队没有根协调者。
       if (!editing.leadAgentId || !(editing.memberAgentIds ?? []).includes(editing.leadAgentId)) {
         toast.error("请选择一位本地成员作为负责人");
         return;
@@ -159,7 +158,7 @@ export function TeamsPage() {
     const list = editing.memberAgentIds ?? [];
     const removing = list.includes(id);
     const next = removing ? list.filter((x) => x !== id) : [...list, id];
-    // Removing the picked lead would leave an uncoordinated team.
+    // 移除已选负责人会使团队失去协调。
     const leadAgentId = removing && editing.leadAgentId === id ? "" : editing.leadAgentId;
     setEditing({
       ...editing,

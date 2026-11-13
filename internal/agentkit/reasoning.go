@@ -8,24 +8,22 @@ import (
 	"agentmate/internal/config"
 )
 
-// reasoningExtraBody turns one resolved model level into request-body fields.
+// reasoningExtraBody 将一个已解析的模型级别转换为请求体字段。
 //
-// The level table stores a parameter name and a value:
-//   - Param is empty: Value must be a JSON object whose members are merged at
-//     the top level (models that need several fields at once, e.g. Claude's
-//     adaptive thinking plus output_config.effort).
-//   - Param has no dot: the value is set as that top-level field.
-//   - Param is dotted ("thinking.budget_tokens"): nested objects are created.
+// 级别表存储参数名和值： - Param 为空：Value 必须是一个 JSON
+// 对象，其成员会合并到顶层（对于需要一次设置多个字段的模型，例如 Claude
+// 的自适应思考加上 output_config.effort）。 - Param
+// 不含点：该值会被设置为对应的顶层字段。 - Param
+// 含点（"thinking.budget_tokens"）：会创建嵌套对象。
 //
-// Values are parsed as JSON when possible, else sent as a plain string, so
-// "high" becomes the string high while "4096" becomes a number. A malformed
-// object in an empty-Param level is a configuration error the run should
-// surface rather than silently sending the model default.
+// 值在可能时按 JSON 解析，否则作为普通字符串发送，因此 "high" 会成为字符串
+// high，而 "4096" 会成为数字。空 Param
+// 级别中格式错误的对象属于配置错误，运行应将其暴露出来，而不是静默发送模型默认
+// 值。
 //
-// A built-in fallback table (a known reasoning family the user never
-// configured) only speaks when a level was explicitly chosen: it exists so
-// the picker never hides on models saved before level tables, not to rewrite
-// the provider default behind the user's back.
+// 内置回退表（用户从未配置过的已知推理系列）仅在显式选择了某个级别时才生效：它
+// 的存在是为了让选择器绝不会在早于级别表保存的模型上隐藏，而不是在用户不知情的
+// 情况下改写供应商默认值。
 func reasoningExtraBody(mi config.ModelInfo, level string) (map[string]any, error) {
 	table := mi.ReasoningTable()
 	if table == nil {
@@ -62,9 +60,9 @@ func reasoningExtraBody(mi config.ModelInfo, level string) (map[string]any, erro
 	return out, nil
 }
 
-// setReasoningPath writes value under a dotted path, creating intermediate
-// objects. A conflict with a non-object intermediate is overwritten by an
-// object so a typo cannot panic the run.
+// setReasoningPath 在点分路径下写入
+// value，并创建中间对象。与非对象中间值发生冲突时，会用一个对象将其覆盖，因此拼
+// 写错误不会使运行发生 panic。
 func setReasoningPath(dst map[string]any, path string, value any) {
 	parts := strings.Split(path, ".")
 	cur := dst
@@ -86,10 +84,9 @@ func setReasoningPath(dst map[string]any, path string, value any) {
 	}
 }
 
-// marshalWithExtra marshals v with its alias type, then merges extra fields at
-// the top level. Extra wins on conflicts: the level table is the explicit
-// user choice, and reserved fields such as model/messages are not offered by
-// the preset tables.
+// marshalWithExtra 使用 v 的别名类型对 v 进行
+// marshal，然后在顶层合并额外字段。发生冲突时 Extra
+// 优先：级别表是用户的显式选择，而 model/messages 等预留字段不由预设表提供。
 func marshalWithExtra(v any, extra map[string]any) ([]byte, error) {
 	raw, err := json.Marshal(v)
 	if err != nil || len(extra) == 0 {

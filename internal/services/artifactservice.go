@@ -16,25 +16,25 @@ import (
 )
 
 const (
-	maxBinaryArtifact = 12 << 20  // 12 MB for image/pdf preview
-	maxTextArtifact   = 512 << 10 // 512 KB for text preview
+	maxBinaryArtifact = 12 << 20  // 12 MB 用于图片/PDF 预览
+	maxTextArtifact   = 512 << 10 // 512 KB 用于文本预览
 	maxSnapshotFiles  = 5000
 	snapshotListLimit = 200
 )
 
-// Artifact is a previewable file from the workspace.
+// Artifact 是来自工作区的可预览文件。
 type Artifact struct {
 	Name      string `json:"name"`
-	Path      string `json:"path"` // relative to the workspace
+	Path      string `json:"path"` // 相对于工作区
 	Kind      string `json:"kind"` // image|markdown|text|pdf|binary
 	MIME      string `json:"mime"`
 	Size      int64  `json:"size"`
-	DataURL   string `json:"dataUrl,omitempty"` // image/pdf (base64 data URL)
-	Text      string `json:"text,omitempty"`    // text/markdown/code
+	DataURL   string `json:"dataUrl,omitempty"` // image/pdf（base64 数据 URL）
+	Text      string `json:"text,omitempty"`    // image/pdf（base64 数据 URL）
 	Truncated bool   `json:"truncated"`
 }
 
-// ArtifactInfo is a lightweight listing entry.
+// ArtifactInfo 是轻量级列表条目。
 type ArtifactInfo struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
@@ -42,14 +42,14 @@ type ArtifactInfo struct {
 	Size int64  `json:"size"`
 }
 
-// WorkspaceEntry is one path the composer's "@" picker can reference. Path is
-// relative to the chat's effective workspace and always slash-separated.
+// WorkspaceEntry 是 composer 的 “@” 选择器可以引用的一个路径。Path
+// 相对于聊天的有效工作区，并且始终使用斜杠分隔。
 type WorkspaceEntry struct {
 	Path string `json:"path"`
 	Dir  bool   `json:"dir"`
 }
 
-// WorkspaceChangeStatus is the file-level state shown in the result pane.
+// WorkspaceChangeStatus 是结果窗格中展示的文件级状态。
 type WorkspaceChangeStatus string
 
 const (
@@ -58,7 +58,7 @@ const (
 	ChangeDeleted  WorkspaceChangeStatus = "deleted"
 )
 
-// WorkspaceFileKind is the preview category of a task file.
+// WorkspaceFileKind 是任务文件的预览类别。
 type WorkspaceFileKind string
 
 const (
@@ -70,7 +70,7 @@ const (
 	FileKindUnknown  WorkspaceFileKind = "unknown"
 )
 
-// WorkspaceFileInfo is one file in a task workspace snapshot.
+// WorkspaceFileInfo 是任务工作区快照中的一个文件。
 type WorkspaceFileInfo struct {
 	Name        string                `json:"name"`
 	Path        string                `json:"path"`
@@ -81,7 +81,7 @@ type WorkspaceFileInfo struct {
 	Status      WorkspaceChangeStatus `json:"status,omitempty"`
 }
 
-// TaskWorkspaceSnapshot is the result pane contract for one chat task.
+// TaskWorkspaceSnapshot 是一个聊天任务的结果窗格契约。
 type TaskWorkspaceSnapshot struct {
 	SessionID   string              `json:"sessionId"`
 	Workspace   string              `json:"workspace"`
@@ -97,10 +97,10 @@ type TaskWorkspaceSnapshot struct {
 	RefreshedAt time.Time           `json:"refreshedAt"`
 }
 
-// ArtifactService previews workspace files produced by tool calls.
+// ArtifactService 预览由工具调用产生的工作区文件。
 type ArtifactService struct{ S *Services }
 
-// NewArtifactService creates the service.
+// NewArtifactService 创建该服务。
 func NewArtifactService(s *Services) *ArtifactService { return &ArtifactService{S: s} }
 
 type artifactFormat struct {
@@ -182,15 +182,15 @@ func artifactFormatForExt(ext string) artifactFormat {
 	return artifactFormat{MIME: "application/octet-stream", Kind: FileKindUnknown, Previewable: true}
 }
 
-// workspace resolves the configured workspace directory.
+// workspace 解析配置的工作区目录。
 func (a *ArtifactService) workspace() string { return a.S.Store.Get().Settings.WorkspaceDir }
 
-// Open reads a workspace file for preview. Path is relative to the workspace.
+// Open 读取工作区文件用于预览。Path 相对于工作区。
 func (a *ArtifactService) Open(relPath string) (*Artifact, error) {
 	return a.openIn(a.workspace(), relPath)
 }
 
-// OpenForSession previews a file inside the task workspace bound to sessionID.
+// OpenForSession 预览与 sessionID 绑定的任务工作区中的文件。
 func (a *ArtifactService) OpenForSession(sessionID, relPath string) (*Artifact, error) {
 	ws, err := a.sessionWorkspace(sessionID)
 	if err != nil {
@@ -203,9 +203,8 @@ func (a *ArtifactService) sessionWorkspace(sessionID string) (string, error) {
 	return sessionWorkspaceOf(a.S.Store.Get(), sessionID)
 }
 
-// sessionWorkspaceOf resolves one session's effective workspace from an
-// already-fetched config snapshot (Store.Get returns a deep copy, so callers
-// must reuse one snapshot instead of re-fetching per field).
+// sessionWorkspaceOf 从已获取的配置快照中解析单个会话的有效工作区（Store.Get
+// 返回深拷贝，因此调用方必须复用同一个快照，而不是按字段重新获取）。
 func sessionWorkspaceOf(cfg config.Config, sessionID string) (string, error) {
 	for _, session := range cfg.Sessions {
 		if session.ID == sessionID {
@@ -271,9 +270,8 @@ func (a *ArtifactService) openIn(ws, relPath string) (*Artifact, error) {
 	}
 }
 
-// TaskWorkspaceSnapshot lists the active task's files. Artifacts and changes
-// are filled by the baseline-aware refresh path; the initial file browser
-// still returns the complete task view without blocking on baseline state.
+// TaskWorkspaceSnapshot 列出活动任务的文件。产物和变更由基线感知的刷新路径填充；初始文件浏览器仍会返
+// 回完整的任务视图，不会阻塞等待基线状态。
 func (a *ArtifactService) TaskWorkspaceSnapshot(sessionID string) (*TaskWorkspaceSnapshot, error) {
 	ws, err := a.sessionWorkspace(sessionID)
 	if err != nil {
@@ -370,7 +368,7 @@ func scanTaskFiles(ws string) ([]WorkspaceFileInfo, int, bool, error) {
 	return files, discovered, truncated, nil
 }
 
-// List returns previewable files under the workspace (newest first, capped).
+// List 返回工作区下可预览的文件（最新优先，数量受限）。
 func (a *ArtifactService) List() ([]ArtifactInfo, error) {
 	ws := a.workspace()
 	if ws == "" {
@@ -393,14 +391,14 @@ func (a *ArtifactService) List() ([]ArtifactInfo, error) {
 	return out, nil
 }
 
-// Workspace returns the configured workspace directory (for UI display).
+// Workspace 返回配置的工作区目录（用于 UI 显示）。
 func (a *ArtifactService) Workspace() string { return a.workspace() }
 
-// ListContextPaths lists the files and folders the composer's "@" picker may
-// reference. The directory follows the chat context (session > draft project >
-// global workspace) and the same skip rules as the task snapshot: hidden
-// entries, VCS metadata and dependency caches stay out. A missing workspace is
-// an empty list, not an error — a fresh draft has not resolved one yet.
+// ListContextPaths 列出输入框的 "@"
+// 选择器可以引用的文件和文件夹。目录遵循聊天上下文（会话 > 草稿项目 >
+// 全局工作区）以及与任务快照相同的跳过规则：隐藏条目、VCS
+// 元数据和依赖缓存均不包含在内。工作区不存在时返回空列表，而不是错误——新草稿尚
+// 未解析出工作区。
 func (a *ArtifactService) ListContextPaths(sessionID, projectID string) ([]WorkspaceEntry, error) {
 	ws := contextWorkspace(a.S.Store.Get(), sessionID, projectID)
 	if strings.TrimSpace(ws) == "" {
@@ -413,10 +411,8 @@ func (a *ArtifactService) ListContextPaths(sessionID, projectID string) ([]Works
 	return scanContextEntries(ws), nil
 }
 
-// scanContextEntries walks the workspace once and returns slash-separated
-// relative paths, folders first in the natural alphabetical order of their
-// full path. The cap keeps a huge repository from flooding the picker; the
-// picker filters client-side for instant feedback.
+// scanContextEntries 遍历工作区一次，返回以斜杠分隔的相对路径，文件夹在前，其完整路径按自然字母顺
+// 序排列。上限可防止超大仓库淹没选择器；选择器在客户端过滤，以提供即时反馈。
 func scanContextEntries(ws string) []WorkspaceEntry {
 	out := make([]WorkspaceEntry, 0, 256)
 	_ = filepath.WalkDir(ws, func(path string, d fs.DirEntry, walkErr error) error {
@@ -448,7 +444,7 @@ func scanContextEntries(ws string) []WorkspaceEntry {
 				return fs.SkipDir
 			}
 			if relSlash == "exports" {
-				return fs.SkipDir // generated export directory: nothing to reference
+				return fs.SkipDir // 生成的导出目录：没有可引用的内容
 			}
 			if path != ws {
 				out = append(out, WorkspaceEntry{Path: relSlash, Dir: true})

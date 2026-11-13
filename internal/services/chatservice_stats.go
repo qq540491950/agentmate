@@ -12,8 +12,7 @@ import (
 	"agentmate/internal/agentkit"
 )
 
-// RememberSession ingests the whole conversation into long-term memory so
-// other sessions (with the memory tool) can recall it later.
+// RememberSession 将整段对话摄取到长期记忆中，以便其他会话（使用记忆工具时）之后可以回忆它。
 func (c *ChatService) RememberSession(sessionID string) (int, error) {
 	resp, err := c.sessions.Get(context.Background(), &session.GetRequest{
 		AppName: c.appName, UserID: c.userID, SessionID: sessionID,
@@ -37,7 +36,7 @@ func (c *ChatService) RememberSession(sessionID string) (int, error) {
 	return int(n), nil
 }
 
-// SessionStats aggregates observability metrics for one conversation.
+// SessionStats 聚合单个会话的可观测性指标。
 type SessionStats struct {
 	Messages       int   `json:"messages"`
 	ToolCalls      int   `json:"toolCalls"`
@@ -46,22 +45,21 @@ type SessionStats struct {
 	TokensIn       int64 `json:"tokensIn"`
 	TokensOut      int64 `json:"tokensOut"`
 	TokensTotal    int64 `json:"tokensTotal"`
-	// ContextTokens is the CURRENT context occupancy (the last model call's
-	// prompt size), not the cumulative TokensTotal — the UI's context-window
-	// gauge must use this, or a long tool-loop session reports "context
-	// exhausted" while the real occupancy is a fraction of the window.
+	// ContextTokens 是当前（CURRENT）的上下文占用（最后一次模型调用的提示词大小），而不是累计的
+	// TokensTotal —— UI
+	// 的上下文窗口仪表必须使用此值，否则长时间工具循环的会话会报告 "context
+	// exhausted"，而真实占用只是窗口的一小部分。
 	ContextTokens int64 `json:"contextTokens,omitempty"`
-	// CachedTokens is the cached share of ContextTokens on the last model
-	// call (0 when the provider does not report prompt caching).
+	// CachedTokens 是最后一次模型调用中 ContextTokens
+	// 的缓存部分（当供应商不报告提示词缓存时为 0）。
 	CachedTokens int64        `json:"cachedTokens,omitempty"`
-	Daily        []StatDay    `json:"daily,omitempty"`   // per-day token/cost breakdown
-	Authors      []AuthorStat `json:"authors,omitempty"` // per-participant breakdown (team timelines)
+	Daily        []StatDay    `json:"daily,omitempty"`   // 按天的 token/费用明细
+	Authors      []AuthorStat `json:"authors,omitempty"` // 按参与者拆分的明细（团队时间线）
 	FirstAt      *time.Time   `json:"firstAt,omitempty"`
 	LastAt       *time.Time   `json:"lastAt,omitempty"`
 }
 
-// AuthorStat breaks usage down per conversation participant (team members,
-// remote agents); "user" is excluded.
+// AuthorStat 按会话参与者（团队成员、远程 Agent）拆分用量；"user" 不包含在内。
 type AuthorStat struct {
 	Author    string `json:"author"`
 	Turns     int    `json:"turns"`
@@ -69,17 +67,17 @@ type AuthorStat struct {
 	Tokens    int64  `json:"tokens"`
 }
 
-// StatDay is one calendar day of usage with an estimated cost using the
-// session target's current model prices (¥/1M tokens).
+// StatDay 是某个日历日的用量，并附带按会话目标的当前模型价格（¥/1M
+// tokens）估算的费用。
 type StatDay struct {
-	Date             string  `json:"date"` // YYYY-MM-DD (local)
+	Date             string  `json:"date"` // YYYY-MM-DD（本地时间）
 	PromptTokens     int64   `json:"promptTokens"`
 	CompletionTokens int64   `json:"completionTokens"`
 	TotalTokens      int64   `json:"totalTokens"`
 	EstimatedCost    float64 `json:"estimatedCost"`
 }
 
-// SessionStats computes aggregate metrics from the stored ADK events.
+// SessionStats 根据已存储的 ADK 事件计算聚合指标。
 func (c *ChatService) SessionStats(sessionID string) (*SessionStats, error) {
 	cfg := c.S.Store.Get()
 	target := c.resolveSessionTarget(cfg, sessionID)
@@ -96,8 +94,8 @@ func (c *ChatService) SessionStats(sessionID string) (*SessionStats, error) {
 	if resp.Session == nil {
 		return st, nil
 	}
-	// Model prices (¥/1M tokens) come from the session target's CURRENT
-	// model; historical turns that used another model are approximated.
+	// 模型价格（¥/1M
+	// tokens）来自会话目标当前使用的模型；使用其他模型的历史回合按近似值计算。
 	priceIn, priceOut := 0.0, 0.0
 	cfgNow := c.S.Store.Get()
 	priceAc := c.targetAgentConfig(cfgNow, target)
@@ -107,9 +105,9 @@ func (c *ChatService) SessionStats(sessionID string) (*SessionStats, error) {
 		}
 	}
 	if ac := priceAc; ac != nil {
-		// Pricing follows the model the session actually runs (same clamp as
-		// runTurn: an override whose model was deleted falls back to the
-		// agent's configured model; a blank model inherits the global default).
+		// 定价遵循会话实际运行的模型（与 runTurn
+		// 相同的限制逻辑：模型已被删除的覆盖项会回退到 Agent
+		// 配置的模型；模型为空时会继承全局默认值）。
 		providerID, resolvedModel := cfgNow.ResolveAgentModel(*ac)
 		effectiveModel := agentkit.EffectiveModel(cfgNow, providerID, resolvedModel, target.ModelOverride)
 		if p := cfgNow.FindProvider(providerID); p != nil {
@@ -147,7 +145,7 @@ func (c *ChatService) SessionStats(sessionID string) (*SessionStats, error) {
 			st.TokensIn += u.PromptTokens
 			st.TokensOut += u.CompletionTokens
 			st.TokensTotal += u.TotalTokens
-			// Events arrive in order; the last usage is the live context size.
+			// 事件按顺序到达；最后一次用量即实时上下文大小。
 			st.ContextTokens = u.ContextTokens
 			st.CachedTokens = u.CachedTokens
 

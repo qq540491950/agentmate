@@ -35,7 +35,7 @@ func TestEffectiveAgentGuidesGlobalThenWorkspace(t *testing.T) {
 
 func TestEffectiveAgentGuidesOversizeKeepsContentAndWarns(t *testing.T) {
 	workspace := t.TempDir()
-	content := strings.Repeat("超长约定", 9000) // 108,000 bytes, above the 48KB threshold
+	content := strings.Repeat("超长约定", 9000) // 108,000 字节，高于 48KB 阈值
 	if err := os.WriteFile(filepath.Join(workspace, "AGENTS.md"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestEffectiveAgentGuidesSkipsMissingUnreadableAndEmpty(t *testing.T) {
 		t.Fatalf("empty guide file must be skipped, got %q", got)
 	}
 
-	// A directory where a file is expected cannot be read: skip, never fail.
+	// 预期为文件的位置实际是目录，无法读取：跳过，绝不失败。
 	dir := filepath.Join(t.TempDir(), "AGENTS.md")
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -70,8 +70,7 @@ func TestEffectiveAgentGuidesSkipsMissingUnreadableAndEmpty(t *testing.T) {
 		t.Fatalf("unreadable guide must be skipped, got %q", got)
 	}
 
-	// Binary or invalid UTF-8 content is unreadable as an instruction: skip it
-	// instead of injecting replacement characters.
+	// 二进制或无效 UTF-8 内容无法作为指令读取：跳过它，而不是注入替换字符。
 	bin := filepath.Join(t.TempDir(), "AGENTS.md")
 	if err := os.WriteFile(bin, []byte{0xff, 0xfe, 0x00, 0x01}, 0o600); err != nil {
 		t.Fatal(err)
@@ -95,7 +94,7 @@ func TestEffectiveAgentGuidesNoWorkspaceKeepsGlobal(t *testing.T) {
 func TestGlobalAgentsFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
+	t.Setenv("USERPROFILE", home) // Windows 上的 os.UserHomeDir
 	want := filepath.Join(home, ".agents", "AGENTS.md")
 	if got := GlobalAgentsFile(); got != want {
 		t.Fatalf("GlobalAgentsFile() = %q, want %q", got, want)

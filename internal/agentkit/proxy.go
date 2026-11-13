@@ -7,18 +7,18 @@ import (
 	"strings"
 )
 
-// ApplyGlobalProxy routes all clients that use http.DefaultTransport (model
-// adapters, embeddings, MCP, gemini SDK) through the given proxy URL.
-// Call once at startup BEFORE any request; pass "" to reset to direct.
+// ApplyGlobalProxy 将使用 http.DefaultTransport
+// 的所有客户端（模型适配器、embeddings、MCP、gemini SDK）都通过给定的代理 URL
+// 路由。必须在启动时、任何请求发出之前调用一次；传入 "" 可重置为直连。
 func ApplyGlobalProxy(proxyURL string) error {
 	transport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return fmt.Errorf("默认传输层类型异常（%T），无法配置代理", http.DefaultTransport)
 	}
 	if proxyURL == "" {
-		// Fall back to the process environment (HTTP_PROXY / HTTPS_PROXY /
-		// NO_PROXY) instead of disabling it: blanking the func used to
-		// silently ignore proxies the user configured outside the app.
+		// 回退到进程环境（HTTP_PROXY / HTTPS_PROXY /
+		// NO_PROXY）而不是将其禁用：清空该函数过去会静默忽略用户在应用之外配置的代理
+		// 。
 		transport.Proxy = http.ProxyFromEnvironment
 		return nil
 	}
@@ -28,15 +28,14 @@ func ApplyGlobalProxy(proxyURL string) error {
 	}
 	transport.Proxy = func(req *http.Request) (*url.URL, error) {
 		if isLoopbackHost(req.URL.Hostname()) {
-			return nil, nil // local Ollama / local MCP / A2A round-trips stay direct
+			return nil, nil // 本地 Ollama / 本地 MCP / A2A 往返保持直连
 		}
 		return u, nil
 	}
 	return nil
 }
 
-// isLoopbackHost reports whether host (no port, no brackets) is the local
-// machine.
+// isLoopbackHost 报告 host（不含端口、不含方括号）是否为本机。
 func isLoopbackHost(host string) bool {
 	switch strings.ToLower(host) {
 	case "localhost", "127.0.0.1", "::1":

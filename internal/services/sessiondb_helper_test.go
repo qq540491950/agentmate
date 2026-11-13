@@ -10,8 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// openSessionServiceImpl mirrors main.go's newSessionService (which lives in
-// package main and cannot be imported) so the self-heal path is testable.
+// openSessionServiceImpl 镜像 main.go 的 newSessionService（后者位于 package
+// main 中且无法被导入），因此自愈路径可测试。
 func openSessionServiceImpl(t *testing.T, path string) (*gorm.DB, session.Service, error) {
 	t.Helper()
 	open := func() (*gorm.DB, session.Service, error) {
@@ -26,7 +26,7 @@ func openSessionServiceImpl(t *testing.T, path string) (*gorm.DB, session.Servic
 		if err := database.AutoMigrate(svc); err != nil {
 			return nil, nil, err
 		}
-		// Probe: a corrupt file can pass Open but fail on first query.
+		// 探测：损坏的文件可能通过 Open，但在首次查询时失败。
 		if err := db.Exec("SELECT count(*) FROM sessions").Error; err != nil {
 			return nil, nil, err
 		}

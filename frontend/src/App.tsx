@@ -15,8 +15,9 @@ import {
 } from "@/lib/theme";
 import { App as AppService, Config } from "@/lib/api";
 
-// Chat is the landing view and stays eager; the settings hub (which hosts the
-// management screens) loads on demand so it never sits in the startup bundle.
+// Chat
+// 是落地视图并保持立即加载；设置中心（承载管理界面的位置）按需加载，因此它绝不
+// 会进入启动包。
 import { ChatPage } from "@/pages/ChatPage";
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 import type { SettingsLeaveGuard, SettingsTab } from "@/lib/settingsModel";
@@ -38,16 +39,15 @@ export default function App() {
     else after();
   }, []);
 
-  // Global shortcuts (documented in the help panel on every page): ⌘N starts
-  // a chat; ⌘K focuses the composer; ⌘F toggles in-session search; ⌘, opens
-  // settings; ⌘⇧[ / ⌘⇧] cycle sessions. ChatPage consumes the chat shortcuts
-  // via window events so they survive view switches.
+  // 全局快捷键（记录在每个页面的帮助面板中）：⌘N 启动聊天；⌘K 聚焦输入框；⌘F
+  // 切换会话内搜索；⌘, 打开设置；⌘⇧[ / ⌘⇧] 循环切换会话。ChatPage 通过 window
+  // 事件消费聊天快捷键，因此它们在视图切换后仍然有效。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.repeat) return;
-      // ⌘⇧[ / ⌘⇧] move through the session list (US layouts report the key
-      // as { / }; compare by code so the shortcut survives layouts).
+      // ⌘⇧[ / ⌘⇧] 在会话列表中移动（美式键盘布局将该键报告为 { / }；按 code
+      // 比较，因此该快捷键可在不同布局下继续生效）。
       if (e.shiftKey && e.code === "BracketLeft") {
         e.preventDefault();
         leaveSettings(() => {
@@ -70,8 +70,8 @@ export default function App() {
       if (key === "b") {
         leaveSettings(() => {
           setView("chat");
-          // Deferred like ⌘N: when leaving the settings view, ChatPage mounts
-          // on the next render and only then registers the listener.
+          // 像 ⌘N 一样延迟：离开设置视图时，ChatPage
+          // 会在下一次渲染时挂载，并且仅在那时注册监听器。
           setTimeout(() => window.dispatchEvent(new CustomEvent("wb-toggle-sidebar")), 50);
         });
         return;
@@ -82,9 +82,9 @@ export default function App() {
       }
       leaveSettings(() => {
         setView("chat");
-        // Deferred: when switching from another page, ChatPage mounts on the
-        // next render — a synchronous dispatch would fire before its listener
-        // exists and the action would be lost.
+        // 延迟：从其他页面切换时，ChatPage
+        // 会在下一次渲染时挂载——同步派发会在其监听器存在之前触发，操作将会丢失
+        // 。
         const ev = new CustomEvent(key === "k" ? "wb-focus-composer" : key === "f" ? "wb-toggle-filter" : "wb-new-chat");
         setTimeout(() => window.dispatchEvent(ev), 50);
       });
@@ -97,12 +97,12 @@ export default function App() {
   const [, forceThemeRender] = useState(0);
   const [version, setVersion] = useState("");
 
-  // Boot: fetch app metadata for the sidebar version label.
+  // 启动：获取应用元数据，用于侧边栏版本标签。
   useEffect(() => {
     AppService.AppInfo().then((info) => setVersion(info?.version ?? "")).catch(() => {});
   }, []);
 
-  // Boot: apply cached theme instantly, then sync from persisted settings.
+  // 启动：立即应用缓存的主题，然后从持久化设置同步。
   useEffect(() => {
     Config.GetConfig()
       .then((cfg) => {
@@ -115,14 +115,13 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // Re-apply when the OS appearance changes (themeMode === "system").
+  // 当操作系统外观发生变化时重新应用（themeMode === "system"）。
   useEffect(
     () => onSystemThemeChange(prefs, () => forceThemeRender((value) => value + 1)),
     [prefs],
   );
 
-  // Theme preset/mode changes from the sidebar persist immediately; settings
-  // changes stay local until the user presses save.
+  // 侧边栏中的主题预设/模式更改会立即持久化；设置更改在用户按下保存前保持本地。
   const changeAppearance = async (patch: Partial<ThemePrefs>) => {
     const next = { ...prefs, ...patch };
     setPrefs(next);

@@ -10,16 +10,16 @@ import (
 	"syscall"
 )
 
-// createNoWindow is CREATE_NO_WINDOW (0x08000000) from the Windows process
-// creation flags. It is spelled out here instead of importing
-// golang.org/x/sys/windows so the module graph stays unchanged.
+// createNoWindow 是 Windows 进程创建标志中的
+// CREATE_NO_WINDOW（0x08000000）。这里直接写出该常量，而不是导入
+// golang.org/x/sys/windows，从而使模块图保持不变。
 const createNoWindow = 0x08000000
 
-// shellProcessAttrs hides the console window of shell children on Windows.
-// The desktop app is built with -H windowsgui and owns no console, so without
-// CREATE_NO_WINDOW every cmd.exe child (git pull, go build, dir…) allocates a
-// fresh visible console that covers the app window (issue #54). HideWindow
-// additionally suppresses the window flash of children that still create one.
+// shellProcessAttrs 在 Windows 上隐藏 shell 子进程的控制台窗口。桌面应用使用 -H
+// windowsgui 构建，没有控制台，因此如果没有 CREATE_NO_WINDOW，每个 cmd.exe
+// 子进程（git pull、go
+// build、dir…）都会分配一个新的可见控制台并遮挡应用窗口（issue
+// #54）。HideWindow 还会抑制仍会创建控制台窗口的子进程所产生的窗口闪烁。
 func shellProcessAttrs() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{
 		HideWindow:    true,
@@ -27,10 +27,9 @@ func shellProcessAttrs() *syscall.SysProcAttr {
 	}
 }
 
-// killShellProcess kills the whole tree started by cmd.exe (taskkill /T), so
-// a timed-out build does not leave orphaned child processes behind. When
-// taskkill cannot help (the process already exited) fall back to Kill and
-// swallow "process done".
+// killShellProcess 会终止由 cmd.exe 启动的整个进程树（taskkill
+// /T），因此超时的构建不会留下孤立的子进程。当 taskkill
+// 无法处理（进程已退出）时，回退到 Kill 并忽略 "process done"。
 func killShellProcess(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return nil

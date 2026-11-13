@@ -211,7 +211,7 @@ describe("settings model", () => {
       ...baseSettings,
       autoTitle: null,
     };
-    // null means "on" in the Go contract, so it must not read as dirty.
+    // null 在 Go 契约中表示 "on"，因此不得将其判定为已修改。
     expect(isSettingsDirty(baseSettings, changedNestedShape)).toBe(false);
   });
 

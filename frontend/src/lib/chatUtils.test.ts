@@ -124,8 +124,7 @@ describe("computeToolDurations", () => {
     const msgs: UIMessage[] = [
       msg({ id: "c1", kind: "tool_call", toolName: "write", timestamp: t0 }),
       msg({ id: "c2", kind: "tool_call", toolName: "read", timestamp: t0 }),
-      // Parallel round: result B arrives before result A — name pairing must
-      // not end A's clock early.
+      // 并行回合：结果 B 先于结果 A 到达——按名称配对不得提前结束 A 的计时。
       msg({ id: "r2", kind: "tool_result", toolName: "read", timestamp: "2026-10-30T01:00:10Z" }),
       msg({ id: "r1", kind: "tool_result", toolName: "write", timestamp: "2026-10-30T01:00:20Z" }),
     ];
@@ -152,7 +151,7 @@ describe("computeToolDurations", () => {
       msg({ id: "cf", kind: "confirm", toolName: "write", timestamp: "2026-10-30T01:05:00Z" }),
       msg({ id: "r1", kind: "tool_result", toolName: "write", timestamp: "2026-10-30T01:05:03Z" }),
     ];
-    // The 5 minutes of human thinking must not count into the tool duration.
+    // 人类思考的 5 分钟不得计入工具耗时。
     expect(computeToolDurations(msgs).get("r1")).toBe(3_000);
   });
 });
@@ -165,8 +164,8 @@ describe("computeRunningTools", () => {
       msg({ id: "rb", kind: "tool_result", toolName: "B" }),
     ];
     const running = computeRunningTools(msgs);
-    expect(running.has("a")).toBe(true); // A still running
-    expect(running.has("b")).toBe(false); // B finished
+    expect(running.has("a")).toBe(true); // A 仍在运行
+    expect(running.has("b")).toBe(false); // B 已完成
   });
 
   it("uses CallID before the same-name fallback", () => {
@@ -195,8 +194,8 @@ describe("groupToolMessages", () => {
     expect(items.map((i) => i.kind)).toEqual(["message", "tool_group", "message"]);
     const group = items[1];
     if (group.kind !== "tool_group") throw new Error("expected a tool group");
-    // The group key is the first event's id: it must survive streamed appends
-    // or React would reset the user's expanded/collapsed choice every token.
+    // 分组键是首个事件的 id：它必须在流式追加中保持不变，否则 React
+    // 会在每来一个 token 时重置用户展开/折叠的选择。
     expect(group.id).toBe("c1");
     expect(group.messages.map((m) => m.id)).toEqual(["c1", "r1", "c2", "r2"]);
     expect(toolGroupInvocationCount(group.messages)).toBe(2);
@@ -240,10 +239,9 @@ describe("groupToolMessages", () => {
       msg({ id: "r5", kind: "tool_result", toolName: "grep", author: "sub-agent" }),
     ];
     const items = groupToolMessages(msgs);
-    // Narration must stay between process runs: a later tool call may not pull
-    // it back into an execution block. An empty plan result clears the plan
-    // and must not leave a stale card, and the author change at c4 starts a
-    // new block.
+    // 叙述必须保持在各次进程运行之间：后续的工具调用不得将它重新拉回某个执行块
+    // 。空的计划结果会清除计划，且不得留下过期卡片；c4 处的 author
+    // 变化会开启新的块。
     expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
       "group:c1", "mid", "group:c2", "group:c4",
     ]);
@@ -256,10 +254,10 @@ describe("groupToolMessages", () => {
   });
 
   it("collapses repeated plan_todos updates to one latest-snapshot card", () => {
-    // A long analysis turn that refreshed its plan repeatedly used to append
-    // two cards per update (a generic call card with raw JSON plus a full
-    // checklist). The plan is a state snapshot: show the latest one once, at
-    // the position where the plan first appeared.
+    // 过去，一个反复刷新计划的长时间分析回合会在每次更新时追加两张卡片（一张带
+    // 原始 JSON
+    // 的通用调用卡片，外加一份完整的检查清单）。计划是状态快照：只在计划首次出
+    // 现的位置展示最新的一份。
     const msgs: UIMessage[] = [
       msg({ id: "t1", kind: "thinking", text: "先看结构" }),
       msg({ id: "p1c", kind: "tool_call", toolName: "plan_todos" }),
@@ -328,8 +326,8 @@ describe("groupToolMessages", () => {
   });
 
   it("drops an empty skeleton and keeps inter-tool narration in place", () => {
-    // The reported render: thinking card, empty "助手" skeleton, tool card,
-    // then the reply — four look-alike blocks for a single turn.
+    // 所报告的渲染结果：思考卡片、空的 "助手" 骨架、工具卡片，然后是回复 ——
+    // 单个回合出现了四个外观相似的块。
     const msgs: UIMessage[] = [
       msg({ id: "u", kind: "user", text: "处理缺陷" }),
       msg({ id: "t1", kind: "thinking", text: "先跑 gh", timestamp: "2026-10-30T01:00:00Z" }),
@@ -348,7 +346,7 @@ describe("groupToolMessages", () => {
     const group = items[1];
     if (group.kind !== "tool_group") throw new Error("expected a tool group");
     expect(group.messages.map((m) => m.id)).toEqual(["t1", "c1", "r1"]);
-    // endTs feeds the whole-turn 「已工作」 summary.
+    // endTs 为整个回合的「已工作」摘要提供输入。
     expect(group.endTs).toBe("2026-10-30T01:02:04Z");
   });
 
@@ -402,9 +400,8 @@ describe("groupToolMessages", () => {
   });
 
   it("keeps a late final thinking event from turning a completed run red", () => {
-    // The final aggregated event can deliver its thought after the answer's
-    // deltas opened the reply bubble. The thought belongs before the answer;
-    // it must not become the boundary that hides the completed reply.
+    // 最终聚合事件可能会在回答的增量已打开回复气泡之后，才送达其思考内容。该思
+    // 考内容的位置在回答之前；它不得成为隐藏已完成回复的边界。
     const msgs: UIMessage[] = [
       msg({ id: "u", kind: "user", author: "user", text: "确定没有未提交的内容" }),
       msg({ id: "t1", kind: "thinking", author: "助手", text: "先检查" }),
@@ -459,7 +456,7 @@ describe("groupToolMessages", () => {
     expect(group.messages.map((m) => m.id)).toEqual([
       "t1", "c1", "r1", "t2", "c2", "r2", "t3",
     ]);
-    // Thinking entries are process detail, not tool invocations.
+    // 思考条目是过程细节，不是工具调用。
     expect(toolGroupInvocationCount(group.messages)).toBe(2);
   });
 
@@ -475,8 +472,8 @@ describe("groupToolMessages", () => {
   });
 
   it("folds thinking-only rounds into the process block too", () => {
-    // Reasoning is process, not answer: even without tools it belongs to the
-    // collapsed block so the reply is the only visible result.
+    // 推理属于过程，而不是回答：即使没有工具，它也属于折叠块，因此回复是唯一可
+    // 见的结果。
     const msgs: UIMessage[] = [
       msg({ id: "u", kind: "user", text: "hi" }),
       msg({ id: "t1", kind: "thinking", text: "想了想" }),
@@ -645,8 +642,8 @@ describe("toolGroupStatus", () => {
   const call = msg({ id: "c1", kind: "tool_call", toolName: "write" });
   const result = (resp: { [k: string]: any }) =>
     msg({ id: "r1", kind: "tool_result", toolName: "write", toolResp: resp });
-  // group wraps process messages in the turn-outcome metadata groupTurn
-  // attaches, so the tests feed exactly what the component feeds.
+  // group 会将过程消息包装在 groupTurn
+  // 附加的回合结果元数据中，因此测试所输入的内容正是组件所输入的内容。
   const group = (messages: UIMessage[], over: Partial<ToolGroup> = {}): ToolGroup => ({
     kind: "tool_group",
     id: messages[0]?.id ?? "g",
@@ -669,8 +666,8 @@ describe("toolGroupStatus", () => {
 
   it("reports running calls, but a failed step no longer fails the run", () => {
     expect(toolGroupStatus(group([call]), new Set(["c1"]), true)).toBe("running");
-    // A step that failed inside a turn that still answered is process detail:
-    // the per-card badge keeps the red X, the block header reports the run.
+    // 在一个仍然给出了回答的回合中，失败的步骤属于过程细节：每张卡片的徽标保留
+    // 红色 X，块标题报告该次运行。
     expect(toolGroupStatus(group([call, result({ error: "boom" })]), new Set(), false)).toBe("done");
     expect(toolGroupStatus(group([call, result({ isError: true })]), new Set(), false)).toBe("done");
     expect(toolGroupStatus(group([call, result({ is_error: true })]), new Set(), false)).toBe("done");
@@ -686,15 +683,14 @@ describe("toolGroupStatus", () => {
   it("fails a settled turn without a reply; keeps a live gap running", () => {
     const missing = group([call, result({ ok: true })], { answered: false });
     expect(toolGroupStatus(missing, new Set(), false)).toBe("failed");
-    // Between two tool batches nothing streams and no tool is running, but
-    // the turn is still live: the block must stay open instead of flapping
-    // done→running on every batch gap.
+    // 在两个工具批次之间没有流式输出，也没有工具正在运行，但回合仍处于活动状态
+    // ：该块必须保持打开，而不是在每个批次间隙反复在 done→running 之间切换。
     expect(toolGroupStatus(missing, new Set(), true)).toBe("running");
   });
 
   it("keeps the run successful when a step failed but the turn answered", () => {
-    // The reported render: one search step timed out, the model retried with
-    // another source and wrote the full answer — the header still said 失败.
+    // 所报告的渲染结果：一个搜索步骤超时，模型改用另一个来源重试并写完了完整回
+    // 答——标题仍显示失败。
     const msgs: UIMessage[] = [
       msg({ id: "u", kind: "user", text: "查一下西安明天的天气" }),
       msg({ id: "c1", kind: "tool_call", toolName: "web_search" }),
@@ -727,8 +723,8 @@ describe("toolGroupStatus", () => {
   });
 
   it("does not fail a turn that answered before a trailing warning", () => {
-    // Budget warnings arrive as error events after a complete answer; the
-    // answer, not the warning, decides the run's state.
+    // 预算警告会在完整答案之后作为错误事件到达；决定运行状态的是答案，而不是警
+    // 告。
     const msgs: UIMessage[] = [
       msg({ id: "u", kind: "user", text: "hi" }),
       msg({ id: "c1", kind: "tool_call", toolName: "read" }),
@@ -749,7 +745,7 @@ describe("toolGroupStatus", () => {
     const streaming = msg({ id: "t1", kind: "thinking", text: "", streaming: true });
     const settled = msg({ id: "t2", kind: "thinking", text: "done" });
     expect(toolGroupStatus(group([result({ ok: true }), streaming]), new Set(), true)).toBe("running");
-    // A finished thinking entry is process detail, not a reason to auto-expand.
+    // 已完成的思考条目只是过程细节，不是自动展开的理由。
     expect(toolGroupStatus(group([result({ ok: true }), settled]), new Set(), false)).toBe("done");
   });
 
@@ -757,8 +753,8 @@ describe("toolGroupStatus", () => {
     const narration = msg({ id: "mid", kind: "assistant", text: "我来读取模板", streaming: true });
     expect(toolGroupStatus(group([result({ ok: true }), narration]), new Set(), true)).toBe("running");
     expect(toolGroupStatus(group([result({ ok: true }), { ...narration, streaming: false }]), new Set(), false)).toBe("done");
-    // A finished narration followed by silence is the batch gap: the turn is
-    // live, so the block keeps its running state until it settles.
+    // 已完成的叙述之后跟着静默，就是批次间隙：回合仍处于活动状态，因此该块会保
+    // 持运行状态，直到其结束。
     expect(toolGroupStatus(group([result({ ok: true }), { ...narration, streaming: false }], { answered: false }), new Set(), true)).toBe("running");
   });
 });
@@ -799,9 +795,9 @@ describe("toolGroupElapsedMs / formatWorkDuration", () => {
     expect(toolGroupElapsedMs(msgs, reply, 0, false, new Map())).toBe(124_000);
     expect(toolGroupElapsedMs(msgs, undefined, Date.parse("2026-10-30T01:00:30Z"), true, new Map()))
       .toBe(30_000);
-    // Settled without a reply: stop at the last event.
+    // 已结束但没有回复：停在最后一个事件。
     expect(toolGroupElapsedMs(msgs, undefined, 0, false, new Map())).toBe(20_000);
-    // No timestamps at all: fall back to the summed tool runtimes.
+    // 完全没有时间戳：回退到工具运行时长之和。
     const noTs = [msg({ id: "c1", kind: "tool_call", toolName: "A" }), msg({ id: "r1", kind: "tool_result", toolName: "A" })];
     expect(toolGroupElapsedMs(noTs, undefined, 0, false, new Map([["r1", 3200]]))).toBe(3200);
   });
@@ -843,7 +839,7 @@ describe("fmtTime", () => {
   it("shows only the time for today and adds the date otherwise", () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 5);
-    // Locale data varies across Node ICU builds — anchor on the stable parts.
+    // 区域设置数据会因 Node ICU 构建而异——以稳定部分为锚点。
     expect(fmtTime(today.toISOString())).toContain("09:05");
     const old = new Date(2020, 0, 15, 9, 5);
     expect(fmtTime(old.toISOString())).toContain("01-15");
@@ -870,8 +866,8 @@ describe("isDayChange / dayLabel", () => {
     expect(isDayChange(a, b)).toBe(true);
     expect(isDayChange(b, b)).toBe(false);
     expect(isDayChange(undefined, b)).toBe(true);
-    // Full-icu renders 「10月30日 星期四」; small-icu builds degrade the
-    // format — only assert a non-empty localized label.
+    // Full-icu 会渲染出「10月30日 星期四」；small-icu
+    // 构建会降级该格式——仅断言本地化标签非空。
     expect(dayLabel(b).length).toBeGreaterThan(0);
     expect(dayLabel("bad")).toBe("");
   });

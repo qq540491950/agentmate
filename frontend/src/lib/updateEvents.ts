@@ -1,4 +1,4 @@
-/** Every lifecycle event emitted by the Wails updater. */
+/** 由 Wails 更新器发出的每个生命周期事件。 */
 export const UPDATE_EVENTS = [
   "wails:updater:check-started",
   "wails:updater:update-available",

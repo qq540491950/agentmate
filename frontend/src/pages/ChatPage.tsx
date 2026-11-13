@@ -100,14 +100,16 @@ import {
 let mid = 0;
 const nextId = () => `m${++mid}`;
 
-/** A send parked while the previous turn streams; it keeps the per-message
- * thinking level the user picked when queueing, not whatever is picked later. */
+/**
+ * 在上一个回合流式输出期间被暂存的发送；它保留用户排队时选定的每条消息的思考等
+ * 级，而不是之后选定的任何值。
+ */
 type QueuedMessage = { text: string; reasoning: string };
 
-// RENDER_LIMIT caps how many messages render at once for smooth long sessions.
+// RENDER_LIMIT 限制一次渲染多少条消息，以保证长会话流畅。
 const RENDER_LIMIT = 200;
-// Keep the last few opened conversations in memory so switching back does not
-// flash an empty/skeleton pane before the local SQLite read returns.
+// 将最近打开的少数几个会话保留在内存中，这样切回时不会在本地 SQLite
+// 读取返回前闪现空白/骨架面板。
 const HISTORY_CACHE_LIMIT = 8;
 
 const PERMISSION_PROFILE_ICONS: Record<PermissionProfile, typeof Hand> = {
@@ -126,13 +128,13 @@ function rememberHistory(cache: Map<string, UIMessage[]>, sessionID: string, mes
   }
 }
 
-// The sidebar width lives in localStorage rather than config.json: it is a
-// per-window view preference, and the config schema round-trips through Go
-// bindings that do not need to grow for a splitter drag.
+// 侧边栏宽度存放在 localStorage 而不是 config.json
+// 中：它是每个窗口各自的视图偏好，而配置 schema 会通过 Go
+// 绑定往返，没必要为一次分隔条拖拽而扩展它。
 const SIDEBAR_WIDTH_STORAGE_KEY = "wb-chat-sidebar-width";
 
-// Built-in commands run locally, without a model round-trip. Configured
-// skills are appended by slashCandidates (issue #53).
+// 内置命令在本地运行，不经过模型往返。已配置的技能由 slashCandidates
+// 追加（issue #53）。
 const SLASH_COMMANDS: SlashCommand[] = [
   { cmd: "/export", desc: "导出会话为 Markdown", source: "builtin" },
   { cmd: "/exporthtml", desc: "导出会话为 HTML", source: "builtin" },
@@ -141,7 +143,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { cmd: "/new", desc: "新建对话", source: "builtin" },
 ];
 
-/** speak synthesizes speech for text, cancelling previous playback. */
+/** speak 为 text 合成语音，并取消先前的播放。 */
 function speak(text: string) {
   if (!("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
@@ -162,24 +164,23 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeID, setActiveID] = useState("");
   const [messages, setMessages] = useState<UIMessage[]>([]);
-  // Per-session input drafts: switching sessions never loses what the user
-  // was typing (pairs with parallel background sessions).
+  // 按会话保存的输入草稿：切换会话绝不会丢失用户正在输入的内容（与并行后台会话
+  // 配合使用）。
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  // Draft typed before any session exists: direct chats are created lazily
-  // on the first send, like the composer-first flow of Codex/ChatGPT desktop.
+  // 在任何会话存在之前输入的草稿：直接聊天在首次发送时才惰性创建，就像
+  // Codex/ChatGPT 桌面端的输入框优先流程。
   const [freshInput, setFreshInput] = useState("");
-  // Set by「新聊天」: the blank conversation stays a local draft until its
-  // first message is sent, so no empty row lands in the sidebar/database and
-  // the auto-open-newest effect must not replace it (issue #30).
+  // 由「新聊天」设置：空白对话会保持为本地草稿，直到发送第一条消息，因此不会有
+  // 空行落入侧边栏/数据库，自动打开最新会话的 effect 不得替换它（issue #30）。
   const [newChatDraft, setNewChatDraft] = useState(false);
-  // Project bound to that pending draft ("" = a direct chat). Only the first
-  // send creates the row, so a project's「+」no longer persists an empty
-  // conversation per click (issue #60).
+  // 绑定到该待发送草稿的项目（"" =
+  // 直接聊天）。仅首次发送会创建该行，因此项目的「+」不再每次点击都持久化一个空
+  // 对话（issue #60）。
   const [draftProjectID, setDraftProjectID] = useState("");
-  // Composer picks made before that row exists (issue #64). They stay local
-  // until the first send creates the session, then send() applies them to the
-  // new chat BEFORE the first turn — so the model and approval mode chosen
-  // here are real choices, not discarded ones.
+  // 在该行存在之前于输入区所做的选择（issue
+  // #64）。它们会保持为本地状态，直到首次发送创建会话，随后 send()
+  // 会在第一个回合之前将它们应用到新对话——因此这里选择的模型和审批模式是真实的
+  // 选择，而不是被丢弃的选择。
   const [draftModelOverride, setDraftModelOverride] = useState("");
   const [draftApprovalPolicy, setDraftApprovalPolicy] = useState<ApprovalPolicy | "">("");
   const [draftSandboxProfile, setDraftSandboxProfile] = useState<SandboxProfile | "">("");
@@ -203,11 +204,11 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [teams, setTeams] = useState<TeamConfig[]>([]);
   const [remotes, setRemotes] = useState<RemoteAgentConfig[]>([]);
-  // Configured skills furnish the extra "/" commands (issue #53). The list is
-  // session-scoped (see the EffectiveSkills effect below), so a project chat
-  // also sees <project>/.agents/skills without importing them.
+  // 已配置的技能提供额外的 "/" 命令（issue
+  // #53）。该列表的作用域为会话（见下方的 EffectiveSkills
+  // effect），因此项目聊天也能看到 <project>/.agents/skills，而无需导入它们。
   const [skills, setSkills] = useState<SkillConfig[]>([]);
-  // Workspace files/folders offered by the composer's "@" picker.
+  // 输入区的 "@" 选择器所提供的工作区文件/文件夹。
   const [contextEntries, setContextEntries] = useState<WorkspaceEntry[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [renamingProject, setRenamingProject] = useState<Project | null>(null);
@@ -227,11 +228,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [sidebarWidth, setSidebarWidth] = useState(() =>
     parseStoredSidebarWidth(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY), window.innerWidth));
   const [resizingSidebar, setResizingSidebar] = useState(false);
-  // Project keys whose「展开显示」has been opened. The first 5 chats of every
-  // other project stay visible without turning the sidebar into an accordion.
+  // 其「展开显示」已打开的项目键。其他每个项目的前 5
+  // 个聊天保持可见，而不会把侧边栏变成手风琴。
   const [expandedProjectKeys, setExpandedProjectKeys] = useState<Set<string>>(() => new Set());
-  // Project rows remember their collapsed state independently from the
-  // five-session preview above: clicking a row closes the whole subtree.
+  // 项目行会独立于上方五个会话的预览记住其折叠状态：点击某一行会关闭整个子树。
   const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<Set<string>>(() => new Set());
   const expandedOwnerRef = useRef("");
   const [resolvedWorkspace, setResolvedWorkspace] = useState("");
@@ -239,15 +239,15 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(false);
   const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
   const [editing, setEditing] = useState(false);
-  // Settings hold the default for NEW sessions; each session owns its current
-  // policy. The composer reads/writes that session pair, never the default.
+  // 设置保存新会话的默认值；每个会话拥有自己的当前策略。输入区读取/写入该会话中
+  // 的这对值，绝不读取/写入默认值。
   const [defaultExecutionPolicy, setDefaultExecutionPolicy] = useState<ExecutionPolicy>(DEFAULT_EXECUTION_POLICY);
   const [executionPolicyBusy, setExecutionPolicyBusy] = useState(false);
-  // The risk dialog can stay open across a session switch; callbacks compare
-  // against the live ID before touching the visible chat.
+  // 风险对话框可以在会话切换期间保持打开；回调在操作可见聊天之前会与实时 ID
+  // 进行比对。
   const activeIDRef = useRef(activeID);
-  // Layout timing matters: the stream subscription must see the new active
-  // session before the history effect starts queueing its events.
+  // 布局时序很重要：流式订阅必须在历史记录 effect
+  // 开始排队其事件之前看到新的活动会话。
   useLayoutEffect(() => { activeIDRef.current = activeID; }, [activeID]);
   const [ctxBannerDismissed, setCtxBannerDismissed] = useState(false);
   const [pendingAtts, setPendingAtts] = useState<AttachmentIn[]>([]);
@@ -264,39 +264,40 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   useEffect(() => { autoSpeakRef.current = autoSpeak; }, [autoSpeak]);
   const sidebarWidthRef = useRef(sidebarWidth);
   useEffect(() => { sidebarWidthRef.current = sidebarWidth; }, [sidebarWidth]);
-  // Snapshot taken on pointerdown: the drag computes width from the pointer
-  // delta, not from the live state, so a fast drag cannot accumulate error.
+  // 在 pointerdown
+  // 时获取快照：拖拽根据指针增量而非实时状态计算宽度，因此快速拖拽不会累积误差
+  // 。
   const sidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const sidebarResizeFrame = useRef<number | null>(null);
   const pendingSidebarWidthRef = useRef<number | null>(null);
-  // Set when the stream emitted an inline error, so send()'s catch does not
-  // also toast the same failure.
+  // 当流式响应发出内联错误时设置，这样 send() 的 catch 也就不会通过 toast
+  // 提示同一失败。
   const streamedErrorRef = useRef(false);
-  // Set when the current turn actually started (a user bubble arrived). The
-  // backend refuses turns past the token budget with error+done and a resolved
-  // promise — without this flag the typed text would vanish without a trace.
+  // 当当前回合实际开始（用户气泡到达）时设置。后端会以 error+done 和一个已
+  // resolve 的 promise 拒绝超出 token
+  // 预算的回合——没有这个标志，输入的文本会消失得无影无踪。
   const turnStartedRef = useRef(false);
-  // Sessions with a turn started from this window. Chat.IsRunning can race
-  // the backend's run registration; a false probe must not clear the local
-  // optimistic running state and make the live turn look settled.
+  // 在此窗口中启动了回合的会话。Chat.IsRunning
+  // 可能与后端的运行注册发生竞态；探测结果为 false
+  // 时，不得清除本地乐观运行状态并使实时回合看起来已经结束。
   const localRunsRef = useRef<Set<string>>(new Set());
-  // New sessions are created by send() and have no persisted history yet. A
-  // GetSessionMessages issued immediately after setActiveID can return before
-  // ADK stores the first user event and must not clear the live timeline.
+  // 新会话由 send() 创建，尚无持久化历史。紧跟在 setActiveID 之后发出的
+  // GetSessionMessages 可能在 ADK
+  // 存储首个用户事件之前返回，且不得清除实时时间线。
   const freshSessionsRef = useRef<Set<string>>(new Set());
-  // Only one active history read can own the message pane. Events that arrive
-  // while it is in flight are replayed after the snapshot lands.
+  // 只能有一个活动历史读取拥有消息窗格。在其进行期间到达的事件会在快照落地后重
+  // 放。
   const historyLoadingSessionRef = useRef("");
   const historyGenerationRef = useRef(0);
   const pendingActivationRef = useRef("");
   const pendingStreamRef = useRef<Map<string, ChatStreamEvent[]>>(new Map());
   const flushPendingStreamEventsRef = useRef<(sessionID: string) => void>(() => {});
-  // The local user bubble is rendered before Chat.Send reaches the backend.
-  // Its event confirms/replaces this entry instead of appending a duplicate.
+  // 本地用户气泡在 Chat.Send 到达后端之前渲染。
+  // 其事件会确认/替换此条目，而不是追加重复项。
   const pendingUserRef = useRef<Map<string, PendingUserTurn>>(new Map());
 
-  // markRunning tracks in-flight turns PER SESSION so several sessions can
-  // stream in parallel without blocking each other.
+  // markRunning 按会话跟踪进行中的回合，因此多个会话可以
+  // 并行流式传输而不会相互阻塞。
   const markRunning = useCallback((id: string, on: boolean) => {
     setRunningMap((prev) => {
       if (!!prev[id] === on) return prev;
@@ -332,10 +333,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     : SlidersHorizontal;
   const executionDisplayMode = normalizeExecutionDisplayMode(globalExecutionDisplay);
 
-  // fireQueued pops the session's queued message and auto-sends it (used both
-  // when a turn settles and when the user returns to a settled session). A
-  // still-running session keeps its queue; the message is delivered with its
-  // OWN session id so switching chats mid-timer cannot misroute it.
+  // fireQueued
+  // 会弹出该会话的排队消息并自动发送（既用于回合结束之时，也用于用户返回到已结
+  // 束的会话之时）。仍在运行的会话会保留其队列；消息会使用它自己的会话 ID
+  // 投递，因此在计时器运行期间切换聊天不会导致其被错误路由。
   const fireQueued = useCallback((sessionID: string) => {
     const list = queuedRef.current[sessionID];
     if (!list || list.length === 0) return;
@@ -355,15 +356,15 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       .then((ps) => setProjects(ps ?? []))
       .catch(() => { /* project list is auxiliary; the chat list still loads */ });
   }, []);
-  // Latest direct-session creator for the global ⌘N handler, whose listener
-  // effect is registered before this definition exists in the render scope.
+  // 供全局 ⌘N 处理器使用的最新直接会话创建函数；该处理器的监听 effect
+  // 在此定义进入渲染作用域之前就已注册。
   const createDirectSessionRef = useRef<() => void>(() => {});
-  // New chats are ALWAYS direct (no target): turns run on the default
-  // provider's model, and leading @助手 mentions route individual turns to
-  // agents, teams or remote A2A agents. No dialog, no pre-configuration.
-  // 「新聊天」and a project's「+」only open a local draft; the session is
-  // created by send() when the first message actually goes out (issue #30,
-  // issue #60 — the project path used to persist a row per click).
+  // 新聊天始终为直接模式（无目标）：回合在默认供应商的模型上运行，且开头的
+  // @助手 提及会将各个回合路由到 Agent、团队或远程 A2A
+  // Agent。没有对话框，也没有预先配置。
+  // 「新聊天」和项目的「+」仅打开本地草稿；会话由 send()
+  // 在首条消息实际发出时创建（issue #30、issue #60 ——
+  // 项目路径过去每点击一次就会持久化一行）。
   const openNewChatDraft = useCallback((projectID: string) => {
     setActiveID("");
     setNewChatDraft(true);
@@ -415,10 +416,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       .catch((e) => toast.error(`加载配置失败: ${errText(e)}`));
   }, [reloadSessions]);
 
-  // "/" skills follow the active chat's effective workspace. The backend
-  // merges project/global .agents/skills discovery with config.json skills, so
-  // a project skill is invocable without a manual import. Re-runs when the
-  // workspace is rebound before the first turn (resolvedWorkspace).
+  // “/”技能遵循当前活动聊天的有效工作区。后端会将项目/全局 .agents/skills
+  // 的发现结果与 config.json
+  // 的技能合并，因此项目技能无需手动导入即可调用。当工作区在首个回合之前被重新
+  // 绑定时会重新运行（resolvedWorkspace）。
   useEffect(() => {
     let cancelled = false;
     effectiveSkills(activeID, activeID ? "" : draftProjectID)
@@ -429,7 +430,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     return () => { cancelled = true; };
   }, [activeID, draftProjectID, resolvedWorkspace]);
 
-  // "@" picker index: same workspace resolution as the slash skills.
+  // “@”选择器索引：与斜杠技能的工作区解析相同。
   useEffect(() => {
     let cancelled = false;
     listContextPaths(activeID, activeID ? "" : draftProjectID)
@@ -466,9 +467,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     };
   }, [activeID, active?.workspaceDir, active?.projectId]);
 
-  // Open the newest session on first load — unless「新聊天」deliberately left
-  // the page on an unsaved draft (issue #30). Any session becoming active
-  // ends draft mode.
+  // 首次加载时打开最新的会话——除非「新聊天」有意让页面停留在未保存的草稿上（iss
+  // ue #30）。任何会话变为活动状态都会结束草稿模式。
   useEffect(() => {
     if (shouldOpenLatestSession({ activeID, draft: newChatDraft, sessionCount: sessions.length })) {
       setActiveID(sessions[0].id);
@@ -482,8 +482,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
   }, [activeID]);
 
-  // The filter is session-scoped: a query left over from another chat would
-  // present an unexplained empty list here.
+  // 筛选器是会话作用域的：另一个聊天遗留的查询会在这里呈现为无法解释的空列表。
   useEffect(() => {
     setMsgFilter("");
     if (!activeID) return;
@@ -495,17 +494,15 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     });
   }, [activeID]);
 
-  // Load history when switching sessions. Layout effect keeps the old
-  // conversation from painting under the new title for one frame.
+  // 切换会话时加载历史记录。layout effect 可避免旧对话在新标题下多渲染一帧。
   useLayoutEffect(() => {
     if (!activeID) return;
-    // Guards against A->B fast switches: a slow response for the previous
-    // session must not paint its messages under the new one.
+    // 防止 A->B 快速切换：上一个会话的慢响应不得把它的消息渲染到新会话之下。
     let cancelled = false;
     setSessionUsage(null);
     setCtxBannerDismissed(false);
-    // Drop any pending streamed text — it belongs to the previous session;
-    // its full content arrives via the final message event / persisted history.
+    // 丢弃所有待处理的流式文本 —— 它属于上一个会话；其完整内容通过最终消息事件
+    // / 持久化历史送达。
     const buf = streamBufRef.current;
     if (buf.timer != null) clearTimeout(buf.timer);
     buf.author = null;
@@ -527,15 +524,14 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     let skeletonTimer: number | null = null;
 
     if (fresh) {
-      // A lazily created session has no persisted history yet. The live turn
-      // (including its optimistic user bubble) is the source of truth; reading
-      // an empty snapshot here is the race that used to erase the first turn.
+      // 延迟创建的会话尚无持久化历史。实时回合（包括其乐观的用户气泡）是唯一事
+      // 实来源；在这里读取空快照正是过去会抹掉首个回合的竞态。
       historyLoadingSessionRef.current = "";
       setHistoryLoading(false);
       flushPendingStreamEventsRef.current(activeID);
     } else {
-      // Returning sessions paint their cached snapshot instantly. A first visit
-      // starts empty and only shows a skeleton if the local fetch is slow.
+      // 返回的会话会立即渲染其缓存快照。首次访问从空开始，仅在本地获取缓慢时才
+      // 显示骨架屏。
       const cached = historyCacheRef.current.get(activeID);
       setMessages(cached ?? []);
       setHistoryLoading(!cached);
@@ -551,8 +547,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             requestGeneration,
             currentGeneration: historyGenerationRef.current,
           })) return;
-          // Pair confirm_request with its confirm_result so pending approvals
-          // stay interactive (e.g. after an app restart).
+          // 把 confirm_request 与其 confirm_result
+          // 配对，使待处理的审批保持可交互（例如应用重启后）。
           const answered = new Map<string, boolean>();
           for (const m of ms ?? []) {
             if (m.kind === "confirm_result" && m.callId) {
@@ -584,15 +580,15 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               confirmedFromHistory: true,
             });
           }
-          // Cache only the authoritative snapshot. The provisional user bubble
-          // is reconciled again if the user returns before it is persisted.
+          // 仅缓存权威快照。如果用户在其持久化之前返回，临时用户气泡会被再次协
+          // 调。
           rememberHistory(historyCacheRef.current, activeID, nextMessages);
           setMessages(reconciled.messages);
           historyLoadingSessionRef.current = "";
           flushPendingStreamEventsRef.current(activeID);
-          // Entering a session always lands on its newest message — the shared
-          // ScrollArea keeps the previous session's scrollTop otherwise, which
-          // could open a long history at its oldest message.
+          // 进入会话时始终会定位到其最新消息——否则共享的 ScrollArea
+          // 会保留上一个会话的
+          // scrollTop，可能使较长的历史记录在打开时停在其最旧的消息处。
           requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
         })
         .catch((e) => {
@@ -622,20 +618,19 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
     Chat.IsRunning(activeID).then((r) => {
       if (cancelled) return;
-      // The probe is asynchronous and can resolve before Chat.Send reaches
-      // registerRun on the backend. Never let that stale false overwrite a
-      // turn this window just started.
+      // 探测是异步的，可能会在 Chat.Send 到达后端的 registerRun
+      // 之前完成。绝不能让那个过期的 false 覆盖此窗口刚刚启动的回合。
       if (!r && localRunsRef.current.has(activeID)) return;
       markRunning(activeID, r);
-      // A queued message stranded by a session switch (its turn finished in
-      // the background) fires now: the user is back and nothing is running.
+      // 因切换会话而被搁置的排队消息（其回合已在后台完成）现在会发出：用户已返
+      // 回，且没有任何内容正在运行。
       if (!r && (queuedRef.current[activeID]?.length ?? 0) > 0) {
         fireQueued(activeID);
       }
     }).catch(() => {});
-    // Seed the token/context readout from persisted aggregates so opening an
-    // existing chat shows its usage before the next turn completes. A live
-    // turn overwrites this with the same cumulative figure on its done event.
+    // 用持久化的聚合数据初始化
+    // token/上下文读数，以便打开已有聊天时能在下一回合完成前显示其用量。实时回
+    // 合会在其 done 事件中用相同的累计数值覆盖此值。
     Chat.SessionStats(activeID)
       .then((st) => {
         if (cancelled || !st || st.tokensTotal <= 0) return;
@@ -662,18 +657,18 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     };
   }, [activeID]);
 
-  // The backend nudges this event when it changes session metadata out of
-  // band (async model-generated titles), so the sidebar picks it up.
+  // 当后端在带外更改会话元数据（由模型异步生成的标题）时，会触发此事件，以便侧
+  // 边栏接收到它。
   useEffect(() => {
     const off = Events.On("sessions:updated", () => reloadSessions());
     return off;
   }, [reloadSessions]);
 
-  // Streamed text is coalesced: delta events accumulate in a ref and flush to
-  // state at most once per interval, so a fast token stream costs one render
-  // per interval instead of one per token. Any non-delta event flushes first
-  // to preserve ordering within a turn; switching sessions drops the buffer
-  // (the final message event / persisted history carries the full text).
+  // 流式文本会被合并：delta 事件会累积在 ref 中，并且每个间隔最多刷新到 state
+  // 一次，因此快速的 token 流每个间隔只产生一次渲染，而不是每个 token
+  // 一次渲染。任何非 delta
+  // 事件都会先刷新，以保留同一回合内的顺序；切换会话会丢弃缓冲区（最终消息事件
+  // / 持久化历史会携带完整文本）。
   const STREAM_FLUSH_MS = 60;
   const streamBufRef = useRef<{ author: string | null; text: string; timer: number | null }>({
     author: null, text: "", timer: null,
@@ -697,16 +692,16 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     });
   }, []);
 
-  // Reasoning streams on its own channel and lives in a separate collapsible
-  // bubble, so the model's scratchpad never mixes into the answer text.
+  // 推理内容通过自己的通道流式传输，并位于单独的可折叠气泡中，因此模型的草稿内
+  // 容绝不会混入答案文本。
   const thinkingBufRef = useRef<{ author: string | null; text: string; timer: number | null }>({
     author: null, text: "", timer: null,
   });
-  // Tracks the author whose thinking_delta stream is live: the final thinking
-  // event uses it to decide whether to replace that block or append a new one.
+  // 跟踪其 thinking_delta 流式传输仍在进行中的作者：最终 thinking
+  // 事件会用它来决定是替换该块还是追加一个新块。
   const thinkingStreamedRef = useRef<string | null>(null);
-  // Tracks whether the block is still open; finishThinking runs on every
-  // answer token, so it must not rescan the list after the first close.
+  // 跟踪该块是否仍处于打开状态；finishThinking 会在每个答案 token
+  // 上运行，因此首次关闭后不得重新扫描列表。
   const thinkingOpenRef = useRef<string | null>(null);
   const flushThinkingBuf = useCallback(() => {
     const buf = thinkingBufRef.current;
@@ -747,8 +742,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
 
   const applyChatStreamEvent = useCallback((ev: ChatStreamEvent, sessionID: string) => {
     if (ev.sessionId !== sessionID) return;
-    // Replayed events bypass the network wrapper, so ordering flushes belong
-    // here: a queued delta must land before its final message/tool event.
+    // 重放事件会绕过网络封装，因此保证顺序的刷新应放在这里：排队的 delta
+    // 必须在其最终的 message/tool 事件之前落地。
     if (ev.kind !== "delta") flushStreamBuf();
     if (ev.kind !== "thinking_delta") flushThinkingBuf();
     if (ev.kind !== "error" && ev.kind !== "done") turnStartedRef.current = true;
@@ -764,8 +759,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       if (buf.timer == null) {
         buf.timer = setTimeout(flushThinkingBuf, STREAM_FLUSH_MS) as unknown as number;
       }
-      // Show the block (with its spinner) as soon as the first fragment
-      // arrives; the flush tick fills in the text.
+      // 首个片段到达后立即显示该块（及其加载指示器）；刷新 tick 会填入文本。
       setMessages((prev) => {
         let idx = prev.length - 1;
         while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].streaming && prev[idx].author === ev.author)) idx--;
@@ -777,11 +771,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       return;
     }
     if (ev.kind === "delta") {
-      // The answer starting means the reasoning phase is over: collapse the
-      // thinking block before the first token lands in the reply bubble.
+      // 回答开始意味着推理阶段已结束：在首个 token 落入回复气泡之前折叠思考块。
       finishThinking(ev.author);
-      // Coalesce: buffer the text and make sure a streaming bubble exists
-      // for this author; the buffered text lands on the flush tick.
+      // 合并：缓冲文本，并确保该 author 的流式气泡存在；缓冲的文本会在刷新 tick
+      // 时落地。
       const buf = streamBufRef.current;
       if (buf.author && buf.author !== ev.author) flushStreamBuf();
       buf.author = ev.author;
@@ -796,10 +789,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       });
       return;
     }
-    // Capture the pending user before scheduling the state update. React may
-    // invoke functional updaters later (and twice under StrictMode); reading a
-    // mutable ref inside the updater can then see a done-cleared value and
-    // append a duplicate user bubble. The snapshot keeps the updater pure.
+    // 在调度状态更新之前捕获待处理的用户。React 之后可能会调用函数式更新器（在
+    // StrictMode 下甚至会调用两次）；此时在更新器内读取可变 ref
+    // 就可能看到一个已被 done
+    // 清除的值，并追加重复的用户气泡。该快照使更新器保持纯函数。
     const pendingUser = ev.kind === "user"
       ? pendingUserRef.current.get(ev.sessionId) ?? null
       : null;
@@ -825,10 +818,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           return [...prev, { id: nextId(), kind: "user", author: "user", text: ev.text, timestamp: new Date().toISOString(), attachments: ev.attachments ?? null, reasoning: ev.reasoning }];
         }
         case "thinking": {
-          // The backend aggregates every thought part of this model call
-          // into one event: replace the block the deltas opened (or append
-          // one when the provider only returned reasoning in the final
-          // response).
+          // 后端会将本次模型调用的每个 thought 部分聚合成一个事件：替换 delta
+          // 打开的块（或在供应商仅在最终响应中返回推理时追加一个块）。
           const fromStream = thinkingStreamedRef.current === ev.author;
           thinkingStreamedRef.current = null;
           thinkingOpenRef.current = null;
@@ -887,8 +878,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       if (!streamedErrorRef.current) turnStartedRef.current = true;
       setSessionUsage(ev.sessionUsage ?? null);
       setWorkspaceRefresh((n) => n + 1);
-      // Read the latest flag through a ref: this subscription is created
-      // once per session and would otherwise capture the startup value.
+      // 通过 ref
+      // 读取最新的标志：此订阅每个会话只创建一次，否则会捕获启动时的值。
       if (autoSpeakRef.current) {
         const lastAssistant = [...messagesRef.current].reverse().find((m) => m.kind === "assistant" && m.text);
         if (lastAssistant) speak(lastAssistant.text);
@@ -907,13 +898,13 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const handleChatStream = useCallback((ev: ChatStreamEvent) => {
     const activeSession = activeIDRef.current;
     const foreground = ev.sessionId === activeSession || ev.sessionId === pendingActivationRef.current;
-    // Completion bookkeeping runs for EVERY session: background runs must
-    // clear their spinner and toast even while the user is in another chat.
+    // 完成状态记录会对每一个会话执行：即使用户正处于另一个聊天中，后台运行也必
+    // 须清除其 spinner 和 toast。
     if (ev.kind === "done" || ev.kind === "error") {
       if (ev.kind === "error" && foreground) streamedErrorRef.current = true;
-      // A done event that is queued behind a history load must not clear the
-      // optimistic user before the queued user event has had a chance to
-      // confirm it; the replay's done branch clears it after all events land.
+      // 排在历史记录加载之后的 done 事件，不得在排队的 user
+      // 事件有机会确认它之前清除乐观用户；重放的 done
+      // 分支会在所有事件落地后清除它。
       const keepPendingForReplay = foreground && (
         ev.sessionId === pendingActivationRef.current
         || historyLoadingSessionRef.current === ev.sessionId
@@ -924,14 +915,14 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       localRunsRef.current.delete(ev.sessionId);
       markRunning(ev.sessionId, false);
       reloadSessions();
-      // A queued message fires as soon as the turn settles — including
-      // after an error, so the user's follow-up is never stranded.
+      // 排队消息会在回合一结束就触发——包括在出错之后，因此用户的后续消息绝不会
+      // 被搁置。
       if ((queuedRef.current[ev.sessionId]?.length ?? 0) > 0 && foreground) {
         fireQueued(ev.sessionId);
       }
       if (!foreground) {
         const title = sessionsRef.current.find((x: { id: string; title: string }) => x.id === ev.sessionId)?.title ?? "后台会话";
-        // Clicking the toast jumps straight to the finished background chat.
+        // 点击 toast 会直接跳转到已完成的后台聊天。
         const open = () => setActiveID(ev.sessionId);
         const action = { label: "查看", onClick: open };
         if (ev.kind === "done") toast.success(`「${title}」已完成回复`, { action });
@@ -956,9 +947,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     applyChatStreamEvent(ev, ev.sessionId);
   }, [applyChatStreamEvent, fireQueued, markRunning, reloadSessions]);
 
-  // Subscribe once. The old effect re-subscribed on every activeID change,
-  // leaving a window where backend events had no listener. The latest handler
-  // is routed through a ref so the subscription itself never churns.
+  // 只订阅一次。旧的 effect 会在每次 activeID
+  // 变化时重新订阅，从而留下一个后端事件没有监听器的窗口。最新的处理函数通过
+  // ref 进行路由，因此订阅本身绝不会反复变动。
   const chatStreamHandlerRef = useRef(handleChatStream);
   useLayoutEffect(() => {
     chatStreamHandlerRef.current = handleChatStream;
@@ -971,9 +962,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     return off;
   }, []);
 
-  // Auto-scroll only when the reader is already at the bottom, and coalesce
-  // per animation frame: scrolling smoothly on every token fights the user
-  // and queues animations faster than they finish.
+  // 仅当阅读者已经位于底部时才自动滚动，并按动画帧合并：对每个 token
+  // 都平滑滚动会与用户对抗，且动画入队速度快于其完成速度。
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -990,9 +980,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     if (scrollFrame.current != null) cancelAnimationFrame(scrollFrame.current);
   }, []);
 
-  // Cmd/Ctrl+N starts a direct chat; Cmd/Ctrl+K focuses the composer.
-  // The keydown listener lives in App (the help panel documents them on every
-  // page); ChatPage reacts to the dispatched custom events.
+  // Cmd/Ctrl+N 启动直接聊天；Cmd/Ctrl+K 聚焦输入区。keydown 监听器位于 App
+  // 中（帮助面板会在每个页面说明它们）；ChatPage 会响应派发的自定义事件。
   useEffect(() => {
     const onNew = () => createDirectSessionRef.current();
     const onFocus = () => inputRef.current?.focus();
@@ -1004,8 +993,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     };
   }, []);
 
-  // ⌘⇧[ / ⌘⇧] (dispatched by App) walk the session list in its sidebar
-  // order (most recent first), wrapping at the ends.
+  // ⌘⇧[ / ⌘⇧]（由 App
+  // 派发）按会话列表在侧边栏中的顺序（最近的在前）遍历，并在两端回绕。
   useEffect(() => {
     const step = (dir: number) => {
       if (sessions.length === 0) return;
@@ -1025,8 +1014,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     };
   }, [sessions, activeID]);
 
-  // Window-level drag guard: dropping a file outside the composer must not
-  // let the webview navigate away from the app.
+  // 窗口级拖拽防护：在输入区外拖放文件时，不得 让 webview 导航离开应用。
   useEffect(() => {
     const prevent = (e: DragEvent) => e.preventDefault();
     window.addEventListener("dragover", prevent);
@@ -1037,22 +1025,20 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     };
   }, []);
 
-  // Unread flags: a background session that finished (or errored) while the
-  // user was elsewhere gets a sidebar dot until they open it.
+  // 未读标记：后台会话在用户身处别处时完成（或出错），
+  // 侧边栏会显示一个圆点，直到用户打开该会话。
   const [unread, setUnread] = useState<Record<string, boolean>>({});
-  // How many trailing entries render (tool groups count once); the omitted
-  // banner can raise it in RENDER_LIMIT steps to page backwards through very
-  // long sessions.
+  // 尾部条目的渲染数量（工具组只计一次）； 省略提示横幅可以按 RENDER_LIMIT
+  // 的步长提高该数量，以便在超长会话中 往回翻页。
   const [renderLimit, setRenderLimit] = useState(RENDER_LIMIT);
-  // Reader position: off-bottom state drives the「回到底部」floater.
+  // 阅读位置：未处于底部的状态驱动「回到底部」悬浮按钮。
   const [atBottom, setAtBottom] = useState(true);
-  // Turn rail position: the turn the reader is currently at (scroll-followed;
-  // rail clicks override it and the next scroll event re-syncs).
+  // 回合轨道位置：阅读者当前所在的回合（随滚动跟随；
+  // 点击轨道会覆盖该位置，下一次滚动事件会重新同步）。
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
-  // The bottom sentinel is the source of truth for the floater. A scroll
-  // listener alone misses layout changes (window/sidebar resize, a growing or
-  // collapsing composer, filtering/paging, Markdown reflow) that move the end
-  // of the transcript without emitting a scroll event.
+  // 底部哨兵是悬浮按钮的权威依据。仅靠滚动监听会漏掉
+  // 布局变化（窗口/侧边栏大小变化、输入区展开或收起、筛选/分页、 Markdown
+  // 重排），这些变化会移动对话记录的末尾，却不会触发滚动事件。
   useEffect(() => {
     const root = scrollRef.current;
     const target = bottomRef.current;
@@ -1069,7 +1055,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     if (!el) return;
     const onScroll = () => {
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-      // The last turn header above the upper viewport edge is "current".
+      // 位于视口上边缘之上的最后一个回合标题即为 "current"。
       const elTop = el.getBoundingClientRect().top;
       let current: string | null = null;
       const nodes = el.querySelectorAll<HTMLElement>("[data-turn-anchor]");
@@ -1077,8 +1063,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         if (node.getBoundingClientRect().top - elTop > 200) break;
         current = node.dataset.turnAnchor ?? current;
       }
-      // At the bottom the reader is on the latest turn even when its header
-      // sits below the 200px scan line on a short viewport.
+      // 在底部时，即使最新回合的标题在较矮视口中位于 200px 扫描线之下，
+      // 阅读者仍处于最新回合。
       if (nearBottom && nodes.length > 0) current = nodes[nodes.length - 1].dataset.turnAnchor ?? current;
       if (current == null && nodes.length > 0) current = nodes[0].dataset.turnAnchor ?? null;
       setActiveTurnId(current);
@@ -1086,31 +1072,31 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
-  // Rail / quote click: scroll the turn into view and mark it active.
+  // 导航栏 / 引用点击：将该回合滚动到可视区域并标记为活跃。
   const selectTurn = useCallback((msgId: string) => {
     setActiveTurnId(msgId);
     document.getElementById(`turn-${msgId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
-  // History fetch in flight after a session switch. Fast local reads should
-  // not flash a skeleton, so it only appears after a short grace period.
+  // 会话切换后历史记录正在请求中。快速本地读取不应闪现骨架屏，因此仅在短暂宽限
+  // 期后才显示。
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showHistorySkeleton, setShowHistorySkeleton] = useState(false);
-  // Returning to an already-opened session paints its last snapshot before
-  // the fresh fetch lands; this removes the empty/skeleton frame on switches.
+  // 返回到已打开过的会话时，会在新请求落地前先绘制其最后一次快照；这消除了切换
+  // 时的空白/骨架帧。
   const historyCacheRef = useRef<Map<string, UIMessage[]>>(new Map());
-  // Shared destructive-confirmation dialog (replaces window.confirm).
+  // 共享的破坏性操作确认对话框（替代 window.confirm）。
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
 
-  // Per-session message queue: sending while a reply streams parks the text
-  // and auto-sends it when the turn settles (Codex-style queueing). A queue
-  // holds MULTIPLE messages — queueing twice must not silently drop the
-  // first; deliveries bounce to the front, user sends append to the back.
+  // 按会话的消息队列：在回复流式输出期间发送会把文本暂存，并在该回合结束后自动
+  // 发送（Codex
+  // 风格排队）。一个队列可容纳多条消息——两次排队不得静默丢弃第一条；投递落到队
+  // 首，用户发送追加到队尾。
   const [queued, setQueued] = useState<Record<string, QueuedMessage[]>>({});
   const queuedRef = useRef(queued);
   useEffect(() => { queuedRef.current = queued; }, [queued]);
-  // Composer-local effort state drives live slider feedback. Active chats
-  // persist the committed level to the session; drafts keep it until the
-  // first message creates the session row.
+  // 输入框本地的 effort
+  // 状态可驱动滑块的实时反馈。活跃聊天会把已提交的级别持久化到会话；草稿则保留
+  // 该级别，直到第一条消息创建会话记录。
   const [turnReasoning, setTurnReasoning] = useState("");
   const [intelligenceOpen, setIntelligenceOpen] = useState(false);
   const [intelligenceView, setIntelligenceView] = useState<"effort" | "model">("effort");
@@ -1118,19 +1104,19 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   useEffect(() => { runningMapRef.current = runningMap; }, [runningMap]);
 
   const send = async (override?: string, targetID?: string, reasoningOverride?: string) => {
-    // targetID lets fireQueued deliver to the session the message was queued
-    // for, not whichever chat happens to be active 80ms later.
+    // targetID 让 fireQueued 将消息投递到其被排队时所对应的会话，而不是 80ms
+    // 后恰好处于活跃状态的聊天。
     let sid = targetID ?? activeID;
     const text = (override ?? input).trim();
     if (!text) return;
-    // Whether this send originates from the active composer (or a chat yet to
-    // be created): only then do the pending image attachments belong to it.
+    // 本次发送是否源自活跃的输入框（或尚待创建的聊天）：仅在这种情况下，待处理
+    // 的图片附件才属于它。
     const fromComposer = !sid || sid === activeID;
-    // A queued delivery carries the level picked when it was queued; a
-    // composer send reads the current slider level at the moment Send is pressed.
+    // 排队投递会携带其入队时所选的级别；从输入框发送时，会在按下发送的那一刻读
+    // 取当前滑块级别。
     const reasoning = reasoningOverride !== undefined ? reasoningOverride : fromComposer ? turnReasoning : "";
-    // Composer-first flow: with no session yet, the first message creates a
-    // direct chat on the fly. Only a provider is required — never an Agent.
+    // 输入框优先流程：尚无会话时，第一条消息会即时创建一个直接聊天。仅需要供应
+    // 商——绝不需要 Agent。
     if (!sid) {
       if (providerCount === 0) {
         toast.error("请先在「模型配置」页添加供应商并填入 API Key");
@@ -1145,9 +1131,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           ? await Chat.NewSessionWithProject("", "", "", draftProjectID)
           : await Chat.NewSessionWithWorkspace("", "", "", "");
         sid = s.id;
-        // Apply the draft picks to the freshly created row BEFORE it becomes
-        // the active chat: the composer then reads the persisted pair instead
-        // of racing a write that lands after the first render.
+        // 在刚创建的行成为活动聊天之前，将草稿选择应用到该行：这样输入框随后会
+        // 读取已持久化的这对值，而不是与一次在首次渲染之后才落地的写入发生竞态
+        // 。
         try {
           if (draftModelOverride) await Chat.SetSessionModel(s.id, draftModelOverride);
           if (reasoning) await Chat.SetSessionReasoningLevel(s.id, reasoning);
@@ -1157,8 +1143,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             draftPolicy.sandboxProfile,
           );
         } catch (e) {
-          // The row exists, so the first turn must still go out; surface the
-          // lost pick rather than silently pretending it was applied.
+          // 该行已存在，因此第一回合仍必须发出；应暴露丢失的选择，而不是静默地
+          // 假装它已应用。
           toast.error(`应用草稿设置失败: ${errText(e)}`);
         }
         setDraftModelOverride("");
@@ -1194,16 +1180,15 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       return;
     }
     if (runningMap[sid]) {
-      // Queued deliveries that raced with a newly-busy session go back into
-      // the queue (fired again when the next turn settles) — never dropped.
-      // They re-enter at the FRONT to preserve the user's ordering.
+      // 与刚变为忙碌的会话发生竞态的排队投递会回到队列中（在下一回合结束时再次
+      // 触发）——绝不会被丢弃。它们会重新入队到队首，以保留用户的顺序。
       if (override !== undefined) {
         setQueued((prev) => ({ ...prev, [sid]: [{ text, reasoning }, ...(prev[sid] ?? [])] }));
       }
       return;
     }
-    // Slash commands run locally without a model round-trip (active chat
-    // only — queued sends to background sessions go through as messages).
+    // 斜杠命令在本地运行，无需模型往返（仅限活动聊天——发往后台会话的排队发送项
+    // 会作为消息发出）。
     if (sid === activeID && text.startsWith("/")) {
       const cmd = text.split(/\s+/)[0].toLowerCase();
       switch (cmd) {
@@ -1239,9 +1224,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           createDirectSession();
           return;
         default:
-          // A "/<skill-name>" command is sent as a normal message: the
-          // backend injects that skill's SKILL.md into this turn only
-          // (issue #53). Unknown tokens keep the old contract — hint, no send.
+          // "/<skill-name>" 命令会作为普通消息发送：后端仅会将对应技能的
+          // SKILL.md 注入本回合（issue
+          // #53）。未知标记保持旧约定——提示，不发送。
           if (isSkillCommand(text, skills)) break;
           toast.error(
             `未知命令 ${cmd}。可用：${SLASH_COMMANDS.map((c) => c.cmd).join(" ")}` +
@@ -1255,9 +1240,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     markRunning(sid, true);
     const wasEditing = editing && sid === activeID;
     setEditing(false);
-    // The transient slider value is cleared by a normal send; active chats
-    // keep it through their persisted session-level value. Editing re-runs the
-    // original turn with its recorded level, so a pending pick stays pending.
+    // 普通发送会清除临时的滑块值；活动聊天会通过其已持久化的会话级值保留它。编
+    // 辑会按其记录的级别重新运行原回合，因此待定的选择仍保持待定。
     if (fromComposer && !wasEditing) setTurnReasoning("");
     const atts = fromComposer ? pendingAtts : [];
     if (fromComposer) setPendingAtts([]);
@@ -1265,8 +1249,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     if (fromComposer) streamedErrorRef.current = false;
     let optimisticUserID = "";
     if (fromComposer && !wasEditing) {
-      // Show the user bubble immediately instead of waiting for the backend's
-      // user event. The event later confirms this exact message in place.
+      // 立即显示用户气泡，而不是等待后端的用户事件。该事件稍后会在原地确认这条
+      // 确切的消息。
       const optimistic: UIMessage = {
         id: nextId(),
         kind: "user",
@@ -1286,7 +1270,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         message: optimistic,
         startedAt: Date.now(),
       });
-      // A reload while this turn is live must not paint an older snapshot.
+      // 在本回合仍在进行时重新加载，不得渲染较旧的快照。
       historyCacheRef.current.delete(sid);
       setMessages((prev) => [...prev, optimistic]);
     }
@@ -1305,11 +1289,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       } else {
         await Chat.SendWithReasoning(sid, text, atts.length > 0 ? atts : null, reasoning);
       }
-      // A resolved promise without a started turn means the backend refused
-      // the round (e.g. token budget exhausted): restore what the user typed
-      // instead of silently swallowing it. If the promise resolved before the
-      // stream events were dispatched, keep the optimistic turn running until
-      // its done/error event arrives.
+      // Promise 已兑现但回合未启动，意味着后端拒绝了该回合（例如 token
+      // 预算耗尽）：恢复用户输入的内容，而不是静默吞掉它。如果 Promise
+      // 在流式事件派发之前就已兑现，则保持乐观回合继续运行，直到其 done/error
+      // 事件到达。
       const refused = !turnStartedRef.current && streamedErrorRef.current;
       if (refused) {
         localRunsRef.current.delete(sid);
@@ -1328,9 +1311,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       }
       if (fromComposer) streamedErrorRef.current = false;
     } catch (e) {
-      // The stream already emitted an inline error bubble for run failures;
-      // Chat.Send returns the same error so the promise settles, but only
-      // surface a toast when nothing was streamed (e.g. validation failure).
+      // 流式通道已经为运行失败发出了内联错误气泡；Chat.Send 返回同一错误以使
+      // promise 结算，但仅当未流式输出任何内容（例如校验失败）时，才显示
+      // toast。
       const msg = errText(e);
       if (!streamedErrorRef.current) toast.error(`发送失败: ${msg}`);
       streamedErrorRef.current = false;
@@ -1343,16 +1326,15 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         pendingUserRef.current.delete(sid);
       }
       if (fromComposer) {
-        // Restore the draft and attachments (merging, not clobbering: the
-        // user may have started typing again while the request was in flight).
+        // 恢复草稿和附件（合并，而非覆盖：用户可能在请求进行期间又重新开始输入
+        // 了）。
         setPendingAtts((prev) => [...atts, ...prev]);
         setInput((cur) => (cur === "" ? text : cur));
       }
     }
   };
 
-  // Latest send for the stream subscription: the subscription is created
-  // once per session and must not fire a stale closure.
+  // 流式订阅使用最新的 send：该订阅每个会话仅创建一次，不得触发过期的闭包。
   const sendRef = useRef(send);
   useEffect(() => { sendRef.current = send; });
 
@@ -1360,8 +1342,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     if (activeID) Chat.Cancel(activeID);
   };
 
-  // answerConfirm resolves a HITL tool-confirmation card. The status flips
-  // optimistically; a failed resume reverts the card to pending.
+  // answerConfirm 用于完成 HITL
+  // 工具确认卡片。状态会乐观翻转；恢复失败会将卡片回退为 pending。
   const answerConfirm = useCallback(async (msgId: string, callId: string | undefined, approved: boolean) => {
     if (!activeID || !callId || running) return;
     localRunsRef.current.add(activeID);
@@ -1399,8 +1381,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     const sid = activeID;
     const previousPolicy = activeExecutionPolicy;
     setExecutionPolicyBusy(true);
-    // Optimistic: the composer chip must flip immediately, not one round-trip
-    // later while the menu is still closing.
+    // 乐观更新：输入区标签必须立即切换，而不是在一次往返之后、菜单仍在关闭时才
+    // 切换。
     setSessions((prev) => prev.map((s) => (
       s.id === sid
         ? {
@@ -1465,8 +1447,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const addFiles = async (files: FileList | File[]) => {
     let added = 0;
     if (active && !modelMultimodal) {
-      // The multimodal flag is metadata the user may not have flipped yet:
-      // keep the upload path open, but warn that the model may reject images.
+      // 多模态标记是用户可能尚未开启的元数据：保持上传路径开放，但警告模型可能
+      // 拒绝图片。
       toast.warning("当前模型未标记多模态，图片可能无法被识别；可在「模型配置」中开启多模态");
     }
     for (const f of Array.from(files)) {
@@ -1521,7 +1503,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
   }, [activeID, running, markRunning]);
 
-  /** speakMessage is stable per call site so memoized bubbles can skip it. */
+  /** speakMessage 在每个调用点都保持稳定，因此经过 memo 记忆化的气泡可以跳过它。 */
   const speakMessage = useCallback((text: string) => speak(text), []);
 
   const openStats = async () => {
@@ -1594,8 +1576,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       });
       return typeof picked === "string" ? picked : "";
     } catch (e) {
-      // Closing the native picker is not a failure: Wails reports it as an
-      // error ("cancelled by user"). Only surface genuine dialog failures.
+      // 关闭原生选择器并非失败：Wails 会将其报告为错误（"cancelled by
+      // user"）。仅暴露真正的对话框失败。
       if (isDialogCancelError(e)) return "";
       throw e;
     }
@@ -1664,10 +1646,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
 
     const [contentMatches, setContentMatches] = useState<Set<string> | null>(null);
 
-  // Debounced content search: with a query present, the sidebar lists sessions
-  // whose title OR stored history matches (backend LIKE over event payloads).
-  // A monotonic sequence drops stale responses: a slow reply for an earlier
-  // query must not overwrite the result of the latest one.
+  // 防抖的内容搜索：存在查询时，侧边栏会列出标题或存储的历史记录匹配的会话（后
+  // 端对事件负载执行
+  // LIKE）。单调序列会丢弃过期响应：较早查询的慢速回复不得覆盖最新查询的结果。
   const searchSeqRef = useRef(0);
   useEffect(() => {
     const q = search.trim();
@@ -1697,8 +1678,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       if (s.title.toLowerCase().includes(q)) return true;
       return contentMatches ? contentMatches.has(s.id) : false;
     };
-    // Archived sessions pass the same query filter; grouping buckets them
-    // into the trailing "已归档" group whose visibility showArchived controls.
+    // 已归档会话会经过相同的查询过滤；分组会将它们归入末尾的 "已归档"
+    // 分组，其可见性由 showArchived 控制。
     return sessions.filter((s) => matches(s));
   }, [sessions, search, contentMatches]);
 
@@ -1714,12 +1695,12 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const toggleSidebar = useCallback(() => {
     const next = !sidebarCollapsed;
     persistSidebarPrefs(next);
-    // The rail's fixed preview is positioned from the pre-toggle geometry;
-    // close it so it cannot float over the newly widened chat pane.
+    // 侧轨的固定预览是根据切换前的几何尺寸定位的；关闭它，以免它悬浮在刚加宽的
+    // 聊天窗格上方。
     window.dispatchEvent(new CustomEvent("wb-sidebar-toggled"));
   }, [sidebarCollapsed]);
-  // ⌘B is a shell-level shortcut like ⌘N: App dispatches the custom event so
-  // it keeps working across view switches.
+  // ⌘B 是类似 ⌘N 的 shell 级快捷键：App
+  // 会派发该自定义事件，使其在视图切换期间仍然有效。
   useEffect(() => {
     const onToggle = () => toggleSidebar();
     window.addEventListener("wb-toggle-sidebar", onToggle);
@@ -1734,11 +1715,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     } catch { /* storage unavailable: keep the in-memory width */ }
   };
 
-  // The splitter drags the sidebar edge. Pointer capture keeps the gesture
-  // alive when the cursor leaves the 6px handle, and body-level cursor +
-  // selection suppression stop the drag from selecting session rows or text
-  // in the chat area (issue #31). Width updates ride rAF so a drag does not
-  // re-render the message list on every pointermove.
+  // 分隔条用于拖动侧边栏边缘。指针捕获可让手势在光标离开 6px
+  // 手柄时仍保持有效，而 body 级的光标 +
+  // 选区抑制可防止拖动选中会话行或聊天区域中的文本（issue #31）。宽度更新通过
+  // rAF 进行，因此拖动不会在每次 pointermove 时重新渲染消息列表。
   const commitSidebarWidthFrame = () => {
     sidebarResizeFrame.current = null;
     const next = pendingSidebarWidthRef.current;
@@ -1799,19 +1779,18 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     };
   }, [resizingSidebar]);
 
-  // Window shrinks past the stored width: clamp back into the visible range
-  // instead of letting the sidebar eat the chat area.
+  // 窗口缩小到低于已存储的宽度时：钳制回可见范围， 而不是让侧边栏挤占聊天区域。
   useEffect(() => {
     const onResize = () => setSidebarWidth((w) => clampSidebarWidth(w, window.innerWidth));
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // The compact sidebar is one project tree: pinned chats first as a global
-  // group, then default chats, registered projects in their stable creation
-  // order, and ad-hoc workspace folders. Each group previews five chats and
-  // reveals the rest through「展开显示」; archived chats stay in their own
-  // trailing section. A search query collapses the tree into one flat list.
+  // 紧凑侧边栏是一棵项目树：置顶聊天先作为一个全局
+  // 分组，然后是默认聊天、按稳定创建顺序排列的已注册项目，以及临时工作区文件夹
+  // 。每个分组预览五个聊天，并通过「展开显示」
+  // 展示其余聊天；已归档聊天留在其专属的末尾分区中。搜索查询会将树折叠成一个扁
+  // 平列表。
   const searching = search.trim().length > 0;
   const sidebarGroups = useMemo(
     () => buildSidebarProjectGroups(filteredSessions, projects, globalWorkspace),
@@ -1822,19 +1801,16 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     () => [...filteredSessions].sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")),
     [filteredSessions],
   );
-  // Selection belongs to the session row only. A project row stays neutral
-  // while browsing its sessions; the one exception is a pending project draft,
-  // which marks its destination before the first session row exists.
+  // 选中状态仅属于会话行。浏览某个项目的会话时，项目行保持中性；
+  // 唯一的例外是待定的项目草稿，它会在第一个会话行出现之前标记其目标。
   const draftProjectKey = draftProjectID ? `proj:${draftProjectID}` : "";
-  // Opening a chat that sits beyond the five-row preview has to reveal the
-  // owning project; otherwise the active row would be invisible.
+  // 打开位于五行预览之外的聊天时，必须展开其所属项目； 否则活动行将不可见。
   useEffect(() => {
     if (!activeID) return;
     const owner = sidebarGroups.find((g) => g.sessions.some((s) => s.id === activeID));
     if (!owner) return;
-    // Reveal the active project once per active session. Do not depend on
-    // collapsedGroupKeys here: otherwise an intentional collapse of the
-    // active project would immediately undo itself.
+    // 每个活动会话仅展开一次活动项目。此处不得依赖
+    // collapsedGroupKeys：否则对活动项目的有意折叠会立即自行撤销。
     if (expandedOwnerRef.current !== activeID) {
       expandedOwnerRef.current = activeID;
       setCollapsedGroupKeys((prev) => {
@@ -1853,13 +1829,12 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     });
   }, [activeID, sidebarGroups]);
 
-  // Provider + model of the active target (agent → its model; team →
-  // coordinator when auto, lead agent otherwise) for cost estimation and
-  // multimodal gating.
+  // 活动目标的供应商 + 模型（Agent → 其模型；团队 → 自动时为协调者，否则为牵头
+  // Agent），用于成本估算和 多模态门控。
   const target = useMemo(() => {
     if (!active) return { provider: null as ModelProvider | null, model: null as ModelInfo | null };
     // 会话级模型覆盖与后端 EffectiveModel 同口径：覆盖 ID 必须在解析出的
-    // 供应商模型列表内，否则回落默认解析（直聊=默认供应商第一个模型）。
+    // 供应商模型列表内，否则回退到默认解析（直聊 = 默认供应商的第一个模型）。
     const override = active.modelOverride;
     const withOverride = (provider: ModelProvider | null, fallback: ModelInfo | null): ModelInfo | null => {
       if (override && provider?.models) {
@@ -1869,8 +1844,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       return fallback;
     };
     if (active.targetType === "") {
-      // Direct chat: default provider's first model (the same resolution the
-      // backend uses for target-less sessions).
+      // 直聊：默认供应商的第一个模型（与后端对无目标会话采用的 解析方式相同）。
       const provider = providerList.find((p) => p.isDefault) ?? providerList[0] ?? null;
       return { provider, model: withOverride(provider, provider?.models?.[0] ?? null) };
     }
@@ -1896,11 +1870,14 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     return { provider, model };
   }, [active, agents, teams, providerList]);
 
-  /** modelMultimodal only tunes the attachment hint: the picker stays open so
- * users can upload images even before flipping the model's metadata flag. */
+  /**
+   * modelMultimodal
+   * 仅调节附件提示：选择器保持打开，因此用户即使在切换模型的元数据标志之前也能
+   * 上传图片。
+   */
   const modelMultimodal = !!target.model?.multimodal;
 
-  /** costOf computes ¥ cost from token usage at model rates (per 1M). */
+  /** costOf 按模型费率（每 1M）根据 token 用量计算 ¥ 成本。 */
   const costOf = useCallback((u?: UsageInfo | null): string => {
     if (!u || !target.model) return "";
     const pin = target.model.priceIn ?? 0;
@@ -1932,8 +1909,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     return agents.find((a) => a.id === active.targetId)?.name ?? "Agent";
   }, [active, agents, teams]);
 
-  // Per-session model picker (agent and direct sessions): mirrors the per-chat
-  // model selector of Claude/ChatGPT desktops.
+  // 按会话的模型选择器（Agent 与直接会话）：对应 Claude/ChatGPT
+  // 桌面端每个聊天的模型选择器。
   const sessionModels = useMemo(() => {
     if (!active) return [];
     if (active.targetType === "") {
@@ -1945,23 +1922,23 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     return resolveAgentModel(agent, providerList).provider?.models ?? [];
   }, [active, agents, providerList]);
 
-  // Draft composer (issue #64): before the first send there is no session row
-  // to read, so the picker resolves against the default provider the new chat
-  // will use and the pick lives in component state until send() persists it.
-  // New chats are always direct (targetless), so this matches what the
-  // created session resolves to.
+  // 草稿输入区（issue
+  // #64）：首次发送前没有可读取的会话行，因此选择器会依据新聊天将使用的默认供应
+  // 商进行解析，选择结果保存在组件状态中，直到 send()
+  // 将其持久化。新聊天始终是直接会话（无目标），因此这与创建出的会话所解析到的
+  // 结果一致。
   const draftProvider = useMemo(
     () => providerList.find((p) => p.isDefault) ?? providerList[0] ?? null,
     [providerList],
   );
   const draftModels = draftProvider?.models ?? [];
   const draftModel = draftModelFor(draftModels, draftModelOverride);
-  // One set of values feeds the toolbar for both states, so the draft and the
-  // saved chat render exactly the same control.
+  // 同一组值会提供给两种状态下的工具栏，因此草稿和已保存聊天渲染出的控件完全相
+  // 同。
   const composerModels = active ? sessionModels : draftModels;
-  // The picker has no synthetic "default model" row. Its checked value is the
-  // model that will actually run; an unset override resolves to a real model
-  // (direct chats: the provider's first; agents: their configured model).
+  // 选择器没有合成的 "default model"
+  // 行。其选中值就是实际将要运行的模型；未设置的覆盖项会解析为真实模型（直接聊
+  // 天：供应商的第一个模型；Agent：其配置的模型）。
   const composerModel = active ? (target.model ?? composerModels[0] ?? null) : draftModel;
   const composerModelValue = composerModel?.id ?? "";
   const composerProviderName = active ? (target.provider?.name ?? "") : (draftProvider?.name ?? "");
@@ -1974,15 +1951,13 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     void setSessionModel(value);
   };
 
-  // Thinking picker. A saved table wins; a model saved before level tables
-  // existed still gets the built-in family fallback (fetched from the backend
-  // so the mapping lives in one place) instead of hiding the control — an
-  // explicitly disabled table stays off (#42). The per-turn pick lives only
-  // in this composer: it is never persisted and never mutates the session
-  // default.
-  // Composer model: a draft resolves exactly like the first send will
-  // (draftModelFor), so the thinking picker is selectable before the session
-  // row exists — same model, same level table, no drift at send time.
+  // 思考选择器。已保存的表优先；在级别表存在之前保存的模型仍会获得内置的系列回
+  // 退（从后端获取，使映射只存在于一处），而不是隐藏该控件——显式禁用的表保持关
+  // 闭（#42）。每回合的选择仅存在于此输入区：它绝不持久化，也绝不修改会话默认值
+  // 。
+  // 输入区模型：草稿的解析方式与首次发送时完全相同（draftModelFor），因此在会话
+  // 行存在之前，思考选择器就是可选择的——同一模型、同一级别表，发送时不会发生漂
+  // 移。
   const modelHasReasoningTable = !!composerModel?.reasoning;
   const composerModelID = composerModel?.id ?? "";
   const [suggestedReasoning, setSuggestedReasoning] = useState<{ id: string; info: ModelInfo } | null>(null);
@@ -2000,8 +1975,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       .catch(() => { /* offline: the picker simply stays hidden */ });
     return () => { cancelled = true; };
   }, [composerModelID, modelHasReasoningTable]);
-  // Only a suggestion fetched FOR this model may feed the picker: a fetch
-  // resolving after a model switch must not render another model's levels.
+  // 只有为该模型获取的建议才可以提供给选择器：在模型切换后才解析完成的获取，不
+  // 得渲染另一个模型的级别。
   const reasoningModel = composerReasoningModel({
     isDraft: !active,
     activeModel: target.model,
@@ -2013,16 +1988,15 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     ? active.reasoningLevel
     : "";
   const defaultReasoningLevel = reasoningModel?.reasoning?.defaultLevel || availableLevels[0]?.level || "";
-  // The pending pick applies to the next send only; unknown names (e.g. a
-  // stale pick after a model switch) are ignored and fall through.
+  // 待定选项仅对下一次发送生效；未知名称（例如模型切换后已过期的选择）会被忽略
+  // 并继续走后续逻辑。
   const pendingReasoning = availableLevels.some((l) => l.level === turnReasoning) ? turnReasoning : "";
   const nextReasoningLevel = effectiveReasoningLevel(availableLevels, pendingReasoning, sessionReasoning, defaultReasoningLevel);
   const nextReasoningLabel = levelLabel(nextReasoningLevel);
-  // A pick belongs to one chat+model; switching either starts from the
-  // session default again (a level valid for the old table may not exist).
-  // A pick belongs to one chat+model; switching either (including a draft's
-  // model chip) starts from the session default again — a level valid for the
-  // old table may not exist on the new one.
+  // 一个选项只属于一个聊天 +
+  // 模型；切换其中任一项都会重新从会话默认值开始（对旧表有效的级别可能不存在）
+  // 。 一个选项只属于一个聊天 + 模型；切换其中任一项（包括草稿的模型
+  // chip）都会重新从会话默认值开始——对旧表有效的级别在新表上可能不存在。
   useEffect(() => {
     setTurnReasoning("");
     setIntelligenceOpen(false);
@@ -2042,9 +2016,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
   };
 
-  // The model/reasoning control persists the effort for the conversation,
-  // matching Codex. Sliders update local state continuously for feedback and
-  // commit the final stop once the pointer/keyboard gesture ends.
+  // 模型/推理控件会为会话持久化推理力度，与 Codex
+  // 保持一致。滑块会持续更新本地状态以提供反馈，并在指针/键盘手势结束后提交最终
+  // 档位。
   const commitReasoning = async (level: string) => {
     setTurnReasoning(level);
     if (!activeID) return;
@@ -2063,7 +2037,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
   };
 
-  // ⌘F (dispatched by App) opens the in-conversation filter.
+  // ⌘F（由 App 派发）会打开会话内筛选器。
   useEffect(() => {
     const onToggle = () => setFilterOpen(true);
     window.addEventListener("wb-toggle-filter", onToggle);
@@ -2072,19 +2046,18 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
 
   const toolDurations = useMemo(() => computeToolDurations(messages), [messages]);
   const runningToolsSet = useMemo(() => computeRunningTools(messages), [messages]);
-  // Precompute once per message change instead of scanning the tail for every
-  // rendered row (that was O(n^2) per token).
+  // 每次消息变化时预计算一次，而不是为每个渲染行扫描尾部（此前每个 token 都是
+  // O(n^2)）。
   const editFlags = useMemo(() => computeEditFlags(messages), [messages]);
-  // The current turn's latest plan. Scoped to the turn so a finished or
-  // interrupted plan from an older turn cannot remain pinned forever.
+  // 当前回合的最新计划。作用域限定在回合内，因此较早回合中已完成或已中断的计划
+  // 不会一直固定显示。
   const activePlanMessage = useMemo(() => latestPlanMessage(messages), [messages]);
   const activePlan = useMemo(
     () => (activePlanMessage ? activePlanMessage.toolResp?.todos as TodoItem[] : null),
     [activePlanMessage],
   );
-  // The chip is a live progress affordance, not a permanent record. Keep it
-  // while the turn runs or waits for HITL; an interrupted historical turn
-  // keeps its inline card but must not leave a stale header entry.
+  // 该 chip 是实时进度提示控件，而非永久记录。回合运行或等待 HITL
+  // 时应保留它；已中断的历史回合会保留其内联卡片，但不得留下过期的头部条目。
   const pendingConfirm = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
@@ -2100,18 +2073,18 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     planDone < activePlan.length &&
     (running || pendingConfirm) &&
     dismissedPlanKey !== planKey;
-  // In-conversation message filter (⌘F / the header search icon): shows only
-  // the messages matching the query, like the desktop clients' chat search.
+  // 会话内消息筛选器（⌘F /
+  // 头部搜索图标）：仅显示与查询匹配的消息，类似桌面客户端的聊天搜索。
   const [filterOpen, setFilterOpen] = useState(false);
   const [msgFilter, setMsgFilter] = useState("");
   const filterInputRef = useRef<HTMLInputElement>(null);
   const filterQ = msgFilter.trim().toLowerCase();
-  // Precomputed lowercase search blob per message: keystroke-time filtering
-  // must not re-JSON.stringify large tool payloads for the whole history.
+  // 为每条消息预计算小写搜索 blob：按键时过滤不得对整个历史重新 JSON.stringify
+  // 大型工具载荷。
   const searchIndex = useMemo(() => {
     const map = new Map<string, string>();
-    // Only consulted while the filter bar is open: skip the per-message
-    // JSON.stringify pass on every token of a streaming reply.
+    // 仅在过滤栏打开时才会查询：在流式回复的每个 token 上跳过逐消息的
+    // JSON.stringify 处理。
     if (!filterOpen) return map;
     for (const m of messages) {
       const parts = [m.text, m.hint, m.toolName];
@@ -2125,25 +2098,23 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     if (!filterQ) return messages;
     return messages.filter((m) => (searchIndex.get(m.id) ?? "").includes(filterQ));
   }, [messages, filterQ, searchIndex]);
-  // The slice source and how many entries sit above the render window: the
-  // day separator of the first visible item must compare against the REAL
-  // previous entry, or a truncation window would paint a fake day header.
+  // 切片来源以及渲染窗口上方有多少条目：首个可见项的日期分隔符必须与真实的上一
+  // 项比较，否则截断窗口会绘制出虚假的日期标题。
   const renderSource = filterQ ? filteredMessages : messages;
-  // Collapse consecutive tool events into execution blocks before slicing:
-  // the render limit then caps rendered entries (blocks included), and a run
-  // is never split across the truncation boundary.
+  // 切片前将连续工具事件折叠为执行块：渲染上限随后限制渲染的条目（包括块），且
+  // 一次运行绝不会在截断边界处被拆分。
   const renderItems = useMemo(() => groupTurns(groupToolMessages(renderSource)), [renderSource]);
   const visibleItems = useMemo(() => renderItems.slice(-renderLimit), [renderItems, renderLimit]);
-  // The pre-first-token gap: running, but the latest raw message is still the
-  // user's. The status must key off the message id (not merely the last turn)
-  // so an active message filter cannot misplace it under an older turn.
+  // 首个 token
+  // 之前的间隙：正在运行，但最新的原始消息仍属于用户。状态必须依据消息
+  // id（而不仅仅是最后一个回合）来确定，这样生效中的消息过滤才不会把它错误地归
+  // 到更早的回合下。
   const awaitingReply = !historyLoading && isAwaitingReply(messages, running);
   const awaitingTurnId = awaitingReply && messages.length > 0
     ? messages[messages.length - 1].id
     : null;
   const omittedItems = Math.max(0, renderItems.length - visibleItems.length);
-  // The last turn owns the live clock: its execution blocks keep ticking
-  // until the turn settles.
+  // 最后一个回合拥有实时时钟：其执行块会持续计时，直到该回合结束。
   const firstVisibleIdx = renderItems.length - visibleItems.length;
   const lastTurnIdx = useMemo(() => {
     for (let k = renderItems.length - 1; k >= 0; k--) {
@@ -2151,8 +2122,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
     return -1;
   }, [renderItems]);
-  // The banner counts hidden MESSAGES (a collapsed block or turn covers
-  // many), while the paging button reveals whole entries in RENDER_LIMIT steps.
+  // 横幅统计的是隐藏的消息数（一个折叠块或回合涵盖多条消息），而分页按钮以
+  // RENDER_LIMIT 为步长显示完整条目。
   const omittedMessages = useMemo(() => {
     let n = 0;
     for (const it of renderItems.slice(0, omittedItems)) {
@@ -2164,7 +2135,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
     return n;
   }, [renderItems, omittedItems]);
-  // Rail entries mirror what is rendered: paged-out turns are not navigable.
+  // 侧栏条目与渲染内容一致：被分页移出的回合不可导航。
   const railTurns = useMemo(() => {
     const turns: RailTurn[] = [];
     for (const it of visibleItems) {
@@ -2179,14 +2150,14 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
     return turns;
   }, [visibleItems]);
-  // Seed / repair the active bar when no scroll event has fired yet (a short
-  // session never scrolls) or the active turn got filtered/paged out.
+  // 当尚未触发任何滚动事件（短会话从不滚动），或活动回合被过滤/分页移出时，初始
+  // 化 / 修复活动栏。
   useEffect(() => {
     if (railTurns.length === 0) return;
     if (activeTurnId && railTurns.some((t) => t.id === activeTurnId)) return;
     setActiveTurnId(railTurns[railTurns.length - 1].id);
   }, [railTurns, activeTurnId]);
-  // TurnBlock bodies reuse the exact prop wiring the flat list used.
+  // TurnBlock 的主体复用扁平列表所用的完全相同 prop 连接方式。
   const renderBodyItem = (item: ChatItem, opts: TurnBodyOpts) => {
     if (item.kind === "tool_group") {
       return (
@@ -2234,8 +2205,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     () => filterSlashCommands(slashCommands, input),
     [slashCommands, input],
   );
-  // Slash suggestions match the mention popup's interaction: full keyboard
-  // navigation, Enter/Tab to pick, Esc to dismiss until the text changes.
+  // 斜杠建议与提及弹窗的交互一致：完整的键盘导航，Enter/Tab 选择，Esc
+  // 关闭，直至文本变化。
   const [slashIdx, setSlashIdx] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState<string | null>(null);
   const slashOpen = slashSuggestions.length > 0 && input !== slashDismissed;
@@ -2256,26 +2227,25 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     });
   };
 
-  // Auto-grow the composer with its content, capped by max-h-48 (192px) —
-  // beyond the cap the textarea scrolls internally and the message list
-  // keeps the remaining space.
+  // 让输入区随内容自动增高，上限为 max-h-48（192px）——超过上限后，textarea
+  // 在内部滚动，消息列表保留剩余空间。
   useEffect(() => {
     const ta = inputRef.current;
     if (!ta) return;
     ta.style.height = "auto";
     ta.style.height = `${Math.min(ta.scrollHeight, 192)}px`;
   }, [input, activeID]);
-  // Visual feedback while a file hovers the composer drop zone.
+  // 文件悬停在输入区拖放区域时提供视觉反馈。
   const [dragOver, setDragOver] = useState(false);
 
-  // @-mention autocomplete. A leading "@名称" routes that turn to the named
-  // agent/team/remote (the backend parses it), while every token also offers
-  // workspace files/folders as context. The token is caret-aware, so "@"
-  // works mid-message and a mid-token pick rewrites only that token.
+  // @ 提及自动补全。开头的 "@名称" 会将该回合路由到指定的
+  // agent/team/remote（由后端解析），同时每个 token
+  // 还提供工作区文件/文件夹作为上下文。该 token 会感知光标位置，因此 "@"
+  // 可在消息中间使用，而在 token 中间选择时只会重写该 token。
   const [caret, setCaret] = useState(0);
   useEffect(() => {
-    // A session switch replaces the draft; keep the caret at its end. Typing
-    // inside one session must not be pulled back to the end.
+    // 切换会话会替换草稿；应将光标保持在末尾。在同一个会话内输入时，不得将光标
+    // 拉回末尾。
     setCaret(input.length);
   }, [activeID]);
   const mentionToken = useMemo(() => mentionAtCaret(input, caret), [input, caret]);
@@ -2298,8 +2268,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     setMentionIdx(0);
     if (mentionKey !== mentionDismissed) setMentionDismissed(null);
   }, [mentionKey, mentionDismissed]);
-  // The workspace index can arrive while the popup is open; never leave the
-  // highlight pointing past the end of the new candidate list.
+  // 工作区索引可能在弹窗打开期间到达；绝不能让高亮指向新候选列表末尾之外。
   useEffect(() => {
     if (mentionCandidates.length > 0 && mentionIdx >= mentionCandidates.length) setMentionIdx(0);
   }, [mentionCandidates.length, mentionIdx]);
@@ -2307,8 +2276,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const applyMention = (c: MentionCandidate) => {
     if (!mentionToken) return;
     const value = isAssistantCandidate(c) ? c.name : c.kind === "directory" ? `${c.path}/` : c.path;
-    // A folder pick keeps the token open-ended (`@src/`) so the menu drills in;
-    // files and assistants finish the token with a space.
+    // 选中文件夹时，令牌保持开放式结尾（`@src/`），以便菜单逐层深入；文件与助手
+    // 则用空格结束令牌。
     const next = applyMentionToken(input, mentionToken, value, { trailingSpace: !(c.kind === "directory") });
     setInput(next.text);
     setMentionDismissed(null);
@@ -2321,21 +2290,19 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     });
   };
 
-  // contextUsage: how much of the target model's context window the session
-  // has consumed so far. The numerator is the REAL context occupancy — the
-  // last model call's prompt token count (contextTokens) — not the cumulative
-  // billed usage: every call re-sends the full history, so the sum over a
-  // tool loop is a multiple of the real size and once showed 6.4M tokens
-  // (100%) for a session whose true occupancy was 16.6%.
+  // contextUsage：会话目前已消耗目标模型上下文窗口的多少。分子是真实的上下文占
+  // 用——最后一次模型调用的提示词 token
+  // 数（contextTokens）——而非累计计费用量：每次调用都会重发完整历史，因此一个工
+  // 具调用循环内的总和会是真实大小的数倍，曾出现某会话真实占用为 16.6% 却显示
+  // 6.4M tokens（100%）的情况。
   const contextWindow = target.model?.contextWindow ?? 0;
   const realContextUsage = useMemo(
     () => resolveContextUsage(sessionUsage?.contextTokens, contextWindow),
     [contextWindow, sessionUsage],
   );
-  // ≈ fallback for models whose upstream never reports usage metadata (some
-  // gateways ignore stream_options.include_usage): approximate the next
-  // prompt from the conversation itself. Debounced — the estimate is coarse
-  // and must not re-run JSON.stringify on every streamed flush.
+  // ≈ 回退方案，用于上游绝不回报用量元数据的模型（部分网关会忽略
+  // stream_options.include_usage）：从对话本身近似估算下一次提示词。已做防抖——
+  // 该估算很粗糙，不得在每次流式刷新时都重新执行 JSON.stringify。
   const [estimatedTokens, setEstimatedTokens] = useState(0);
   useEffect(() => {
     const t = window.setTimeout(() => setEstimatedTokens(estimateContextTokens(messages)), 250);
@@ -2346,22 +2313,23 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     if (contextWindow <= 0 || messages.length === 0 || estimatedTokens <= 0) return null;
     return resolveContextUsage(estimatedTokens, contextWindow, true);
   }, [realContextUsage, contextWindow, messages.length, estimatedTokens]);
-  // The hover card under the ring: window first ("背景信息窗口："), cumulative
-  // billing last. Null means "nothing to say" and the trigger disappears.
+  // 环形下方的悬停卡片：窗口在前（"背景信息窗口："），累计计费在后。Null
+  // 表示"无话可说"，触发元素随之消失。
   const contextTip = useMemo(
     () => contextTooltipLines(contextUsage, sessionUsage, costOf(sessionUsage)),
     [contextUsage, sessionUsage, costOf],
   );
 
-  // Whole-session cost estimate for the stats dialog (label/value order must
-  // match the other stat cells: value muted on top, label bold below).
+  // 统计对话框的整会话成本估算（标签/值的顺序必须与其他统计单元格一致：值在上且
+  // 弱化显示，标签在下且加粗）。
   const statsCost = useMemo(
     () => (stats ? costOf({ promptTokens: stats.tokensIn, completionTokens: stats.tokensOut, totalTokens: stats.tokensTotal }) : ""),
     [stats, costOf],
   );
 
-  // renderSessionRow draws one compact chat row; shared by the project tree,
-  // search results and the archive section so hover actions stay identical.
+  // renderSessionRow
+  // 绘制一行紧凑的聊天行；由项目树、搜索结果和归档区共用，以保证悬停操作保持一
+  // 致。
   const renderSessionRow = (s: ChatSession, indented = true) => (
     <div
       key={s.id}
@@ -2405,11 +2373,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       </span>
       {runningMap[s.id] && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent-text" aria-label="生成中" />}
       {!runningMap[s.id] && unread[s.id] && <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-label="有新回复未查看" />}
-      {/* The cluster hosts the "…" dropdown anchor, so it must keep its layout
-          box while the menu is open — see SESSION_ROW_ACTIONS_CLASS (#28). */}
+      {/* 该控件簇承载 "…" 下拉菜单的锚点，因此在菜单打开期间必须保留其布局盒——参见 SESSION_ROW_ACTIONS_CLASS（#28）。 */}
       <span className={SESSION_ROW_ACTIONS_CLASS} data-slot="session-row-actions">
-        {/* Frequent state toggles stay one click; the rest collapse into one
-            menu so the row keeps four controls instead of six. */}
+        {/* 高频状态切换保持单击可达；其余项收进一个菜单，使该行只保留四个控件而非六个。 */}
         <TooltipHint content={s.archived ? "取消归档" : "归档此会话"}>
           <button
             className="rounded p-0.5 hover:bg-foreground/10"
@@ -2465,7 +2431,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
 
   return (
     <div className="flex h-full">
-      {/* Sessions */}
+      {/* 会话 */}
       {!sidebarCollapsed && (
       <>
       <div className="flex shrink-0 flex-col bg-chrome font-sans" style={{ width: sidebarWidth }}>
@@ -2516,11 +2482,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             />
           </div>
         </div>
-        {/* Plain scroll container: Radix ScrollArea wraps its children in a
-            `display: table` div, so a long session title/preview sets the table
-            width to its full nowrap length and every row's right-aligned
-            actions get clipped outside the sidebar. A block container lets
-            `truncate` do its job and keeps hover actions inside the row. */}
+        {/* 普通滚动容器：Radix ScrollArea 会将其子元素包裹在一个 `display: table` div 中，因此过长的会话标题/预览会把表格宽度撑到其完整的 nowrap 长度，并且每一行右对齐的操作都会被裁剪到侧边栏之外。块级容器可让 `truncate` 发挥作用，并将悬停操作保持在行内。 */}
         <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2.5">
           <div className="grid grid-cols-1 gap-0.5 pb-3">
             {searching ? (
@@ -2734,9 +2696,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           onThemeModeChange={(themeMode) => onAppearanceChange({ themeMode })}
         />
       </div>
-      {/* Resize handle: a transparent 6px strip between chrome and canvas. Pointer capture
-          keeps the drag alive outside the strip; the keyboard path keeps the
-          splitter reachable without a mouse. */}
+      {/* 调整大小手柄：界面外壳与画布之间的一条透明 6px 条带。指针捕获 可使拖动在条带之外仍然有效；键盘路径让 分隔条无需鼠标也可访问。 */}
       <TooltipHint content="拖动调整对话列表宽度" side="right">
         <div
           role="separator"
@@ -2762,7 +2722,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       </>
       )}
 
-      {/* Chat area */}
+      {/* 聊天区域 */}
       <div className="relative flex min-w-0 flex-1 flex-col">
         <div className="flex h-12 items-center justify-between bg-canvas px-4">
           <div className="flex min-w-0 items-center gap-2">
@@ -2783,10 +2743,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             {active && (
               (() => {
                 const label = sessionTargetBadgeLabel(active.targetType);
-                // Direct chats carry no target, so they get no badge: a "直聊"
-                // chip read like a selectable mode next to Agent/team targets.
+                // 直接聊天不携带目标，因此不会显示徽标：一个 "直聊" 标签在
+                // Agent/团队目标旁读起来像一种可选模式。
                 if (!label) return null;
-                // Configurable targets deep-link into the settings hub.
+                // 可配置目标会深链接到设置中心。
                 const tab: SettingsTab | undefined = active.targetType === "agent" ? "agents" : active.targetType === "team" ? "teams" : undefined;
                 return (
                   <TooltipHint content={tab ? "管理此配置" : ""}>
@@ -2845,8 +2805,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             )}
             {active && (
               <>
-                {/* Export/memory/stats live in one overflow menu: six icon
-                    buttons crowded the header on narrow windows. */}
+                {/* 导出/记忆/统计都放在一个溢出菜单中：六个图标按钮在窄窗口中挤满了页头。 */}
                 <DropdownMenu>
                   <TooltipHint content="更多操作" wrap>
                     <DropdownMenuTrigger asChild>
@@ -2921,12 +2880,11 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             </TooltipHint>
           </div>
         )}
-        {/* The floater anchors to the message viewport: a growing composer
-            shrinks this wrapper instead of sliding under the button. */}
+        {/* 浮动按钮锚定到消息视口：输入框变高时会 缩小此包裹容器，而不是滑到按钮下方。 */}
         <div className="relative flex min-h-0 flex-1 flex-col">
           {!atBottom && messages.length > 0 && (
-            // Circular floater inside the message area: an arrow when idle,
-            // breathing amber dots while the turn runs, arrow again on hover.
+            // 消息区域内的圆形悬浮控件：空闲时显示箭头，回合运行期间显示呼吸式
+            // 琥珀色圆点，悬停时再次显示箭头。
             <TooltipHint content={running ? "正在生成，回到底部" : "回到底部"}>
               <button
                 type="button"
@@ -2997,8 +2955,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               )}
               {messages.length === 0 && !active && providerCount === 0 && <Onboarding onOpenSettings={onOpenSettings} />}
               {messages.length === 0 && !active && providerCount > 0 && (
-                // Providers exist but no chat is selected: previously this
-                // rendered an empty pane with no hint about what to do.
+                // 已有供应商但未选择会话：此前这里会渲染一个空面板，且不提示该
+                // 做什么。
                 <div className="flex min-h-[55vh] flex-col items-center justify-center gap-3 text-center">
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent-text">
                     <MessageSquare className="h-6 w-6" />
@@ -3023,8 +2981,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 </div>
               )}
               {visibleItems.map((item, i, arr) => {
-                // The first visible item compares against the real previous
-                // entry when the window is truncated (else no separator).
+                // 窗口被截断时，首个可见项会与真实的上一项进行比较（否则不显示
+                // 分隔符）。
                 const ts = chatItemStartTs(item);
                 const prevTs = i === 0
                   ? (omittedItems > 0 ? chatItemEndTs(renderItems[renderItems.length - visibleItems.length - 1]) : undefined)
@@ -3047,16 +3005,15 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         renderBodyItem={renderBodyItem}
                       />
                     ) : (
-                      // Orphans precede the first user message: no live turn,
-                      // and the shared wiring keeps one prop-passing site.
+                      // 孤儿项位于首条用户消息之前：此时没有进行中的回合，且共
+                      // 享接线只保留一处 prop 传递位置。
                       renderBodyItem(item, {
                         isLastAssistant: item.kind === "message"
                           && item.message.kind === "assistant"
                           && renderIdx === renderItems.length - 1,
-                        // The newest orphan process block belongs to the live
-                        // turn when the user header is temporarily missing
-                        // (stream event not delivered yet). Without this it is
-                        // judged "failed" while the backend is still running.
+                        // 当用户消息头暂时缺失时（流式事件尚未送达），最新的孤
+                        // 儿进程块属于进行中的回合。若没有这一处理，它会在后端
+                        // 仍在运行时被判定为 "failed"。
                         liveGroup: running && renderIdx === renderItems.length - 1,
                       })
                     )}
@@ -3088,8 +3045,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           </ScrollArea>
         </div>
 
-        {/* Screen-reader status for turn state: announcing every streamed
-            token would be noise, so only the phase transitions speak. */}
+        {/* 供屏幕阅读器读取的回合状态：逐个播报每个流式 token 会造成噪音，因此仅播报阶段切换。 */}
         <div className="sr-only" role="status" aria-live="polite">
           {running ? "助手正在回复…" : messages[messages.length - 1]?.kind === "error" ? "本轮回复出错，可点击重试本轮" : ""}
         </div>
@@ -3153,8 +3109,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 setDragOver(true);
               }}
               onDragLeave={(e) => {
-                // Child elements fire dragleave on the way through: only clear
-                // when the pointer actually left the drop zone.
+                // 子元素在指针经过时会触发
+                // dragleave：仅当指针实际离开放置区时才清除状态。
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false);
               }}
               onDrop={(e) => {
@@ -3266,8 +3222,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                       return;
                     }
                   }
-                  // Slash suggestions sit below the mention popup in priority
-                  // (they never open together: "/" vs "@" prefixes).
+                  // 斜杠建议的优先级低于提及弹窗（二者绝不会同时打开：前缀分别
+                  // 为 "/" 与 "@"）。
                   if (slashOpen && !mentionOpen) {
                     if (e.key === "ArrowDown") {
                       e.preventDefault();
@@ -3291,8 +3247,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                       return;
                     }
                   }
-                  // Esc walks back down the UI stack instead of doing nothing:
-                  // cancel edit → stop generation → close the filter bar.
+                  // Esc 会沿 UI 栈逐层回退，而不是什么都不做： 取消编辑 →
+                  // 停止生成 → 关闭筛选栏。
                   if (e.key === "Escape") {
                     if (editing) {
                       e.preventDefault();
@@ -3310,8 +3266,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                       return;
                     }
                   }
-                  // ↑ on an empty composer edits the last user message
-                  // (Codex-style) — the fastest way to fix a typo in a prompt.
+                  // 在空的输入框中按 ↑ 会编辑最后一条用户消息 （Codex
+                  // 风格）——这是修正提示词中拼写错误的最快方式。
                   if (e.key === "ArrowUp" && input.length === 0 && !editing && !running && !e.nativeEvent.isComposing && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
                     for (let i = messages.length - 1; i >= 0; i--) {
                       const m = messages[i];
@@ -3320,8 +3276,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         startEdit(m.text);
                         return;
                       }
-                      // A confirm card between the user message and now means
-                      // editing would misrepresent the pending interaction.
+                      // 用户消息与当前时刻之间有确认卡片，意味着编辑会错误地呈
+                      // 现待处理的交互。
                       if (m.kind === "confirm") return;
                     }
                   }
@@ -3339,11 +3295,11 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 }}
                 placeholder={active ? "输入消息，@ 引用文件或指定助手，/ 调用技能" : "输入消息开始新对话"}
                 aria-label="消息输入框"
-                // Typing stays available while a reply streams (matching the
-                // desktops this app mirrors); send() guards the running state.
+                // 回复流式输出期间仍可继续输入（与本应用所模仿的桌面端一致）；s
+                // end() 会对运行中状态加以防护。
                 disabled={!active && providerCount === 0}
-                // Cap the growing textarea so a long paste shrinks the message
-                // list instead of squeezing the composer out of the viewport.
+                // 限制不断增高的文本域，使长内容粘贴时缩小消息列表，而不是把输
+                // 入框挤出视口。
                 className="max-h-48 min-h-[64px] resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 text-md leading-[1.65] shadow-none hover:bg-transparent focus:bg-transparent focus-visible:border-0 focus-visible:ring-0"
               />
               <input
@@ -3455,10 +3411,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                   {contextTip && (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        {/* A button (not a bare div) so the numbers are reachable
-                            by keyboard: Radix opens the card on focus, and the
-                            flattened aria-label carries them even when the
-                            hover card never renders. */}
+                        {/* 使用 button（而不是裸 div），让这些数字可通过键盘访问： Radix 会在获得焦点时打开卡片，而扁平化后的 aria-label 即使在悬停卡片绝不渲染时也会包含这些数字。 */}
                         <button
                           type="button"
                           aria-label={contextTip.ariaLabel}
@@ -3627,7 +3580,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         />
       )}
 
-      {/* Session stats dialog */}
+      {/* 会话统计对话框 */}
       <ConfirmDialog request={confirmRequest} onClose={() => setConfirmRequest(null)} />
       <Dialog open={statsOpen} onOpenChange={setStatsOpen}>
         <DialogContent className="sm:max-w-sm">
@@ -3708,7 +3661,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         </DialogContent>
       </Dialog>
 
-      {/* Rename dialog */}
+      {/* 重命名对话框 */}
       <Dialog open={!!renaming} onOpenChange={(v) => !v && setRenaming(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -3732,7 +3685,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         </DialogContent>
       </Dialog>
 
-      {/* Project rename dialog */}
+      {/* 项目重命名对话框 */}
       <Dialog open={!!renamingProject} onOpenChange={(v) => !v && setRenamingProject(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -3761,4 +3714,4 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   );
 }
 
-/** Onboarding guides first-run users like Codex/Claude desktops do. */
+/** 新手引导参照 Codex/Claude 桌面端的做法，为首次运行的用户提供指引。 */

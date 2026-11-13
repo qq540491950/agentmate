@@ -17,7 +17,7 @@ import {
 } from "@/lib/executionDisplay";
 import { cn } from "@/lib/utils";
 
-/** STATUS_META maps an execution block's state to its header badge. */
+/** STATUS_META 将执行块的状态映射到其头部徽标。 */
 const STATUS_META: Record<ToolGroupStatus, { label: string; icon: ReactNode; cls: string }> = {
   confirm: { label: "等待确认", icon: <ShieldAlert className="h-3.5 w-3.5 text-warning" />, cls: "bg-warning-soft text-warning" },
   running: { label: "运行中", icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-accent-text" />, cls: "bg-accent-soft text-accent-text" },
@@ -26,21 +26,21 @@ const STATUS_META: Record<ToolGroupStatus, { label: string; icon: ReactNode; cls
 };
 
 /**
- * ToolCallGroup collapses one contiguous execution run — thinking entries,
- * tool calls/results and HITL confirmations — into a summary row. Assistant
- * narration is deliberately not part of the group: a later tool call must not
- * absorb text that was already shown on the conversation timeline. The
- * display mode picks its default expansion: auto follows the run state,
- * concise stays folded (except HITL), detailed stays open, and none hides the
- * block. A user click always wins for that block. Expanding shows the thought
- * rows and one compact row per invocation; clicking a row keeps its
- * input/output detail and artifact previews.
+ * ToolCallGroup 将一段连续执行过程——思考条目、工具调用/结果以及 HITL
+ * 确认——折叠为一行摘要。助手叙述有意不属于该分组：后续工具调用不得吸收已经显示
+ * 在会话时间线上的文本。显示模式决定其默认展开状态：auto 跟随运行状态，concise
+ * 保持折叠（HITL 除外），detailed 保持展开，none
+ * 则隐藏该块。对于该块，用户点击始终优先。展开后会显示思考行以及每次调用一行紧
+ * 凑记录；点击某行会保留其输入/输出详情和产物预览。
  */
 export function ToolCallGroup({ group, live, runningTools, durations, sessionID, filterQ, displayMode, onConfirm }: {
-  /** group carries the turn's messages, its final-reply timestamp and outcome
-   *  (answered/errored) so the header reports the run, not a single step. */
+  /**
+   * group
+   * 携带该回合的消息、其最终回复的时间戳和结果（answered/errored），以便头部报
+   * 告整个运行，而不是单个步骤。
+   */
   group: ToolGroup;
-  /** live keeps the summary ticking while the current turn still streams. */
+  /** 在当前回合仍流式输出期间，live 使摘要持续计时。 */
   live?: boolean;
   runningTools: Set<string>;
   durations: Map<string, number>;
@@ -49,8 +49,8 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
   displayMode: ExecutionDisplayMode;
   onConfirm: (msgId: string, callId: string | undefined, approved: boolean) => void;
 }) {
-  // null means "follow the run state": expanded while running/awaiting a
-  // confirmation, collapsed once settled. An explicit click wins from then on.
+  // null 表示 "follow the run
+  // state"：在运行中/等待确认时展开，稳定后折叠。此后显式点击优先。
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
   useEffect(() => { setUserExpanded(null); }, [displayMode]);
   const messages = group.messages;
@@ -60,10 +60,9 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
   const hidden = executionHidden(displayMode, status);
   const meta = STATUS_META[status];
   const trace = buildToolTrace(messages);
-  // The expanded process list is a bounded scroll region: a long run must not
-  // push the final answer (or the composer) off the window. While the turn is
-  // live, follow appended steps only when the reader is already at the
-  // bottom; scrolling up is treated as "I am reading this part".
+  // 展开后的过程列表是有界滚动区域：长时间运行不得将最终答案（或输入框）挤出窗
+  // 口。当回合仍在进行时，仅当读者已经位于底部，才跟随追加的步骤；向上滚动会被
+  // 视为 "I am reading this part"。
   const executionScrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const wasExpandedRef = useRef(false);
@@ -106,8 +105,8 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
       ? `${runningSteps.length} 个并行`
       : "";
 
-  // The whole-turn clock keeps ticking while the turn is live (including the
-  // final answer's own generation) and freezes once it settles.
+  // 整回合时钟在回合进行期间持续计时（包括最终答案自身的生成过程），并在稳定后
+  // 冻结。
   const ticking = !hidden && (live || status === "running" || status === "confirm");
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -116,16 +115,17 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
     return () => window.clearInterval(id);
   }, [ticking]);
   const computedMs = toolGroupElapsedMs(messages, group.endTs, now, !!live, durations);
-  // Live timestamps are "now", but a settled turn falls back to the final
-  // reply's creation time; keep the peak so the summary never shrinks.
+  // 实时时间戳为
+  // "now"，但已稳定的回合会回退到最终回复的创建时间；保留峰值，以确保摘要绝不缩
+  // 短。
   const [peakMs, setPeakMs] = useState(0);
   useEffect(() => {
     if (computedMs != null && computedMs > peakMs) setPeakMs(computedMs);
   }, [computedMs, peakMs]);
   const elapsedMs = computedMs == null ? null : Math.max(computedMs, peakMs);
 
-  // "无" hides the process block, but a pending HITL confirmation must remain
-  // actionable; executionHidden intentionally exempts status === "confirm".
+  // "无" 会隐藏过程块，但待处理的 HITL 确认必须保持可操作；executionHidden
+  // 有意豁免 status === "confirm"。
   if (hidden) return null;
 
   return (
@@ -171,8 +171,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
           {meta.label}
         </Badge>
       </button>
-      {/* Collapse is animated with the grid-rows 0fr→1fr trick: the content stays
-          mounted so streaming appends don't remount it, and CSS does the height. */}
+      {/* 折叠动画使用 grid-rows 0fr→1fr 技巧：内容保持挂载，因此流式追加不会导致其重新挂载，高度由 CSS 负责。 */}
       <div
         aria-hidden={!expanded}
         className={cn(

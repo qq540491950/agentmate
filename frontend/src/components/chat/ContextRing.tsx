@@ -8,10 +8,9 @@ const RING_COLOR: Record<ContextUsageView["color"], string> = {
 };
 
 /**
- * ContextRing is the composer's context-usage indicator, in the Codex desktop
- * style: a small progress circle that fills with the session's context
- * occupancy. The numbers live in the wrapper's tooltip — the ring itself
- * stays mute so the composer toolbar keeps its footprint.
+ * ContextRing 是输入区的上下文用量指示器，采用 Codex
+ * 桌面端风格：一个小型进度圆环，随会话的上下文占用情况填充。数值位于外层容器的
+ * 工具提示中——圆环本身保持静默，从而让输入区工具栏保持其占用空间。
  */
 export function ContextRing({ usage }: { usage: ContextUsageView }) {
   const r = 6.5;

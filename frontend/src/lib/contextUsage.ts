@@ -1,19 +1,18 @@
-// 上下文占用条口径：真实上下文 = 最后一次模型调用的 prompt tokens。
-// 每次调用都重复携带完整历史前缀，把历次调用的用量累加（计费口径的
-// totalTokens）再除以窗口，会数倍于真实占用——长工具循环会话因此误报
-// 「上下文即将耗尽」而实际占用可能只有窗口的一成多。
+// 上下文占用条的口径：真实上下文 = 最后一次模型调用的提示词 token 数。
+// 每次调用都会重复携带完整的历史前缀，把历次调用的用量累加（计费口径的
+// totalTokens）再除以窗口，结果会是真实占用的数倍——工具循环较长的会话因此会误报
+// 「上下文即将耗尽」，而实际占用可能只有窗口的一成多。
 export interface ContextUsageView {
   pct: number;
   color: "bg-destructive" | "bg-warning" | "bg-success";
   win: number;
   label: string;
   used: number;
-  /** estimated marks a ≈ approximation: the model's upstream never reported
-   *  usage metadata, so the view is derived from the conversation itself. */
+  /** estimated 表示 ≈ 近似值：模型的上游从未上报用量元数据，因此该视图由对话本身推导得出。 */
   estimated: boolean;
 }
 
-/** 真实上下文占用 → 视图；无数据（模型未报 usage）时不渲染而不是猜测。 */
+/** 真实上下文占用 → 视图；无数据（模型未上报用量）时不渲染，而不是猜测。 */
 export function resolveContextUsage(
   contextTokens: number | undefined | null,
   contextWindow: number,
@@ -27,60 +26,61 @@ export function resolveContextUsage(
   return { pct, color, win: contextWindow, label, used: contextTokens, estimated };
 }
 
-/** trimTrailingZero formats one decimal, dropping a ".0" suffix. */
+/** trimTrailingZero 将数值格式化为一位小数，并去掉 ".0" 后缀。 */
 function trimTrailingZero(v: number): string {
   return (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, "");
 }
 
 /**
- * compactTokens shortens a token count for the hover bubble: 265000 → "265k",
- * 996000 → "996k", 1500 → "1.5k", 1000000 → "1M"; below 1000 stays exact.
- * The bubble sits above a 16px ring, so full thousands separators
- * ("996,000 tokens") wrapped the line in two.
+ * compactTokens 会为悬停气泡简写 token 计数：265000 → "265k"，996000 →
+ * "996k"，1500 → "1.5k"，1000000 → "1M"；低于 1000 时保持精确。 气泡位于 16px
+ * 圆环上方，因此完整的千位分隔符（"996,000 tokens"）会让该行折成两行。
  */
 export function compactTokens(n: number): string {
   const value = Math.max(0, Math.round(n || 0));
   if (value < 1000) return String(value);
-  // One decimal only while it carries information: 1.5k, but 265k (not 265.0k).
+  // 仅当小数位携带信息时保留一位小数：1.5k，但 265k（不是 265.0k）。
   const k = Math.round(value / 100) / 10;
   if (k < 1000) return `${trimTrailingZero(k)}k`;
   return `${trimTrailingZero(value / 1_000_000)}M`;
 }
 
-/** SessionUsageSummary is the cumulative-billing subset the tooltip appends. */
+/** SessionUsageSummary 是工具提示追加的累计计费子集。 */
 export interface SessionUsageSummary {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
-  /** cachedTokens is the cached share of the CURRENT prompt (last call). Zero
-   *  when the provider does not report prompt caching — it never means
-   *  "cache miss" on its own. */
+  /**
+   * cachedTokens
+   * 是当前提示词（最后一次调用）的缓存部分。当供应商未上报提示词缓存时为零——它
+   * 本身绝不表示 "cache miss"。
+   */
   cachedTokens?: number;
 }
 
-/** ContextTooltipContent is the hover bubble's structured text. */
+/** ContextTooltipContent 是悬停气泡的结构化文本。 */
 export interface ContextTooltipContent {
-  /** title is the bubble's heading line ("背景信息窗口："). */
+  /** title 是气泡的标题行（"背景信息窗口："）。 */
   title: string;
-  /** rows are the detail lines under the heading. */
+  /** rows 是标题下方的明细行。 */
   rows: string[];
-  /** ariaLabel flattens the bubble into one sentence for the ring's
-   *  aria-label — keyboard and screen-reader users never see the hover card. */
+  /**
+   * ariaLabel 将气泡内容压缩成一句话，供圆环的 aria-label
+   * 使用——键盘用户和屏幕阅读器用户绝不会看到悬停卡片。
+   */
   ariaLabel: string;
 }
 
 /**
- * contextTooltipLines renders the hover card above the composer's context
- * ring. Three lines at most — window occupancy, the cached share when the
- * provider reports one, and the cumulative billed total:
+ * contextTooltipLines
+ * 在输入区的上下文圆环上方渲染悬停卡片。最多三行——窗口占用情况、供应商报告时的
+ * 缓存占比，以及累计计费总额：
  *
- *   背景信息窗口：
- *   11% 已用（剩余 89%）
- *   已用 109k 标记，共 996k
+ * 背景信息窗口： 11% 已用（剩余 89%） 已用 109k 标记，共 996k
  *
- * The cache line only appears for a real hit: a model that never reports
- * caching must not gain a "0 cached" row. Pure so the wording stays
- * unit-tested; null means "nothing to say" and the caller renders no card.
+ * 缓存行仅在真实命中时出现：从未报告缓存的模型不得增加一行 "0
+ * cached"。此函数是纯函数，因此文案仍可进行单元测试；null 表示 "nothing to
+ * say"，调用方不渲染卡片。
  */
 export function contextTooltipLines(
   usage: ContextUsageView | null,
@@ -91,8 +91,7 @@ export function contextTooltipLines(
   if (usage) {
     const remain = Math.max(0, 100 - Math.min(100, usage.pct));
     rows.push(`${usage.label} 已用（剩余 ${remain.toFixed(0)}%）`);
-    // Window occupancy is measured in 标记 (the product wording for the
-    // model's token budget), matching the reference bubble.
+    // 窗口占用以标记为单位（这是模型 token 预算的产品措辞），与参考气泡一致。
     rows.push(`已用 ${compactTokens(usage.used)} 标记，共 ${compactTokens(usage.win)}`);
     if (usage.estimated) rows.push("按会话内容估算——当前模型未返回用量");
   }
@@ -112,7 +111,7 @@ export function contextTooltipLines(
   };
 }
 
-/** EstimateMessage is the per-message subset the estimator reads. */
+/** EstimateMessage 是估算器读取的逐消息子集。 */
 export type EstimateMessage = {
   kind: string;
   text?: string;
@@ -120,16 +119,16 @@ export type EstimateMessage = {
   toolResp?: { [k: string]: any } | null;
 };
 
-// Per-message cap: a huge tool payload saturates the estimate either way, and
-// the cap bounds the stringify/scan work on tool-heavy sessions.
+// 每条消息的上限：巨大的工具载荷无论如何都会使估算饱和，而该上限限制了工具调用
+// 密集的会话中的字符串化/扫描工作量。
 const estimatePerMessageCap = 96 * 1024;
 
 /**
- * estimateContextTokens approximates the next call's prompt size from the
- * conversation itself: prose chars count ≈0.7 tokens for CJK and ≈0.25 for
- * everything else, plus a small per-message envelope. It only feeds the ≈
- * fallback for models whose upstream never reports usage (some gateways
- * ignore stream_options.include_usage) — real usage metadata always wins.
+ * estimateContextTokens 会从对话本身估算下一次调用的提示词大小：CJK 字符按约
+ * 0.7 个 token 计，其余字符按约 0.25 个 token
+ * 计，另加每条消息的一点固定开销。它仅用于为上游从不报告用量的模型提供 ≈
+ * 回退值（某些网关会忽略
+ * stream_options.include_usage）——真实用量元数据始终优先。
  */
 export function estimateContextTokens(messages: EstimateMessage[]): number {
   let cjk = 0;

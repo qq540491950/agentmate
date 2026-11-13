@@ -1,9 +1,8 @@
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
-// The app applies its own theme by toggling the `dark` class on <html>;
-// there is no next-themes provider, so toasts read that class directly
-// instead of silently staying on the system theme.
+// 应用通过切换 `<html>` 上的 `dark` 类来应用自身主题； 这里没有 next-themes
+// provider，因此 toast 会直接读取该类， 而不是静默地停留在系统主题上。
 const Toaster = ({ ...props }: ToasterProps) => {
   const dark = document.documentElement.classList.contains("dark")
   const theme = dark ? "dark" : "light"

@@ -18,48 +18,46 @@ import (
 	"agentmate/internal/config"
 )
 
-// Event names emitted to the frontend (registered in main.go).
+// EventChatStream 是发送到前端的事件名称（在 main.go 中注册）。
 const (
 	EventChatStream = "chat:stream"
 )
 
-// appEventHook, when set (tests), receives stream events instead of the
-// Wails event bus.
+// appEventHook 在设置后（测试中）接收流式事件，而不是通过 Wails 事件总线。
 var appEventHook func(ChatStreamEvent)
 
-// AttachmentIn is an image the user attaches to a message (base64 data).
+// AttachmentIn 是用户附加到消息上的图片（base64 数据）。
 type AttachmentIn struct {
 	Name string `json:"name"`
 	MIME string `json:"mime"`
-	Data string `json:"data"` // base64, no data: prefix
+	Data string `json:"data"` // base64，不带 data: 前缀
 }
 
-// AttachmentOut is an attachment rendered in chat history.
+// AttachmentOut 是聊天历史中渲染的附件。
 type AttachmentOut struct {
 	Name    string `json:"name"`
 	MIME    string `json:"mime"`
 	DataURL string `json:"dataUrl"`
 }
 
-// UsageInfo reports token consumption for a turn or a whole session.
-// ContextTokens is the CURRENT context occupancy: the last model call's
-// prompt token count (addUsage overwrites it on every call, so it never
-// accumulates). Deliberately not the cumulative total — every call re-sends
-// the full history, so the sum over a tool loop is a multiple of the real
-// context size (billing semantics vs window semantics).
+// UsageInfo 报告一个回合或整个会话的 token 消耗。 ContextTokens
+// 是当前上下文占用：最后一次模型调用的提示词 token 数（addUsage
+// 在每次调用时都会覆盖它，因此它绝不会累加）。有意不采用累计总量——每次调用都会
+// 重新发送完整历史，因此一次工具循环中各次调用的总和会是真实上下文大小的倍数（
+// 计费语义与窗口语义）。
 type UsageInfo struct {
 	PromptTokens     int64 `json:"promptTokens"`
 	CompletionTokens int64 `json:"completionTokens"`
 	TotalTokens      int64 `json:"totalTokens"`
 	ContextTokens    int64 `json:"contextTokens,omitempty"`
-	// CachedTokens is the part of the last prompt that the provider served
-	// from its prompt cache (Anthropic cache_read_input_tokens, OpenAI-style
-	// prompt_tokens_details.cached_tokens). Zero means "no caching reported",
-	// never "cache miss" — several gateways simply omit the field.
+	// CachedTokens 是最后一次提示词中由供应商从其提示词缓存提供的部分（Anthropic
+	// cache_read_input_tokens、OpenAI 风格的
+	// prompt_tokens_details.cached_tokens）。零表示 "no caching
+	// reported"，绝不表示 "cache miss"——若干网关只是省略该字段。
 	CachedTokens int64 `json:"cachedTokens,omitempty"`
 }
 
-// ChatStreamEvent is streamed to the frontend while a run progresses.
+// ChatStreamEvent 在一次运行进行期间流式发送到前端。
 type ChatStreamEvent struct {
 	SessionID string         `json:"sessionId"`
 	Kind      string         `json:"kind"` // user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|done|error
@@ -68,27 +66,24 @@ type ChatStreamEvent struct {
 	ToolName  string         `json:"toolName,omitempty"`
 	ToolArgs  map[string]any `json:"toolArgs,omitempty"`
 	ToolResp  map[string]any `json:"toolResp,omitempty"`
-	// CallID identifies the ADK call this event refers to: the tool_call /
-	// tool_result pair, or a confirmation interrupt. Confirmation answers are
-	// sent back via ConfirmToolCall.
+	// CallID 标识此事件所指的 ADK 调用：tool_call / tool_result
+	// 对，或一次确认中断。确认答复通过 ConfirmToolCall 回传。
 	CallID string `json:"callId,omitempty"`
-	// Hint is the model-provided explanation shown on the confirmation card.
+	// Hint 是模型提供的说明，显示在确认卡片上。
 	Hint string `json:"hint,omitempty"`
-	// Usage is set on the final assistant message event of a turn.
+	// Usage 在回合的最后一条助手消息事件上设置。
 	Usage *UsageInfo `json:"usage,omitempty"`
-	// Attachments ride on user events so a just-sent message (and a
-	// regenerated one) renders its images without waiting for a history
-	// reload.
+	// Attachments 随用户事件携带，使刚发送的消息（以及重新生成的消息）无需等待历史记录重新加载
+	// 即可渲染其图片。
 	Attachments []AttachmentOut `json:"attachments,omitempty"`
-	// Reasoning is the thinking level applied to this turn (empty when the
-	// model offers no table or the level was left to the provider default).
-	// Set on user events so the bubble can show the level it was sent with.
+	// Reasoning 是应用于本回合的思考级别（当模型未提供表，或该级别留由供应商默认值决定时为空
+	// ）。在用户事件上设置，以便气泡能显示其发送时所带的级别。
 	Reasoning string `json:"reasoning,omitempty"`
-	// SessionUsage is the cumulative usage of the session, set on done events.
+	// SessionUsage 是会话的累计用量，在 done 事件上设置。
 	SessionUsage *UsageInfo `json:"sessionUsage,omitempty"`
 }
 
-// usageOf extracts token usage from an ADK event, if any.
+// usageOf 从 ADK 事件中提取 token 用量（如果存在）。
 func usageOf(ev *session.Event) *UsageInfo {
 	u := ev.LLMResponse.UsageMetadata
 	if u == nil {
@@ -103,7 +98,7 @@ func usageOf(ev *session.Event) *UsageInfo {
 	}
 }
 
-// ChatMessage is a rendered historical message.
+// ChatMessage 是渲染后的历史消息。
 type ChatMessage struct {
 	ID          string          `json:"id"`
 	Kind        string          `json:"kind"` // user|assistant|thinking|tool_call|tool_result|confirm_request|confirm_result
@@ -115,34 +110,34 @@ type ChatMessage struct {
 	CallID      string          `json:"callId,omitempty"`
 	Hint        string          `json:"hint,omitempty"`
 	Attachments []AttachmentOut `json:"attachments,omitempty"`
-	// Reasoning is the thinking level this turn was sent with; recorded on the
-	// user message's state delta so history and exports can show it.
+	// Reasoning 是这一回合发送时使用的思考级别；记录在用户消息的状态增量上，以便历史记录和导
+	// 出可以显示它。
 	Reasoning string    `json:"reasoning,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// turnReasoningStateKey records a turn's thinking level on the user message
-// event. The key deliberately has no "temp:" prefix: the database session
-// service strips temp keys from stored events, and history rendering needs
-// the value after a reload.
+// turnReasoningStateKey 在用户消息事件上记录一个回合的思考级别。该键刻意不带
+// "temp:"
+// 前缀：数据库会话服务会从已存储的事件中剥离临时键，而历史渲染在重新加载后需要
+// 该值。
 const turnReasoningStateKey = "agentmate.reasoning_level"
 
 const (
-	maxAttachmentBytes = 6 << 20 // 6 MB decoded per file
+	maxAttachmentBytes = 6 << 20 // 每个文件解码后 6 MB
 	maxAttachments     = 4
 )
 
-// directAssistantName is the display name of the implicit direct-chat agent.
+// directAssistantName 是隐式直聊 Agent 的显示名称。
 const directAssistantName = "助手"
 
 var attachmentMIMEAllowed = map[string]bool{
 	"image/png": true, "image/jpeg": true, "image/webp": true, "image/gif": true,
 }
 
-// displayAuthor maps an ADK event author (the sanitized identifier ADK runs
-// under) back to the configured display name. Non-ASCII agent names always
-// sanitize to the agent_<hash> fallback — without this mapping the chat UI
-// would show that hash on every bubble. Unknown authors pass through.
+// displayAuthor 将 ADK 事件作者（ADK
+// 运行所用的净化标识符）映射回配置的显示名称。非 ASCII 的 Agent
+// 名称始终会净化为 agent_<hash> 回退名称——没有此映射，聊天 UI
+// 会在每个气泡上显示该哈希。未知作者原样透传。
 func displayAuthor(cfg config.Config, author string) string {
 	if author == "" || author == "user" {
 		return author
@@ -163,7 +158,7 @@ func displayAuthor(cfg config.Config, author string) string {
 	return author
 }
 
-// buildUserContent assembles the user message content: text plus image parts.
+// buildUserContent 组装用户消息内容：文本加图像部分。
 func buildUserContent(text string, atts []AttachmentIn) (*genai.Content, error) {
 	content := genai.NewContentFromText(text, genai.RoleUser)
 	for i, a := range atts {
@@ -187,8 +182,7 @@ func buildUserContent(text string, atts []AttachmentIn) (*genai.Content, error) 
 	return content, nil
 }
 
-// attachmentsOut converts the user message's inline images into the render
-// form used by chat history and stream events.
+// attachmentsOut 将用户消息中的内联图片转换为聊天历史和流式事件所用的渲染形式。
 func attachmentsOut(content *genai.Content) []AttachmentOut {
 	if content == nil {
 		return nil
@@ -206,49 +200,45 @@ func attachmentsOut(content *genai.Content) []AttachmentOut {
 	return out
 }
 
-// ChatService manages chat sessions and streaming runs over ADK.
+// ChatService 管理基于 ADK 的聊天会话和流式运行。
 type ChatService struct {
 	S *Services
 
 	mu   sync.Mutex
 	runs map[string]*runHandle
-	// active tracks EVERY in-flight handle per session. runs only holds the
-	// current one (used for cancel); an overlapping older run may still be
-	// unwinding, and history-mutating entry points must wait for it too.
+	// active 跟踪每个会话中的每一个在途句柄。runs
+	// 仅保存当前句柄（用于取消）；重叠的较旧运行可能仍在收尾，修改历史的入口点也必
+	// 须等待它。
 	active    map[string]map[*runHandle]struct{}
 	sessions  session.Service
-	db        *gorm.DB // shared SQLite handle for event trimming (Regenerate)
+	db        *gorm.DB // 用于事件裁剪的共享 SQLite 句柄（Regenerate）
 	appName   string
 	userID    string
-	auditPath string // JSONL tool-audit trail; empty = disabled
+	auditPath string // JSONL 工具审计轨迹；为空 = 禁用
 	auditMu   sync.Mutex
-	// workspaceMu serializes task-workspace assignment/rebinding so two
-	// concurrent creations cannot both claim the same physical directory.
+	// workspaceMu 串行化任务工作区的分配/重新绑定，使两个并发创建不能都占用同一物理目录。
 	workspaceMu sync.Mutex
-	// workspaceLocks serialize one session's turn against workspace rebinding;
-	// different tasks can still run and create concurrently.
+	// workspaceLocks 串行化同一会话的回合与工作区重新绑定；不同任务仍可并发运行和创建。
 	workspaceLocks map[string]*sync.Mutex
-	// sessionTerminals freezes the shell a session started with. It is
-	// intentionally memory-only: sessions restored after an app restart pick
-	// up the current global setting.
+	// terminalMu：sessionTerminals 冻结会话启动时所用的
+	// shell。它有意仅存于内存：应用重启后恢复的会话会采用当前的全局设置。
 	terminalMu       sync.Mutex
 	sessionTerminals map[string]config.TerminalSettings
 }
 
-// runHandle identifies one in-flight turn. The pointer identity lets a
-// finishing run remove only its own registration; a plain map delete would
-// drop a newer run's cancel func when turns overlap.
+// runHandle 标识一个进行中的回合。指针身份使一个正在结束的运行仅移除它自己的注册；普通的
+// map delete 会在回合重叠时丢掉较新运行的 cancel func。
 type runHandle struct {
 	cancel context.CancelFunc
-	// done is closed by release once the run has fully unwound (no more
-	// event writes); history-mutating entry points wait on it.
+	// done 在运行完全结束（不再有事件写入）后由 release
+	// 关闭；修改历史的入口点会等待它。
 	done chan struct{}
 }
 
-// SetToolAuditPath enables the JSONL tool-call audit trail at path.
+// SetToolAuditPath 在 path 处启用 JSONL 工具调用审计追踪。
 func (c *ChatService) SetToolAuditPath(path string) { c.auditPath = path }
 
-// NewChatService creates the service. db may be nil (disables Regenerate trimming).
+// NewChatService 创建服务。db 可以为 nil（禁用 Regenerate 裁剪）。
 func NewChatService(s *Services, sessions session.Service, db *gorm.DB) *ChatService {
 	return &ChatService{
 		S:                s,
@@ -295,13 +285,12 @@ func (c *ChatService) forgetSessionTerminal(sessionID string) {
 	delete(c.sessionTerminals, sessionID)
 }
 
-// auditMaxBytes caps the audit file before rotation (10MB).
+// auditMaxBytes 限制审计文件在轮转前的大小（10MB）。
 const auditMaxBytes = 10 << 20
 
-// audit appends one JSONL line for the tool audit trail. At auditMaxBytes the
-// file rotates to <path>.old. Failures are silently ignored: auditing must
-// never break the conversation. Guarded by a mutex — parallel sessions rotate
-// and append concurrently.
+// audit 为工具审计轨迹追加一行 JSONL。达到 auditMaxBytes 时，文件轮转到
+// <path>.old。失败会被静默忽略：审计绝不能中断对话。由互斥锁保护——并行会话
+// 会并发轮转和追加。
 func (c *ChatService) audit(sessionID, phase, author, tool string, payload []byte, errMsg string) {
 	if c.auditPath == "" || !c.S.Store.Get().Settings.ToolsAudit {
 		return
@@ -324,7 +313,7 @@ func (c *ChatService) audit(sessionID, phase, author, tool string, payload []byt
 	_, _ = f.Write(append(rec, '\n'))
 }
 
-// resultErrorOf extracts the error field from a tool response payload.
+// resultErrorOf 从工具响应载荷中提取 error 字段。
 func resultErrorOf(resp map[string]any) string {
 	if resp == nil {
 		return ""
@@ -347,9 +336,8 @@ func mustJSON(v any) []byte {
 	return b
 }
 
-// recoverRun converts a panic in the agent/tool stack into a stream error plus
-// a done event, so the UI always leaves the running state. Used as a deferred
-// helper from runTurn.
+// recoverRun 将 agent/tool 栈中的 panic 转换为流式错误以及一个 done 事件，使 UI
+// 始终离开运行状态。作为 runTurn 的延迟辅助函数使用。
 func (c *ChatService) recoverRun(sessionID string, err *error) {
 	r := recover()
 	if r == nil {
@@ -360,7 +348,7 @@ func (c *ChatService) recoverRun(sessionID string, err *error) {
 	*err = fmt.Errorf("run turn panicked: %v", r)
 }
 
-// Cancel aborts the in-flight run of a session, if any.
+// Cancel 中止会话当前正在进行的运行（如果有）。
 func (c *ChatService) Cancel(sessionID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -369,15 +357,15 @@ func (c *ChatService) Cancel(sessionID string) {
 	}
 }
 
-// IsRunning reports whether a session currently has an in-flight run.
+// IsRunning 报告会话当前是否有正在进行的运行。
 func (c *ChatService) IsRunning(sessionID string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.runs[sessionID] != nil
 }
 
-// registerRun cancels any previous run for the session and records the new
-// handle. The returned release must be called (deferred) when the run ends.
+// registerRun 取消该会话的任何先前运行，并记录新的句柄。运行结束时，必须调用（延迟调用）返
+// 回的 release。
 func (c *ChatService) registerRun(sessionID string, cancel context.CancelFunc) (release func()) {
 	h := &runHandle{cancel: cancel, done: make(chan struct{})}
 	c.mu.Lock()
@@ -401,7 +389,7 @@ func (c *ChatService) registerRun(sessionID string, cancel context.CancelFunc) (
 	}
 	return func() {
 		c.mu.Lock()
-		// Only unregister our own handle: a newer turn may already own the slot.
+		// 仅注销我们自己的句柄：更新的回合可能已经占用了该槽位。
 		if c.runs[sessionID] == h {
 			delete(c.runs, sessionID)
 		}
@@ -416,11 +404,10 @@ func (c *ChatService) registerRun(sessionID string, cancel context.CancelFunc) (
 	}
 }
 
-// cancelAndWaitBounded aborts every in-flight run of a session (the current
-// one and any overlapping older handle still unwinding) and waits — bounded
-// — until all of them have fully unwound. Regenerate / EditAndResend /
-// DeleteSession trim or delete stored events right after this returns; a run
-// that is still streaming could otherwise resurrect the deleted history.
+// cancelAndWaitBounded 中止会话的所有正在进行中的运行（当前运行以及任何仍在收尾的重叠旧句柄），并在
+// 有界时间内等待，直到它们全部完全收尾。Regenerate / EditAndResend /
+// DeleteSession 在此返回后立即裁剪或删除已存储的事件；否则，仍在流式输出的运行可能会使已删除
+// 的历史重新出现。
 func (c *ChatService) cancelAndWaitBounded(sessionID string) {
 	c.mu.Lock()
 	var handles []*runHandle
@@ -429,8 +416,7 @@ func (c *ChatService) cancelAndWaitBounded(sessionID string) {
 		handles = append(handles, h)
 		seen[h] = true
 	}
-	// Defensive: a handle registered before active existed (tests) still
-	// gates the trim.
+	// 防御性：在 active 存在之前注册的句柄（测试）仍会门控裁剪。
 	if h := c.runs[sessionID]; h != nil && !seen[h] {
 		handles = append(handles, h)
 	}
@@ -447,8 +433,7 @@ func (c *ChatService) cancelAndWaitBounded(sessionID string) {
 		select {
 		case <-h.done:
 		case <-ctx.Done():
-			// Bounded: a wedged unwind must not hang the RPC forever; the
-			// straggler's writes are no worse than the pre-fix behavior.
+			// 有界：卡住的收尾不得让 RPC 永久挂起；掉队者的写入不会比修复前的行为更糟。
 			return
 		}
 	}

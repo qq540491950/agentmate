@@ -1,22 +1,22 @@
-/** Composer "@" reference parsing and candidate selection.
+/**
+ * 输入框的 "@" 引用解析与候选项选择。
  *
- * The token detector is caret-aware: "@" works anywhere in the message, not
- * only at the start. Leading tokens additionally offer agents/teams/remotes
- * (the backend routes those), while every token offers workspace files and
- * folders. Paths containing spaces are written in the @"quoted path" form the
- * backend parses.
+ * 标记检测器会感知光标位置："@"
+ * 在消息中的任意位置均有效，而不仅限于开头。位于开头的标记还会额外提供
+ * Agent/团队/远程项（后端会路由这些项），而每个标记都会提供工作区文件和文件夹。
+ * 包含空格的路径采用后端会解析的 @"quoted path" 形式书写。
  */
 
 export type MentionToken = {
-  /** Index of the "@" in the input. */
+  /** 输入中 "@" 的索引。 */
   start: number;
-  /** Caret position; the query ends here. */
+  /** 光标位置；查询在此处结束。 */
   caret: number;
-  /** End of the existing token text (exclusive), so a mid-token pick replaces it. */
+  /** 现有标记文本的结束位置（不含），因此从标记中间选择时会替换该标记。 */
   end: number;
-  /** Lowercased text between "@" and the caret. */
+  /** 位于 "@" 与光标之间且已转为小写的文本。 */
   query: string;
-  /** True when the token is the first thing in the message (routing allowed). */
+  /** 当标记是消息中的第一个内容时为 true（允许路由）。 */
   leading: boolean;
 };
 
@@ -33,12 +33,12 @@ export type MentionCandidate =
   | { kind: "file"; path: string }
   | { kind: "directory"; path: string };
 
-/** isAssistantCandidate narrows a popup row to the routing entries. */
+/** isAssistantCandidate 将弹窗行收窄为路由条目。 */
 export function isAssistantCandidate(c: MentionCandidate): c is AssistantCandidate {
   return c.kind === "agent" || c.kind === "team" || c.kind === "remote";
 }
 
-/** Sentence punctuation and whitespace end an unquoted path token. */
+/** 句子标点和空白字符会终止未加引号的路径标记。 */
 const TERMINATORS = new Set([
   " ", "\t", "\n", "\r", "\f", "\v",
   "@", '"', "'", ",", ";", ":", "!", "?", "(", ")", "[", "]", "{", "}", "<", ">",
@@ -49,7 +49,7 @@ function isTerminator(ch: string): boolean {
   return TERMINATORS.has(ch) || /\s/.test(ch);
 }
 
-/** ASCII word characters before "@" keep e-mail/URL text from becoming claims. */
+/** "@" 前的 ASCII 单词字符可避免电子邮件/URL 文本被当作提及。 */
 function isWordChar(ch: string): boolean {
   return /[A-Za-z0-9_.+-]/.test(ch);
 }
@@ -59,8 +59,8 @@ function isLeading(text: string, at: number): boolean {
 }
 
 /**
- * mentionAtCaret returns the @ token the caret is inside, or null. Quoted
- * paths ("@\"my notes.md\"") stay open while the caret is inside the quotes.
+ * mentionAtCaret 返回光标所处的 @ 标记；若光标不在任何标记内，则返回
+ * null。带引号的路径（"@\"my notes.md\""）在光标位于引号内时保持打开状态。
  */
 export function mentionAtCaret(text: string, caret: number): MentionToken | null {
   const pos = Math.max(0, Math.min(caret, text.length));
@@ -71,7 +71,7 @@ export function mentionAtCaret(text: string, caret: number): MentionToken | null
 
   if (text[at + 1] === '"') {
     const close = text.indexOf('"', at + 2);
-    if (close >= 0 && close + 1 <= pos) return null; // caret is past the token
+    if (close >= 0 && close + 1 <= pos) return null; // 光标已越过该标记
     if (pos < at + 1) return null;
     const queryEnd = close >= 0 ? Math.min(pos, close) : pos;
     return {
@@ -83,11 +83,11 @@ export function mentionAtCaret(text: string, caret: number): MentionToken | null
     };
   }
 
-  // Unquoted: a separator between "@" and the caret means the token is over.
+  // 未加引号时："@" 与光标之间出现分隔符即表示该标记已结束。
   for (let i = at + 1; i < pos; i++) {
     if (isTerminator(text[i])) return null;
   }
-  // "@ " with the caret right after the @ is not a token yet.
+  // "@ " 且光标紧跟 @ 之后时，尚不构成标记。
   if (pos === at + 1 && text[at + 1] !== undefined && isTerminator(text[at + 1])) {
     return null;
   }
@@ -103,9 +103,9 @@ export function mentionAtCaret(text: string, caret: number): MentionToken | null
 }
 
 /**
- * applyMentionToken replaces the token under the caret with the picked value.
- * Folders keep the caret right after the inserted slash so the menu continues
- * into the folder; files/assistants get one trailing space.
+ * applyMentionToken
+ * 用选中的值替换光标处的标记。文件夹会将光标保留在插入的斜杠之后，以便菜单继续
+ * 进入该文件夹；文件/助手则会在末尾添加一个空格。
  */
 export function applyMentionToken(
   text: string,
@@ -114,8 +114,8 @@ export function applyMentionToken(
   opts: { trailingSpace?: boolean } = {},
 ): { text: string; caret: number } {
   const trailingSpace = opts.trailingSpace ?? true;
-  // Whitespace and quote characters need the @"..." form; the backend parser
-  // otherwise ends the token at them.
+  // 空白字符和引号字符需要使用 @"..."
+  // 形式；否则后端解析器会在这些字符处结束该标记。
   const quoted = /[\s"']/.test(value);
   const escaped = value.replace(/"/g, "");
   const tokenText = quoted ? `@"${escaped}"` : `@${value}`;
@@ -148,10 +148,10 @@ function scorePath(path: string, query: string): number {
 }
 
 /**
- * buildMentionCandidates ranks the unified popup list: assistants first while
- * the token is leading (the backend only routes a leading mention), then
- * workspace folders/files with basename matches before path matches. The
- * result is capped so a huge workspace never floods the composer.
+ * buildMentionCandidates
+ * 对统一弹窗列表排序：当标记位于开头时优先显示助手（后端仅路由位于开头的提及）
+ * ，然后是工作区文件夹/文件，其中基名匹配排在路径匹配之前。结果数量设有上限，因
+ * 此庞大的工作区绝不会淹没输入框。
  */
 export function buildMentionCandidates(
   token: MentionToken,

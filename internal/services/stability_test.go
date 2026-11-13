@@ -27,9 +27,8 @@ func newTestServices(store *config.Store) *Services {
 	return &Services{Store: store, Kit: agentkit.NewKit(store, mcpmgr.New()), MCP: mcpmgr.New()}
 }
 
-// TestRunTurnPanicBecomesErrorEvent: a panic in the agent/tool stack must not
-// crash the process; it surfaces as an error event plus done so the UI leaves
-// the running state.
+// TestRunTurnPanicBecomesErrorEvent: agent/tool 栈中的 panic
+// 不得导致进程崩溃；它会以错误事件加 done 的形式暴露，以便 UI 退出运行状态。
 func TestRunTurnPanicBecomesErrorEvent(t *testing.T) {
 	var events []ChatStreamEvent
 	origApp := appEventHook
@@ -59,7 +58,7 @@ func TestRunTurnPanicBecomesErrorEvent(t *testing.T) {
 		t.Fatalf("panic recovery did not emit error+done: %+v", events)
 	}
 
-	// No panic => no events, error untouched.
+	// 没有 panic => 没有事件，错误保持不变。
 	events = nil
 	var clean error
 	func() {
@@ -70,10 +69,9 @@ func TestRunTurnPanicBecomesErrorEvent(t *testing.T) {
 	}
 }
 
-// TestRunHandleUnregistersOnlyOwnEntry pins the overlap case: when turn B
-// starts before turn A has unwound, A's cleanup must not remove B's cancel
-// registration (which would make Cancel a no-op and IsRunning report false
-// for a run that is still streaming).
+// TestRunHandleUnregistersOnlyOwnEntry 锁定重叠场景：当回合 B 在回合 A
+// 尚未完成收尾前启动时，A 的清理不得移除 B 的取消注册项（否则会使 Cancel
+// 成为空操作，并让仍在流式传输的运行被 IsRunning 报告为 false）。
 func TestRunHandleUnregistersOnlyOwnEntry(t *testing.T) {
 	chat := &ChatService{runs: map[string]*runHandle{}}
 
@@ -85,10 +83,10 @@ func TestRunHandleUnregistersOnlyOwnEntry(t *testing.T) {
 	defer cancelB()
 	releaseB := chat.registerRun("s1", cancelB)
 
-	// Starting B cancels A (only one turn per session).
+	// 启动 B 会取消 A（每个会话仅一个回合）。
 	<-ctxA.Done()
 
-	releaseA() // A unwinds after B registered
+	releaseA() // A 在 B 注册后完成收尾
 	if !chat.IsRunning("s1") {
 		t.Fatal("finishing the old run deregistered the new one")
 	}
@@ -106,10 +104,9 @@ func TestRunHandleUnregistersOnlyOwnEntry(t *testing.T) {
 	_ = ctxB
 }
 
-// TestCancelAndWaitWaitsForEveryHandle: when turn B replaces A in the
-// registry, A may still be unwinding. History-mutating entry points must wait
-// for BOTH — waiting only on the current handle let A's remaining writes
-// resurrect trimmed history.
+// TestCancelAndWaitWaitsForEveryHandle: 当回合 B 在注册表中替换 A 时，A
+// 可能仍在收尾。会修改历史的入口必须等待两者——仅等待当前句柄会让 A
+// 剩余的写入使已裁剪的历史重新出现。
 func TestCancelAndWaitWaitsForEveryHandle(t *testing.T) {
 	chat := &ChatService{runs: map[string]*runHandle{}, active: map[string]map[*runHandle]struct{}{}}
 
@@ -118,7 +115,7 @@ func TestCancelAndWaitWaitsForEveryHandle(t *testing.T) {
 	releaseA := chat.registerRun("s1", cancelA)
 	_, cancelB := context.WithCancel(context.Background())
 	defer cancelB()
-	releaseB := chat.registerRun("s1", cancelB) // starting B cancels A
+	releaseB := chat.registerRun("s1", cancelB) // 启动 B 会取消 A
 
 	done := make(chan struct{})
 	go func() {
@@ -144,8 +141,8 @@ func TestCancelAndWaitWaitsForEveryHandle(t *testing.T) {
 	}
 }
 
-// TestStoreConcurrentUpdates hammers the config store from many goroutines to
-// verify the mutex keeps state consistent (no race, no lost schema).
+// TestStoreConcurrentUpdates 从多个 goroutine 反复冲击 config
+// 存储，以验证互斥锁保持状态一致（无竞态，无 schema 丢失）。
 func TestStoreConcurrentUpdates(t *testing.T) {
 	store, err := config.Open(t.TempDir())
 	if err != nil {
@@ -170,9 +167,8 @@ func TestStoreConcurrentUpdates(t *testing.T) {
 	}
 }
 
-// TestAdapterMalformedSSE feeds garbage lines, broken JSON and oversized
-// payloads into both adapters: they must skip noise and still produce a final
-// response without panicking.
+// TestAdapterMalformedSSE 向两个适配器输入垃圾行、损坏的 JSON
+// 和超大负载：它们必须跳过噪声，并在不 panic 的情况下仍生成最终响应。
 func TestAdapterMalformedSSE(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -180,7 +176,7 @@ func TestAdapterMalformedSSE(t *testing.T) {
 		_, _ = w.Write([]byte("data: not-json{{{\n\n"))
 		_, _ = w.Write([]byte("data: []\n\n"))
 		_, _ = w.Write([]byte("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\n\n"))
-		_, _ = w.Write([]byte("data: " + strings.Repeat("x", 300000) + "\n\n")) // oversized line
+		_, _ = w.Write([]byte("data: " + strings.Repeat("x", 300000) + "\n\n")) // 超长行
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
@@ -217,8 +213,8 @@ func TestAdapterMalformedSSE(t *testing.T) {
 	}
 }
 
-// TestSendCancelIsStable verifies cancel during a slow run terminates cleanly
-// without deadlocking the cancels map.
+// TestSendCancelIsStable 验证在慢速运行期间取消能够干净地终止，且不会使 cancels
+// map 死锁。
 func TestSendCancelIsStable(t *testing.T) {
 	block := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -268,7 +264,7 @@ func TestSendCancelIsStable(t *testing.T) {
 	if chat.IsRunning(sess.ID) {
 		t.Fatal("cancel left the run registered")
 	}
-	// Session remains usable afterwards.
+	// 之后会话仍可使用。
 	if _, err := chat.GetSessionMessages(sess.ID); err != nil {
 		t.Fatalf("session unusable after cancel: %v", err)
 	}

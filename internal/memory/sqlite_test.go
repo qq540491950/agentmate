@@ -18,8 +18,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// newFixture opens a temp database service plus a real ADK session containing
-// two exchanges, exercising the same storage used in production.
+// newFixture 会打开一个临时数据库服务以及一个真实的 ADK
+// 会话，该会话包含两轮交互，并使用与生产环境相同的存储。
 func newFixture(t *testing.T, texts ...string) (*SQLiteService, session.Session) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "m.db")))
@@ -79,8 +79,8 @@ func newFixture(t *testing.T, texts ...string) (*SQLiteService, session.Session)
 	return svc, get2.Session
 }
 
-// TestSearchMemoryEscapesLikeWildcards: a query containing % or _ must match
-// literally — "%"-wildcard queries used to hit every stored row.
+// TestSearchMemoryEscapesLikeWildcards：包含 % 或 _ 的查询必须按字面匹配——使用
+// "%" 通配符的查询过去会命中每一行已存储记录。
 func TestSearchMemoryEscapesLikeWildcards(t *testing.T) {
 	svc, sess := newFixture(t, "迁移进度 100% 完成并验证", "新增了 100 个单元测试")
 	if err := svc.AddSessionToMemory(context.Background(), sess); err != nil {
@@ -104,7 +104,7 @@ func TestSearchMemoryEscapesLikeWildcards(t *testing.T) {
 	if !found {
 		t.Fatal("literal 100% entry missing from results")
 	}
-	// "_" must also be literal: "europe_west" must not match "europe-west4".
+	// "_" 也必须按字面匹配："europe_west" 不得匹配 "europe-west4"。
 	resp, err = svc.SearchMemory(context.Background(), &memory.SearchRequest{AppName: "app", UserID: "u", Query: "100_"})
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +119,7 @@ func TestAddAndSearchMemory(t *testing.T) {
 	if err := svc.AddSessionToMemory(context.Background(), sess); err != nil {
 		t.Fatal(err)
 	}
-	// Idempotent: re-adding must not duplicate.
+	// 幂等：重新添加不得产生重复。
 	if err := svc.AddSessionToMemory(context.Background(), sess); err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestAddAndSearchMemory(t *testing.T) {
 		t.Fatal("relevant memory content missing")
 	}
 
-	// Unrelated query returns nothing.
+	// 无关查询不返回任何内容。
 	resp, err = svc.SearchMemory(context.Background(), &memory.SearchRequest{AppName: "app", UserID: "u", Query: "quantum"})
 	if err != nil {
 		t.Fatal(err)
@@ -161,7 +161,7 @@ func TestAddAndSearchMemory(t *testing.T) {
 		t.Fatalf("expected no hits, got %d", len(resp.Memories))
 	}
 
-	// Clear.
+	// 清空。
 	if err := svc.Clear("app", "u"); err != nil {
 		t.Fatal(err)
 	}
@@ -184,10 +184,9 @@ func TestSearchIsUserScoped(t *testing.T) {
 	}
 }
 
-// TestSearchMemoryRecencyWindow: the candidate cut is deterministic (newest
-// first). Without ORDER BY, SQLite's scan order decides which 200 rows are
-// considered, and the newest — typically most relevant — memories could fall
-// outside the window once the store grows.
+// TestSearchMemoryRecencyWindow：候选集截断是确定性的（最新优先）。如果没有
+// ORDER BY，SQLite 的扫描顺序会决定考虑哪 200
+// 行；而一旦存储增长，最新的——通常也是最相关的——记忆可能落到窗口之外。
 func TestSearchMemoryRecencyWindow(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "w.db")))
 	if err != nil {
@@ -224,7 +223,7 @@ func TestSearchMemoryRecencyWindow(t *testing.T) {
 	if len(resp.Memories) != 20 {
 		t.Fatalf("expected top-20, got %d", len(resp.Memories))
 	}
-	// All scores tie (one keyword hit each) → newest 20 must win.
+	// 所有得分都相同（各自命中一个关键词） → 最新的 20 条必须胜出。
 	newest := map[string]bool{}
 	for i := total - 20; i < total; i++ {
 		newest[fmt.Sprintf("e-%03d", i)] = true
@@ -236,9 +235,8 @@ func TestSearchMemoryRecencyWindow(t *testing.T) {
 	}
 }
 
-// TestAddSessionToMemoryConcurrent: parallel ingestion of the same session
-// must not error on the UNIQUE id constraint (the old count-then-create used
-// to race and abort AutoRemember).
+// TestAddSessionToMemoryConcurrent: 同一会话的并行摄入不得在 UNIQUE id
+// 约束上报错（旧的先计数后创建曾发生竞态并中止 AutoRemember）。
 func TestAddSessionToMemoryConcurrent(t *testing.T) {
 	svc, sess := newFixture(t)
 	done := make(chan error, 2)

@@ -10,8 +10,8 @@ import (
 	"agentmate/internal/config"
 )
 
-// fileDiffFixture wires an artifact service with a session whose workspace is
-// tasks/sess_diff so FileDiff / baseline helpers can be exercised end to end.
+// fileDiffFixture 将一个产物服务与一个工作区为 tasks/sess_diff 的会话装配起来，
+// 以便端到端地演练 FileDiff / 基线辅助函数。
 func fileDiffFixture(t *testing.T) (*ArtifactService, string) {
 	t.Helper()
 	svc, ws := newArtifactFixture(t)
@@ -76,10 +76,10 @@ func TestLineDiffScenarios(t *testing.T) {
 		wantAdded      int
 		wantRemoved    int
 		wantHunks      int
-		wantCtxPerHunk int // total context lines across all hunks
+		wantCtxPerHunk int // 所有 hunk 中的上下文行总数
 	}{
 		{"identical", "a\nb\nc\n", "a\nb\nc\n", 0, 0, 0, 0},
-		// 3-line files only have one context line available on each side.
+		// 3 行文件在每侧仅有一行上下文可用。
 		{"insert middle", "a\nb\nc\n", "a\nX\nc\n", 1, 1, 1, 2},
 		{"pure insert", "a\nc\n", "a\nb\nc\n", 1, 0, 1, 2},
 		{"pure delete", "a\nb\nc\n", "a\nc\n", 0, 1, 1, 2},
@@ -114,7 +114,7 @@ func TestLineDiffScenarios(t *testing.T) {
 			if ctx != tc.wantCtxPerHunk {
 				t.Fatalf("context lines = %d, want %d", ctx, tc.wantCtxPerHunk)
 			}
-			// Context rows must reconstruct both sources through their numbers.
+			// 上下文行必须通过其行号重建两个来源。
 			for _, h := range hunks {
 				for _, l := range h.Lines {
 					switch l.Type {
@@ -165,7 +165,7 @@ func TestLineDiffLargeMiddleStaysLocalized(t *testing.T) {
 		t.Fatal("unexpected truncation")
 	}
 	for _, h := range hunks {
-		if len(h.Lines) != 8 { // 3 context + del + add + 3 context
+		if len(h.Lines) != 8 { // 3 行上下文 + del + add + 3 行上下文
 			t.Fatalf("hunk size = %d, want 8", len(h.Lines))
 		}
 	}
@@ -267,7 +267,7 @@ func TestFileDiffAddedModifiedDeletedUnchanged(t *testing.T) {
 
 func TestFileDiffUnsupportedCases(t *testing.T) {
 	svc, dir := fileDiffFixture(t)
-	big := strings.Repeat("内容行 tail\n", 30*1024) // >256KB snapshot cap, <2MB diff cap
+	big := strings.Repeat("内容行 tail\n", 30*1024) // >256KB 快照上限，<2MB diff 上限
 	if len(big) <= diffContentFileMax || len(big) >= diffMaxFile {
 		t.Fatalf("fixture size %d outside (256KB, 2MB)", len(big))
 	}

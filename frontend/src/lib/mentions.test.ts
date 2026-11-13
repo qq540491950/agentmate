@@ -113,7 +113,7 @@ describe("buildMentionCandidates", () => {
     const token = mentionAtCaret("@", 1)!;
     const paths = buildMentionCandidates(token, ASSISTANTS, ENTRIES, 4)
       .map((c) => (c.kind === "file" || c.kind === "directory" ? c.path : c.name));
-    // Three assistants + one shortest path: the leading group wins first.
+    // 三个助手 + 一条最短路径：排在前面的分组先胜出。
     expect(paths.slice(0, 3)).toEqual(["写手", "写作团队", "远端助手"]);
     expect(paths[3]).toBe("src");
   });

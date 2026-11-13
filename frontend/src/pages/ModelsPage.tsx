@@ -43,8 +43,7 @@ function blankProvider(): ModelProvider {
   };
 }
 
-/** Section is the provider editor's grouping primitive: one title row, optional
- *  description and right-aligned actions, then the fields. */
+/** Section 是供应商编辑器的分组原语：一行标题、可选描述和右对齐的操作按钮，然后是各字段。 */
 function Section({ title, description, actions, children }: {
   title: string;
   description?: string;
@@ -81,8 +80,7 @@ export function ModelsPage() {
     numericValidity.current[key] = valid;
   }, []);
 
-  // Reopening the editor should land on the first section, not wherever the
-  // previous edit left the scroll position.
+  // 重新打开编辑器时应落在第一个分区，而不是停在此前编辑留下的滚动位置。
   const dialogOpen = !!editing;
   useEffect(() => {
     if (dialogOpen) bodyRef.current?.scrollTo({ top: 0 });
@@ -105,7 +103,7 @@ export function ModelsPage() {
     setUrlError("");
   };
 
-  /** updateModel patches one row of the model list being edited. */
+  /** updateModel 对正在编辑的模型列表中的某一行做局部更新。 */
   const updateModel = (index: number, patch: Partial<ModelInfo>) => {
     setEditing((prev) => prev ? {
       ...prev,
@@ -129,7 +127,7 @@ export function ModelsPage() {
     } : prev);
   };
 
-  /** suggest fetches built-in defaults (display name + level table) for IDs. */
+  /** suggest 为各 ID 获取内置默认值（显示名称 + 级别表）。 */
   const suggest = async (ids: string[]): Promise<Map<string, ModelInfo>> => {
     const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
     if (unique.length === 0) return new Map();
@@ -137,11 +135,11 @@ export function ModelsPage() {
       const list = (await Config.SuggestModels(unique)) ?? [];
       return new Map(list.map((m) => [m.id, m]));
     } catch {
-      return new Map(); // suggestions are a convenience; manual input stays valid
+      return new Map(); // 建议只是便利手段；手动输入仍然有效
     }
   };
 
-  /** mergeSuggestion only fills fields the user has not customized. */
+  /** mergeSuggestion 仅填充用户尚未自定义的字段。 */
   const mergeSuggestion = (cur: ModelInfo, sug: ModelInfo, force: boolean): ModelInfo => {
     const next = { ...cur };
     if (!cur.displayName?.trim() || (force && cur.displayName.trim() === cur.id.trim())) {
@@ -156,7 +154,7 @@ export function ModelsPage() {
   const suggestOne = async (index: number, force = false) => {
     const cur = editing?.models?.[index];
     if (!cur?.id.trim()) return;
-    // A blur must never undo a table the user already built or disabled.
+    // 失焦绝不能撤销用户已建好或已禁用的表格。
     if (!force && (cur.reasoning?.levels?.length ?? 0) > 0) return;
     const suggestions = await suggest([cur.id]);
     const sug = suggestions.get(cur.id.trim());
@@ -172,8 +170,8 @@ export function ModelsPage() {
     setFetching(true);
     try {
       const ids = (await Config.ListProviderModels(editing)) ?? [];
-      // Compute from the closure value, not inside the state updater: React
-      // may defer the updater past the toast below.
+      // 从闭包值计算，而不是在状态更新函数内部计算：React
+      // 可能会把更新函数推迟到下面的 toast 之后执行。
       const have = new Set((editing.models ?? []).map((m) => m.id));
       const freshIds = ids.filter((id) => !have.has(id));
       const suggestions = await suggest(freshIds);
@@ -197,19 +195,19 @@ export function ModelsPage() {
       toast.error("请修正数字输入后再保存");
       return;
     }
-    // Field-level validation stays next to the input instead of a toast: the
-    // dialog is long, and a toast at the top of the screen loses the context.
+    // 字段级校验保留在输入框旁边，而不是用 toast 提示：对话框很长，屏幕顶部的
+    // toast 会丢失上下文。
     const baseUrl = (editing.baseUrl ?? "").trim();
     const nextNameError = editing.name.trim() ? "" : "请填写供应商名称";
     const nextUrlError = baseUrl && !/^https?:\/\//.test(baseUrl) ? "需以 http:// 或 https:// 开头" : "";
     setNameError(nextNameError);
     setUrlError(nextUrlError);
     if (nextNameError || nextUrlError) return;
-    // Pasted URLs often carry stray whitespace/newlines that make every
-    // request fail opaquely.
-    // Trim ids and drop empty / duplicate rows. Normalize the thinking table so
-    // the Go resolver (exact level match, dotted parameter names) sees clean
-    // values, and reject a table that would silently send nothing.
+    // 粘贴的 URL
+    // 常带有杂散的空白字符/换行，会让每个请求都以难以排查的方式失败。 去除 id
+    // 首尾空白，并丢弃空行/重复行。规范化 thinking 表，使 Go
+    // 解析器（精确层级匹配、点分参数名）看到干净的值，并拒绝会静默地什么都不发
+    // 送的表。
     const models: ModelInfo[] = [];
     for (const m of editing.models ?? []) {
       const id = m.id.trim();

@@ -12,9 +12,8 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// TestA2AServiceLoopback publishes a local agent over A2A, then connects to
-// it with the app's own remote-agent client (loopback) and verifies a full
-// conversation round trip, plus status transitions.
+// TestA2AServiceLoopback 通过 A2A 发布本地 Agent，然后用应用自身的远程 Agent
+// 客户端（loopback）连接它，并验证一次完整的会话往返以及状态转换。
 func TestA2AServiceLoopback(t *testing.T) {
 	modelSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(readAll(r), `"stream":false`) {
@@ -55,7 +54,7 @@ func TestA2AServiceLoopback(t *testing.T) {
 		t.Fatalf("must start with no published agents: %+v", sts)
 	}
 
-	st, err := a2a.Start("a1", 0) // port 0: pick a free port
+	st, err := a2a.Start("a1", 0) // 端口 0：选择一个空闲端口
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +62,7 @@ func TestA2AServiceLoopback(t *testing.T) {
 		t.Fatalf("bad start status: %+v", st)
 	}
 
-	// Card discovery must resolve the published agent.
+	// 卡片发现必须解析到已发布的 Agent。
 	info, err := agentkit.CheckRemoteAgent(t.Context(), st.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -73,8 +72,8 @@ func TestA2AServiceLoopback(t *testing.T) {
 	}
 	_ = info
 
-	// Loopback conversation: a client ChatService talks to the published
-	// agent through the full remote-agent client stack.
+	// Loopback 会话：客户端 ChatService 通过完整的远程 Agent 客户端栈与已发布的
+	// Agent 通信。
 	clientDir := t.TempDir()
 	clientStore, err := config.Open(clientDir)
 	if err != nil {
@@ -114,12 +113,12 @@ func TestA2AServiceLoopback(t *testing.T) {
 		t.Fatalf("loopback answer missing: %+v", msgs)
 	}
 
-	// Starting twice is idempotent for the same agent.
+	// 对同一个 Agent 启动两次是幂等的。
 	if st2, err := a2a.Start("a1", 0); err != nil || !st2.Running || st2.URL != st.URL {
 		t.Fatalf("double start should keep existing server: %+v err=%v", st2, err)
 	}
 
-	// StopAgent clears only that agent's entry.
+	// StopAgent 仅清除该 Agent 的条目。
 	if err := a2a.StopAgent("a1"); err != nil {
 		t.Fatal(err)
 	}
@@ -148,9 +147,9 @@ func TestA2AAgentConfigUsesNonInteractivePolicy(t *testing.T) {
 	}
 }
 
-// TestConfigMutationStopsPublishedAgent: editing or deleting a published
-// agent takes its A2A server offline (the executor holds the tree built at
-// Start time; remote clients would otherwise keep invoking a stale agent).
+// TestConfigMutationStopsPublishedAgent：编辑或删除已发布的 Agent 会使其 A2A
+// 服务器下线（执行器持有在 Start 时构建的树；否则远程客户端会继续调用陈旧的
+// Agent）。
 func TestConfigMutationStopsPublishedAgent(t *testing.T) {
 	modelSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(readAll(r), `"stream":false`) {
@@ -184,7 +183,7 @@ func TestConfigMutationStopsPublishedAgent(t *testing.T) {
 	}
 	svc := &Services{Store: store, Kit: agentkit.NewKit(store, mcpmgr.New()), MCP: mcpmgr.New()}
 	a2a := NewA2AService(svc, sessions)
-	svc.A2A = a2a // config mutations must reach the published-server registry
+	svc.A2A = a2a // 配置变更必须到达已发布服务器的注册表。
 
 	if _, err := a2a.Start("a1", 0); err != nil {
 		t.Fatal(err)
@@ -193,7 +192,7 @@ func TestConfigMutationStopsPublishedAgent(t *testing.T) {
 		t.Fatal("expected one published agent")
 	}
 
-	// Editing the agent unpublishes it.
+	// 编辑 Agent 会将其取消发布。
 	cs := NewConfigService(svc)
 	edited := store.Get().Agents[0]
 	edited.SystemPrompt = "改过的提示词"
@@ -204,7 +203,7 @@ func TestConfigMutationStopsPublishedAgent(t *testing.T) {
 		t.Fatalf("edited agent still published: %+v", a2a.Status())
 	}
 
-	// Re-publish then delete: deletion also unpublishes.
+	// 重新发布后删除：删除也会取消发布。
 	if _, err := a2a.Start("a1", 0); err != nil {
 		t.Fatal(err)
 	}

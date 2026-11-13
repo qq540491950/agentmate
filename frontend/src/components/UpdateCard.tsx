@@ -34,11 +34,10 @@ function stateLabel(s: UpdateStatus): string {
 }
 
 /**
- * UpdateCard renders the in-app updater inside 设置 → 关于.
+ * UpdateCard 在设置 → 关于中渲染应用内更新器。
  *
- * It is deliberately inline rather than the framework's standalone update
- * window: the surrounding settings page already owns version display,
- * persistence and toast conventions here.
+ * 它有意采用内联方式，而非框架的独立更新窗口：此处的周边设置页面已经负责版本显
+ * 示、持久化和 toast 约定。
  */
 export function UpdateCard() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
@@ -112,7 +111,7 @@ export function UpdateCard() {
   const apply = async () => {
     try {
       await Update.ApplyUpdate();
-      // The helper takes over once this process exits; nothing to do here.
+      // 本进程退出后由辅助进程接管；这里无需再处理。
     } catch (e) {
       toast.error(errText(e));
     }

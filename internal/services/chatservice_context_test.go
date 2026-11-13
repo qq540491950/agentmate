@@ -10,15 +10,14 @@ import (
 	"agentmate/internal/config"
 )
 
-// newContextTestChat wires a ChatService whose model server records every
-// request body, so tests can assert what actually reached the model. HOME is
-// redirected before the kit is built, keeping user-level skill discovery
-// hermetic.
+// newContextTestChat 构造一个
+// ChatService，其模型服务器会记录每个请求体，因此测试可以断言实际到达模型的内容
+// 。在构建套件之前重定向 HOME，从而使用户级技能发现保持隔离。
 func newContextTestChat(t *testing.T) (*ChatService, <-chan string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
+	t.Setenv("USERPROFILE", home) // Windows 上的 os.UserHomeDir
 
 	bodies := make(chan string, 8)
 	chat, _, _ := newWorkspaceTestChat(t, func(w http.ResponseWriter, r *http.Request) {
@@ -29,9 +28,8 @@ func newContextTestChat(t *testing.T) (*ChatService, <-chan string) {
 	return chat, bodies
 }
 
-// TestProjectDiscoveredSkillSlashCommand pins the project-skill half of the
-// slash menu: a skill living in <project>/.agents/skills must resolve for a
-// chat bound to that project, even though it never enters config.json.
+// TestProjectDiscoveredSkillSlashCommand 锁定斜杠菜单中项目技能这一部分：对于绑定到该项目的聊天，位于
+// <project>/.agents/skills 的技能必须能被解析，即使它绝不会进入 config.json。
 func TestProjectDiscoveredSkillSlashCommand(t *testing.T) {
 	chat, bodies := newContextTestChat(t)
 	projectRoot := t.TempDir()
@@ -112,8 +110,7 @@ func TestFileMentionInjectsWorkspaceContent(t *testing.T) {
 		t.Fatalf("a reference outside the workspace must never be read, got: %s", body)
 	}
 
-	// The raw reference stays in the stored user message; only the inlined
-	// body is turn-scoped.
+	// 原始引用保留在存储的用户消息中；仅内联正文是回合作用域的。
 	msgs, err := chat.GetSessionMessages(sess.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +129,7 @@ func TestFileMentionInjectsWorkspaceContent(t *testing.T) {
 		t.Fatalf("user message missing from history: %+v", msgs)
 	}
 
-	// A follow-up turn must not inherit the previous turn's file context.
+	// 后续回合不得继承上一回合的文件上下文。
 	if err := chat.Send(sess.ID, "继续", nil); err != nil {
 		t.Fatal(err)
 	}

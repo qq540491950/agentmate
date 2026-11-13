@@ -1,6 +1,5 @@
-// Theme application: a complete theme preset plus an orthogonal light/dark
-// mode. Components consume semantic tokens; this module is the only place
-// that writes theme state to the document.
+// 主题应用：一套完整的主题预设，外加一个正交的浅色/深色模式。 组件使用语义
+// token；本模块是唯一一个把主题状态写入文档的地方。
 import { Config, type Settings } from "@/lib/api";
 
 export type ThemePreset = "nord" | "graphite" | "paper" | "contrast";
@@ -42,8 +41,8 @@ export const FONT_SCALES: Record<string, { label: string; root: string }> = {
   lg: { label: "大", root: "112.5%" },
 };
 
-// Chat column widths are pane percentages, not fixed pixel caps, so the column
-// follows window resizing at every mode.
+// 聊天栏宽度使用面板百分比，而不是固定的像素上限，因此该栏在每种模式下都会跟随
+// 窗口缩放。
 export const CHAT_WIDTHS: Record<string, { label: string; width: string }> = {
   narrow: { label: "窄", width: "56%" },
   medium: { label: "中", width: "72%" },
@@ -68,7 +67,7 @@ export function normalizeThemeMode(value: string | undefined | null): ThemeMode 
   return THEME_MODES_SET.has(normalized) ? normalized : "dark";
 }
 
-/** resolveTheme is pure so boot, settings and tests agree on one result. */
+/** resolveTheme 是纯函数，因此启动、设置和测试会得到一致的结果。 */
 export function resolveTheme(
   prefs: Pick<ThemePrefs, "themePreset" | "themeMode">,
   systemDark: boolean,
@@ -79,7 +78,7 @@ export function resolveTheme(
   return { preset, mode: dark ? "dark" : "light", dark };
 }
 
-/** prefsFromSettings is the one mapping from persisted settings to UI prefs. */
+/** prefsFromSettings 是唯一一处把持久化设置映射为 UI 偏好的地方。 */
 export function prefsFromSettings(s: Settings): ThemePrefs {
   return {
     themePreset: normalizeThemePreset(s.themePreset),
@@ -89,7 +88,7 @@ export function prefsFromSettings(s: Settings): ThemePrefs {
   };
 }
 
-/** applyTheme writes preset/mode/font/width to the document. */
+/** applyTheme 将预设、模式、字体、宽度写入文档。 */
 export function applyTheme(prefs: ThemePrefs): boolean {
   const resolved = resolveTheme(prefs, media?.matches ?? false);
   const root = document.documentElement;
@@ -104,19 +103,19 @@ export function applyTheme(prefs: ThemePrefs): boolean {
   return resolved.dark;
 }
 
-/** cacheTheme writes prefs to localStorage for instant boot application. */
+/** cacheTheme 将偏好写入 localStorage，以便启动时立即应用。 */
 export function cacheTheme(s: Settings) {
   const prefs = prefsFromSettings(s);
   cacheThemePrefs(prefs);
 }
 
-/** cacheThemePrefs persists the exact boot shape used by the inline script. */
+/** cacheThemePrefs 持久化内联脚本所用的确切启动数据结构。 */
 export function cacheThemePrefs(prefs: ThemePrefs) {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem("wb-theme-prefs", JSON.stringify(prefs));
 }
 
-/** cachedTheme reads the boot cache (falls back to Nord dark). */
+/** cachedTheme 读取启动缓存（回退到 Nord 深色）。 */
 export function cachedTheme(): ThemePrefs {
   try {
     if (typeof localStorage !== "undefined") {
@@ -135,7 +134,7 @@ export function cachedTheme(): ThemePrefs {
   return { themePreset: "nord", themeMode: "dark", fontScale: "md", chatWidth: "medium" };
 }
 
-/** syncThemeFromBackend loads settings from the backend, caches and applies them. */
+/** syncThemeFromBackend 从后端加载设置，缓存并应用它们。 */
 export async function syncThemeFromBackend(): Promise<boolean> {
   try {
     const cfg = await Config.GetConfig();
@@ -146,7 +145,7 @@ export async function syncThemeFromBackend(): Promise<boolean> {
   }
 }
 
-/** onSystemThemeChange re-applies when the OS appearance changes. */
+/** onSystemThemeChange 在操作系统外观发生变化时重新应用。 */
 export function onSystemThemeChange(prefs: ThemePrefs, fn: (dark: boolean) => void): () => void {
   if (!media) return () => {};
   const handler = () => {

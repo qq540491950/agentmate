@@ -11,14 +11,14 @@ func TestRecentLogs(t *testing.T) {
 	app := &AppService{S: &Services{}}
 	logPath := filepath.Join(t.TempDir(), "app.log")
 
-	// Missing file: friendly empty message.
+	// 文件缺失：友好的空提示。
 	app.SetLogPath(logPath)
 	lines, err := app.RecentLogs(50)
 	if err != nil || len(lines) != 1 {
 		t.Fatalf("missing file should yield placeholder: %v %v", lines, err)
 	}
 
-	// Tail semantics: 300 lines written, last 50 returned.
+	// 尾部语义：写入 300 行，返回最后 50 行。
 	var sb strings.Builder
 	for i := 1; i <= 300; i++ {
 		sb.WriteString("line-" + itoaTest(i) + "\n")
@@ -53,8 +53,8 @@ func itoaTest(n int) string {
 	return d
 }
 
-// TestStorageStatsAndVacuum: sizes are reported from real files and VACUUM
-// runs without error on the live sessions database.
+// TestStorageStatsAndVacuum：大小取自真实文件，VACUUM
+// 在正在使用的会话数据库上运行无报错。
 func TestStorageStatsAndVacuum(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "sessions.db")
@@ -81,14 +81,14 @@ func TestStorageStatsAndVacuum(t *testing.T) {
 	if err := app.VacuumSessions(); err != nil {
 		t.Fatalf("vacuum failed: %v", err)
 	}
-	// Database still usable afterwards: count query works.
+	// 之后数据库仍可用：count 查询可正常工作。
 	if err := db.Exec("SELECT count(*) FROM sqlite_master").Error; err != nil {
 		t.Fatalf("db unusable after vacuum: %v", err)
 	}
 }
 
-// TestRecentToolAuditTail: the tool audit viewer reads the JSONL file via the
-// same tail semantics (last N lines, placeholder when missing).
+// TestRecentToolAuditTail：工具审计查看器通过相同的尾部语义读取 JSONL
+// 文件（取最后 N 行，文件缺失时返回占位内容）。
 func TestRecentToolAuditTail(t *testing.T) {
 	app := &AppService{S: &Services{}}
 	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")

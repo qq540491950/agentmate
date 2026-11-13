@@ -1,4 +1,4 @@
-// Package services implements the Wails services exposed to the frontend.
+// Package services 实现暴露给前端的 Wails 服务。
 package services
 
 import (
@@ -25,14 +25,14 @@ import (
 	"agentmate/internal/terminal"
 )
 
-// Services bundles the shared dependencies for all Wails services.
+// Services 汇总所有 Wails 服务共享的依赖。
 type Services struct {
 	Store  *config.Store
 	Kit    *agentkit.Kit
 	MCP    *mcpmgr.Manager
 	Memory *memory.SQLiteService
-	// A2A, when set, lets config mutations take down published servers whose
-	// agent was edited or deleted (nil in tests without A2A wiring).
+	// A2A 设置后，配置变更可下线其 Agent 被编辑或删除的已发布服务器（未接入 A2A
+	// 的测试中为 nil）。
 	A2A *A2AService
 }
 
@@ -42,23 +42,22 @@ func newID(prefix string) string {
 	return prefix + hex.EncodeToString(b)
 }
 
-// ConfigService exposes configuration CRUD to the frontend.
+// ConfigService 向前端暴露配置的 CRUD 操作。
 type ConfigService struct{ S *Services }
 
-// NewConfigService creates the service.
+// NewConfigService 创建该服务。
 func NewConfigService(s *Services) *ConfigService { return &ConfigService{S: s} }
 
-// GetConfig returns the full configuration (API keys included; local app).
-// Project/global skills discovered from <root>/.agents/skills are merged into
-// the returned copy only: they are external read-only files, so they must
-// never be written back to config.json (other agentskills.io tools own them).
+// GetConfig 返回完整配置（包含 API 密钥；本地应用）。从 <root>/.agents/skills
+// 发现的项目级/全局技能只合并到返回的副本中：它们是外部只读文件，绝不能写回
+// config.json（这些文件属于其他 agentskills.io 工具）。
 func (c *ConfigService) GetConfig() config.Config {
 	cfg := c.S.Store.Get()
 	cfg.Skills = config.EffectiveSkills(cfg, cfg.Settings.WorkspaceDir, config.GlobalSkillRoot())
 	return cfg
 }
 
-// SaveProvider inserts or updates a model provider.
+// SaveProvider 插入或更新模型供应商。
 func (c *ConfigService) SaveProvider(p config.ModelProvider) error {
 	if p.Name == "" {
 		return fmt.Errorf("请填写供应商名称")
@@ -91,7 +90,7 @@ func (c *ConfigService) SaveProvider(p config.ModelProvider) error {
 	})
 }
 
-// DeleteProvider removes a provider by id.
+// DeleteProvider 按 id 删除供应商。
 func (c *ConfigService) DeleteProvider(id string) error {
 	return c.S.Store.Update(func(cfg *config.Config) {
 		out := cfg.Providers[:0]
@@ -104,24 +103,23 @@ func (c *ConfigService) DeleteProvider(id string) error {
 	})
 }
 
-// ListProviderModels fetches the model IDs offered by the provider's list
-// endpoint, so the user can pick instead of typing model ids by hand.
+// ListProviderModels 获取供应商的列表端点所提供的模型
+// ID，以便用户从中选择，而不是手动输入模型 ID。
 func (c *ConfigService) ListProviderModels(p config.ModelProvider) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	return agentkit.ListProviderModels(ctx, p)
 }
 
-// SuggestModels returns the built-in defaults (display name and reasoning
-// level table) for model IDs the editor just fetched or the user typed. It is
-// offline and does not touch the saved config.
+// SuggestModels 为编辑器刚获取到的或用户输入的模型 ID
+// 返回内置默认值（显示名称与推理等级表）。该操作离线执行，不会改动已保存的配置
+// 。
 func (c *ConfigService) SuggestModels(ids []string) []config.ModelInfo {
 	return config.SuggestModelInfos(ids)
 }
 
-// TestProvider performs a minimal round-trip against the provider with the
-// chosen model to verify reachability and credentials. Returns the elapsed
-// latency in milliseconds for display.
+// TestProvider 使用所选模型对供应商执行一次最小往返，以验证可达性和凭据。返回耗时（毫秒）供
+// 展示。
 func (c *ConfigService) TestProvider(p config.ModelProvider, model string) (int64, error) {
 	m, err := agentkit.NewModelFromProvider(p, model)
 	if err != nil {
@@ -145,7 +143,7 @@ func (c *ConfigService) TestProvider(p config.ModelProvider, model string) (int6
 	return 0, fmt.Errorf("模型没有返回内容")
 }
 
-// SaveAgent inserts or updates an agent.
+// SaveAgent 插入或更新一个 Agent。
 func (c *ConfigService) SaveAgent(a config.AgentConfig) error {
 	if a.Name == "" {
 		return fmt.Errorf("请填写 Agent 名称")
@@ -178,15 +176,15 @@ func (c *ConfigService) SaveAgent(a config.AgentConfig) error {
 		}
 	})
 	if err == nil && replaced {
-		// A published A2A server holds the agent tree built at Start time;
-		// after an edit the remote side would keep serving the OLD config.
-		// Take it offline — the user re-publishes with the new settings.
+		// 已发布的 A2A 服务器持有在 Start 时构建的 Agent 树；
+		// 编辑之后，远端仍会继续按旧配置提供服务。
+		// 将其下线——用户会用新的设置重新发布。
 		c.S.StopPublishedAgent(a.ID)
 	}
 	return err
 }
 
-// DeleteAgent removes an agent and detaches it from teams.
+// DeleteAgent 删除一个 Agent 并将其从团队中解除关联。
 func (c *ConfigService) DeleteAgent(id string) error {
 	err := c.S.Store.Update(func(cfg *config.Config) {
 		out := cfg.Agents[:0]
@@ -211,14 +209,13 @@ func (c *ConfigService) DeleteAgent(id string) error {
 		}
 	})
 	if err == nil {
-		// A deleted agent must not stay reachable through a still-published
-		// A2A server.
+		// 已删除的 Agent 不得仍可通过尚处于发布状态的 A2A 服务器访问。
 		c.S.StopPublishedAgent(id)
 	}
 	return err
 }
 
-// SaveTeam inserts or updates an agent team.
+// SaveTeam 插入或更新一个 Agent 团队。
 func (c *ConfigService) SaveTeam(t config.TeamConfig) error {
 	if t.Name == "" {
 		return fmt.Errorf("请填写团队名称")
@@ -246,7 +243,7 @@ func (c *ConfigService) SaveTeam(t config.TeamConfig) error {
 	})
 }
 
-// DeleteTeam removes a team by id.
+// DeleteTeam 按 id 删除一个团队。
 func (c *ConfigService) DeleteTeam(id string) error {
 	return c.S.Store.Update(func(cfg *config.Config) {
 		out := cfg.Teams[:0]
@@ -259,7 +256,7 @@ func (c *ConfigService) DeleteTeam(id string) error {
 	})
 }
 
-// SaveSkill inserts or updates a skill (materialized to SKILL.md).
+// SaveSkill 插入或更新一个技能（物化为 SKILL.md）。
 func (c *ConfigService) SaveSkill(s config.SkillConfig) error {
 	if s.Name == "" {
 		return fmt.Errorf("请填写技能名称")
@@ -271,8 +268,8 @@ func (c *ConfigService) SaveSkill(s config.SkillConfig) error {
 		s.ID = newID("skill_")
 		s.CreatedAt = nowUTC()
 	}
-	// Skills sharing a normalized name share one materialized directory and
-	// would silently overwrite each other's SKILL.md — reject the collision.
+	// 共用同一规范化名称的技能会共用同一个物化目录，并会静默覆盖彼此的
+	// SKILL.md——必须拒绝这种冲突。
 	newKey := agentkit.MaterializedSkillName(s.Name)
 	for _, other := range c.S.Store.Get().Skills {
 		if other.ID != s.ID && agentkit.MaterializedSkillName(other.Name) == newKey {
@@ -296,9 +293,8 @@ func (c *ConfigService) SaveSkill(s config.SkillConfig) error {
 	return err
 }
 
-// ImportSkillsFromWorkspace scans <workspace>/skills/*/SKILL.md (the
-// agentskills.io layout) and imports any skills whose normalized names are
-// not already present. Returns the number of imported skills.
+// ImportSkillsFromWorkspace 扫描 <workspace>/skills/*/SKILL.md（agentskills.io
+// 布局），并导入所有规范化名称尚未存在的技能。返回导入的技能数量。
 func (c *ConfigService) ImportSkillsFromWorkspace() (int, error) {
 	workspace := c.S.Store.Get().Settings.WorkspaceDir
 	if workspace == "" {
@@ -316,7 +312,7 @@ func (c *ConfigService) ImportSkillsFromWorkspace() (int, error) {
 	imported := 0
 	for _, e := range entries {
 		if !e.IsDir() {
-			continue // agentskills.io layout: skills/<name>/SKILL.md
+			continue // agentskills.io 布局：skills/<name>/SKILL.md
 		}
 		data, err := os.ReadFile(filepath.Join(root, e.Name(), "SKILL.md"))
 		if err != nil {
@@ -333,15 +329,13 @@ func (c *ConfigService) ImportSkillsFromWorkspace() (int, error) {
 	return imported, nil
 }
 
-// addSkillIfNew inserts a skill unless an identical normalized name exists;
-// reports whether it was added.
+// addSkillIfNew 插入一个技能，除非已存在相同的规范化名称；并报告是否已添加。
 func (c *ConfigService) addSkillIfNew(name, desc, body string) bool {
 	added := false
 	_ = c.S.Store.Update(func(cfg *config.Config) {
-		// Dedup by the MATERIALIZED name: two skills whose normalized names
-		// collide (CJK names collapse to the same bucket) share one directory
-		// and would silently overwrite each other's SKILL.md. Must match
-		// SaveSkill's collision rule exactly.
+		// 按物化名称去重：两个规范化名称冲突的技能（CJK
+		// 名称会归入同一个桶）会共用同一个目录，并会静默覆盖彼此的 SKILL.md。必须与
+		// SaveSkill 的冲突规则完全一致。
 		key := agentkit.MaterializedSkillName(name)
 		for _, sk := range cfg.Skills {
 			if agentkit.MaterializedSkillName(sk.Name) == key {
@@ -356,7 +350,7 @@ func (c *ConfigService) addSkillIfNew(name, desc, body string) bool {
 	return added
 }
 
-// skillSourceLabel renders a discovered source for user-facing errors.
+// skillSourceLabel 渲染发现的来源，用于面向用户的错误。
 func skillSourceLabel(source string) string {
 	switch source {
 	case config.SkillSourceProject:
@@ -367,10 +361,9 @@ func skillSourceLabel(source string) string {
 	return "\u5916\u90E8"
 }
 
-// DeleteSkill removes a skill by id and best-effort deletes its materialized
-// SKILL.md directories (per-agent staging dirs and the legacy shared layout).
-// The next agent build prunes stale entries anyway; this keeps the disk clean
-// immediately.
+// DeleteSkill 按 id 删除技能，并尽力而为地删除其物化的 SKILL.md 目录（每个
+// Agent 的暂存目录以及遗留的共享布局）。 下一次 Agent
+// 构建无论如何都会清理陈旧条目；这能立即保持磁盘整洁。
 func (c *ConfigService) DeleteSkill(id string) error {
 	if _, ok := config.DiscoveredSkillSource(id); ok {
 		return fmt.Errorf("\u53D1\u73B0\u7684 Skill \u4E3A\u53EA\u8BFB\uFF08\u6765\u81EA .agents/skills\uFF09\uFF0C\u8BF7\u76F4\u63A5\u4FEE\u6539\u5BF9\u5E94\u76EE\u5F55\u4E0B\u7684 SKILL.md")
@@ -405,19 +398,18 @@ func (c *ConfigService) DeleteSkill(id string) error {
 	return nil
 }
 
-// SaveMCPServer inserts or updates an MCP server config. Replacing a server
-// with changed settings drops its cached toolset/connection: the manager keys
-// toolsets by ID forever, so without this the next turn would keep talking to
-// the OLD transport (URL, token, args, env) while the UI shows the new one.
+// SaveMCPServer 插入或更新 MCP
+// 服务器配置。替换设置已变更的服务器会丢弃其缓存的工具集/连接：管理器会永久按
+// ID 索引工具集，因此若不这样做，下一回合会继续与 OLD
+// 传输（URL、token、args、env）通信，而 UI 显示的是新服务器。
 func (c *ConfigService) SaveMCPServer(s config.MCPServerConfig) (config.MCPServerConfig, error) {
-	// Normalize before validation and the changed-check: pasted whitespace
-	// ("npx ") would persist verbatim and break stdio exec at connect time.
+	// 在验证和变更检查前进行规范化：粘贴的空白 （"npx
+	// "）会被原样持久化，并在连接时破坏 stdio 执行。
 	s.Name = strings.TrimSpace(s.Name)
 	s.Command = strings.TrimSpace(s.Command)
 	s.URL = strings.TrimSpace(s.URL)
-	// Stay nil when empty: Store.Get's deep copy maps empty slices to nil, so
-	// an empty-non-nil Args would make every unchanged save look "changed"
-	// and needlessly drop the cached MCP connection.
+	// 为空时保持 nil：Store.Get 的深拷贝会把空切片映射为 nil，因此空但非 nil 的
+	// Args 会使每次未变更的保存看起来像 "changed"，并会无谓地丢弃缓存的 MCP 连接。
 	var args []string
 	for _, a := range s.Args {
 		if a = strings.TrimSpace(a); a != "" {
@@ -461,7 +453,7 @@ func (c *ConfigService) SaveMCPServer(s config.MCPServerConfig) (config.MCPServe
 	return s, nil
 }
 
-// DeleteMCPServer removes an MCP server and detaches it from agents.
+// DeleteMCPServer 删除 MCP 服务器并将其从各 Agent 中解除关联。
 func (c *ConfigService) DeleteMCPServer(id string) error {
 	c.S.MCP.Disconnect(id)
 	return c.S.Store.Update(func(cfg *config.Config) {
@@ -484,8 +476,8 @@ func (c *ConfigService) DeleteMCPServer(id string) error {
 	})
 }
 
-// SaveSettings persists global settings, validating the outbound proxy URL
-// up front so a typo surfaces immediately instead of at next app start.
+// SaveSettings 持久化全局设置，并预先验证出站代理
+// URL，使拼写错误立即暴露，而不是等到下次应用启动时才出现。
 func (c *ConfigService) SaveSettings(s config.Settings) error {
 	s.Terminal = config.NormalizeTerminalSettings(s.Terminal)
 	if s.CompactionContextPercent == nil {
@@ -514,32 +506,29 @@ func (c *ConfigService) SaveSettings(s config.Settings) error {
 	})
 }
 
-// DetectTerminals lists the shells available on this host for the settings
-// picker. Detection is intentionally on-demand: WSL and version probes can
-// take a few seconds and should not run during app startup.
+// DetectTerminals 列出此主机上可供设置选择器使用的 shell。检测有意按需进行：WSL
+// 和版本探测可能耗时几秒，且不应在应用启动期间运行。
 func (c *ConfigService) DetectTerminals(sandboxProfile string) terminal.Inventory {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return terminal.Detect(ctx, terminal.DefaultHost(), config.NormalizeSandboxProfile(sandboxProfile))
 }
 
-// TestTerminal runs one fixed command through the selected shell. It never
-// accepts a model/user-supplied command.
+// TestTerminal 通过所选 shell 运行一个固定命令。它绝不接受模型/用户提供的命令。
 func (c *ConfigService) TestTerminal(s config.TerminalSettings, sandboxProfile string) (terminal.ProbeResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	return terminal.Test(ctx, s, terminal.DefaultHost(), config.NormalizeSandboxProfile(sandboxProfile))
 }
 
-// KnowledgeFile describes one file in the workspace knowledge directory.
+// KnowledgeFile 描述工作区知识目录中的一个文件。
 type KnowledgeFile struct {
 	Name      string `json:"name"`
 	SizeBytes int64  `json:"sizeBytes"`
 	ModTime   string `json:"modTime"`
 }
 
-// safeKnowledgePath resolves a knowledge file name inside the workspace and
-// blocks directory traversal.
+// safeKnowledgePath 解析工作区内的知识文件名， 并阻止目录遍历。
 func (c *ConfigService) safeKnowledgePath(name string) (string, error) {
 	workspace := c.S.Store.Get().Settings.WorkspaceDir
 	if workspace == "" {
@@ -556,7 +545,7 @@ func (c *ConfigService) safeKnowledgePath(name string) (string, error) {
 	return p, nil
 }
 
-// ListKnowledgeFiles lists the workspace knowledge directory files.
+// ListKnowledgeFiles 列出工作区知识目录中的文件。
 func (c *ConfigService) ListKnowledgeFiles() ([]KnowledgeFile, error) {
 	workspace := c.S.Store.Get().Settings.WorkspaceDir
 	if workspace == "" {
@@ -593,8 +582,7 @@ func (c *ConfigService) ListKnowledgeFiles() ([]KnowledgeFile, error) {
 	return out, nil
 }
 
-// CreateKnowledgeFile writes a new knowledge file (traversal-guarded, refuses
-// to overwrite existing files).
+// CreateKnowledgeFile 写入新的知识文件（带目录遍历防护，拒绝 覆盖现有文件）。
 func (c *ConfigService) CreateKnowledgeFile(name, content string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -619,7 +607,7 @@ func (c *ConfigService) CreateKnowledgeFile(name, content string) (string, error
 	return name, nil
 }
 
-// DeleteKnowledgeFile removes one knowledge file by name (traversal-guarded).
+// DeleteKnowledgeFile 按名称删除一个知识文件（带目录遍历防护）。
 func (c *ConfigService) DeleteKnowledgeFile(name string) error {
 	p, err := c.safeKnowledgePath(name)
 	if err != nil {
@@ -628,22 +616,21 @@ func (c *ConfigService) DeleteKnowledgeFile(name string) error {
 	return os.Remove(p)
 }
 
-// ResetKnowledgeIndex wipes the vector index so the next search re-embeds
-// everything from the workspace files.
+// ResetKnowledgeIndex 清空向量索引，以便下一次搜索从工作区文件重新嵌入所有内容。
 func (c *ConfigService) ResetKnowledgeIndex() error { return c.S.Kit.ResetKnowledgeIndex() }
 
-// TestKnowledgeSearch runs a one-off knowledge search with current settings
-// so the user can verify semantic retrieval quality from the settings page.
+// TestKnowledgeSearch 使用当前设置运行一次性的知识搜索，
+// 以便用户可以从设置页面验证语义检索质量。
 func (c *ConfigService) TestKnowledgeSearch(query string) (string, error) {
 	return c.S.Kit.TestKnowledgeSearch(query)
 }
 
-// KnowledgeIndexStats reports the semantic knowledge index state for the UI.
+// KnowledgeIndexStats 为 UI 报告语义知识索引状态。
 func (c *ConfigService) KnowledgeIndexStats() agentkit.KnowledgeIndexStats {
 	return c.S.Kit.IndexStats()
 }
 
-// SaveRemoteAgent inserts or updates a remote A2A agent.
+// SaveRemoteAgent 插入或更新远程 A2A Agent。
 func (c *ConfigService) SaveRemoteAgent(r config.RemoteAgentConfig) error {
 	if r.Name == "" {
 		return fmt.Errorf("远程 Agent 名称不能为空")
@@ -671,7 +658,7 @@ func (c *ConfigService) SaveRemoteAgent(r config.RemoteAgentConfig) error {
 	})
 }
 
-// DeleteRemoteAgent removes a remote agent and detaches it from teams.
+// DeleteRemoteAgent 移除远程 Agent，并将其从团队中分离。
 func (c *ConfigService) DeleteRemoteAgent(id string) error {
 	return c.S.Store.Update(func(cfg *config.Config) {
 		out := cfg.RemoteAgents[:0]
@@ -693,8 +680,8 @@ func (c *ConfigService) DeleteRemoteAgent(id string) error {
 	})
 }
 
-// CheckRemoteAgent resolves the A2A agent card advertised at the URL and
-// returns a summary for the UI connectivity check.
+// CheckRemoteAgent 解析在 URL 上通告的 A2A Agent 卡片，并返回用于 UI
+// 连通性检查的摘要。
 func (c *ConfigService) CheckRemoteAgent(cardURL string) (*agentkit.RemoteAgentInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

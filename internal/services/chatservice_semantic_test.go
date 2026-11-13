@@ -15,8 +15,8 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// fakeEmbeddingsHandler speaks the OpenAI-compatible /embeddings contract with
-// deterministic bag-of-words vectors (same trick as the agentkit unit tests).
+// fakeEmbeddingsHandler 以确定性的词袋向量实现 OpenAI 兼容的 /embeddings
+// 契约（与 agentkit 单元测试相同的做法）。
 func fakeEmbeddingsHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -61,9 +61,8 @@ func fakeEmbeddingsHandler() http.HandlerFunc {
 	}
 }
 
-// TestChatSemanticKnowledgeE2E wires an embedding provider into settings and
-// exercises the full loop: ChatService.Send -> search_knowledge tool -> hybrid
-// semantic retrieval against the workspace knowledge directory.
+// TestChatSemanticKnowledgeE2E 将嵌入供应商接入设置，并跑通完整闭环：ChatService.Send -> search_knowledge
+// 工具 -> 针对工作区知识目录的混合语义检索。
 func TestChatSemanticKnowledgeE2E(t *testing.T) {
 	embedSrv := httptest.NewServer(fakeEmbeddingsHandler())
 	defer embedSrv.Close()
@@ -161,7 +160,7 @@ func TestChatSemanticKnowledgeE2E(t *testing.T) {
 		t.Fatalf("semantic tool result missing from history: %+v", msgs)
 	}
 
-	// The index persisted and the model saw the retrieval.
+	// 索引已持久化，并且模型已看到检索结果。
 	var rows int64
 	idx.DB.Model(&agentkit.KnowledgeChunk{}).Count(&rows)
 	if rows == 0 {

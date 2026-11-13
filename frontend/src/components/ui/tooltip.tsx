@@ -49,8 +49,7 @@ function TooltipContent({
   children,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content> & {
-  /** The shared hover card is a surface, not a speech bubble. Callers that
-   *  need the legacy pointer can opt back in. */
+  /** 共享的悬停卡片是一个表面，而不是对话气泡。需要遗留指针的调用方可以选择重新启用。 */
   hideArrow?: boolean;
 }) {
   return (
@@ -88,8 +87,10 @@ function TooltipHint({
   side?: React.ComponentProps<typeof TooltipPrimitive.Content>["side"];
   align?: React.ComponentProps<typeof TooltipPrimitive.Content>["align"];
   sideOffset?: number;
-  /** Wraps a trigger component that does not forward refs (or nests another
-   *  Radix trigger) in an inline-flex span so anchoring stays reliable. */
+  /**
+   * 将不转发 refs（或嵌套另一个 Radix 触发器）的触发组件包裹在 inline-flex 的
+   * span 中，使锚定保持可靠。
+   */
   wrap?: boolean;
   contentClassName?: string;
 }) {

@@ -1,15 +1,14 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
-/** turnStatusElapsed keeps the first two seconds clean for fast replies. */
+/** turnStatusElapsed 为快速回复保持前两秒简洁。 */
 export function turnStatusElapsed(seconds: number): string {
   return seconds >= 2 ? `${seconds}s` : "";
 }
 
 /**
- * TurnStatus is the reply-side placeholder for the gap between sending a
- * message and the first streamed thought/token. It is intentionally not a
- * message: it never enters history, grouping, export, or the streaming state.
+ * TurnStatus 是回复侧的占位符，用于表示发送消息与首个流式思考/token
+ * 之间的间隔。它有意不作为消息：它绝不进入历史、分组、导出或流式状态。
  */
 export function TurnStatus({ label = "正在思考", className }: {
   label?: string;

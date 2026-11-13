@@ -122,10 +122,9 @@ function FileRow({ file, sessionID, onPreview }: {
   );
 }
 
-// DiffView loads and renders one file's line-level diff against the task
-// baseline. Unsupported files (binary/oversize/missing baseline content) show
-// the backend reason inline instead of a toast, matching the result pane's
-// inline state style.
+// DiffView 加载并渲染单个文件相对于任务基线的行级差异。
+// 不支持的文件（二进制/过大/缺少基线内容） 会以内联方式显示后端原因，而不是
+// toast， 且与结果窗格的内联状态样式一致。
 export function DiffView({ sessionID, path }: { sessionID: string; path: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -171,7 +170,7 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
       <div className="bg-panel/40 px-3 py-2 text-2xs text-muted-foreground">与任务基线一致，无行级变更。</div>
     );
   }
-  // Unified patch text for「复制 Patch」— mirrors what a git diff shows.
+  // 用于「复制 Patch」的统一补丁文本——与 git diff 显示的内容一致。
   const patch = result.hunks
     .map((h) => {
       const head = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n`;
@@ -225,9 +224,8 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
   );
 }
 
-// ChangeRow is the changes-tab variant of FileRow: the row itself keeps the
-// preview affordance, and a trailing Diff toggle expands the line-level diff
-// against the task baseline (deleted files diff their baseline content).
+// ChangeRow 是 FileRow 的更改选项卡变体：行本身保留预览入口， 末尾的 Diff
+// 开关会展开相对于任务基线的行级差异 （已删除文件会对其基线内容进行差异对比）。
 function ChangeRow({ file, sessionID, onPreview }: {
   file: WorkspaceFileInfo;
   sessionID: string;

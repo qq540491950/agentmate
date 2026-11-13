@@ -1,6 +1,5 @@
-// Package memory implements a persistent ADK memory.Service backed by the
-// same SQLite database as the session store, giving agents long-term memory
-// that survives restarts and spans conversations.
+// Package memory 实现了持久化的 ADK memory.Service，其后端是与会话存储相同的
+// SQLite 数据库，为 Agent 提供在重启后仍保留且跨越对话的长期记忆。
 package memory
 
 import (
@@ -19,25 +18,25 @@ import (
 	"google.golang.org/genai"
 )
 
-// memoryEntry is the persisted form of a memory.Entry.
+// memoryEntry 是 memory.Entry 的持久化形式。
 type memoryEntry struct {
 	ID        string `gorm:"primaryKey"`
 	AppName   string `gorm:"index"`
 	UserID    string `gorm:"index"`
 	Author    string
-	Content   string // JSON-encoded genai.Content
+	Content   string // JSON 编码的 genai.Content
 	Timestamp time.Time
 }
 
-// TableName for gorm.
+// TableName 用于 gorm。
 func (memoryEntry) TableName() string { return "memories" }
 
-// SQLiteService is a persistent memory.Service.
+// SQLiteService 是持久化的 memory.Service。
 type SQLiteService struct {
 	db *gorm.DB
 }
 
-// NewSQLiteService migrates the memories table and returns the service.
+// NewSQLiteService 迁移 memories 表并返回该服务。
 func NewSQLiteService(db *gorm.DB) (*SQLiteService, error) {
 	if err := db.AutoMigrate(&memoryEntry{}); err != nil {
 		return nil, err
@@ -45,8 +44,8 @@ func NewSQLiteService(db *gorm.DB) (*SQLiteService, error) {
 	return &SQLiteService{db: db}, nil
 }
 
-// AddSessionToMemory ingests a session's meaningful events into long-term
-// memory. Re-adding the same session is idempotent per event ID.
+// AddSessionToMemory 将会话中有意义的事件摄取到长期记忆中。重复添加同一会话时，按事件 ID
+// 保持幂等。
 func (s *SQLiteService) AddSessionToMemory(_ context.Context, sess session.Session) error {
 	if sess == nil {
 		return fmt.Errorf("memory: nil session")
@@ -69,8 +68,7 @@ func (s *SQLiteService) AddSessionToMemory(_ context.Context, sess session.Sessi
 				calls = append(calls, p.FunctionCall.Name+"("+string(args)+")")
 			}
 		}
-		// Entries persist the full structured content; the extracted text is
-		// only used for the emptiness check below.
+		// 条目会持久化完整的结构化内容；提取出的文本仅用于下方的空内容检查。
 		if strings.TrimSpace(strings.Join(textParts, "\n")) == "" && len(calls) == 0 {
 			continue
 		}
@@ -82,11 +80,10 @@ func (s *SQLiteService) AddSessionToMemory(_ context.Context, sess session.Sessi
 			Content:   string(mustJSON(ev.Content)),
 			Timestamp: ev.Timestamp,
 		}
-		// Idempotent insert: event IDs are unique per session and stable.
-		// OnConflict DoNothing instead of count-then-create — two parallel
-		// AddSessionToMemory calls for the same session used to race past the
-		// count and one of them died on the UNIQUE constraint, silently
-		// aborting AutoRemember mid-session.
+		// 幂等插入：事件 ID 在每个会话内唯一且稳定。 使用 OnConflict
+		// DoNothing，而不是先 count 再 create —— 同一会话的两个并行
+		// AddSessionToMemory 调用过去会竞态地越过 count，其中一个在 UNIQUE
+		// 约束上失败，静默地 中止会话中途的 AutoRemember。
 		if err := s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry).Error; err != nil {
 			return err
 		}
@@ -94,11 +91,10 @@ func (s *SQLiteService) AddSessionToMemory(_ context.Context, sess session.Sessi
 	return nil
 }
 
-// SearchMemory finds entries whose text matches the query keywords, ranked by
-// hit count (relevance), newest first on ties. Candidates are pre-sorted by
-// recency before the LIMIT cut: without a deterministic order SQLite returns
-// rows in scan order, so once the store exceeds the candidate window the most
-// relevant old entries could silently drop out of consideration.
+// SearchMemory 查找文本匹配查询关键字的条目，按命中次数（相关性）排序，命中次数相同时最新的
+// 在前。候选集在 LIMIT 截断之前先按新旧程度预排序：没有确定性排序时 SQLite
+// 按扫描顺序返回行，因此一旦存储量超出候选窗口，最相关的旧条目就可能静默地掉出
+// 考虑范围。
 func (s *SQLiteService) SearchMemory(_ context.Context, req *memory.SearchRequest) (*memory.SearchResponse, error) {
 	var rows []memoryEntry
 	q := s.db.Where("app_name = ? AND user_id = ?", req.AppName, req.UserID)
@@ -107,8 +103,7 @@ func (s *SQLiteService) SearchMemory(_ context.Context, req *memory.SearchReques
 		conditions := make([]string, 0, len(keywords))
 		args := make([]any, 0, len(keywords))
 		for _, kw := range keywords {
-			// Escape LIKE wildcards so "100%" matches the literal text
-			// (same contract as session content search).
+			// 转义 LIKE 通配符，使 "100%" 匹配字面文本（与会话内容搜索相同的约定）。
 			esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(kw)
 			conditions = append(conditions, "lower(content) LIKE ? ESCAPE '\\'")
 			args = append(args, "%"+esc+"%")
@@ -160,14 +155,14 @@ func (s *SQLiteService) SearchMemory(_ context.Context, req *memory.SearchReques
 	return resp, nil
 }
 
-// Count returns the number of stored memories for a user (diagnostics/UI).
+// Count 返回某用户已存储的记忆数量（诊断/UI 用）。
 func (s *SQLiteService) Count(appName, userID string) (int64, error) {
 	var n int64
 	err := s.db.Model(&memoryEntry{}).Where("app_name = ? AND user_id = ?", appName, userID).Count(&n).Error
 	return n, err
 }
 
-// Clear removes all memories for a user.
+// Clear 移除某用户的全部记忆。
 func (s *SQLiteService) Clear(appName, userID string) error {
 	return s.db.Where("app_name = ? AND user_id = ?", appName, userID).Delete(&memoryEntry{}).Error
 }

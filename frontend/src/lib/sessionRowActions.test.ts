@@ -3,16 +3,16 @@ import { SESSION_ROW_ACTIONS_CLASS } from "./sessionRowActions";
 
 describe("SESSION_ROW_ACTIONS_CLASS", () => {
   it("keeps the dropdown trigger laid out while its menu is open", () => {
-    // Regression for #28: once Radix's modal layer kills :hover and moves
-    // focus into the portal, a display:none cluster leaves the popper with a
-    // 0×0 anchor rect, so the menu lands in the window's top-left corner.
+    // #28 的回归测试：一旦 Radix 的模态层使 :hover 失效并将焦点移入
+    // portal，display:none 的操作簇会让 popper 得到 0×0
+    // 的锚点矩形，导致菜单落在窗口左上角。
     expect(SESSION_ROW_ACTIONS_CLASS).toContain("group-has-data-[state=open]:flex");
   });
 
   it("still reveals the actions on hover and on keyboard focus", () => {
-    // The cluster is collapsed at rest; hover and focus-within are what make
-    // it reachable (#24 / the keyboard-accessibility fix that introduced
-    // group-focus-within).
+    // 该操作簇在静止时处于折叠状态；悬停和 focus-within
+    // 才是使其可触达的机制（#24 / 引入 group-focus-within
+    // 的键盘可访问性修复）。
     expect(SESSION_ROW_ACTIONS_CLASS.split(" ")).toContain("hidden");
     expect(SESSION_ROW_ACTIONS_CLASS).toContain("group-hover:flex");
     expect(SESSION_ROW_ACTIONS_CLASS).toContain("group-focus-within:flex");

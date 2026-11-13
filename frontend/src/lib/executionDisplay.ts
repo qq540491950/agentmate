@@ -1,6 +1,6 @@
 import type { ToolGroupStatus } from "@/lib/chatUtils";
 
-/** ExecutionDisplayMode controls how much of a turn's process the chat shows. */
+/** ExecutionDisplayMode 控制聊天显示一个回合过程的多少内容。 */
 export type ExecutionDisplayMode = "auto" | "concise" | "detailed" | "none";
 
 export const EXECUTION_DISPLAY_OPTIONS: {
@@ -16,18 +16,18 @@ export const EXECUTION_DISPLAY_OPTIONS: {
 
 const MODES = new Set<ExecutionDisplayMode>(["auto", "concise", "detailed", "none"]);
 
-/** parseExecutionDisplayMode returns null for an absent or stale value. */
+/** parseExecutionDisplayMode 对缺失或过期的值返回 null。 */
 function parseExecutionDisplayMode(value: string | null | undefined): ExecutionDisplayMode | null {
   const mode = (value ?? "").trim().toLowerCase();
   return MODES.has(mode as ExecutionDisplayMode) ? (mode as ExecutionDisplayMode) : null;
 }
 
-/** normalizeExecutionDisplayMode clamps a global setting to a renderable mode. */
+/** normalizeExecutionDisplayMode 将全局设置限制为可渲染的模式。 */
 export function normalizeExecutionDisplayMode(value: string | null | undefined): ExecutionDisplayMode {
   return parseExecutionDisplayMode(value) ?? "auto";
 }
 
-/** executionAutoExpanded is the mode's default open/closed policy. */
+/** executionAutoExpanded 是该模式默认的展开/收起策略。 */
 export function executionAutoExpanded(mode: ExecutionDisplayMode, status: ToolGroupStatus): boolean {
   switch (mode) {
     case "auto":
@@ -41,7 +41,7 @@ export function executionAutoExpanded(mode: ExecutionDisplayMode, status: ToolGr
   }
 }
 
-/** executionHidden hides the whole process block except a pending confirmation. */
+/** executionHidden 除待处理的确认外，隐藏整个过程块。 */
 export function executionHidden(mode: ExecutionDisplayMode, status: ToolGroupStatus): boolean {
   return mode === "none" && status !== "confirm";
 }

@@ -5,8 +5,9 @@ type Props = { children: ReactNode };
 type State = { error: Error | null };
 
 /**
- * ErrorBoundary keeps a render crash in one page from blanking the whole
- * window: the sidebar stays usable and the user can retry or switch pages.
+ * ErrorBoundary
+ * 可避免单个页面的渲染崩溃导致整个窗口空白：侧边栏保持可用，用户能够重试或切换
+ * 页面。
  */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null };

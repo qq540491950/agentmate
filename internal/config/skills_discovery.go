@@ -7,11 +7,10 @@ import (
 	"strings"
 )
 
-// Skill sources. App skills live in config.json; project and global skills are
-// discovered read-only from <root>/.agents/skills on every read and are never
-// written back to the config file: the directories belong to the other
-// agentskills.io tools (Codex, Claude Code, OpenCode…), and an in-app edit must
-// not silently shadow the file those tools read.
+// 技能来源。应用技能存放在 config.json 中；项目级和全局技能在每次读取时从
+// <root>/.agents/skills 以只读方式发现，且绝不会写回配置文件：这些目录属于
+// 其他 agentskills.io 工具（Codex、Claude Code、OpenCode…），应用内编辑不得
+// 静默遮蔽这些工具读取的文件。
 const (
 	SkillSourceProject = "project"
 	SkillSourceGlobal  = "global"
@@ -22,13 +21,12 @@ const (
 	discoveredGlobalPrefix  = "fs:global:"
 )
 
-// skillNamePattern is the agentskills.io name grammar: lowercase ASCII
-// alphanumerics in hyphen-separated groups, at most 64 characters.
+// skillNamePattern 是 agentskills.io 名称语法：由连字符分隔的组构成的小写 ASCII
+// 字母数字，最多 64 个字符。
 var skillNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
-// GlobalSkillRoot is the user-level agentskills.io discovery root:
-// ~/.agents/skills (%USERPROFILE%\.agents\skills on Windows). Empty when the
-// home directory cannot be resolved.
+// GlobalSkillRoot 是用户级 agentskills.io 发现根目录：~/.agents/skills（Windows
+// 上为 %USERPROFILE%\.agents\skills）。当无法解析主目录时为空。
 func GlobalSkillRoot() string {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" {
@@ -37,10 +35,9 @@ func GlobalSkillRoot() string {
 	return filepath.Join(home, ".agents", "skills")
 }
 
-// DiscoveredSkillID returns the stable identity of a discovered skill. Agents
-// store this ID, so a mounted project/global skill survives restarts; the
-// backing directory may disappear when the workspace or the user root changes.
-// Unknown sources return "".
+// DiscoveredSkillID 返回已发现技能的稳定标识。Agent 会存储此
+// ID，因此已挂载的项目级/全局技能在重启后仍会保留；当工作区或用户根目录变化时，
+// 底层目录可能会消失。未知来源返回 ""。
 func DiscoveredSkillID(source, name string) string {
 	switch source {
 	case SkillSourceProject:
@@ -51,8 +48,7 @@ func DiscoveredSkillID(source, name string) string {
 	return ""
 }
 
-// DiscoveredSkillSource reports whether id belongs to a discovered skill and
-// which root it came from.
+// DiscoveredSkillSource 报告 id 是否属于已发现的技能，以及它来自哪个根目录。
 func DiscoveredSkillSource(id string) (string, bool) {
 	switch {
 	case strings.HasPrefix(id, discoveredProjectPrefix):
@@ -63,8 +59,7 @@ func DiscoveredSkillSource(id string) (string, bool) {
 	return "", false
 }
 
-// DiscoveredSkillName extracts the skill name from a discovered ID ("" for an
-// app-config ID).
+// DiscoveredSkillName 从已发现的 ID 中提取技能名称（对于应用配置 ID 为 ""）。
 func DiscoveredSkillName(id string) string {
 	switch {
 	case strings.HasPrefix(id, discoveredProjectPrefix):
@@ -75,12 +70,11 @@ func DiscoveredSkillName(id string) string {
 	return ""
 }
 
-// DiscoveredSkills lists agentskills.io skills from
-// <workspace>/.agents/skills (project) and the user-level root. Discovery is
-// exactly one level deep: only <root>/<name>/SKILL.md with an uppercase
-// filename counts; stray files and nested trees are ignored. A broken entry is
-// skipped on its own, and a missing/unreadable root is simply empty — never an
-// error, so a workspace without .agents/skills stays silent.
+// DiscoveredSkills 列出 <workspace>/.agents/skills（项目级）和用户级根目录中的
+// agentskills.io 技能。发现严格只有一层深度：仅文件名大写的
+// <root>/<name>/SKILL.md
+// 才计入；游离文件和嵌套目录树会被忽略。损坏的条目会单独跳过，缺失/不可读的根目
+// 录就是空——绝不是错误，因此不含 .agents/skills 的工作区会保持静默。
 func DiscoveredSkills(workspace, globalRoot string) []SkillConfig {
 	out := []SkillConfig{}
 	if ws := strings.TrimSpace(workspace); ws != "" {
@@ -92,10 +86,9 @@ func DiscoveredSkills(workspace, globalRoot string) []SkillConfig {
 	return out
 }
 
-// EffectiveSkills merges discovered skills with the app-configured ones. Each
-// materialized name exists once; precedence is project > global > app config,
-// so an externally maintained SKILL.md wins over a same-named app skill rather
-// than making the agent unbuildable.
+// EffectiveSkills 将已发现技能与应用配置的技能合并。每个物化后的名称仅出现一次；优先级为项目级
+// > 全局 > 应用配置，因此由外部维护的 SKILL.md
+// 会优先于同名的应用技能，而不会导致 Agent 无法构建。
 func EffectiveSkills(cfg Config, workspace, globalRoot string) []SkillConfig {
 	out := make([]SkillConfig, 0, len(cfg.Skills)+4)
 	seen := make(map[string]bool, len(cfg.Skills)+4)
@@ -119,13 +112,13 @@ func EffectiveSkills(cfg Config, workspace, globalRoot string) []SkillConfig {
 func scanSkillRoot(root, source string) []SkillConfig {
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return nil // missing or unreadable root: silently empty
+		return nil // 根目录缺失或不可读：静默为空
 	}
 	seen := make(map[string]bool)
 	var out []SkillConfig
 	for _, e := range entries {
 		if !e.IsDir() {
-			continue // stray files at the root are ignored
+			continue // 根目录下的散落文件会被忽略
 		}
 		name, desc, body, ok := readDiscoveredSkill(filepath.Join(root, e.Name()))
 		if !ok || seen[name] {
@@ -142,9 +135,9 @@ func scanSkillRoot(root, source string) []SkillConfig {
 	return out
 }
 
-// readDiscoveredSkill loads one <root>/<dir>/SKILL.md. The filename comparison
-// is exact and case-sensitive so a lower-case skill.md on a case-insensitive
-// filesystem is not mistaken for the agentskills.io layout.
+// readDiscoveredSkill 加载单个
+// <root>/<dir>/SKILL.md。文件名比较是精确且区分大小写的，因此在大小写不敏感的文
+// 件系统上，小写的 skill.md 不会被误认为 agentskills.io 布局。
 func readDiscoveredSkill(dir string) (name, desc, body string, ok bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -174,12 +167,12 @@ func validDiscoveredSkillName(name string) bool {
 	return len(name) <= 64 && skillNamePattern.MatchString(name)
 }
 
-// NormalizeSkillName makes a valid agentskills.io skill name: lowercase ASCII
-// letters/digits with single hyphens. Empty results collapse to "skill" so two
-// CJK-only names cannot silently share one materialized directory.
+// NormalizeSkillName 生成有效的 agentskills.io 技能名称：由小写 ASCII
+// 字母/数字组成，连字符均为单个。空结果会归并为 "skill"，这样两个仅含 CJK
+// 的名称就无法静默共享同一个物化目录。
 func NormalizeSkillName(name string) string {
 	var sb strings.Builder
-	prevHyphen := true // suppress leading hyphens
+	prevHyphen := true // 抑制前导连字符
 	for _, r := range strings.ToLower(name) {
 		switch {
 		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
@@ -197,12 +190,12 @@ func NormalizeSkillName(name string) string {
 	return out
 }
 
-// ParseSkillMarkdown extracts name/description from a SKILL.md YAML
-// frontmatter block and returns the markdown body. The parser is deliberately
-// small (no YAML dependency): top-level `key: value` pairs plus the common
-// `|` / `>` block-scalar form for description. Without frontmatter the first
-// heading supplies a fallback name (tolerant, used by workspace import; the
-// discovery layer rejects entries whose name/description does not validate).
+// ParseSkillMarkdown 从 SKILL.md 的 YAML frontmatter 块中提取
+// name/description，并返回 markdown 正文。该解析器刻意保持精简（不依赖
+// YAML）：支持顶层 `key: value` 键值对，以及 description 常用的 `|` / `>`
+// 块标量形式。没有 frontmatter
+// 时，由第一个标题提供回退名称（宽松处理，供工作区导入使用；发现层会拒绝
+// name/description 未通过校验的条目）。
 func ParseSkillMarkdown(content string) (name, desc, body string) {
 	content = strings.TrimPrefix(content, "\uFEFF")
 	if strings.HasPrefix(content, "---") {

@@ -19,9 +19,9 @@ export function sessionRowTooltip({
 }
 
 /**
- * SessionRowLabel renders the sidebar's one-line session title. The latest
- * assistant reply stays available as a shared hover card instead of a
- * second visual line, so long conversations do not make every row bulky.
+ * SessionRowLabel
+ * 渲染侧边栏的单行会话标题。最新助手回复会以共享悬停卡片的形式保持可用，而不是
+ * 占用第二条视觉行，因此长对话不会让每一行显得臃肿。
  */
 export function SessionRowLabel({
   title,

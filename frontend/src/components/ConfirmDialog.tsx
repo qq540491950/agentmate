@@ -19,9 +19,9 @@ export type ConfirmRequest = {
   action: () => void;
 };
 
-// ConfirmDialog replaces window.confirm: the native dialog steals focus,
-// renders outside the app's theme, and cannot be styled; this keeps focus
-// trapping and Escape handling consistent with the rest of the app.
+// ConfirmDialog 替代
+// window.confirm：原生对话框会抢占焦点，渲染在应用主题之外，且无法设置样式；这
+// 样做使焦点陷阱和 Escape 键处理与应用其余部分保持一致。
 export function ConfirmDialog({ request, onClose }: {
   request: ConfirmRequest | null;
   onClose: () => void;

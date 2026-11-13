@@ -13,9 +13,8 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// slowTurnServer streams the first turn in several delayed chunks (the run is
-// genuinely in-flight while the test pokes it) and answers any later turn
-// with a single fast replacement reply.
+// slowTurnServer 将首个回合以多个延迟块流式传输（测试对其进行探查时，该运行确实仍在执行中），
+// 并对之后的任何回合都用单条快速的替换回复作答。
 func slowTurnServer(t *testing.T, fastReply string, firstDelta chan struct{}) *httptest.Server {
 	t.Helper()
 	turn := 0
@@ -42,7 +41,7 @@ func slowTurnServer(t *testing.T, fastReply string, firstDelta chan struct{}) *h
 	}))
 }
 
-// newTrimRaceChat wires a one-agent store + chat service against srv.
+// newTrimRaceChat 将一个单 Agent 的存储 + 聊天服务接入 srv。
 func newTrimRaceChat(t *testing.T, srv *httptest.Server) (*ChatService, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -72,10 +71,10 @@ func newTrimRaceChat(t *testing.T, srv *httptest.Server) (*ChatService, string) 
 	return chat, sess.ID
 }
 
-// TestRegenerateWaitsForOldRun pins the invariant: Regenerate must cancel the
-// in-flight turn AND wait until it has fully unwound before trimming history.
-// An old run that keeps streaming past the trim would resurrect deleted
-// events (old reply text appearing in the regenerated timeline).
+// TestRegenerateWaitsForOldRun 锁定了以下不变量：Regenerate
+// 必须取消正在执行的回合，并且必须等待其完全收尾后才能裁剪历史记录。若旧运行在
+// 裁剪之后仍持续流式传输，就会使已删除的事件重新出现（旧回复文本会出现在重新生
+// 成的时间线中）。
 func TestRegenerateWaitsForOldRun(t *testing.T) {
 	firstDelta := make(chan struct{})
 	srv := slowTurnServer(t, "重答内容：精简版答案", firstDelta)
@@ -122,9 +121,9 @@ func TestRegenerateWaitsForOldRun(t *testing.T) {
 	}
 }
 
-// TestDeleteSessionWaitsForOldRun pins the same contract for DeleteSession:
-// after it returns, the in-flight run must be gone and no event rows may be
-// written for the deleted session afterwards.
+// TestDeleteSessionWaitsForOldRun 为 DeleteSession 锁定了同一契约：在
+// DeleteSession 返回之后，正在执行的运行必须已经结束，此后不得再为已删除的会话写入任何事件行
+// 。
 func TestDeleteSessionWaitsForOldRun(t *testing.T) {
 	firstDelta := make(chan struct{})
 	srv := slowTurnServer(t, "无关", firstDelta)
@@ -152,8 +151,8 @@ func TestDeleteSessionWaitsForOldRun(t *testing.T) {
 	}
 }
 
-// TestEditAndResendWaitsForOldRun pins the third history-mutating entry point:
-// the edited turn replaces the old one without old text leaking back in.
+// TestEditAndResendWaitsForOldRun 锁定了第三个会改动历史的入口点：编辑后的回合会替换旧回合，且旧文本不会重新混
+// 入。
 func TestEditAndResendWaitsForOldRun(t *testing.T) {
 	firstDelta := make(chan struct{})
 	srv := slowTurnServer(t, "编辑后的答案", firstDelta)

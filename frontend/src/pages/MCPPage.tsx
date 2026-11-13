@@ -60,9 +60,9 @@ export function MCPPage() {
         const map: Record<string, ServerStatus> = {};
         for (const s of ss ?? []) map[s.id] = s;
         setStatuses(map);
-        // Lazy connects (a chat turn building the toolset) also raise
-        // mcp:auth-pending without a page-side connect() to clear the badge —
-        // clear it once that server reached a terminal state.
+        // 惰性连接（聊天回合在构建工具集时）也会触发
+        // mcp:auth-pending，而页面侧没有 connect() 可用来清除徽标——
+        // 一旦该服务器达到终态，就清除它。
         setAuthPendingServer((pending) => {
           if (!pending) return null;
           const st = Object.values(map).find((x) => x.name === pending);
@@ -73,8 +73,7 @@ export function MCPPage() {
   }, []);
   useEffect(reload, [reload]);
 
-  // OAuth consent: warn the user while an authorization waits in the browser,
-  // and mark the server card as awaiting consent.
+  // OAuth 同意：当授权在浏览器中等待时警告用户， 并将服务器卡片标记为等待同意。
   const [authPendingServer, setAuthPendingServer] = useState<string | null>(null);
   useEffect(() => {
     const off = Events.On("mcp:auth-pending", (e: any) => {
@@ -126,8 +125,8 @@ export function MCPPage() {
     }
   };
 
-  // 启用开关是 MCP 的主控：开启即保存并立即连接，关闭即保存（后端随
-  // changed 判定自动断开缓存连接）。
+  // 启用开关是 MCP 的主控：开启即保存并立即连接，关闭即保存（后端随 changed
+  // 判定自动断开缓存连接）。
   const toggleEnabled = async (s: MCPServerConfig, enabled: boolean) => {
     try {
       const saved = await Config.SaveMCPServer({ ...s, disabled: !enabled });

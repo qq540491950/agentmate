@@ -11,12 +11,10 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// TestImportSkillsFromWorkspace covers the agentskills.io layout import:
-// frontmatter parsing, duplicate-name skipping, non-SKILL files ignored and
-// the no-directory error path.
-// TestImportSkillsRejectsNormalizedCollisions: names that normalize to the
-// same materialized directory (CJK names all collapse to the same bucket)
-// must conflict at import, not silently overwrite each other's SKILL.md.
+// TestImportSkillsRejectsNormalizedCollisions：TestImportSkillsFromWorkspace
+// 覆盖 agentskills.io 布局导入：frontmatter 解析、跳过重复名称、非 SKILL
+// 文件被忽略以及无目录错误路径。名称规范化后指向同一物化目录（CJK
+// 名称全部归入同一个桶）时，必须在导入时冲突，不得静默覆盖彼此的 SKILL.md。
 func TestImportSkillsRejectsNormalizedCollisions(t *testing.T) {
 	dir := t.TempDir()
 	workspace := t.TempDir()
@@ -105,7 +103,7 @@ func TestImportSkillsFromWorkspace(t *testing.T) {
 		t.Fatalf("expected 2 imported (translate + 周报助手), got %d", n)
 	}
 
-	// Idempotent: second import adds nothing (name duplicate detection).
+	// 幂等：第二次导入不添加任何内容（名称重复检测）。
 	n2, err := svc.ImportSkillsFromWorkspace()
 	if err != nil {
 		t.Fatal(err)
@@ -129,9 +127,8 @@ func TestImportSkillsFromWorkspace(t *testing.T) {
 	}
 }
 
-// TestSaveSkillRejectsNormalizedCollision: "API Review" and "api-review"
-// materialize to the same directory; the second save must fail instead of
-// silently overwriting the first skill.
+// TestSaveSkillRejectsNormalizedCollision："API Review" 与 "api-review"
+// 物化到同一目录；第二次保存必须失败，而不是静默覆盖第一个技能。
 func TestSaveSkillRejectsNormalizedCollision(t *testing.T) {
 	dir := t.TempDir()
 	store, err := config.Open(dir)
@@ -146,7 +143,7 @@ func TestSaveSkillRejectsNormalizedCollision(t *testing.T) {
 	if err := cs.SaveSkill(config.SkillConfig{ID: "s2", Name: "api-review", Content: "b"}); err == nil {
 		t.Fatal("expected normalized-name collision rejection")
 	}
-	// Re-saving the same skill (same ID) is fine.
+	// 重新保存同一技能（相同 ID）没有问题。
 	if err := cs.SaveSkill(config.SkillConfig{ID: "s1", Name: "api-review", Content: "a2"}); err != nil {
 		t.Fatalf("self-update rejected: %v", err)
 	}

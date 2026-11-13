@@ -7,8 +7,8 @@ import { tooltipCardClassName } from "@/components/ui/tooltip";
 
 const SRC_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-// These components use `title` as a visible heading prop, not as a native
-// browser tooltip. Everything else must go through TooltipHint/Tooltip.
+// 这些组件将 `title` 用作可见的标题
+// prop，而非原生浏览器工具提示。其余一切必须通过 TooltipHint/Tooltip。
 const CONTENT_TITLE_COMPONENTS = new Set([
   "EmptyState",
   "PageHeader",

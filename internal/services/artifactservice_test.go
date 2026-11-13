@@ -93,12 +93,11 @@ func TestOpenExtensionlessArtifactDetectsText(t *testing.T) {
 	}
 }
 
-// TestOpenTruncatesLargeText pins the preview contract for oversized text
-// files: the tail is cut at a rune boundary with the truncated flag set, and
-// the payload stays bounded (the read itself stops at the cap).
+// TestOpenTruncatesLargeText 固定了超大文本文件的预览契约：尾部在 rune
+// 边界处截断并设置 truncated 标志，且载荷保持有界（读取本身在上限处停止）。
 func TestOpenTruncatesLargeText(t *testing.T) {
 	svc, ws := newArtifactFixture(t)
-	big := strings.Repeat("汉", 200*1024) // 600KB of UTF-8, cap is 512KB
+	big := strings.Repeat("汉", 200*1024) // 600KB 的 UTF-8 数据，上限为 512KB
 	if err := os.WriteFile(filepath.Join(ws, "big.log"), []byte(big), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +108,7 @@ func TestOpenTruncatesLargeText(t *testing.T) {
 	if !art.Truncated {
 		t.Fatal("expected truncated flag")
 	}
-	if len(art.Text) > 512*1024+20 { // cap + truncation marker
+	if len(art.Text) > 512*1024+20 { // 上限 + 截断标记
 		t.Fatalf("text payload exceeds cap: %d bytes", len(art.Text))
 	}
 	if !utf8.ValidString(art.Text) {
@@ -133,11 +132,11 @@ func TestOpenRejectsTraversalAndBinary(t *testing.T) {
 
 func TestListArtifacts(t *testing.T) {
 	svc, ws := newArtifactFixture(t)
-	// Explicit mtimes: List promises newest first.
+	// 显式设置 mtimes：List 承诺按最新优先返回。
 	for i, name := range []string{"a.png", "b.md", "c.txt", "d.exe"} {
 		p := filepath.Join(ws, name)
 		_ = os.WriteFile(p, []byte{byte(i)}, 0o644)
-		stamp := time.Now().Add(-time.Duration(3-i) * time.Hour) // a oldest, c newest
+		stamp := time.Now().Add(-time.Duration(3-i) * time.Hour) // a 最旧，c 最新
 		_ = os.Chtimes(p, stamp, stamp)
 	}
 	list, err := svc.List()
@@ -148,7 +147,7 @@ func TestListArtifacts(t *testing.T) {
 	for _, a := range list {
 		names = append(names, a.Name)
 	}
-	// d.exe has an unknown extension and must be excluded; newest first.
+	// d.exe 的扩展名未知，必须排除；最新优先。
 	if strings.Join(names, ",") != "c.txt,b.md,a.png" {
 		t.Fatalf("list = %v", names)
 	}

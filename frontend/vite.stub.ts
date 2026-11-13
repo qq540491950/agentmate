@@ -3,9 +3,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-// Visual-regression stub harness: serves the real app UI with a canned IPC
-// transport in a plain browser. Run with:
-//   npx vite --config vite.stub.ts --port 9246
+// 视觉回归桩测试装置：在普通浏览器中通过预设的 IPC 传输提供真实应用
+// UI。运行方式： npx vite --config vite.stub.ts --port 9246
 export default defineConfig({
   server: {
     host: "127.0.0.1",

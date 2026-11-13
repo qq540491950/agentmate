@@ -4,9 +4,8 @@ package agentkit
 
 import "testing"
 
-// TestShellProcessAttrsHideConsole pins issue #54: the desktop app is a GUI
-// process without a console, so commands started through run_command must not
-// allocate a visible console window over the app.
+// TestShellProcessAttrsHideConsole 固定 issue #54：桌面应用是一个没有控制台的
+// GUI 进程，因此通过 run_command 启动的命令不得在应用之上分配可见的控制台窗口。
 func TestShellProcessAttrsHideConsole(t *testing.T) {
 	attrs := shellProcessAttrs()
 	if attrs == nil {

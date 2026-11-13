@@ -2,7 +2,7 @@ import type { Settings, TerminalSettings } from "@/lib/api";
 
 export type ApprovalPolicy = "request-approval" | "auto-approve" | "never";
 export type SandboxProfile = "workspace-write" | "read-only" | "danger-full-access";
-// SandboxMode is the legacy combined profile. Keep it only for migration.
+// SandboxMode 是遗留的合并配置档。仅保留用于迁移。
 export type SandboxMode = "request-approval" | "auto-approve" | "danger-full-access";
 
 export type ExecutionPolicy = {
@@ -15,7 +15,7 @@ export const DEFAULT_EXECUTION_POLICY: ExecutionPolicy = {
   sandboxProfile: "workspace-write",
 };
 
-/** normalizeApprovalPolicy mirrors config.NormalizeApprovalPolicy. */
+/** normalizeApprovalPolicy 镜像 config.NormalizeApprovalPolicy。 */
 export function normalizeApprovalPolicy(value?: string | null): ApprovalPolicy {
   switch ((value ?? "").trim().toLowerCase()) {
     case "never":
@@ -32,7 +32,7 @@ export function normalizeApprovalPolicy(value?: string | null): ApprovalPolicy {
   }
 }
 
-/** normalizeSandboxProfile mirrors config.NormalizeSandboxProfile. */
+/** normalizeSandboxProfile 镜像 config.NormalizeSandboxProfile。 */
 export function normalizeSandboxProfile(value?: string | null): SandboxProfile {
   switch ((value ?? "").trim().toLowerCase()) {
     case "read-only":
@@ -45,8 +45,8 @@ export function normalizeSandboxProfile(value?: string | null): SandboxProfile {
 }
 
 /**
- * normalizeSandboxMode is retained for legacy config/session migration only.
- * New UI state must use ApprovalPolicy and SandboxProfile independently.
+ * normalizeSandboxMode 仅保留用于遗留配置/会话迁移。 新的 UI 状态必须独立使用
+ * ApprovalPolicy 和 SandboxProfile。
  */
 export function normalizeSandboxMode(value?: string): SandboxMode {
   switch ((value ?? "").trim().toLowerCase()) {
@@ -60,7 +60,7 @@ export function normalizeSandboxMode(value?: string): SandboxMode {
   }
 }
 
-/** executionPolicyFromLegacySandboxMode maps one old three-way choice to a pair. */
+/** executionPolicyFromLegacySandboxMode 将一个旧的三选一选项映射为一对策略。 */
 export function executionPolicyFromLegacySandboxMode(value?: string | null): ExecutionPolicy {
   switch (normalizeSandboxMode(value ?? undefined)) {
     case "danger-full-access":
@@ -73,10 +73,10 @@ export function executionPolicyFromLegacySandboxMode(value?: string | null): Exe
 }
 
 /**
- * resolveExecutionPolicy mirrors the Go precedence contract: explicit split
- * fields win; missing split fields fall back to legacy sandboxMode; when no
- * snapshot exists at all, use the caller's fallback (for example the global
- * default for an old session).
+ * resolveExecutionPolicy 镜像 Go
+ * 的优先级约定：显式的拆分字段优先；拆分字段缺失时回退到遗留的
+ * sandboxMode；当完全不存在快照时，使用调用方的回退值（例如旧会话的全局默认值）
+ * 。
  */
 export function resolveExecutionPolicy(
   approvalPolicy?: string | null,
@@ -159,8 +159,10 @@ export const SETTINGS_TABS: readonly SettingsTabDef[] = [
 
 const SETTINGS_TAB_KEYS = new Set<string>(SETTINGS_TABS.map((tab) => tab.key));
 
-/** resolveSettingsTab keeps internal deep links working after the old
- * "general" tab was removed. Unknown values fall back to the default page. */
+/**
+ * 在旧的 "general" 标签页被移除后，resolveSettingsTab
+ * 使内部深链接仍然可用。未知值回退到默认页面。
+ */
 export function resolveSettingsTab(tab?: string | null): SettingsTab {
   if (tab === "general") return DEFAULT_SETTINGS_TAB;
   if (tab && SETTINGS_TAB_KEYS.has(tab)) return tab as SettingsTab;
@@ -176,10 +178,10 @@ export function settingsTabsInGroup(group: SettingsGroup): SettingsTabDef[] {
 }
 
 /**
- * Go persists optional fields with omitempty, so a value equal to its default
- * may be absent from the loaded snapshot while the draft carries it
- * explicitly. Comparing raw objects would then keep a reverted field dirty
- * forever. These defaults mirror the Go normalization contract.
+ * Go 使用 omitempty
+ * 持久化可选字段，因此等于默认值的字段可能不会出现在已加载的快照中，而草稿中却
+ * 显式携带了它。此时比较原始对象会导致已回退的字段永远保持为脏状态。这些默认值
+ * 镜像 Go 的归一化约定。
  */
 const COMPARE_DEFAULTS: Partial<Record<keyof Settings, unknown>> = {
   workspaceDir: "",
@@ -228,13 +230,12 @@ function terminalFingerprint(value: unknown): Record<string, unknown> {
 }
 
 function settingsFingerprint(settings: Settings): string {
-  // Settings is a flat object of primitives and nullable primitives. Sorting
-  // keys keeps the comparison stable even if a caller builds the draft with a
-  // different property insertion order. Missing optional fields are filled
-  // with their persisted defaults so "absent" and "explicit default" compare
-  // equal.
-  // Union both sides so a future Settings field is still compared even before
-  // its default is added here.
+  // Settings
+  // 是由原始类型和可空原始类型组成的扁平对象。对键进行排序可让比较保持稳定，即
+  // 使调用方以不同的属性插入顺序构建草稿也是如此。缺失的可选字段会用其持久化默
+  // 认值填充，因此 "absent" 与 "explicit default" 比较时相等。
+  // 对两侧取并集，这样即使某个未来的 Settings
+  // 字段的默认值尚未添加到这里，它也仍会被比较。
   const keys = Array.from(new Set([...Object.keys(settings), ...Object.keys(COMPARE_DEFAULTS)])).sort();
   const values = keys.map((key) => {
     const value = settings[key as keyof Settings];

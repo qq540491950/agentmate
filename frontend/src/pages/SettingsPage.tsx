@@ -143,8 +143,8 @@ export function SettingsPage({
     numericValidity.current[key] = valid;
   }, []);
 
-  // Deep links (empty state, @ popup, model selector) reopen the hub on a
-  // specific tab; keep the active tab in sync when the prop changes.
+  // 深链接（空状态、@ 弹窗、模型选择器）会在特定标签页重新打开 hub；当 prop
+  // 变化时，保持活动标签页同步。
   useEffect(() => {
     if (initialTab) setTab(resolveSettingsTab(initialTab));
   }, [initialTab]);
@@ -187,8 +187,8 @@ export function SettingsPage({
     if (!settings) return;
     const next = { ...settings, ...patch };
     setSettings(next);
-    // Appearance is the only group that previews before save. Persisting and
-    // caching happen in save(); this keeps the saved snapshot authoritative.
+    // 外观是唯一会在保存前预览的分组。持久化与缓存发生在 save()
+    // 中；这使已保存的快照保持权威性。
     if ("themePreset" in patch || "themeMode" in patch || "fontScale" in patch || "chatWidth" in patch) {
       const prefs = prefsFromSettings(next);
       applyTheme(prefs);
@@ -314,8 +314,9 @@ export function SettingsPage({
     return () => onRegisterLeaveGuard?.(null);
   }, [onRegisterLeaveGuard, requestLeave]);
 
-  // Esc leaves the hub, but open dialogs (log viewer, artifact preview,
-  // leave confirmation) get the first chance to consume it.
+  // Esc 会离开
+  // hub，但已打开的对话框（日志查看器、产物预览、离开确认）会优先获得处理它的机
+  // 会。
   useEffect(() => {
     if (!onClose) return;
     const onKey = (e: KeyboardEvent) => {
@@ -347,7 +348,7 @@ export function SettingsPage({
   }, []);
 
   // 工作区目录：与对话页的「添加项目」共用原生目录选择器，Windows/macOS
-  // 都能弹窗选择，不再要求用户手输路径。取消选择不是错误，保持原值。
+  // 都能弹窗选择，不再要求用户手动输入路径。取消选择不是错误，保持原值。
   const pickWorkspaceDir = useCallback(async () => {
     try {
       const picked = pickedDirectoryValue(await Dialogs.OpenFile({
@@ -427,8 +428,8 @@ export function SettingsPage({
   };
 
   if (!settings) {
-    // A failed load used to render nothing at all, leaving a blank pane with
-    // no way out. Offer a retry instead.
+    // 以前加载失败时会完全不渲染任何内容，留下一个没有出路的空白面板。现在改为
+    // 提供重试。
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-sm text-muted-foreground">
         <div>设置加载失败</div>
@@ -508,8 +509,7 @@ export function SettingsPage({
         {(isConfigSettingsTab(tab) || tab === "about") && (
         <div className="flex h-full flex-col bg-canvas">
         <div className={cn("min-h-0 flex-1 overflow-y-auto p-6", showConfigSaveBar && "pb-0")}>
-      {/* Config pages read in one stable column; Knowledge/About keep their
-          narrower single-column width. */}
+      {/* 配置页面采用稳定单列布局；知识/关于保留各自更窄的单列宽度。 */}
       <div className={cn("mx-auto", configContentWidth)}>
       <div className="grid gap-4">
         {tab === "appearance" && (

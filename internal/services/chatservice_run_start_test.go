@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// TestRunRegistersBeforeUserEvent pins the ordering that keeps IsRunning true
-// for a just-started turn. The frontend probes IsRunning while loading a new
-// session; if registration happens only after the user event, that probe can
-// return false and hide the live turn.
+// TestRunRegistersBeforeUserEvent 固定了顺序：使刚启动的回合中 IsRunning 保持
+// true。前端在加载新会话时会探测
+// IsRunning；如果注册仅在用户事件之后发生，该探测可能返回
+// false，并隐藏进行中的回合。
 func TestRunRegistersBeforeUserEvent(t *testing.T) {
 	chat, _, _ := newWorkspaceTestChat(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

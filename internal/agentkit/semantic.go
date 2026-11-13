@@ -21,15 +21,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// EmbeddingConfig points at an OpenAI-compatible /embeddings endpoint
-// (POST {base}/embeddings, Bearer auth, float encoding).
+// EmbeddingConfig 指向一个兼容 OpenAI 的 /embeddings 端点 （POST
+// {base}/embeddings，Bearer 认证，float 编码）。
 type EmbeddingConfig struct {
 	BaseURL string
 	APIKey  string
 	Model   string
 }
 
-// KnowledgeChunk is one indexed passage of a knowledge file.
+// KnowledgeChunk 是知识文件中一个被索引的片段。
 type KnowledgeChunk struct {
 	ID        uint   `gorm:"primaryKey"`
 	File      string `gorm:"index:idx_knowledge_file"`
@@ -38,22 +38,21 @@ type KnowledgeChunk struct {
 	Content   string
 	Model     string
 	Dim       int
-	Embedding []byte // little-endian float32 array
+	Embedding []byte // 小端序 float32 数组
 }
 
-// KnowledgeIndex is the persistent vector store for workspace knowledge files
-// (SQLite next to sessions.db). nil disables semantic search (keyword fallback).
+// KnowledgeIndex 是工作区知识文件的持久化向量存储 （位于 sessions.db 旁边的
+// SQLite）。为 nil 时禁用语义搜索（关键词回退）。
 type KnowledgeIndex struct {
 	DB *gorm.DB
-	mu sync.Mutex // serializes (re)indexing
+	mu sync.Mutex // 串行化（重新）索引
 }
 
-// OpenKnowledgeIndex creates/opens the knowledge index database.
+// OpenKnowledgeIndex 创建/打开知识索引数据库。
 func OpenKnowledgeIndex(path string) (*KnowledgeIndex, error) {
-	// Same hardening as the sessions DB: WAL + busy_timeout so a concurrent
-	// reader (search) and writer (background re-index) never fail with
-	// "database is locked", and a single connection to keep write/read
-	// serialization deterministic.
+	// 与会话数据库相同的加固措施：WAL + busy_timeout，使并发的
+	// 读取方（搜索）与写入方（后台重新索引）绝不会因 "database is locked"
+	// 而失败，并只使用单个连接以保证写/读 串行化的确定性。
 	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 	db, err := gorm.Open(sqlite.Open(dsn))
 	if err != nil {
@@ -69,28 +68,27 @@ func OpenKnowledgeIndex(path string) (*KnowledgeIndex, error) {
 }
 
 const (
-	chunkRunes     = 700 // chunk size in runes
-	chunkOverlap   = 100 // overlap between consecutive chunks
-	embedBatch     = 32  // inputs per /embeddings request
+	chunkRunes     = 700 // 块大小，以 rune 计
+	chunkOverlap   = 100 // 连续分块之间的重叠
+	embedBatch     = 32  // 每个 /embeddings 请求的输入数
 	semanticTopK   = 8
-	semanticWeight = 0.75 // hybrid score: 0.75*cosine + 0.25*keyword
-	embedWorkers   = 4    // concurrent /embeddings requests while indexing
+	semanticWeight = 0.75 // 混合分数：0.75*cosine + 0.25*keyword
+	embedWorkers   = 4    // 索引期间并发的 /embeddings 请求
 )
 
-// SearchOptions carries everything the knowledge tool needs at run time.
+// SearchOptions 携带知识工具在运行时所需的一切。
 type SearchOptions struct {
 	Workspace string
-	Index     *KnowledgeIndex  // nil => keyword only
-	Embedding *EmbeddingConfig // nil => keyword only
-	// Ctx bounds embedding HTTP calls (indexing and query); nil means
-	// context.Background(). The knowledge tool passes its run context so a
-	// cancelled/timed-out turn stops in-flight embedding requests.
+	Index     *KnowledgeIndex  // nil => 仅关键词
+	Embedding *EmbeddingConfig // nil => 仅关键词
+	// Ctx 限定嵌入 HTTP 调用（索引和查询）；nil 表示
+	// context.Background()。知识工具会传入其运行上下文，以便已取消/已超时的回合停
+	// 止进行中的嵌入请求。
 	Ctx context.Context
 }
 
-// searchHybrid runs semantic search when possible and blends it with keyword
-// scoring; it falls back to pure keyword search when no embedding backend is
-// configured or the embedding call fails.
+// searchHybrid 在可能时运行语义搜索，并将其与关键词
+// 评分融合；当未配置嵌入后端或嵌入调用失败时，回退到纯关键词搜索。
 func searchHybrid(opts SearchOptions, query string) (string, error) {
 	if opts.Index == nil || opts.Embedding == nil {
 		return searchKnowledge(opts.Workspace, query)
@@ -100,7 +98,7 @@ func searchHybrid(opts SearchOptions, query string) (string, error) {
 	}
 	out, err := semanticSearch(opts, query)
 	if err != nil {
-		// Degrade gracefully rather than failing the model's tool call.
+		// 优雅降级，而不是让模型的工具调用失败。
 		res, kwErr := searchKnowledge(opts.Workspace, query)
 		if kwErr != nil {
 			return "", err
@@ -110,9 +108,9 @@ func searchHybrid(opts SearchOptions, query string) (string, error) {
 	return out, nil
 }
 
-// semanticSearch reindexes stale files, embeds the query and blends cosine
-// similarity with keyword hits. A changed embedding model triggers a full
-// rebuild, because vectors from different models are not comparable.
+// semanticSearch 重新索引陈旧文件，嵌入查询，并将余弦
+// 相似度与关键词命中融合。嵌入模型发生变化会触发全量
+// 重建，因为不同模型的向量不可比较。
 func semanticSearch(opts SearchOptions, query string) (string, error) {
 	if err := opts.Index.ensureIndexed(opts.Ctx, opts.Workspace, opts.Embedding); err != nil {
 		return "", err
@@ -141,8 +139,8 @@ func semanticSearch(opts SearchOptions, query string) (string, error) {
 	for i := range hits {
 		hits[i].kw = min(hits[i].kw, 10) / 10
 	}
-	// Relevance floor: drop chunks with no meaningful signal so unrelated
-	// files never surface just because the corpus is small.
+	// 相关性下限：丢弃没有有意义信号的分块，这样无关
+	// 文件绝不会仅因语料库很小就浮现出来。
 	hits = filterByScore(hits)
 	if len(hits) == 0 {
 		return "知识库中没有找到与查询相关的内容。", nil
@@ -165,7 +163,7 @@ func semanticSearch(opts SearchOptions, query string) (string, error) {
 	return withRefs(sb.String(), refs), nil
 }
 
-// refsOf returns sorted knowledge/<file> refs for preview integration.
+// refsOf 返回排序后的 knowledge/<file> 引用，用于预览集成。
 func refsOf(files map[string]bool) []string {
 	out := make([]string, 0, len(files))
 	for f := range files {
@@ -175,8 +173,7 @@ func refsOf(files map[string]bool) []string {
 	return out
 }
 
-// withRefs appends a machine-readable file reference line that the UI uses
-// for artifact preview buttons.
+// withRefs 追加一行机器可读的文件引用，UI 用它 提供产物预览按钮。
 func withRefs(text string, refs []string) string {
 	if len(refs) == 0 {
 		return text
@@ -184,10 +181,9 @@ func withRefs(text string, refs []string) string {
 	return strings.TrimSpace(text) + "\n\n文件: " + strings.Join(refs, ", ")
 }
 
-// ensureIndexed brings the persistent index in sync with the knowledge dir:
-// re-embeds changed files (nested dirs supported, rows keyed by relative
-// path), drops removed files, rebuilds everything when the embedding model
-// changed.
+// ensureIndexed 使持久化索引与知识目录保持同步：
+// 重新嵌入已变更的文件（支持嵌套目录，行以相对
+// 路径为键），删除已移除的文件，在嵌入模型 变化时重建全部内容。
 func (k *KnowledgeIndex) ensureIndexed(ctx context.Context, workspace string, emb *EmbeddingConfig) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -205,8 +201,7 @@ func (k *KnowledgeIndex) ensureIndexed(ctx context.Context, workspace string, em
 	dir := filepath.Join(workspace, knowledgeDirName)
 	if _, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
-			// The whole knowledge directory is gone: wipe the index so
-			// searches stop returning content of files that no longer exist.
+			// 整个知识目录已不存在：清空索引，使 搜索不再返回已不存在文件的内容。
 			if err := k.DB.Where("1 = 1").Delete(&KnowledgeChunk{}).Error; err != nil {
 				return err
 			}
@@ -215,7 +210,7 @@ func (k *KnowledgeIndex) ensureIndexed(ctx context.Context, workspace string, em
 		return err
 	}
 
-	// mtimes of files that still exist (relative paths support nesting).
+	// 仍然存在的文件的 mtime（相对路径支持嵌套）。
 	present := map[string]int64{}
 	walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -239,9 +234,10 @@ func (k *KnowledgeIndex) ensureIndexed(ctx context.Context, workspace string, em
 		return walkErr
 	}
 
-	// Drop rows of removed files, and remember the newest mtime per file.
-	// Rows for one file can span several mod_times (a previous edit may have
-	// left stale rows behind), so take the max rather than an arbitrary row.
+	// 丢弃已移除文件对应的行，并记住每个文件最新的 mtime。
+	// 同一个文件的行可能跨越多个
+	// mod_times（先前的一次编辑可能留下了陈旧行），因此取最大值，而不是任意一行的
+	// 值。
 	var known []struct {
 		File    string
 		ModTime int64
@@ -264,10 +260,9 @@ func (k *KnowledgeIndex) ensureIndexed(ctx context.Context, workspace string, em
 		}
 	}
 
-	// Collect files that need (re-)embedding, and clear their existing rows.
-	// Re-embedding appends fresh rows; without this delete a file that shrinks
-	// (3 chunks -> 2) would keep its surplus rows forever, growing the index
-	// and returning stale content on every search.
+	// 收集需要（重新）嵌入的文件，并清除它们现有的行。
+	// 重新嵌入会追加新的行；如果没有这个删除操作，文件缩减（3 chunks ->
+	// 2）后会永远保留其多余的行，使索引不断增长，并在每次搜索时返回陈旧内容。
 	names := make([]string, 0, len(present))
 	for f := range present {
 		if old, ok := seen[f]; !ok || old != present[f] {
@@ -281,8 +276,8 @@ func (k *KnowledgeIndex) ensureIndexed(ctx context.Context, workspace string, em
 		}
 	}
 
-	// Fan the embedding work out to a small worker pool (network-bound),
-	// then write rows sequentially on this goroutine.
+	// 将嵌入工作分派到一个小型工作池（网络受限），然后在此 goroutine
+	// 上顺序写入行。
 	type embedJob struct {
 		file string
 		mt   int64
@@ -330,9 +325,8 @@ func (k *KnowledgeIndex) ensureIndexed(ctx context.Context, workspace string, em
 	wg.Wait()
 	close(results)
 
-	// Write every successful job first: a single failed file used to throw
-	// away the whole rebuild. Failed files keep no rows (their stale rows
-	// were deleted up front), so the next search retries just them.
+	// 先写入每个成功的任务：以前只要有一个文件失败，整个重建就会被丢弃。失败的文件
+	// 不保留任何行（它们的陈旧行已事先删除），因此下一次搜索只会重试这些文件。
 	for r := range results {
 		for i, vec := range r.vecs {
 			row := KnowledgeChunk{
@@ -361,8 +355,7 @@ drain:
 	return nil
 }
 
-// embedAll splits chunks into batches, embeds each and concatenates the
-// vectors in chunk order.
+// embedAll 将块拆分成批次，逐批嵌入，并按块顺序拼接向量。
 func embedAll(ctx context.Context, emb *EmbeddingConfig, chunks []string) ([][]float64, error) {
 	out := make([][]float64, 0, len(chunks))
 	for i := 0; i < len(chunks); i += embedBatch {
@@ -377,7 +370,7 @@ func embedAll(ctx context.Context, emb *EmbeddingConfig, chunks []string) ([][]f
 }
 
 // ---------------------------------------------------------------------------
-// Embedding client (OpenAI-compatible /embeddings, float encoding)
+// 嵌入客户端（OpenAI 兼容的 /embeddings，浮点编码）
 
 type embedRequest struct {
 	Model string   `json:"model"`
@@ -391,8 +384,7 @@ type embedResponse struct {
 	} `json:"data"`
 }
 
-// embedBatchReq embeds a batch of inputs; response embeddings come back in
-// input order via the index field.
+// embedBatchReq 嵌入一批输入；响应中的嵌入向量会通过 index 字段按输入顺序返回。
 func embedBatchReq(ctx context.Context, emb *EmbeddingConfig, inputs []string) ([][]float64, error) {
 	body, _ := json.Marshal(embedRequest{Model: emb.Model, Input: inputs})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -443,7 +435,7 @@ func embedOne(ctx context.Context, emb *EmbeddingConfig, input string) ([]float6
 }
 
 // ---------------------------------------------------------------------------
-// Vector + text helpers
+// 向量 + 文本辅助函数
 
 func encodeVector(vec []float64) []byte {
 	out := make([]byte, len(vec)*4)
@@ -464,15 +456,14 @@ func decodeVector(b []byte, dim int) []float64 {
 	return out
 }
 
-// KnowledgeIndexStats summarizes the persistent index for observability.
+// KnowledgeIndexStats 汇总持久化索引，用于可观测性。
 type KnowledgeIndexStats struct {
 	Files  int64  `json:"files"`
 	Chunks int64  `json:"chunks"`
 	Model  string `json:"model,omitempty"`
 }
 
-// Reset wipes all cached chunks; the next search re-embeds everything from
-// the workspace files.
+// Reset 清除所有缓存的分块；下一次搜索会从工作区文件重新嵌入所有内容。
 func (k *KnowledgeIndex) Reset() error {
 	if k == nil || k.DB == nil {
 		return nil
@@ -482,7 +473,7 @@ func (k *KnowledgeIndex) Reset() error {
 	return k.DB.Where("1 = 1").Delete(&KnowledgeChunk{}).Error
 }
 
-// Stats returns file/chunk counts (and the embedding model when indexed).
+// Stats 返回文件/分块计数（以及已建立索引时的嵌入模型）。
 func (k *KnowledgeIndex) Stats() KnowledgeIndexStats {
 	var st KnowledgeIndexStats
 	if k == nil || k.DB == nil {
@@ -510,8 +501,7 @@ func cosine(a, b []float64) float64 {
 	return dot / (math.Sqrt(na) * math.Sqrt(nb))
 }
 
-// chunkText splits content into overlapping rune windows, preferring line
-// boundaries so chunks stay readable.
+// chunkText 将内容切分为重叠的 rune 窗口，优先选择行边界，使分块保持可读。
 func chunkText(s string) []string {
 	runes := []rune(strings.TrimSpace(s))
 	if len(runes) == 0 {
@@ -520,7 +510,7 @@ func chunkText(s string) []string {
 	var out []string
 	for start := 0; start < len(runes); {
 		end := minInt(start+chunkRunes, len(runes))
-		if end < len(runes) { // prefer breaking at a newline past the midpoint
+		if end < len(runes) { // 优先在越过中点后的换行符处断行
 			for i := end - 1; i > start+chunkRunes/2; i-- {
 				if runes[i] == '\n' {
 					end = i + 1
@@ -533,7 +523,7 @@ func chunkText(s string) []string {
 			break
 		}
 		next := end - chunkOverlap
-		if next <= start { // guard forward progress
+		if next <= start { // 确保向前推进
 			next = start + chunkRunes - chunkOverlap
 		}
 		start = next
@@ -550,18 +540,17 @@ func keywordScore(content string, keywords []string) float64 {
 	return score
 }
 
-// chunkScore couples an indexed chunk with its similarity signals.
+// chunkScore 将已建立索引的分块与其相似度信号关联起来。
 type chunkScore struct {
 	row KnowledgeChunk
 	cos float64
 	kw  float64
 }
 
-// blendScore mixes semantic and keyword signals into one ranking score.
+// blendScore 将语义信号和关键词信号混合成一个排名分数。
 func blendScore(h chunkScore) float64 { return semanticWeight*h.cos + 0.25*h.kw }
 
-// filterByScore keeps chunks whose blended semantic+keyword score clears a
-// small relevance floor.
+// filterByScore 保留混合语义 + 关键词分数超过一个较低相关性下限的分块。
 func filterByScore(hits []chunkScore) []chunkScore {
 	out := hits[:0]
 	for _, h := range hits {

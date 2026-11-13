@@ -2,18 +2,14 @@ import type { ModelInfo, ReasoningLevel } from "@/lib/api";
 
 type LabeledModel = { id?: string; displayName?: string } | null | undefined;
 
-/**
- * modelLabel is the human-readable name for a model. A blank display name
- * falls back to the model ID, so a newly fetched row never renders empty.
- */
+/** modelLabel 是模型的人类可读名称。显示名称为空时回退到模型 ID，因此新获取的行绝不渲染为空。 */
 export function modelLabel(m: LabeledModel): string {
   return m?.displayName?.trim() || m?.id?.trim() || "";
 }
 
 /**
- * modelPickerLabel adds the provider to a model row, matching the Codex
- * picker's "model · provider" treatment. The provider is display metadata
- * only; requests and persisted selections still use the model ID.
+ * modelPickerLabel 为模型行添加供应商，与 Codex 选择器的 "model · provider"
+ * 呈现方式一致。供应商仅为显示元数据；请求和持久化选择仍使用模型 ID。
  */
 export function modelPickerLabel(m: LabeledModel, providerName?: string): string {
   const name = modelLabel(m);
@@ -21,10 +17,7 @@ export function modelPickerLabel(m: LabeledModel, providerName?: string): string
   return name && provider ? `${name} · ${provider}` : name;
 }
 
-/**
- * reasoningLevels returns the model's enabled level table. Disabled or
- * missing tables yield [], which hides the chat-level thinking picker.
- */
+/** reasoningLevels 返回模型已启用的档位表。禁用或缺失的表会产生 []，从而隐藏聊天级思考选择器。 */
 export function reasoningLevels(model: ModelInfo | null | undefined): ReasoningLevel[] {
   const r = model?.reasoning;
   if (!r?.enabled || !r.levels?.length) return [];
@@ -32,12 +25,11 @@ export function reasoningLevels(model: ModelInfo | null | undefined): ReasoningL
 }
 
 /**
- * composerReasoningModel resolves the ModelInfo that feeds the composer's
- * thinking picker. A saved table on the target model wins; a model saved
- * before level tables existed still gets a suggestion fetched for its exact
- * ID. Draft chats read the model the first send will run (draftModelFor),
- * so the picker stays selectable before the session row exists — the send
- * path already applies the per-turn level to the freshly created session.
+ * composerReasoningModel 解析出为输入区的思考选择器提供数据的
+ * ModelInfo。目标模型上已保存的表优先；在档位表存在之前保存的模型，仍会针对其精
+ * 确 ID
+ * 获取建议。草稿聊天读取首次发送将运行的模型（draftModelFor），因此选择器在会话
+ * 行存在之前仍可选择——发送路径已经将每回合档位应用到新创建的会话。
  */
 export function composerReasoningModel(input: {
   isDraft: boolean;
@@ -51,7 +43,7 @@ export function composerReasoningModel(input: {
   return null;
 }
 
-/** levelLabel renders the common level names like Codex, custom ones as-is. */
+/** levelLabel 渲染常见档位名称（如 Codex），自定义名称则按原样显示。 */
 export function levelLabel(level: string): string {
   const labels: Record<string, string> = {
     none: "无",
@@ -71,9 +63,8 @@ export function levelLabel(level: string): string {
 }
 
 /**
- * reasoningValueError validates one level row. An empty Param means the value
- * is merged as a JSON object, so it must parse as a non-array object; a named
- * parameter accepts any scalar or object.
+ * reasoningValueError 校验一个档位行。空的 Param 表示该值会作为 JSON
+ * 对象合并，因此它必须解析为非数组对象；具名参数接受任意标量或对象。
  */
 export function reasoningValueError(level: ReasoningLevel): string | null {
   if (!level.level?.trim()) return "档位名称不能为空";
@@ -92,8 +83,8 @@ export function reasoningValueError(level: ReasoningLevel): string | null {
 }
 
 /**
- * validateModelReasoning returns the first problem in a model's thinking
- * table, or null when it is safe to save. A disabled or empty table is valid.
+ * validateModelReasoning 返回模型思考表中的第一个问题；当可安全保存时返回
+ * null。禁用或为空的表是有效的。
  */
 export function validateModelReasoning(m: ModelInfo): string | null {
   const r = m.reasoning;

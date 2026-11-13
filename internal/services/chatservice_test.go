@@ -18,9 +18,8 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// testTerminalSettings keeps shell-execution tests deterministic across
-// platforms: Windows needs cmd.exe syntax, while Unix uses the native auto
-// shell.
+// testTerminalSettings 使 shell 执行测试在各平台上保持确定性：Windows 需要
+// cmd.exe 语法，而 Unix 使用原生自动 shell。
 func testTerminalSettings() config.TerminalSettings {
 	if runtime.GOOS == "windows" {
 		return config.TerminalSettings{Mode: config.TerminalModeCmd}
@@ -28,9 +27,9 @@ func testTerminalSettings() config.TerminalSettings {
 	return config.TerminalSettings{Mode: config.TerminalModeAuto}
 }
 
-// TestChatEndToEndToolLoop exercises the full pipeline: ChatService.Send ->
-// ADK runner -> llmagent -> custom OpenAI-compatible model adapter (against a
-// fake SSE server) -> function-tool loop -> SQLite session persistence.
+// TestChatEndToEndToolLoop 演练完整流水线：ChatService.Send -> ADK runner ->
+// llmagent -> 自定义 OpenAI 兼容模型适配器（针对伪造的 SSE 服务器）->
+// 函数工具循环 -> SQLite 会话持久化。
 func TestChatEndToEndToolLoop(t *testing.T) {
 	turn := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -108,14 +107,14 @@ func TestChatEndToEndToolLoop(t *testing.T) {
 			sawUser, sawToolCall, sawToolResult, sawAnswer, msgs)
 	}
 
-	// Session title auto-set from first message.
+	// 会话标题根据第一条消息自动设置。
 	for _, s := range chat.ListSessions() {
 		if s.ID == sess.ID && s.Title == "新对话" {
 			t.Fatal("expected session title to be set from first message")
 		}
 	}
 
-	// History is persisted: a fresh service reads the same session.
+	// 历史记录已持久化：全新的服务会读取同一会话。
 	chat2 := NewChatService(svc, sessions, db)
 	msgs2, err := chat2.GetSessionMessages(sess.ID)
 	if err != nil {
@@ -140,8 +139,8 @@ func readAll(r *http.Request) string {
 }
 
 func newTestSessionService(t *testing.T, path string) (*gorm.DB, session.Service, error) {
-	// Match main.go: WAL + busy_timeout + a single pooled connection so
-	// parallel sessions never trip SQLITE_BUSY snapshot conflicts.
+	// 与 main.go 保持一致：WAL + busy_timeout + 单个池化连接，使并行会话绝不会触发
+	// SQLITE_BUSY 快照冲突。
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"))
 	if err != nil {
@@ -157,8 +156,8 @@ func newTestSessionService(t *testing.T, path string) (*gorm.DB, session.Service
 	if err := database.AutoMigrate(svc); err != nil {
 		return nil, nil, err
 	}
-	// Close on cleanup: an open pool keeps the SQLite file locked and the
-	// test's TempDir RemoveAll fails on Windows.
+	// 在清理时关闭：打开的连接池会使 SQLite 文件保持锁定，且测试的 TempDir
+	// RemoveAll 在 Windows 上会失败。
 	t.Cleanup(func() {
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()

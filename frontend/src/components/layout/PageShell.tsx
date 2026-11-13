@@ -2,10 +2,9 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Shared shell for the management pages (Settings tabs). One scroll container,
- * one max width and one padding scale so every tab reads with the same rhythm;
- * PageHeader carries the 20px title / 13px description / right-aligned actions
- * pattern that used to be re-implemented per page at 18px.
+ * 管理页面（设置标签页）共用的外壳。一个滚动容器、一个最大宽度和一套内边距尺度
+ * ，让每个标签页都保持相同的阅读节奏；PageHeader 承载 20px 标题 / 13px 描述 /
+ * 右对齐操作的模式，而该模式过去曾按页面在 18px 下重复实现。
  */
 
 export function PageShell({ className, children }: {
@@ -56,8 +55,7 @@ export function Section({ title, description, actions, className, children }: {
   );
 }
 
-/** SettingRow is the label-left / control-right row used across settings.
- *  It uses spacing and a hover surface, never a persistent divider. */
+/** SettingRow 是设置中通用的左侧标签 / 右侧控件行。它使用间距和悬停表面，绝不使用常驻分隔线。 */
 export function SettingRow({ label, description, children, className }: {
   label: string;
   description?: string;

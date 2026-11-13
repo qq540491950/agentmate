@@ -8,12 +8,12 @@ import (
 	"unicode/utf8"
 )
 
-// TestReadBoundedFileTruncatesAtRuneBoundary: a file larger than the read
-// cap must come back truncated with a marker, without ever loading the whole
-// file into memory and without splitting a UTF-8 sequence.
+// TestReadBoundedFileTruncatesAtRuneBoundary:
+// 超过读取上限的文件必须被截断并带上标记返回，绝不把整个文件加载进内存，也不拆
+// 分 UTF-8 序列。
 func TestReadBoundedFileTruncatesAtRuneBoundary(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "big.txt")
-	big := strings.Repeat("汉", 40*1024) // 120KB of UTF-8, cap is 64KB
+	big := strings.Repeat("汉", 40*1024) // 120KB 的 UTF-8 内容，上限为 64KB
 	if err := os.WriteFile(path, []byte(big), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +57,8 @@ func TestReadBoundedFileSmallAndExactLimit(t *testing.T) {
 	}
 }
 
-// TestWriteBoundedFileRejectsOversize: the write tool must refuse oversized
-// payloads up front instead of letting a runaway generation fill the disk.
+// TestWriteBoundedFileRejectsOversize:
+// 写入工具必须在一开始就拒绝超大负载，而不是让失控的生成把磁盘写满。
 func TestWriteBoundedFileRejectsOversize(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "out.txt")
 	if err := WriteBoundedFile(path, strings.Repeat("x", 6<<20+1), 6<<20); err == nil {

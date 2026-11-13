@@ -11,10 +11,9 @@ import (
 	"agentmate/internal/config"
 )
 
-// BuildRemoteAgent creates an ADK agent that proxies a remote A2A agent
-// (Agent-To-Agent protocol, a2aproject/a2a-go). The agent card is resolved
-// from the advertised URL on each invocation, so remote-side updates are
-// picked up without restarting the app.
+// BuildRemoteAgent 创建一个 ADK Agent，用于代理远程 A2A Agent（Agent-To-Agent
+// 协议，a2aproject/a2a-go）。每次调用时都会从公布的 URL 解析 Agent
+// Card，因此无需重启应用即可获取远程侧的更新。
 func BuildRemoteAgent(rc config.RemoteAgentConfig) (agent.Agent, error) {
 	if rc.CardURL == "" {
 		return nil, fmt.Errorf("远程 Agent %q 缺少 Card URL", rc.Name)
@@ -26,8 +25,8 @@ func BuildRemoteAgent(rc config.RemoteAgentConfig) (agent.Agent, error) {
 	})
 }
 
-// RemoteAgentInfo is the resolved agent card summary shown in the UI when
-// checking connectivity of a remote A2A agent.
+// RemoteAgentInfo 是解析后的 Agent Card 摘要，在检查远程 A2A Agent
+// 的连通性时显示在 UI 中。
 type RemoteAgentInfo struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
@@ -37,8 +36,8 @@ type RemoteAgentInfo struct {
 	Skills      []string `json:"skills"`
 }
 
-// CheckRemoteAgent resolves the agent card at the given URL (A2A well-known
-// location) and returns a summary; used by the UI "检查连接" action.
+// CheckRemoteAgent 解析给定 URL（A2A well-known 位置）上的 Agent Card 并返回
+// 摘要；供 UI 的「检查连接」操作使用。
 func CheckRemoteAgent(ctx context.Context, cardURL string) (*RemoteAgentInfo, error) {
 	card, err := agentcard.DefaultResolver.Resolve(ctx, cardURL)
 	if err != nil {

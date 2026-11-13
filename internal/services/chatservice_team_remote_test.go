@@ -18,11 +18,11 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// TestTeamRemoteMemberE2E builds a team whose only member is a remote A2A
-// agent; the auto coordinator (fake model) transfers to it and the remote
-// answer streams back through the local session history.
+// TestTeamRemoteMemberE2E 构建一个团队，其唯一成员是远程 A2A
+// Agent；自动协调器（假模型）会转交给该成员，远程回答会通过本地会话历史流式返回
+// 。
 func TestTeamRemoteMemberE2E(t *testing.T) {
-	// Remote model behind the A2A server.
+	// 位于 A2A 服务器后端的远程模型。
 	remoteModelSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(readAll(r), `"stream":false`) {
 			w.Header().Set("Content-Type", "application/json")
@@ -65,7 +65,7 @@ func TestTeamRemoteMemberE2E(t *testing.T) {
 	a2aMux.Handle(a2asrv.WellKnownAgentCardPath, a2asrv.NewStaticAgentCardHandler(card))
 	a2aMux.Handle("/a2a/v1/invoke", a2asrv.NewJSONRPCHandler(a2asrv.NewHandler(executor)))
 
-	// Coordinator model: transfer to the remote member on the first turn.
+	// 协调器模型：在第一回合转交给远程成员。
 	coordSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		target := agentkit.SanitizeAgentName("远程助手")

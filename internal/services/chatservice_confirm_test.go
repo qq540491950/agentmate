@@ -14,7 +14,7 @@ import (
 	"agentmate/internal/sandbox"
 )
 
-// sseToolCall renders an OpenAI-compatible SSE chunk carrying one tool call.
+// sseToolCall 渲染一个兼容 OpenAI 的 SSE 数据块，该数据块承载一次工具调用。
 func sseToolCall(id, name, arguments string) string {
 	return `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"` + id + `","function":{"name":"` + name + `","arguments":` + arguments + `}}]}}]}` + "\n\n"
 }
@@ -25,8 +25,8 @@ func sseText(text string) string {
 
 const sseDone = "data: [DONE]\n\n"
 
-// newConfirmTestChat wires a ChatService against a scripted fake model server
-// with an agent that has the files tools and HITL confirmation enabled.
+// newConfirmTestChat 将 ChatService 接入脚本化的假模型服务器，并使用一个已启用
+// files 工具和 HITL 确认的 Agent。
 func newConfirmTestChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *config.Store, string, string) {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -40,12 +40,12 @@ func newConfirmTestChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *
 	}
 	err = store.Update(func(cfg *config.Config) {
 		cfg.Settings.WorkspaceDir = workspace
-		// These tests exercise cmd.exe syntax and the Windows sandbox; keep the
-		// shell explicit instead of inheriting the machine-dependent auto order.
+		// 这些测试检验 cmd.exe 语法和 Windows 沙箱；应显式指定
+		// shell，而不是继承依赖于机器的自动顺序。
 		cfg.Settings.Terminal = testTerminalSettings()
-		// These HITL tests configure ConfirmTools per agent. Auto-approve keeps
-		// those explicit prompts while allowing tests that clear them to run
-		// direct tool calls.
+		// 这些 HITL 测试按 Agent 配置
+		// ConfirmTools。自动审批会保留这些显式审批提示，同时允许清除这些提示的测试执
+		// 行直接工具调用。
 		cfg.Settings.SandboxMode = config.SandboxModeAutoApprove
 		cfg.Providers = append(cfg.Providers, config.ModelProvider{
 			ID: "prov_c", Name: "Fake", Protocol: config.ProtocolOpenAI,
@@ -76,10 +76,9 @@ func hookEvents(t *testing.T) *[]ChatStreamEvent {
 	return &events
 }
 
-// TestChatToolConfirmationApprove exercises the full HITL loop: the model
-// calls the confirmation-gated write tool, the run pauses on the ADK
-// adk_request_confirmation interrupt, the user approves via ConfirmToolCall,
-// the tool executes and the model produces the final answer.
+// TestChatToolConfirmationApprove 检验完整的 HITL
+// 循环：模型调用受确认门控的写入工具，运行在 ADK adk_request_confirmation
+// 中断处暂停，用户通过 ConfirmToolCall 审批，工具执行，模型生成最终答案。
 func TestChatToolConfirmationApprove(t *testing.T) {
 	turn := 0
 	var callID string
@@ -91,9 +90,8 @@ func TestChatToolConfirmationApprove(t *testing.T) {
 			_, _ = w.Write([]byte(sseToolCall("call_1", "write_workspace_file", `"{\"path\":\"notes/hitl.txt\",\"content\":\"确认后写入\"}"`) + sseDone))
 		case 2:
 			body := readAll(r)
-			// ADK collapses the confirmation roundtrip for the model: the
-			// resumed turn shows the original tool call plus its result
-			// (JSON-escaped inside the tool message content).
+			// ADK 会为模型折叠确认往返：恢复后的回合会显示原始工具调用及其结果（结果在工具消
+			// 息内容中经过 JSON 转义）。
 			if !strings.Contains(body, `\"ok\":true`) {
 				t.Errorf("resume request missing approved write result, got: %s", body)
 			}
@@ -113,7 +111,7 @@ func TestChatToolConfirmationApprove(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Turn 1 must pause on exactly one actionable confirmation request.
+	// 第 1 回合必须恰好在一个可操作的确认请求上暂停。
 	var req *ChatStreamEvent
 	for i := range *events {
 		ev := (*events)[i]
@@ -135,7 +133,7 @@ func TestChatToolConfirmationApprove(t *testing.T) {
 	}
 	callID = req.CallID
 
-	// Nothing may be written before approval.
+	// 审批前不得写入任何内容。
 	if _, err := os.Stat(filepath.Join(workspace, "notes", "hitl.txt")); !os.IsNotExist(err) {
 		t.Fatal("file must not exist before approval")
 	}
@@ -144,7 +142,7 @@ func TestChatToolConfirmationApprove(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The tool ran after approval and the model answered.
+	// 审批后工具运行，模型作出回答。
 	if data, err := os.ReadFile(filepath.Join(workspace, "notes", "hitl.txt")); err != nil || string(data) != "确认后写入" {
 		t.Fatalf("expected approved write, err=%v data=%q", err, data)
 	}
@@ -161,7 +159,7 @@ func TestChatToolConfirmationApprove(t *testing.T) {
 		t.Fatalf("resume incomplete: result=%v answer=%v events=%+v", sawResult, sawAnswer, *events)
 	}
 
-	// History renders the confirm pair with the tool loop.
+	// 历史记录渲染确认对与工具循环。
 	msgs, err := chat.GetSessionMessages(sess.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -181,14 +179,13 @@ func TestChatToolConfirmationApprove(t *testing.T) {
 		t.Fatalf("history missing confirm flow: req=%v result=%v confirmResult=%v\n%+v", sawReq, sawResultMsg, sawConfirmResult, msgs)
 	}
 
-	// Answering again must be rejected, not silently re-run.
+	// 再次应答必须被拒绝，不得静默重跑。
 	if err := chat.ConfirmToolCall(sess.ID, callID, true); err == nil || !strings.Contains(err.Error(), "已被处理") {
 		t.Fatalf("expected double-answer rejection, got %v", err)
 	}
 }
 
-// TestChatToolConfirmationReject verifies the rejection path: the tool never
-// runs and the model sees the rejection.
+// TestChatToolConfirmationReject 验证拒绝路径：工具绝不运行，模型会看到该拒绝。
 func TestChatToolConfirmationReject(t *testing.T) {
 	turn := 0
 	var callID string
@@ -249,9 +246,8 @@ func TestChatToolConfirmationReject(t *testing.T) {
 	}
 }
 
-// TestChatToolConfirmationRestartResume proves a pending confirmation survives
-// an app restart: a fresh ChatService over the same session DB re-renders the
-// unanswered request from stored events and can still answer it.
+// TestChatToolConfirmationRestartResume 证明待处理的确认在应用重启后仍然存活：基于同一会话 DB 的新 ChatService
+// 会从已存储的事件中重新渲染未应答的请求，并且仍能对其作出应答。
 func TestChatToolConfirmationRestartResume(t *testing.T) {
 	turn := 0
 	var callID string
@@ -281,7 +277,7 @@ func TestChatToolConfirmationRestartResume(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// "Restart": rebuild the service over the same sessions DB and config.
+	// "Restart"：基于相同的 sessions DB 与配置重建服务。
 	db2, sessions2, err := newTestSessionService(t, filepath.Join(dir, "sessions.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -319,8 +315,8 @@ func TestChatToolConfirmationRestartResume(t *testing.T) {
 	}
 }
 
-// TestChatToolConfirmationGuards covers argument validation and the auto-mode
-// invariant: agents without ConfirmTools run direct tool calls.
+// TestChatToolConfirmationGuards 覆盖参数校验与自动模式不变式：未配置
+// ConfirmTools 的 Agent 直接运行工具调用。
 func TestChatToolConfirmationGuards(t *testing.T) {
 	turn := 0
 	chat, _, workspace, _ := newConfirmTestChat(t, func(w http.ResponseWriter, r *http.Request) {
@@ -349,7 +345,7 @@ func TestChatToolConfirmationGuards(t *testing.T) {
 		t.Fatal("expected error for unknown callID with no pending interrupt")
 	}
 
-	// Default-off: clear ConfirmTools and the write runs without any HITL pause.
+	// 默认关闭：清空 ConfirmTools 后，写入运行时不出现任何 HITL 暂停。
 	if err := chat.S.Store.Update(func(cfg *config.Config) {
 		for i := range cfg.Agents {
 			if cfg.Agents[i].ID == "agent_c" {
@@ -372,9 +368,9 @@ func TestChatToolConfirmationGuards(t *testing.T) {
 	}
 }
 
-// TestAutoApproveConfirmsOnlyRiskyCommands exercises the auto-approve profile:
-// a safe command runs without an interrupt, while a risk-detected command
-// pauses on the normal HITL flow.
+// TestAutoApproveConfirmsOnlyRiskyCommands 验证自动审批配置：
+// 安全命令会在不触发中断的情况下运行，而检测到风险的命令会在常规 HITL
+// 流程中暂停。
 func TestAutoApproveConfirmsOnlyRiskyCommands(t *testing.T) {
 	if !sandbox.Available() {
 		t.Skipf("OS sandbox unavailable: %s", sandbox.BackendStatus().Error)
@@ -453,8 +449,8 @@ func TestAutoApproveConfirmsOnlyRiskyCommands(t *testing.T) {
 	}
 }
 
-// TestToolAuditRecordsConfirmation: approve/reject decisions land in the
-// JSONL audit trail with their call ID.
+// TestToolAuditRecordsConfirmation：批准/拒绝决定会连同其调用 ID 记录到 JSONL
+// 审计跟踪中。
 func TestToolAuditRecordsConfirmation(t *testing.T) {
 	turn := 0
 	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
@@ -515,8 +511,8 @@ func TestToolAuditRecordsConfirmation(t *testing.T) {
 	_ = workspace
 }
 
-// TestExportMarkdownIncludesHITL: the Markdown export carries the confirm
-// request/decision trail of an approved HITL loop.
+// TestExportMarkdownIncludesHITL：Markdown 导出会携带已批准 HITL
+// 循环的确认请求/决定轨迹。
 func TestExportMarkdownIncludesHITL(t *testing.T) {
 	turn := 0
 	var callID string

@@ -17,19 +17,17 @@ import (
 	"agentmate/internal/config"
 )
 
-// URLOpener opens the authorization URL in the user's default browser.
-// Injectable for tests.
+// URLOpener 在用户的默认浏览器中打开授权 URL。可注入以便测试。
 var URLOpener = defaultURLOpener
 
 func defaultURLOpener(raw string) error {
 	return browserCommand(runtime.GOOS, raw).Start()
 }
 
-// browserCommand builds the OS-specific command that opens the default
-// browser at raw. Windows must not route the URL through cmd.exe: cmd
-// re-parses the command line, and the `&` in every OAuth authorize URL would
-// truncate the address and execute the remainder as a separate command.
-// rundll32's FileProtocolHandler hands the URL to the shell as one argument.
+// browserCommand 构建打开默认浏览器并访问 raw 的操作系统专用命令。Windows
+// 不得通过 cmd.exe 路由 URL：cmd 会重新解析命令行，而每个 OAuth 授权 URL 中的
+// `&` 都会截断地址，并将剩余部分作为单独命令执行。rundll32 的
+// FileProtocolHandler 会将 URL 作为一个参数交给 shell。
 func browserCommand(goos, raw string) *exec.Cmd {
 	switch goos {
 	case "darwin":
@@ -41,9 +39,9 @@ func browserCommand(goos, raw string) *exec.Cmd {
 	}
 }
 
-// authHTTPClient builds an *http.Client applying static config headers plus,
-// for the simple credential kinds, the auth header (Bearer token or named
-// API key). Used for streamable HTTP transports without full OAuth.
+// authHTTPClient 构建一个
+// *http.Client，应用静态配置请求头，并且对于简单凭据类型，还会应用认证请求头（B
+// earer 令牌或命名 API key）。用于无需完整 OAuth 的流式 HTTP 传输。
 func authHTTPClient(cfg config.MCPServerConfig) *http.Client {
 	headerName := cfg.AuthHeader
 	if headerName == "" {
@@ -63,7 +61,7 @@ func authHTTPClient(cfg config.MCPServerConfig) *http.Client {
 	})}
 }
 
-// headersOnlyClient applies just the static config headers (no auth kind).
+// headersOnlyClient 仅应用静态配置请求头（不含认证类型）。
 func headersOnlyClient(cfg config.MCPServerConfig) *http.Client {
 	return &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		for k, v := range cfg.Headers {
@@ -73,18 +71,15 @@ func headersOnlyClient(cfg config.MCPServerConfig) *http.Client {
 	})}
 }
 
-// newOAuthTransport wires the official go-sdk authorization-code handler
-// (OAuth 2.1 + PKCE per the MCP authorization spec) into a streamable HTTP
-// transport. When tokenStore is non-nil, tokens persist across app restarts:
-// a cached unexpired token (or a refreshable one) skips the browser consent
-// flow.
+// newOAuthTransport 将官方 go-sdk 授权码处理器（依据 MCP 授权规范的 OAuth 2.1 +
+// PKCE）接入流式 HTTP 传输。当 tokenStore 非 nil
+// 时，令牌会在应用重启后持久保留：已缓存且未过期的令牌（或可刷新的令牌）会跳过
+// 浏览器同意流程。
 //
-// The loopback redirect listener is NOT held open for the transport lifetime:
-// binding eagerly would keep the port occupied even when a cached token makes
-// the consent flow unreachable, and a Disconnect+reconnect on the same
-// configured port would then fail with EADDRINUSE. The port is probed once to
-// build a stable redirect URL and the fetcher re-binds it lazily for the
-// duration of each consent flow.
+// 回环重定向监听器不会在传输生命周期内保持打开：提前绑定会使端口保持占用，即使
+// 缓存令牌让同意流程无法触达，并且此时在同一配置端口上执行 Disconnect+reconnect
+// 会因 EADDRINUSE 失败。端口会被探测一次以构建稳定的重定向 URL，fetcher
+// 会在每次同意流程期间惰性重新绑定它。
 func newOAuthTransport(cfg config.MCPServerConfig, tokenStore *config.Store, onAuthPending func(authURL string)) (mcp.Transport, error) {
 	if cfg.OAuthClientID == "" {
 		return nil, fmt.Errorf("oauth2 认证需要预注册的 client id")
@@ -94,7 +89,7 @@ func newOAuthTransport(cfg config.MCPServerConfig, tokenStore *config.Store, onA
 		return nil, fmt.Errorf("本地回调端口监听失败: %w", err)
 	}
 	port := probe.Addr().(*net.TCPAddr).Port
-	probe.Close() // re-bound lazily by the fetcher when a flow actually starts
+	probe.Close() // 在实际流程启动时由 fetcher 惰性重新绑定
 	redirectURL := fmt.Sprintf("http://127.0.0.1:%d/callback", port)
 
 	fetcher := newBrowserAuthCodeFetcher(port, onAuthPending)
@@ -103,8 +98,7 @@ func newOAuthTransport(cfg config.MCPServerConfig, tokenStore *config.Store, onA
 		RedirectURL:              redirectURL,
 		AuthorizationCodeFetcher: fetcher,
 		NewTokenSource: func(ctx context.Context, oc *oauth2.Config, token *oauth2.Token) (oauth2.TokenSource, error) {
-			// Persist every newly issued/refreshed token so restarts stay
-			// silent while the refresh token remains valid.
+			// 持久化每个新签发/刷新的令牌，使应用重启在刷新令牌仍有效期间保持静默。
 			if tokenStore != nil {
 				_ = tokenStore.Update(func(c *config.Config) {
 					if c.MCPTokens == nil {
@@ -126,11 +120,9 @@ func newOAuthTransport(cfg config.MCPServerConfig, tokenStore *config.Store, onA
 	return &mcp.StreamableClientTransport{Endpoint: cfg.URL, OAuthHandler: handler}, nil
 }
 
-// newBrowserAuthCodeFetcher serves the loopback callback for the consent flow:
-// it binds the redirect port lazily (only while a flow actually runs), opens
-// the system browser at the authorization URL and resolves with the code the
-// authorization server redirects back with (5 min cap). The listener is always
-// released when the flow ends, so reconnects on the same port keep working.
+// newBrowserAuthCodeFetcher 为同意流程提供回环回调服务：它惰性绑定重定向端口（仅在实际流程运行期间），在
+// 系统浏览器中打开授权 URL，并最终返回授权服务器重定向回来的授权码（上限 5
+// 分钟）。流程结束时始终释放监听器，因此同一端口上的重连仍可正常工作。
 func newBrowserAuthCodeFetcher(port int, onAuthPending func(authURL string)) auth.AuthorizationCodeFetcher {
 	return func(ctx context.Context, args *auth.AuthorizationArgs) (*auth.AuthorizationResult, error) {
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
@@ -182,9 +174,8 @@ func newBrowserAuthCodeFetcher(port int, onAuthPending func(authURL string)) aut
 	}
 }
 
-// cachedTokenSource rebuilds a token source from the persisted cache:
-// unexpired tokens are used as-is; expired ones with a refresh token and a
-// known token endpoint refresh silently (no browser).
+// cachedTokenSource 从持久化缓存重建令牌源：未过期的令牌按原样使用；已过期但带有刷新令牌且令牌端
+// 点已知的令牌会静默刷新（不启动浏览器）。
 func cachedTokenSource(store *config.Store, serverID, clientID string) oauth2.TokenSource {
 	if store == nil {
 		return nil
@@ -195,7 +186,7 @@ func cachedTokenSource(store *config.Store, serverID, clientID string) oauth2.To
 		return nil
 	}
 	if cached.TokenURL == "" || cached.RefreshToken == "" {
-		// Only usable while it has not expired.
+		// 仅在尚未过期时可用。
 		tok := oauth2TokenFromCached(cached)
 		if tok.Valid() {
 			return oauth2.StaticTokenSource(tok)
@@ -225,7 +216,7 @@ func MCPOAuthTokenFromOauth2(t *oauth2.Token, tokenURL string) config.MCPOAuthTo
 	}
 }
 
-// roundTripperFunc adapts a function to http.RoundTripper.
+// roundTripperFunc 将函数适配为 http.RoundTripper。
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { detectTopbarPlatform, resolveTopbarLayout } from "./topbarLayout";
 
-// Seam agreed in issue #75: the platform → topbar layout mapping is the pure
-// heart of the shell; the component only renders what this function decides.
+// 接缝已在 issue #75 中约定：平台 →
+// 顶栏布局映射是外壳的纯核心；组件仅渲染该函数所决定的内容。
 describe("resolveTopbarLayout", () => {
   it("Windows：预留自绘窗口按钮区并声明拖拽区，不留红绿灯位", () => {
     const layout = resolveTopbarLayout("windows");
@@ -29,8 +29,8 @@ describe("resolveTopbarLayout", () => {
 
 describe("detectTopbarPlatform", () => {
   // 真实契约：Wails runtime 注入的是大写字段（internal/runtime/runtime_prod.go:
-  // `window._wails.environment={"OS":…,"Arch":…,"Debug":false}`），@wailsio/runtime
-  // 内部（system.js / drag.js）也按大写读取。
+  // `window._wails.environment={"OS":…,"Arch":…,"Debug":false}`），@wailsio/run
+  // time 内部（system.js / drag.js）也按大写读取。
   it("Wails 注入 windows 环境时返回 windows", () => {
     expect(detectTopbarPlatform({ OS: "windows" })).toBe("windows");
   });

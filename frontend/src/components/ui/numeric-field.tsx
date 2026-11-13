@@ -23,11 +23,11 @@ export type NumericFieldProps = Omit<
 };
 
 /**
- * Rule-driven numeric field. It deliberately renders a text input instead of
- * type="number": native number inputs expose spinner controls, accept
- * scientific notation and wheel/arrow changes, and ignore min/max for typed
- * values. This component owns the draft while editing and commits only a
- * validated number (or the rule's empty value on blur).
+ * 规则驱动的数字字段。它有意渲染文本输入框，而不是
+ * type="number"：原生数字输入框会暴露微调控件，接受科学计数法以及滚轮/方向键更
+ * 改，并且对键入的值忽略
+ * min/max。此组件在编辑期间维护草稿，并且仅提交经过校验的数字（或在失焦时提交规
+ * 则的空值）。
  */
 export function NumericField({
   value,

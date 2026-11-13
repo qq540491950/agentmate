@@ -35,8 +35,8 @@ func TestShellToolBuildsRunCommand(t *testing.T) {
 	}
 }
 
-// TestRunShellCommandInWorkspace pins the core contract (issue #36): the
-// command actually runs and its working directory is the task workspace.
+// TestRunShellCommandInWorkspace 锁定核心契约（issue
+// #36）：命令确实会执行，且其工作目录是任务工作区。
 func TestRunShellCommandInWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	command := "pwd"
@@ -50,8 +50,8 @@ func TestRunShellCommandInWorkspace(t *testing.T) {
 	if res.ExitCode != 0 || res.TimedOut {
 		t.Fatalf("unexpected result: %+v", res)
 	}
-	// Compare directory identity instead of spelling: Windows t.TempDir()
-	// returns an 8.3 short path (RUNNER~1) that `cd` may print in long form.
+	// 比较目录标识而非拼写：Windows 的 t.TempDir() 返回 8.3
+	// 短路径（RUNNER~1），`cd` 可能以长格式打印它。
 	got := strings.TrimSpace(res.Output)
 	gotInfo, err := os.Stat(got)
 	if err != nil {
@@ -66,9 +66,8 @@ func TestRunShellCommandInWorkspace(t *testing.T) {
 	}
 }
 
-// TestRunShellCommandNonZeroExit: a failed command is a normal tool result
-// carrying the exit code, not a tool error — the model needs to see it to
-// adjust course.
+// TestRunShellCommandNonZeroExit：失败的命令是携带退出码的普通工具结果，而不是
+// 工具错误——模型需要看到它才能调整方向。
 func TestRunShellCommandNonZeroExit(t *testing.T) {
 	res, err := runShellCommand(context.Background(), t.TempDir(), "exit 3", 10*time.Second, maxShellOutput)
 	if err != nil {
@@ -180,8 +179,8 @@ func TestRunShellCommandWithPolicyConfinesWorkspaceWrites(t *testing.T) {
 	}
 }
 
-// shellToolTestContext supplies the real context methods sandbox.Run needs
-// while keeping the ADK confirmation state under test control.
+// shellToolTestContext 提供 sandbox.Run 所需的真实上下文方法，同时让 ADK
+// 确认状态处于测试控制之下。
 type shellToolTestContext struct {
 	agent.ContextMock
 	ctx          context.Context

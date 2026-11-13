@@ -16,7 +16,7 @@ func TestStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Defaults are seeded on first run.
+	// 首次运行时会写入默认值。
 	if len(s.Get().Skills) == 0 {
 		t.Fatal("expected default skills to be seeded")
 	}
@@ -41,7 +41,7 @@ func TestStoreRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Reopen: data must persist.
+	// 重新打开：数据必须持久化。
 	s2, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -462,9 +462,9 @@ func TestLegacySessionsSnapshotSandboxModeOnce(t *testing.T) {
 	}
 }
 
-// TestSidebarSettingsNormalizeAndPersist: older config.json files without the
-// sidebar fields load with defaults; both fields persist; unknown grouping
-// values fall back to "time" on the next load.
+// TestSidebarSettingsNormalizeAndPersist：较旧的 config.json 文件若缺少 sidebar
+// 字段，会以默认值加载；两个字段都会持久化；未知的分组值会在下次加载时回退为
+// "time"。
 func TestSidebarSettingsNormalizeAndPersist(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -512,9 +512,9 @@ func TestSidebarSettingsNormalizeAndPersist(t *testing.T) {
 	}
 }
 
-// TestThemePresetNormalizeAndPersist: older config files default to Nord,
-// unknown presets fall back to Nord, and a valid preset survives a reload
-// without disturbing the other appearance preferences.
+// TestThemePresetNormalizeAndPersist：较旧的配置文件会默认使用
+// Nord，未知预设会回退为
+// Nord，有效预设会在重新加载后保留，且不会影响其他外观偏好。
 func TestThemePresetNormalizeAndPersist(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -609,7 +609,7 @@ func TestSkillsDir(t *testing.T) {
 
 func TestLegacyModelsAndPricesMigrate(t *testing.T) {
 	dir := t.TempDir()
-	// Old schema: models are plain strings; prices live on the provider.
+	// 旧 schema：模型是纯字符串；价格存放在供应商上。
 	legacy := `{
 	  "settings": {"workspaceDir": "/tmp/w", "language": "zh-CN"},
 	  "providers": [
@@ -640,7 +640,7 @@ func TestLegacyModelsAndPricesMigrate(t *testing.T) {
 		t.Fatalf("legacy provider prices not cleared: %+v", p)
 	}
 
-	// Migration is persisted: reopening must not lose or duplicate it.
+	// 迁移会被持久化：重新打开时不得丢失或重复该迁移。
 	s2, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -659,7 +659,7 @@ func TestModelInfoUnmarshalRejectsBadObject(t *testing.T) {
 	if m.ID != "x" || m.ContextWindow != 128000 {
 		t.Fatalf("got %+v", m)
 	}
-	// Unknown fields are ignored; the nameless entry is dropped by migrateLegacy.
+	// 未知字段会被忽略；无名称的条目会被 migrateLegacy 丢弃。
 	if err := json.Unmarshal([]byte(`{"nope":1}`), &m); err != nil {
 		t.Fatal(err)
 	}
@@ -668,8 +668,8 @@ func TestModelInfoUnmarshalRejectsBadObject(t *testing.T) {
 	}
 }
 
-// TestOpenCorruptConfigBackupIsPrivate: the .bak of a corrupt config holds the
-// original bytes (possibly API keys), so it must not be world-readable.
+// TestOpenCorruptConfigBackupIsPrivate：损坏配置的 .bak
+// 文件保存着原始字节（可能包含 API 密钥），因此不得全局可读。
 func TestOpenCorruptConfigBackupIsPrivate(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows 无 POSIX 权限位语义（Chmod 0600 不生效）；文件仍受用户目录 ACL 保护")
@@ -691,9 +691,9 @@ func TestOpenCorruptConfigBackupIsPrivate(t *testing.T) {
 	}
 }
 
-// TestUpdateFailedSaveDoesNotMutateMemory: a failed disk write must not leave
-// the live config diverged from disk (the old in-place mutation survived in
-// memory until the next restart silently reverted it).
+// TestUpdateFailedSaveDoesNotMutateMemory:
+// 磁盘写入失败时，不得让实时配置与磁盘内容产生分歧（旧的原地修改会残留在内存中
+// ，直到下次重启时被静默还原）。
 func TestUpdateFailedSaveDoesNotMutateMemory(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)
@@ -701,8 +701,8 @@ func TestUpdateFailedSaveDoesNotMutateMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := s.Get().Skills[0].Name
-	// Make the rename target impossible: config.json becomes a directory, so
-	// the atomic replace fails after the tmp write.
+	// 让重命名目标不可用：把 config.json 变成目录，这样原子替换会在写入 tmp
+	// 文件之后失败。
 	if err := os.Remove(filepath.Join(dir, "config.json")); err != nil {
 		t.Fatal(err)
 	}
@@ -719,9 +719,8 @@ func TestUpdateFailedSaveDoesNotMutateMemory(t *testing.T) {
 	}
 }
 
-// The silent update check is opt-out: a fresh config has no autoCheckUpdate
-// key and must still report enabled, or every install would be stuck on the
-// version it was installed with.
+// TestUpdateAutoCheckDefaultsOn: 静默更新检查是可选择关闭的：全新配置没有
+// autoCheckUpdate 键，也必须仍报告为已启用，否则每次安装都会卡在安装时的版本上。
 func TestUpdateAutoCheckDefaultsOn(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)
@@ -741,8 +740,8 @@ func TestUpdateAutoCheckDefaultsOn(t *testing.T) {
 	if s.Settings().UpdateAutoCheckEnabled() {
 		t.Fatal("auto-check must report off when the stored pointer is false")
 	}
-	// A pointer is required here: the setting must survive a round trip
-	// through JSON as an explicit false, not decay back to the unset default.
+	// 这里必须使用指针：该设置必须能以显式 false 的形式完整通过 JSON
+	// 往返，而不是退化回未设置的默认值。
 	reopened, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -755,8 +754,8 @@ func TestUpdateAutoCheckDefaultsOn(t *testing.T) {
 	}
 }
 
-// Smart session naming is opt-out: existing configs without an autoTitle key
-// must refine titles instead of leaving a raw first message such as "/stats".
+// TestAutoTitleDefaultsOn: 智能会话命名是可选择关闭的：没有 autoTitle
+// 键的现有配置必须精炼标题，而不是留下诸如 "/stats" 的原始首条消息。
 func TestAutoTitleDefaultsOn(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)
@@ -782,9 +781,9 @@ func TestAutoTitleDefaultsOn(t *testing.T) {
 	}
 }
 
-// TestResolveAgentModelInheritsDefault pins the #39 contract: an agent defined
-// by name + description + prompt alone follows the global default provider and
-// its first model, while explicit choices are never silently rewritten.
+// TestResolveAgentModelInheritsDefault 固定 #39 约定：仅由 name + description +
+// prompt 定义的 agent
+// 会沿用全局默认供应商及其首个模型，而显式选择绝不会被静默改写。
 func TestResolveAgentModelInheritsDefault(t *testing.T) {
 	cfg := Config{Providers: []ModelProvider{
 		{ID: "p1", Name: "First", Models: []ModelInfo{{ID: "m1"}, {ID: "m2"}}},
@@ -796,7 +795,7 @@ func TestResolveAgentModelInheritsDefault(t *testing.T) {
 		t.Fatalf("blank agent should inherit default provider/model, got %q/%q", providerID, modelID)
 	}
 
-	// No provider is marked default: the first configured one is the default.
+	// 没有供应商被标记为默认：第一个配置的供应商即为默认。
 	noDefault := Config{Providers: []ModelProvider{
 		{ID: "p1", Models: []ModelInfo{{ID: "m1"}}},
 	}}
@@ -805,27 +804,27 @@ func TestResolveAgentModelInheritsDefault(t *testing.T) {
 		t.Fatalf("first provider should act as default, got %q/%q", providerID, modelID)
 	}
 
-	// Explicit values win and are not rebound.
+	// 显式值优先，且不会被重新绑定。
 	providerID, modelID = cfg.ResolveAgentModel(AgentConfig{ProviderID: "p1", Model: "m2"})
 	if providerID != "p1" || modelID != "m2" {
 		t.Fatalf("explicit provider/model changed: %q/%q", providerID, modelID)
 	}
 
-	// An explicit provider with a blank model uses that provider's first model.
+	// 显式指定供应商但模型为空时，使用该供应商的第一个模型。
 	providerID, modelID = cfg.ResolveAgentModel(AgentConfig{ProviderID: "p2"})
 	if providerID != "p2" || modelID != "d1" {
 		t.Fatalf("blank model should use the chosen provider's first model, got %q/%q", providerID, modelID)
 	}
 
-	// A dangling provider stays explicit; the build layer reports it instead
-	// of silently moving the agent to another provider.
+	// 悬空的供应商仍保持显式指定；构建层会报告它，而不是静默地将 Agent
+	// 移到另一个供应商。
 	providerID, modelID = cfg.ResolveAgentModel(AgentConfig{ProviderID: "gone"})
 	if providerID != "gone" || modelID != "" {
 		t.Fatalf("dangling provider must stay untouched, got %q/%q", providerID, modelID)
 	}
 
-	// Nothing configured: values stay blank so callers can show an actionable
-	// "add a provider first" error.
+	// 未配置任何内容：值保持为空，以便调用方可以显示可操作的 "add a provider
+	// first" 错误。
 	providerID, modelID = (Config{}).ResolveAgentModel(AgentConfig{})
 	if providerID != "" || modelID != "" {
 		t.Fatalf("empty config should resolve to empty, got %q/%q", providerID, modelID)

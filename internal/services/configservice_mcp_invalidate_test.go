@@ -8,9 +8,9 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// TestSaveMCPServerInvalidatesStaleConnection: editing a server's settings
-// must drop the manager's cached toolset (the next turn rebuilds with the new
-// transport); saving an identical config must keep it.
+// TestSaveMCPServerInvalidatesStaleConnection:
+// 编辑服务器的设置必须丢弃管理器缓存的工具集（下一回合将使用新的传输重建）；保
+// 存完全相同的配置必须保留它。
 func TestSaveMCPServerInvalidatesStaleConnection(t *testing.T) {
 	dir := t.TempDir()
 	store, err := config.Open(dir)
@@ -30,7 +30,7 @@ func TestSaveMCPServerInvalidatesStaleConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Unchanged save: the cached toolset survives.
+	// 未更改的保存：缓存的工具集仍然保留。
 	if _, err := cs.SaveMCPServer(orig); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestSaveMCPServerInvalidatesStaleConnection(t *testing.T) {
 		t.Fatal("unchanged config should keep the cached toolset")
 	}
 
-	// Changed settings: the stale toolset must be dropped.
+	// 设置已更改：必须丢弃陈旧的工具集。
 	changed := orig
 	changed.Args = []string{"-u"}
 	if _, err := cs.SaveMCPServer(changed); err != nil {

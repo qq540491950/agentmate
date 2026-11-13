@@ -8,8 +8,8 @@ import (
 	"agentmate/internal/config"
 )
 
-// TestAgentShareRoundTrip exports an agent and re-imports it (twice) to
-// verify fresh IDs, name-conflict suffixing and provider relinking metadata.
+// TestAgentShareRoundTrip 导出一个 Agent 并（两次）重新导入它，以验证全新
+// ID、名称冲突后缀处理以及供应商重新关联元数据。
 func TestAgentShareRoundTrip(t *testing.T) {
 	app, store, workspace := newBackupTestService(t)
 
@@ -33,7 +33,7 @@ func TestAgentShareRoundTrip(t *testing.T) {
 	if first.ID == "agent_1" || first.ID == "" {
 		t.Fatalf("imported agent must get a fresh ID: %q", first.ID)
 	}
-	// The original "A" still exists, so the first import already gets a suffix.
+	// 原始 "A" 仍然存在，因此第一次导入就已经获得后缀。
 	if first.Name != "A（2）" {
 		t.Fatalf("name conflict suffix missing on first import: %q", first.Name)
 	}
@@ -50,11 +50,11 @@ func TestAgentShareRoundTrip(t *testing.T) {
 		t.Fatal("imported agents must have distinct IDs")
 	}
 
-	// Unknown agent export errors.
+	// 导出未知 Agent 会报错。
 	if _, err := app.ExportAgent("nope"); err == nil {
 		t.Fatal("expected error exporting unknown agent")
 	}
-	// Bad share data rejected.
+	// 错误的共享数据会被拒绝。
 	if _, err := app.ImportAgent("junk{"); err == nil {
 		t.Fatal("expected parse error")
 	}
@@ -65,9 +65,9 @@ func TestAgentShareRoundTrip(t *testing.T) {
 	_ = workspace
 }
 
-// TestImportAgentStripsDanglingRefs: skill / MCP references that do not
-// exist on THIS machine are stripped at import (with a warning) — otherwise
-// every turn of the imported agent fails its build outright.
+// TestImportAgentStripsDanglingRefs：在这台机器上不存在的技能 / MCP
+// 引用会在导入时被剥离（并发出警告）——否则导入的 Agent
+// 的每个回合都会直接构建失败。
 func TestImportAgentStripsDanglingRefs(t *testing.T) {
 	app, store, _ := newBackupTestService(t)
 	if err := store.Update(func(cfg *config.Config) {
@@ -103,8 +103,8 @@ func TestImportAgentStripsDanglingRefs(t *testing.T) {
 	}
 }
 
-// TestRemoteAgentShareRoundTrip mirrors the agent share flow for remote A2A
-// agents: export -> import with fresh ID, conflict suffix, validation.
+// TestRemoteAgentShareRoundTrip 复现了远程 A2A Agent 的 Agent 共享流程：导出 ->
+// 以全新 ID 导入、冲突后缀、验证。
 func TestRemoteAgentShareRoundTrip(t *testing.T) {
 	app, store, _ := newBackupTestService(t)
 

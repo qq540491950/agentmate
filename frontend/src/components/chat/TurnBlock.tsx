@@ -4,24 +4,27 @@ import { TurnStatus } from "./TurnStatus";
 import type { ChatItem, TurnItem } from "@/lib/chatUtils";
 
 export type TurnBodyOpts = {
-  /** isLastAssistant marks the conversation's final reply (regenerate lives
-   *  there), mirroring the pre-turn-card flat list semantics. */
+  /**
+   * isLastAssistant
+   * 标记会话的最终回复（重新生成位于此处），与回合卡片之前的扁平列表语义保持一
+   * 致。
+   */
   isLastAssistant: boolean;
-  /** liveGroup marks execution blocks of the still-running turn: their
-   *  whole-run clock keeps ticking until the turn settles. */
+  /** liveGroup 标记仍在运行的回合的执行块：其整轮运行时钟会持续计时，直到该回合结束。 */
   liveGroup: boolean;
 };
 
-/** TurnBlock renders one conversation turn as two independent blocks: the
- *  user input as a right-aligned bubble, and the run's output as a separate
- *  left-aligned body. Inputs and replies never share an outer card; the turn
- *  the reader is currently at highlights only the user bubble. */
+/**
+ * TurnBlock
+ * 将一个会话回合渲染为两个独立块：用户输入为右对齐气泡，本次运行的输出为单独的
+ * 左对齐主体。输入与回复绝不共用外层卡片；读者当前所在的回合仅高亮用户气泡。
+ */
 export function TurnBlock({ turn, active, live, isLastTurn, waiting = false, onEdit, canEdit, filterQ, renderBodyItem }: {
   turn: TurnItem;
   active: boolean;
   live: boolean;
   isLastTurn: boolean;
-  /** waiting shows the pre-first-token status row under the user bubble. */
+  /** waiting 会在用户气泡下方显示首个 token 之前的状态行。 */
   waiting?: boolean;
   onEdit: (text: string) => void;
   canEdit: boolean;

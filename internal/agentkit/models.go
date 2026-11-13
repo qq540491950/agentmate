@@ -1,5 +1,5 @@
-// This file fetches the model catalog from a provider's list endpoint, so
-// the settings UI can offer a picker instead of hand-typed model ids.
+// Package agentkit 本文件从供应商的列表端点获取模型目录，以便设置 UI
+// 能提供选择器，而不是手动输入模型 ID。
 package agentkit
 
 import (
@@ -14,21 +14,18 @@ import (
 	"agentmate/internal/config"
 )
 
-// ListProviderModels fetches the model IDs offered by the provider, using
-// the list endpoint of its protocol:
-//   - OpenAI-compatible: GET {base}/models
-//   - Anthropic:         GET {base}/v1/models (paginated)
-//   - Gemini:            GET {base}/v1beta/models (generateContent only)
+// ListProviderModels 使用供应商协议的列表端点，获取该供应商提供的模型 ID： -
+// OpenAI 兼容：GET {base}/models - Anthropic： GET {base}/v1/models（分页） -
+// Gemini： GET {base}/v1beta/models（仅 generateContent）
 //
-// The result is deduplicated and sorted. Gateways that do not implement the
-// list endpoint return an error; callers should keep manual entry available.
+// 结果会去重并排序。未实现列表端点的网关会返回错误；调用方应保留手动输入可用。
 func ListProviderModels(ctx context.Context, p config.ModelProvider) ([]string, error) {
 	switch p.Protocol {
 	case config.ProtocolAnthropic:
 		return listAnthropicModels(ctx, p)
 	case config.ProtocolGemini:
 		return listGeminiModels(ctx, p)
-	default: // OpenAI-compatible Chat Completions
+	default: // OpenAI 兼容的 Chat Completions
 		return listOpenAIModels(ctx, p)
 	}
 }
@@ -56,7 +53,8 @@ func decodeJSON(body io.Reader, v any) error {
 	return json.NewDecoder(io.LimitReader(body, 8*1024*1024)).Decode(v)
 }
 
-// listOpenAIModels speaks GET /models (OpenAI, DeepSeek, Kimi, Ollama, vLLM...).
+// listOpenAIModels 调用 GET
+// /models（OpenAI、DeepSeek、Kimi、Ollama、vLLM...）。
 func listOpenAIModels(ctx context.Context, p config.ModelProvider) ([]string, error) {
 	base := strings.TrimRight(p.BaseURL, "/")
 	if base == "" {
@@ -95,7 +93,7 @@ func listOpenAIModels(ctx context.Context, p config.ModelProvider) ([]string, er
 	return ids, nil
 }
 
-// listAnthropicModels speaks GET /v1/models with cursor pagination.
+// listAnthropicModels 调用 GET /v1/models，使用游标分页。
 func listAnthropicModels(ctx context.Context, p config.ModelProvider) ([]string, error) {
 	base := strings.TrimRight(p.BaseURL, "/")
 	if base == "" {
@@ -146,8 +144,8 @@ func listAnthropicModels(ctx context.Context, p config.ModelProvider) ([]string,
 	return ids, nil
 }
 
-// listGeminiModels speaks GET /v1beta/models, keeping only models that
-// support generateContent (chat), and strips the "models/" prefix.
+// listGeminiModels 调用 GET /v1beta/models，仅保留支持
+// generateContent（聊天）的模型，并去掉 "models/" 前缀。
 func listGeminiModels(ctx context.Context, p config.ModelProvider) ([]string, error) {
 	base := strings.TrimRight(p.BaseURL, "/")
 	if base == "" {

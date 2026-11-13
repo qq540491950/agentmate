@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 
-// highlightText renders text with case-insensitive occurrences of query
-// marked. Only used on plain-text render paths (user bubbles, errors, tool
-// JSON); assistant markdown is deliberately not touched. Empty query returns
-// the text untouched so the call sites stay unconditional.
+// highlightText 会渲染文本，并标记出 query
+// 中不区分大小写的所有出现位置。仅用于纯文本渲染路径（用户气泡、错误、工具
+// JSON）；助手 markdown 有意不处理。query
+// 为空时会原样返回文本，因此各调用点保持无条件调用。
 export function highlightText(text: string, query: string, markClass: string): ReactNode {
   if (!query || !text) return text;
   const lower = text.toLowerCase();

@@ -1,7 +1,7 @@
-// Debug probe: load the real AgentMate config (read-only) and connect every
-// configured MCP server exactly like main.go's startup auto-connect, to tell
-// apart "old binary still running" from "injection path broken". Env values
-// and tokens are never printed.
+// Package main 调试探针：加载真实的 AgentMate 配置（只读），并完全按照 main.go
+// 启动时自动连接的方式连接每个已配置的 MCP
+// 服务器，以区分“旧二进制仍在运行”与“注入路径已损坏”。环境变量值和令牌绝不打印
+// 。
 package main
 
 import (

@@ -1,4 +1,4 @@
-// Pure helpers shared by the chat page and its unit tests (vitest).
+// 聊天页面与其单元测试（vitest）共用的纯辅助函数。
 import type { AttachmentOut, ChatSession, Project, ReasoningLevel, UsageInfo } from "@/lib/api";
 
 export type UIMessage = {
@@ -17,15 +17,15 @@ export type UIMessage = {
   streaming?: boolean;
   usage?: UsageInfo | null;
   attachments?: AttachmentOut[] | null;
-  /** reasoning is the thinking level this turn was sent with. */
+  /** reasoning 是本回合发送时所使用的思考等级。 */
   reasoning?: string;
 };
 
 /**
- * effectiveReasoningLevel picks the level a turn will use: explicit choices in
- * order (per-turn pick, then session default), then the model default. Names
- * the model's table does not offer are ignored so a stale choice from another
- * model cannot leak into a request. Returns "" when the model has no table.
+ * effectiveReasoningLevel
+ * 选取回合将要使用的等级：按顺序取显式选择（先是单回合选择，再是会话默认值），
+ * 然后是模型默认值。模型表中未提供的名称会被忽略，因此其他模型的过期选择不会泄
+ * 漏进请求。当模型没有表时返回 ""。
  */
 export function effectiveReasoningLevel(
   levels: ReasoningLevel[],
@@ -38,10 +38,10 @@ export function effectiveReasoningLevel(
 }
 
 /**
- * sessionTargetBadgeLabel returns the header badge text for a session target.
- * Direct chats (empty target) have no badge: showing "直聊" made it look like a
- * selectable mode next to Agent/team targets. Returns null when no badge
- * should render.
+ * sessionTargetBadgeLabel
+ * 返回会话目标的头部徽标文本。直聊（空目标）没有徽标：显示 "直聊"
+ * 会让它看起来像 Agent/团队目标旁的一种可选模式。当不应渲染任何徽标时返回
+ * null。
  */
 export function sessionTargetBadgeLabel(targetType?: string): string | null {
   switch (targetType) {
@@ -56,7 +56,7 @@ export function sessionTargetBadgeLabel(targetType?: string): string | null {
   }
 }
 
-/** mdToSpeech converts markdown to a speakable plain string. */
+/** mdToSpeech 将 markdown 转换为可朗读的纯文本字符串。 */
 export function mdToSpeech(md: string): string {
   return md
     .replace(/```[\s\S]*?```/g, "（代码块已省略）")
@@ -69,8 +69,10 @@ export function mdToSpeech(md: string): string {
     .trim();
 }
 
-/** fmtTime renders an ISO timestamp for hover display: HH:MM for today,
- * MM-DD HH:MM otherwise (long-lived sessions span days). */
+/**
+ * fmtTime 渲染用于悬停显示的 ISO 时间戳：今天显示为 HH:MM，其他情况显示为 MM-DD
+ * HH:MM（长期存活的会话会跨越数天）。
+ */
 export function fmtTime(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -85,10 +87,9 @@ export function fmtTime(iso?: string): string {
 }
 
 /**
- * computeToolDurations pairs tool_result with its call to derive durations.
- * A HITL confirmation parks the run between the call and the result, so the
- * confirmed call's clock restarts at the confirmation card: otherwise the
- * displayed time is how long the human took to click, not how long the tool ran.
+ * computeToolDurations 将 tool_result 与其调用配对以计算耗时。HITL
+ * 确认会让运行在调用与结果之间挂起，因此被确认的调用的计时会从确认卡片处重新开
+ * 始：否则显示的时间就是人点击所花的时间，而非工具运行的时间。
  */
 export function computeToolDurations(messages: UIMessage[]): Map<string, number> {
   const map = new Map<string, number>();
@@ -96,7 +97,7 @@ export function computeToolDurations(messages: UIMessage[]): Map<string, number>
   for (const m of messages) {
     const ts = m.timestamp ? Date.parse(m.timestamp) : Date.now();
     if (m.kind === "confirm") {
-      // The paused tool is the most recent call of the same name.
+      // 暂停的工具是最近一次同名调用。
       if (m.timestamp) {
         const idx = [...pending].reverse().findIndex((p) => p.toolName === m.toolName);
         if (idx >= 0) pending[pending.length - 1 - idx].ts = ts;
@@ -122,11 +123,12 @@ export function computeToolDurations(messages: UIMessage[]): Map<string, number>
   return map;
 }
 
-/** computeRunningTools marks tool_call messages that have no matching result
- * yet. ADK CallID wins when present; same-name LIFO remains the fallback for
- * older histories and providers that omit IDs. Parallel/团队 rounds can emit
- * call A, call B, result B, result A, so a FIFO queue would end A's spinner
- * early and leave B spinning forever. */
+/**
+ * computeRunningTools 会标记尚无匹配结果的 tool_call 消息。存在 ADK CallID
+ * 时以其为准；对于较旧的历史记录和省略 ID 的供应商，同名 LIFO
+ * 仍是回退方案。并行/团队回合可能发出 call A、call B、result B、result A，因此
+ * FIFO 队列会使 A 的加载指示器提前结束，并让 B 永远旋转。
+ */
 export function computeRunningTools(messages: UIMessage[]): Set<string> {
   const running = new Set<string>();
   const pending: { id: string; callId?: string; toolName: string }[] = [];
@@ -150,49 +152,52 @@ export function computeRunningTools(messages: UIMessage[]): Set<string> {
   return running;
 }
 
-/** toolResultFailed reports whether a tool result payload signals an error.
- * Envelope-level fields only: matching substrings used to flag successful
- * results that merely carried an `"error": null` field, and missed MCP's
- * camelCase `isError`. */
+/**
+ * toolResultFailed
+ * 报告工具结果负载是否表示错误。仅检查信封级字段：过去用匹配子串时，会把仅仅带
+ * 有 `"error": null` 字段的成功结果标记为错误，并漏掉 MCP 采用 camelCase 的
+ * `isError`。
+ */
 export function toolResultFailed(resp?: { [k: string]: any } | null): boolean {
   if (!resp) return false;
   if (resp.error !== undefined && resp.error !== null && resp.error !== "") return true;
   return resp.isError === true || resp.is_error === true;
 }
 
-/** ToolGroup is one collapsible execution block for a contiguous stretch of
- *  process events (thinking entries, tool calls, results and HITL
- *  confirmations) from the same author. Assistant prose stays on the main
- *  timeline and never enters the group. */
+/**
+ * ToolGroup 是同一作者的一段连续过程事件（思考条目、工具调用、结果和 HITL
+ * 确认）构成的可折叠执行块。助手正文留在主时间线上，绝不进入该分组。
+ */
 export type ToolGroup = {
   kind: "tool_group";
-  /** id is the first message's id, stable while the run keeps streaming. */
+  /** id 是第一条消息的 id，在运行持续流式传输期间保持稳定。 */
   id: string;
   author: string;
   messages: UIMessage[];
-  /** endTs is the turn's final reply timestamp: the summary counts the whole
-   *  turn, including the time spent writing the answer, not just the tool
-   *  runtime. Groups no longer move narration, but they all belong to the same
-   *  turn and share its completion clock. */
+  /**
+   * endTs
+   * 是该回合最终回复的时间戳：摘要统计的是整个回合，包括撰写答案所花的时间，而
+   * 不只是工具运行时间。分组不再移动叙述内容，但它们都属于同一回合，并共享该回
+   * 合的完成时钟。
+   */
   endTs?: string;
-  /** answered records whether the turn produced its final reply. Until it
-   *  exists a live turn is still generating; a settled turn without one never
-   *  completed. */
+  /** answered 记录该回合是否产出了最终回复。在它出现之前，仍在运行的回合表示
+   *  正在生成；已结束却没有它的回合表示从未完成。 */
   answered: boolean;
-  /** errored records a turn that ended in an error bubble instead of a reply
-   *  (live streams only — history does not persist error events). */
+  /** errored 记录以错误气泡而非回复结束的回合（仅限实时流式——历史记录不会持久化错误事件）。 */
   errored: boolean;
 };
 
-/** ChatItem is one entry in the message list: a standalone message or a
- *  grouped execution block. */
+/** ChatItem 是消息列表中的一个条目：一条独立消息或一个分组执行块。 */
 export type ChatItem =
   | { kind: "message"; id: string; message: UIMessage }
   | ToolGroup;
 
-/** TurnItem wraps one conversation turn: the user message as its quote
- *  header plus every entry the run produced until the next user message.
- *  The turn rail and the turn card both key off the header's id. */
+/**
+ * TurnItem
+ * 封装一个会话回合：用户消息作为其引用头，加上该次运行在下一个用户消息之前产生
+ * 的每个条目。回合轨道和回合卡片都以该头信息的 id 作为键。
+ */
 export type TurnItem = {
   kind: "turn";
   id: string;
@@ -200,13 +205,18 @@ export type TurnItem = {
   body: ChatItem[];
 };
 
-/** RenderItem is one top-level entry in the message pane: a turn card, or an
- *  orphan entry that precedes the first user message. */
+/**
+ * RenderItem
+ * 是消息面板中的一个顶层条目：一张回合卡片，或一个位于第一个用户消息之前的孤立
+ * 条目。
+ */
 export type RenderItem = ChatItem | TurnItem;
 
-/** groupTurns folds the flat item list into turn cards keyed by user
- *  messages. Orphan entries before the first user message (error bubbles a
- *  failed send can leave behind) render standalone so they never vanish. */
+/**
+ * groupTurns
+ * 将扁平条目列表折叠为以用户消息为键的回合卡片。第一个用户消息之前的孤立条目（
+ * 发送失败可能遗留的错误气泡）会独立渲染，因此绝不会消失。
+ */
 export function groupTurns(items: ChatItem[]): RenderItem[] {
   const out: RenderItem[] = [];
   let header: UIMessage | null = null;
@@ -219,10 +229,9 @@ export function groupTurns(items: ChatItem[]): RenderItem[] {
   };
   for (const item of items) {
     if (item.kind === "message" && item.message.kind === "user") {
-      // User events that carried text plus images used to be rendered as
-      // several messages with the same id. Merge those parts instead of
-      // creating phantom turns: duplicate ids also collapse the turn rail's
-      // hover/active matching and React keys.
+      // 过去，同时携带文本和图片的用户事件会被渲染成多条具有相同 id
+      // 的消息。合并这些部分，而不是创建幽灵回合：重复 id
+      // 还会使回合轨道的悬停/激活匹配和 React keys 失效。
       if (header && item.message.id === header.id) {
         const current = header;
         const text = [current.text, item.message.text].filter(Boolean).join("\n");
@@ -246,9 +255,9 @@ export function groupTurns(items: ChatItem[]): RenderItem[] {
 }
 
 /**
- * isAwaitingReply reports the silent gap after the user's message and before
- * the model's first streamed event. The reply bubble only exists once a delta
- * arrives, so this is the only signal that the turn is still starting.
+ * isAwaitingReply
+ * 报告用户消息之后、模型首个流式事件之前的静默间隙。回复气泡仅在增量到达后才存
+ * 在，因此这是回合仍在启动的唯一信号。
  */
 export function isAwaitingReply(messages: UIMessage[], running: boolean): boolean {
   if (!running) return false;
@@ -257,11 +266,10 @@ export function isAwaitingReply(messages: UIMessage[], running: boolean): boolea
 }
 
 /**
- * insertThinkingBeforeStreamingReply keeps a late final reasoning event ahead
- * of the answer it belongs to. The answer deltas open the streaming assistant
- * bubble before the aggregated final event can deliver its thought; appending
- * that thought at the tail would put reasoning after the reply and make the
- * turn look unanswered when it is grouped.
+ * insertThinkingBeforeStreamingReply
+ * 会保持迟到的最终推理事件位于其所属回答之前。回答增量会在聚合后的最终事件能够
+ * 传递其思考之前打开流式助手气泡；若在尾部追加该思考，就会把推理放到回复之后，
+ * 并使该回合在分组时看起来未得到回答。
  */
 export function insertThinkingBeforeStreamingReply(messages: UIMessage[], thinking: UIMessage): UIMessage[] {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -273,9 +281,11 @@ export function insertThinkingBeforeStreamingReply(messages: UIMessage[], thinki
   return [...messages, thinking];
 }
 
-/** ToolStep pairs one tool_call with its matching tool_result. Keeping the
- *  pair together is what makes an execution block read as N tools instead of
- *  2N call/result rows. */
+/**
+ * ToolStep 将一个 tool_call 与其匹配的 tool_result
+ * 配对。将这一对保持在一起，才能使执行块读起来像 N 个工具，而不是 2N
+ * 行调用/结果。
+ */
 export type ToolStep = {
   kind: "tool";
   id: string;
@@ -286,15 +296,16 @@ export type ToolStep = {
   result?: UIMessage;
 };
 
-/** ToolTraceItem preserves the turn's event order while folding calls and
- *  results into logical steps. */
+/** ToolTraceItem 在将调用和结果折叠为逻辑步骤的同时，保留回合的事件顺序。 */
 export type ToolTraceItem =
   | { kind: "message"; message: UIMessage }
   | ToolStep;
 
-/** buildToolTrace pairs a result to its call by ADK CallID first, falling back
- *  to the most recent unpaired call of the same tool name for older history.
- *  A result without a retained call still renders as its own step. */
+/**
+ * buildToolTrace 首先按 ADK CallID
+ * 将结果与其调用配对；对于较早的历史记录，则回退到同一工具名称最近一次未配对的
+ * 调用。即使结果没有保留的调用，仍会作为其自身的步骤渲染。
+ */
 export function buildToolTrace(messages: UIMessage[]): ToolTraceItem[] {
   const out: ToolTraceItem[] = [];
   const pending: ToolStep[] = [];
@@ -347,11 +358,11 @@ export type ToolStepKind = "command" | "read" | "write" | "search" | "other";
 
 export type ToolStepDisplay = {
   kind: ToolStepKind;
-  /** Short verb shown before the target, e.g. 运行 / 读取 / 搜索知识库. */
+  /** 显示在目标之前的简短动词，例如 运行 / 读取 / 搜索知识库。 */
   action: string;
-  /** Command, path or query extracted from the call arguments. */
+  /** 从调用参数中提取的命令、路径或查询。 */
   target?: string;
-  /** Commands read best in monospace; labels such as 读取 do not. */
+  /** 命令用等宽字体阅读效果最佳；诸如 读取 之类的标签则不适合。 */
   mono?: boolean;
 };
 
@@ -359,9 +370,9 @@ const toolArgString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
 /**
- * toolStepDisplay turns a tool invocation into one scannable line. Keep this
- * in the pure helper layer: the execution list and its tests must agree on
- * how unknown/MCP tools fall back to their first useful argument.
+ * toolStepDisplay
+ * 将一次工具调用转换为一行可快速浏览的内容。将其保留在纯辅助函数层：执行列表及
+ * 其测试必须就未知/MCP 工具如何回退到其第一个有用参数保持一致。
  */
 export function toolStepDisplay(
   name: string,
@@ -402,9 +413,11 @@ export type ToolExecutionSummary = {
   counts: Record<ToolStepKind, number>;
 };
 
-/** summarizeToolTrace counts logical steps and failed results for the group
- *  header. A failed step is process detail, not a turn failure; the header
- *  reports it separately so a successful answer does not hide a red step. */
+/**
+ * summarizeToolTrace
+ * 为分组标题统计逻辑步骤和失败结果。失败的步骤属于过程细节，而非回合失败；标题
+ * 会单独报告它，以免成功的回答掩盖了红色步骤。
+ */
 export function summarizeToolTrace(trace: ToolTraceItem[]): ToolExecutionSummary {
   const counts: Record<ToolStepKind, number> = {
     command: 0,
@@ -424,9 +437,11 @@ export function summarizeToolTrace(trace: ToolTraceItem[]): ToolExecutionSummary
   return { total, failed, counts };
 }
 
-/** formatToolExecutionBreakdown renders the compact category summary used in
- *  the header tooltip. Only the largest categories are kept: the header must
- *  stay scannable, and the step rows below already expose the rest. */
+/**
+ * formatToolExecutionBreakdown
+ * 渲染标题提示框中使用的紧凑分类摘要。仅保留最大的几个类别：标题必须保持便于浏
+ * 览，而下方的步骤行已经展示了其余内容。
+ */
 export function formatToolExecutionBreakdown(
   counts: Record<ToolStepKind, number>,
   maxParts = 2,
@@ -446,12 +461,13 @@ export function formatToolExecutionBreakdown(
     .join(" · ");
 }
 
-/** latestPlanMessage returns the newest non-empty plan_todos result. Callers
- *  pass currentTurnOnly=false when they need the session plan (the /todos
- *  command), while the inline timeline and header chip stay scoped to the
- *  current turn. A plan is a state mutation rather than a tool step, so the
- *  timeline renders one snapshot instead of a card per update; an explicit
- *  empty list clears the plan and suppresses older snapshots. */
+/**
+ * latestPlanMessage 返回最新的非空 plan_todos
+ * 结果。调用方在需要会话计划（/todos 命令）时会传入
+ * currentTurnOnly=false，而内联时间线和标题标签则保持限定在当前回合内。计划是一
+ * 项状态变更而非工具步骤，因此时间线渲染一个快照，而不是每次更新渲染一张卡片；
+ * 显式空列表会清除计划并抑制较旧的快照。
+ */
 export function latestPlanMessage(messages: UIMessage[], currentTurnOnly = true): UIMessage | null {
   let start = 0;
   if (currentTurnOnly) {
@@ -472,19 +488,22 @@ export function latestPlanMessage(messages: UIMessage[], currentTurnOnly = true)
   return null;
 }
 
-/** isProcessEvent reports messages that belong to one turn's execution run:
- *  thinking entries plus tool calls/results and HITL confirmations. plan_todos
- *  is a state mutation rendered as a standalone plan card, so it stays outside
- *  groups. */
+/**
+ * isProcessEvent 报告属于一个回合执行过程的消息：思考条目，以及工具调用/结果和
+ * HITL 确认。plan_todos
+ * 是状态变更，会渲染为独立的计划卡片，因此保留在分组之外。
+ */
 function isProcessEvent(m: UIMessage): boolean {
   if (m.kind === "thinking") return true;
   if (m.kind !== "tool_call" && m.kind !== "tool_result" && m.kind !== "confirm") return false;
   return m.toolName !== "plan_todos";
 }
 
-/** isToolActivity reports the events that actually did work in a turn.
- *  Thinking is deliberately excluded: a final aggregated reasoning event can
- *  arrive after the streamed answer, and it must not hide that reply. */
+/**
+ * isToolActivity
+ * 报告一个回合中实际完成工作的事件。这里刻意排除思考：最终聚合的推理事件可能会
+ * 在流式回答之后到达，且不得隐藏该回复。
+ */
 function isToolActivity(m: UIMessage): boolean {
   if (m.kind === "confirm") return true;
   if (m.kind !== "tool_call" && m.kind !== "tool_result") return false;
@@ -492,19 +511,15 @@ function isToolActivity(m: UIMessage): boolean {
 }
 
 /**
- * groupToolMessages folds only contiguous process events — thinking, tool
- * calls/results and HITL confirmations — into execution blocks. Assistant
- * prose always stays on the turn timeline.
+ * groupToolMessages 仅将连续的过程事件（思考、工具调用/结果和 HITL
+ * 确认）折叠为执行块。助手正文始终保留在回合时间线上。
  *
- * That is a display-state guarantee, not just a layout preference. A model can
- * stream a short narration and then call more tools in the same response. The
- * old grouping absorbed that narration after the next tool_call arrived, so a
- * paragraph that had already been painted as an answer jumped into the
- * execution block. Keeping assistant messages out of groups makes their
- * position independent of future tool events: live streaming and persisted
- * history now agree. Empty settled assistant shells are dropped; plan_todos
- * is collapsed to one latest-snapshot card per turn, and a single invocation
- * still forms its own block.
+ * 这确保的是显示状态，而不只是布局偏好。模型可以在同一响应中流式输出一段简短叙
+ * 述，然后调用更多工具。旧的分组会在下一个 tool_call
+ * 到达后吸收那段叙述，因此一段已经作为回答绘制出来的段落会跳入执行块。将助手消
+ * 息排除在分组之外，使其位置不受未来工具事件影响：实时流式输出与持久化历史现在
+ * 保持一致。已结束的空助手外壳会被丢弃；plan_todos
+ * 会按回合折叠为一张最新快照卡片，且单次调用仍会形成自己的块。
  */
 export function groupToolMessages(messages: UIMessage[]): ChatItem[] {
   const out: ChatItem[] = [];
@@ -527,14 +542,13 @@ function messageItem(m: UIMessage): ChatItem {
   return { kind: "message", id: m.id, message: m };
 }
 
-/** groupTurn folds contiguous process events and appends assistant messages
- *  in-order as stable timeline items. */
+/** groupTurn 折叠连续的过程事件，并按顺序将助手消息作为稳定的时间线项追加。 */
 function groupTurn(turn: UIMessage[]): ChatItem[] {
   const out: ChatItem[] = [];
-  // plan_todos updates are state snapshots, not steps. Keep only the latest
-  // non-empty snapshot and insert it where the plan first appeared in this
-  // turn; otherwise every update would append another full checklist and a
-  // generic tool-call card with the raw JSON arguments.
+  // plan_todos
+  // 更新是状态快照，而不是步骤。仅保留最新的非空快照，并将其插入到本轮中计划首
+  // 次出现的位置；否则每次更新都会追加另一份完整清单，以及一张带有原始 JSON
+  // 参数的通用工具调用卡片。
   const planMessage = latestPlanMessage(turn);
   let planAnchor = -1;
   if (planMessage) {
@@ -558,19 +572,16 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
     timeline.push(m);
   }
 
-  // The result boundary is the last tool/confirmation activity, not the last
-  // thinking event: a final reasoning block can arrive after the streamed
-  // answer (the answer bubble already exists, so the thinking is appended
-  // behind it). Treating that thought as the boundary hid the answer inside
-  // the execution block and turned a completed turn red.
+  // 结果边界是最后一次工具/确认活动，而不是最后一次思考事件：最终推理块可能在流
+  // 式回答之后到达（回答气泡已经存在，因此思考会追加在它后面）。将该思考视为边
+  // 界会把回答藏在执行块内，并使已完成的回合变红。
   let lastActivityIdx = -1;
   for (let i = timeline.length - 1; i >= 0; i--) {
     if (isToolActivity(timeline[i])) { lastActivityIdx = i; break; }
   }
 
-  // The result is the last assistant message after the last tool activity.
-  // Empty settled shells (a streaming placeholder whose turn ended in a tool
-  // call) are skipped so they cannot render as an empty assistant block.
+  // 结果是最后一次工具活动之后的最后一条助手消息。已结束的空助手外壳（一个流式
+  // 占位符，其回合以工具调用结束）会被跳过，因此它们不会渲染为空助手块。
   let resultIdx = -1;
   for (let i = timeline.length - 1; i > lastActivityIdx; i--) {
     const m = timeline[i];
@@ -582,7 +593,7 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
 
   const hasProcess = timeline.some(isProcessEvent);
   if (!hasProcess) {
-    // No execution events: render plain messages as before.
+    // 没有执行事件：像以前一样渲染普通消息。
     for (const m of timeline) {
       if (m.kind === "assistant" && !m.text.trim() && !m.streaming) continue;
       out.push(messageItem(m));
@@ -590,9 +601,8 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
     return out;
   }
 
-  // Late reasoning belongs before the reply it explains. Keep the turn's
-  // remaining order intact: only move same-author thinking entries that
-  // arrived after the final assistant.
+  // 迟到的推理应放在它所解释的回复之前。保持该回合的 其余顺序不变：仅移动在最终
+  // assistant 之后到达的同一作者的 思考条目。
   let ordered = timeline;
   if (resultIdx >= 0) {
     const result = timeline[resultIdx];
@@ -613,19 +623,19 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
     }
   }
 
-  // Turn outcome, not step outcome: a failed tool the model worked around is
-  // process detail. Only a turn that ended in an error without ever writing
-  // its reply failed — guardrail warnings before a later user message and
-  // budget warnings after the reply both still have/leave an answer.
+  // 以回合结果为准，而非步骤结果：模型绕过的一个失败工具只是
+  // 过程细节。只有以错误结束且从未写出
+  // 其回复的回合才算失败——后续用户消息之前的护栏警告，以及
+  // 回复之后的预算警告，两者仍然都有/留下答案。
   const answered = resultIdx >= 0;
   const errored = !answered && ordered.some((m) => m.kind === "error");
   const endTs = resultIdx >= 0 ? ordered[resultIdx].timestamp : undefined;
   let run: UIMessage[] = [];
   const flush = () => {
     if (run.length === 0) return;
-    // Even one invocation belongs here: its call and result are two events but
-    // one logical step, and rendering them as two standalone cards duplicated
-    // every simple tool call. Thinking-only runs still group too.
+    // 即使只有一次调用，也应归入这里：其调用和结果是两个事件，但
+    // 属于一个逻辑步骤，而将它们渲染为两张独立卡片会使
+    // 每个简单的工具调用重复显示。仅包含思考的运行也仍会分组。
     out.push({
       kind: "tool_group",
       id: run[0].id,
@@ -641,22 +651,21 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
   for (let i = 0; i < ordered.length; i++) {
     const m = ordered[i];
     if (m.kind === "assistant") {
-      // The streaming placeholder created before the final tool response
-      // carries no text; the process header is the live indicator. A settled
-      // empty shell is noise and is dropped in both cases.
+      // 在最终工具响应之前创建的流式占位符
+      // 不含文本；过程标题才是实时指示器。已落定的
+      // 空壳是噪声，在两种情况下都会被丢弃。
       if (!m.text.trim()) continue;
-      // Narration is a first-class timeline item, never a member of the
-      // execution block. Do not revisit this decision when a later tool call
-      // arrives: the message's position must stay stable.
+      // 叙述是一等时间线项，绝不是
+      // 执行块的成员。后续工具调用到来时，不要重新考虑这个决定：
+      // 该消息的位置必须保持稳定。
       flush();
       out.push(messageItem(m));
       continue;
     }
     if (!isProcessEvent(m)) {
-      // The single plan snapshot is a timeline item. Flush before it so it
-      // keeps its real position instead of jumping above the execution run
-      // that preceded it. Repeated plan updates are already collapsed by the
-      // timeline transform above.
+      // 单个计划快照是一个时间线项。在它之前进行刷新，以便它
+      // 保留真实位置，而不是跳到位于其前面的执行运行
+      // 上方。重复的计划更新已由上述 时间线转换折叠。
       if (m.toolName === "plan_todos") {
         flush();
         out.push(messageItem(m));
@@ -675,21 +684,22 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
 
 export type ToolGroupStatus = "confirm" | "running" | "failed" | "done";
 
-/** toolGroupStatus derives the execution block's header state from the TURN's
- *  outcome, not from its individual steps: a tool call that failed is usually
- *  a step the model retried or worked around, and the turn still answered — it
- *  must not turn the whole run red. A pending HITL confirmation outranks
- *  everything: the backend ends the turn when it pauses for approval, so
- *  without this the block would collapse and hide the actionable card. A
- *  still-streaming thinking entry or narration also counts as running: the
- *  model may reason between tool batches while the turn continues, and the
- *  block must stay open so the live text is visible. A live turn with no
- *  in-flight signal at all is the silent gap between two tool batches —
- *  deriving "done" there made the block collapse and flip to 完成 between
- *  every batch, so turn-level liveness keeps it running until it settles.
- *  The run failed when it ended in an error without a final reply; a settled
- *  turn with no reply never completed either (history does not keep error
- *  bubbles, so the missing answer is the only durable failure signal left). */
+/**
+ * toolGroupStatus 根据回合的结果，而不是根据各个步骤，来推导执行块的标题状态：
+ * 失败的工具调用通常是模型重试过或绕过的步骤，而且回合仍然给出了回答——它
+ * 不得把整个运行变成红色。待处理的 HITL 确认优先于一切：
+ * 后端在暂停等待审批时会结束回合，因此
+ * 若没有这一点，执行块会折叠并隐藏可操作的卡片。
+ * 仍在流式输出的思考条目或叙述也算作运行中：
+ * 模型可以在回合继续期间在工具批次之间进行推理，且
+ * 执行块必须保持展开，以便实时文本可见。
+ * 没有任何在途信号的活跃回合是两个工具批次之间的静默间隙—— 在那里推导出 "done"
+ * 会让执行块在每个批次之间折叠并切换为完成，
+ * 因此回合级活跃状态会让它保持运行，直到它落定。
+ * 当运行以错误结束且没有最终回复时，该运行失败；
+ * 已落定且没有回复的回合也从未完成（历史记录不保留错误
+ * 气泡，因此缺失的回答是唯一留下的持久失败信号）。
+ */
 export function toolGroupStatus(group: ToolGroup, runningTools: Set<string>, live: boolean): ToolGroupStatus {
   let running = false;
   let pendingConfirm = false;
@@ -699,8 +709,8 @@ export function toolGroupStatus(group: ToolGroup, runningTools: Set<string>, liv
     } else if (m.kind === "tool_call") {
       if (runningTools.has(m.id)) running = true;
     } else if (m.kind === "thinking" || m.kind === "assistant") {
-      // Reasoning or inter-tool narration still streaming means the turn is
-      // live; the block must stay open so the new text is visible.
+      // 推理或工具间叙述仍在流式输出意味着回合仍然活跃；
+      // 执行块必须保持展开，以便新文本可见。
       if (m.streaming) running = true;
     }
   }
@@ -711,15 +721,21 @@ export function toolGroupStatus(group: ToolGroup, runningTools: Set<string>, liv
   return "done";
 }
 
-/** toolGroupInvocationCount counts logical tool steps after pairing calls with
- *  their results, so one invocation is one step rather than two rows. */
+/**
+ * toolGroupInvocationCount
+ * 在将调用与其结果配对后统计逻辑工具步骤数，因此一次调用是一个步骤，而不是两行
+ * 。
+ */
 export function toolGroupInvocationCount(messages: UIMessage[]): number {
   return buildToolTrace(messages).filter((item) => item.kind === "tool").length;
 }
 
-/** toolGroupDurationMs sums the completed tools' runtimes. Per-tool durations
- *  (instead of wall clock) keep HITL waits out of the per-tool chips: the pause
- *  between a confirmation card and its result is human time, not tool time. */
+/**
+ * toolGroupDurationMs
+ * 累加已完成工具的运行时长。按工具统计时长（而非按墙钟时间）可将 HITL
+ * 等待排除在各工具标签之外：确认卡片与其结果之间的停顿属于人工时间，而非工具时
+ * 间。
+ */
 export function toolGroupDurationMs(messages: UIMessage[], durations: Map<string, number>): number | null {
   let total = 0;
   let found = false;
@@ -732,9 +748,11 @@ export function toolGroupDurationMs(messages: UIMessage[], durations: Map<string
   return found ? total : null;
 }
 
-/** toolGroupElapsedMs is the wall-clock span of the whole turn: from the first
- *  process event to the final reply (endTs), or to now while the turn is still
- *  live. Timestamp-less histories fall back to the summed tool runtimes. */
+/**
+ * toolGroupElapsedMs 是整个回合的墙钟时间跨度：从首个 process
+ * 事件到最终回复（endTs），或在回合仍进行中时到当前时刻。无时间戳的历史记录回退
+ * 到累加的工具运行时长。
+ */
 export function toolGroupElapsedMs(
   messages: UIMessage[],
   endTs: string | undefined,
@@ -759,8 +777,7 @@ export function toolGroupElapsedMs(
   return Math.max(0, end - start);
 }
 
-/** formatWorkDuration renders an execution block's elapsed time in Chinese:
- *  19 秒 / 2 分 4 秒 / 1 小时 2 分. */
+/** formatWorkDuration 用中文显示执行块的已用时间：19 秒 / 2 分 4 秒 / 1 小时 2 分。 */
 export function formatWorkDuration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s} 秒`;
@@ -770,10 +787,12 @@ export function formatWorkDuration(ms: number): string {
   return m > 0 ? `${h} 小时 ${m} 分` : `${h} 小时`;
 }
 
-/** chatItemStartTs / chatItemEndTs expose an item's visible time span so day
- *  separators compare against the real previous entry (a group spans from its
- *  first event to its last; a turn spans from its user header to its last
- *  body entry). */
+/**
+ * chatItemStartTs / chatItemEndTs
+ * 暴露一个条目的可见时间跨度，以便日期分隔符与真正的前一条目比较（一个分组从其
+ * 首个事件跨越到最后一个事件；一个回合从其用户消息头跨越到其最后一个正文条目）
+ * 。
+ */
 export function chatItemStartTs(item: RenderItem): string | undefined {
   if (item.kind === "tool_group") return item.messages[0]?.timestamp;
   if (item.kind === "turn") return item.header.timestamp ?? chatItemStartTs(item.body[0]);
@@ -790,9 +809,9 @@ export function chatItemEndTs(item: RenderItem): string | undefined {
 }
 
 /**
- * computeEditFlags marks the user messages that may be edited: only the last
- * one, because editing replaces that turn and everything after it. Doing this
- * per row was O(n^2) on every streamed token.
+ * computeEditFlags
+ * 标记可以编辑的用户消息：仅最后一条，因为编辑会替换该回合及其之后的所有内容。
+ * 逐行执行此操作会在每个流式 token 上达到 O(n^2)。
  */
 export function computeEditFlags(messages: UIMessage[]): Map<string, boolean> {
   const flags = new Map<string, boolean>();
@@ -805,18 +824,17 @@ export function computeEditFlags(messages: UIMessage[]): Map<string, boolean> {
 }
 
 
-/** isDayChange reports whether the two timestamps fall on different calendar
- * days (used to render day separators in long-lived conversations). */
+/** isDayChange 报告两个时间戳是否落在不同的日历日（用于在长期会话中渲染日期分隔符）。 */
 export function isDayChange(prevIso: string | undefined, iso: string | undefined): boolean {
   if (!iso) return false;
-  if (!prevIso) return true; // first message always opens a day header
+  if (!prevIso) return true; // 第一条消息始终开启日期标题
   const a = new Date(prevIso);
   const b = new Date(iso);
   if (isNaN(a.getTime()) || isNaN(b.getTime())) return false;
   return a.getFullYear() !== b.getFullYear() || a.getMonth() !== b.getMonth() || a.getDate() !== b.getDate();
 }
 
-/** dayLabel formats a timestamp as "10月30日 星期四" style day header. */
+/** dayLabel 将时间戳格式化为 "10月30日 星期四" 风格的日期标题。 */
 export function dayLabel(iso: string | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -833,17 +851,17 @@ export interface SessionGroup {
 }
 
 export interface ProjectGroup {
-  /** key is "pinned", "default", "proj:<id>", an ad-hoc dir root or "archived". */
+  /** key 为 "pinned"、"default"、"proj:<id>"、临时目录根或 "archived"。 */
   key: string;
   label: string;
-  /** Full workspace root for tooltips; undefined for the default project. */
+  /** 用于提示框的完整工作区根路径；默认项目下为 undefined。 */
   path?: string;
-  /** Registered project the group belongs to, if any. */
+  /** 该分组所属的已注册项目（若有）。 */
   projectId?: string;
   sessions: ChatSession[];
 }
 
-/** How many chats a project shows before「展开显示」. */
+/** 项目在「展开显示」之前显示多少个会话。 */
 export const PROJECT_SESSION_LIMIT = 5;
 
 export interface ProjectSessionWindow {
@@ -865,9 +883,11 @@ const SESSION_GROUP_ORDER: SessionGroupKey[] = ["pinned", "today", "yesterday", 
 const byRecency = (a: ChatSession, b: ChatSession): number =>
   (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
 
-/** groupSessionsByTime buckets sidebar sessions: pinned first (age-agnostic),
- * then by local calendar day of updatedAt, archived always last. Sessions with
- * missing or invalid timestamps land in "earlier"; empty buckets are omitted. */
+/**
+ * groupSessionsByTime 对侧边栏会话分桶：置顶在前（与时间无关）， 随后按
+ * updatedAt 的本地日历日分组，归档始终排在最后。时间戳缺失或 无效的会话归入
+ * "earlier"；空桶会被省略。
+ */
 export function groupSessionsByTime(sessions: ChatSession[], now: Date): SessionGroup[] {
   const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const today = startOf(now);
@@ -896,13 +916,13 @@ export function groupSessionsByTime(sessions: ChatSession[], now: Date): Session
     .map((key) => ({ key, label: SESSION_GROUP_LABELS[key], sessions: (buckets.get(key) ?? []).sort(byRecency) }));
 }
 
-/** groupSessionsByProject buckets sidebar sessions for the "项目" grouping.
- * Registered projects come first: sessions bound via projectId — and legacy
- * sessions whose explicit workspace equals a project root — join that
- * project's group. Remaining explicit workspaces outside the global one keep
- * their ad-hoc folder groups; auto task dirs under the global workspace and
- * workspace-less sessions form the default project. Archived sessions trail
- * in their own group; groups sort by their newest member. */
+/**
+ * groupSessionsByProject 为 "项目" 分组对侧边栏会话分桶。 已注册项目优先：通过
+ * projectId 绑定的会话，以及显式工作区等于某个项目根的
+ * 遗留会话，都会加入该项目的分组。其余位于全局工作区之外的显式工作区保留
+ * 各自的临时文件夹分组；全局工作区下的自动任务目录以及无工作区的会话构成默认项
+ * 目。 归档会话单独成组排在最后；分组按其最新成员排序。
+ */
 export function groupSessionsByProject(sessions: ChatSession[], projects: Project[], globalWorkspace: string): ProjectGroup[] {
   const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
   const root = norm(globalWorkspace);
@@ -938,8 +958,8 @@ export function groupSessionsByProject(sessions: ChatSession[], projects: Projec
     if (!dir || underGlobal(dir)) {
       push("default", "默认项目", undefined, s);
     } else {
-      // Dedupe case-insensitively (Windows paths) but keep the first-seen
-      // original spelling as the display key/path.
+      // 以不区分大小写的方式去重（Windows 路径），但保留首次出现的
+      // 原始拼写作为展示用的 key/path。
       const existing = [...groups.values()].find((g) => norm(g.key) === norm(dir));
       if (existing) existing.sessions.push(s);
       else push(dir, baseName(dir), dir, s);
@@ -951,20 +971,22 @@ export function groupSessionsByProject(sessions: ChatSession[], projects: Projec
     .map((g) => ({ ...g, sessions: g.sessions.sort(byRecency) }));
 }
 
-/** sortSidebarSessions orders each project by recent activity. Pinned chats
- * are extracted into the leading global group before project grouping. */
+/**
+ * sortSidebarSessions
+ * 按最近活动对每个项目排序。置顶会话在项目分组之前被提取到最前面的全局分组中。
+ */
 function sortSidebarSessions(sessions: ChatSession[]): ChatSession[] {
   return [...sessions].sort(byRecency);
 }
 
-/** buildSidebarProjectGroups turns the raw workspace grouping into the stable
- * tree used by the compact sidebar:
- *   pinned chats → default chats → registered projects (including empty ones,
- *   in project order) → ad-hoc workspace folders → (archived is rendered
- *   separately). Pinned chats leave their project group so each chat appears
- *   exactly once and stays reachable at the top regardless of its workspace.
- * Registered projects keep their creation order instead of jumping around
- * whenever one of their chats receives a new message. */
+/**
+ * buildSidebarProjectGroups
+ * 将原始工作区分组转换为紧凑侧边栏所使用的稳定树结构： 置顶会话 → 默认会话 →
+ * 已注册项目（包括空项目，按项目顺序）→ 临时工作区文件夹
+ * →（归档项单独渲染）。置顶会话会离开其项目分组，因此每个会话只出现一次，并且无
+ * 论其所属工作区如何，都始终可在顶部访问。
+ * 已注册项目保持其创建顺序，而不会在其某个会话收到新消息时来回跳动。
+ */
 export function buildSidebarProjectGroups(sessions: ChatSession[], projects: Project[], globalWorkspace: string): ProjectGroup[] {
   const pinned = sessions.filter((s) => s.pinned && !s.archived).sort(byRecency);
   const grouped = groupSessionsByProject(
@@ -995,9 +1017,11 @@ export function buildSidebarProjectGroups(sessions: ChatSession[], projects: Pro
   return out.map((group) => ({ ...group, sessions: sortSidebarSessions(group.sessions) }));
 }
 
-/** projectSessionWindow returns the compact preview for one project. Expanded
- * groups show every chat; collapsed groups stop at `limit` and report how many
- * rows「展开显示」will reveal. */
+/**
+ * projectSessionWindow
+ * 返回单个项目的紧凑预览。展开的分组显示所有会话；折叠的分组在 `limit`
+ * 处停止，并报告「展开显示」将展示多少行。
+ */
 export function projectSessionWindow(
   sessions: ChatSession[],
   expanded: boolean,
@@ -1011,8 +1035,10 @@ export function projectSessionWindow(
   };
 }
 
-/** shouldExpandProjectForSession keeps the active chat visible when it sits
- * beyond a project's five-row preview. Unknown IDs stay collapsed. */
+/**
+ * shouldExpandProjectForSession
+ * 在当前活动会话位于项目五行预览之外时保持其可见。未知 ID 保持折叠状态。
+ */
 export function shouldExpandProjectForSession(
   sessions: ChatSession[],
   activeID: string,

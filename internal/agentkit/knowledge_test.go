@@ -28,7 +28,7 @@ func TestSearchKnowledge(t *testing.T) {
 		t.Fatalf("irrelevant file should not match:\n%s", res)
 	}
 
-	// No match message
+	// 无匹配消息
 	res, err = searchKnowledge(ws, "quantum-entanglement")
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestSearchKnowledge(t *testing.T) {
 		t.Fatalf("no-match message missing:\n%s", res)
 	}
 
-	// Missing knowledge dir is a friendly message, not an error.
+	// 缺少知识目录时是友好消息，不是错误。
 	ws2 := t.TempDir()
 	res, err = searchKnowledge(ws2, "anything")
 	if err != nil {

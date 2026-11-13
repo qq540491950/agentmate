@@ -12,8 +12,8 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// newTodosTestChat wires an agent with the plan_todos builtin against a
-// scripted model: turn 1 writes a plan, turn 2 reads it back with no args.
+// newTodosTestChat 将 Agent 接上 plan_todos 内置工具，并连接到脚本化模型：第 1
+// 回合写入计划，第 2 回合在不带参数的情况下读回该计划。
 func newTodosTestChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *config.Store) {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -43,9 +43,8 @@ func newTodosTestChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *co
 	return NewChatService(svc, sessions, db), store
 }
 
-// TestPlanTodosRoundTrip: the tool normalizes statuses, stores the plan in the
-// session state and a later read-only call returns the stored list — the
-// model can consult its plan across turns.
+// TestPlanTodosRoundTrip：该工具会规范化状态，将计划存入会话状态，随后的一次只
+// 读调用会返回已存储的列表——模型可以跨回合查阅自己的计划。
 func TestPlanTodosRoundTrip(t *testing.T) {
 	turn := 0
 	chat, _ := newTodosTestChat(t, func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +55,7 @@ func TestPlanTodosRoundTrip(t *testing.T) {
 			_, _ = w.Write([]byte(sseToolCall("c1", "plan_todos",
 				`"{\"todos\":[{\"content\":\"收集素材\",\"status\":\"in_progress\"},{\"content\":\"  \",\"status\":\"completed\"},{\"content\":\"写初稿\",\"status\":\"weird\"}]}"`) + sseDone))
 		case 2:
-			// Read-only call: model omits the todos argument.
+			// 只读调用：模型省略了 todos 参数。
 			_, _ = w.Write([]byte(sseToolCall("c2", "plan_todos", `"{}"`) + sseDone))
 		default:
 			_, _ = w.Write([]byte(sseText("计划已更新。") + sseDone))
@@ -93,7 +92,7 @@ func TestPlanTodosRoundTrip(t *testing.T) {
 		t.Fatalf("missing tool_result payloads: %+v", *events)
 	}
 	writeJSON := mustJSON(writeResp["todos"])
-	// Blank step dropped, unknown status normalized, two real steps kept.
+	// 空白步骤被丢弃，未知状态被规范化，两个真实步骤被保留。
 	if !strings.Contains(string(writeJSON), "收集素材") || !strings.Contains(string(writeJSON), "in_progress") {
 		t.Fatalf("write payload unexpected: %s", writeJSON)
 	}
@@ -105,7 +104,7 @@ func TestPlanTodosRoundTrip(t *testing.T) {
 		t.Fatalf("read-back lost the stored plan: %s", readJSON)
 	}
 
-	// The Markdown export renders the plan as a checklist, not raw JSON.
+	// Markdown 导出会将计划渲染为清单，而不是原始 JSON。
 	path, err := chat.ExportSession(sess.ID)
 	if err != nil {
 		t.Fatal(err)

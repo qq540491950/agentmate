@@ -74,7 +74,7 @@ func TestBuildFileMentionContext(t *testing.T) {
 		t.Fatalf("traversal path must not appear as a loaded file:\n%s", got)
 	}
 
-	// An @agent mention is not reported as a missing file.
+	// @agent 提及不会被报告为缺失文件。
 	got = buildFileMentionContext(workspace, "@助手 你好")
 	if got != "" {
 		t.Fatalf("@agent mention must not produce file context, got %q", got)
@@ -87,8 +87,7 @@ func TestBuildFileMentionContextRespectsWorkspace(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("泄漏"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// A relative path that climbs out of the workspace is rejected before any
-	// read, even though the target exists.
+	// 即使目标存在，越出工作区的相对路径也会在任何读取之前被拒绝。
 	if got := buildFileMentionContext(workspace, "@../secret.txt"); got != "" {
 		t.Fatalf("traversal reference produced context: %s", got)
 	}

@@ -19,15 +19,13 @@ import (
 var getConsoleWindow = syscall.NewLazyDLL("kernel32.dll").NewProc("GetConsoleWindow")
 var freeConsole = syscall.NewLazyDLL("kernel32.dll").NewProc("FreeConsole")
 
-// TestDangerFullAccessHidesConsole pins the regression that returned with the
-// sandbox refactor: the desktop app is a GUI process without a console, so the
-// danger-full-access direct path must pass CREATE_NO_WINDOW or every cmd.exe
-// tool call allocates a console window that flashes over the app (issue #54).
+// TestDangerFullAccessHidesConsole 固定了沙箱重构后重新出现的回归问题：桌面应用是一个没有控制台的 GUI 进程，因此
+// danger-full-access 直接路径必须传递 CREATE_NO_WINDOW，否则每次 cmd.exe
+// 工具调用都会分配一个控制台窗口，并在应用上方闪一下（issue #54）。
 //
-// The test binary re-executes itself twice. The middle process detaches its
-// console (FreeConsole) and calls sandbox.Run exactly like the GUI app; the
-// grandchild reports GetConsoleWindow. Without CREATE_NO_WINDOW cmd.exe
-// allocates a console and the grandchild sees a non-zero handle.
+// 测试二进制会重新执行自身两次。中间进程会分离其控制台（FreeConsole），并像 GUI
+// 应用一样精确调用 sandbox.Run；孙进程会报告 GetConsoleWindow。没有
+// CREATE_NO_WINDOW 时，cmd.exe 会分配一个控制台，孙进程会看到非零句柄。
 func TestDangerFullAccessHidesConsole(t *testing.T) {
 	switch os.Getenv("AGENTMATE_CONSOLE_PROBE") {
 	case "report":
@@ -37,7 +35,7 @@ func TestDangerFullAccessHidesConsole(t *testing.T) {
 	case "parent":
 		probe := os.Getenv("AGENTMATE_CONSOLE_PROBE_BAT")
 		dir := os.Getenv("AGENTMATE_CONSOLE_PROBE_DIR")
-		// Detach the console so this process looks like the -H windowsgui app.
+		// 分离控制台，使此进程看起来像 -H windowsgui 应用。
 		_, _, _ = freeConsole.Call()
 		policy := DefaultPolicy(dir)
 		policy.Mode = ModeDangerFullAccess
@@ -147,8 +145,7 @@ func TestWindowsReadOnlyAllowsReadsAndBlocksWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Prove read-only also revokes a Modify ACE left by an earlier
-	// workspace-write run on the same directory.
+	// 证明只读模式也会撤销同一目录上先前 workspace-write 运行遗留的 Modify ACE。
 	warm, err := Run(context.Background(), Request{
 		Command: "cmd.exe",
 		Args:    []string{"/d", "/c", "echo warm>warmed.txt"},
@@ -289,11 +286,10 @@ func TestPolicyCheckWriteAllowsNewWorkspaceFile(t *testing.T) {
 	}
 }
 
-// TestWithinCanonicalizesWindowsShortPaths pins the CI failure where the
-// config directory arrived as C:\Users\RUNNER~1\... while the workspace was
-// resolved to the long C:\Users\runneradmin\... spelling. The lexical check
-// said "outside", the app directory was added as a protected path, and every
-// workspace write was denied.
+// TestWithinCanonicalizesWindowsShortPaths 固定了 CI 失败：配置目录以
+// C:\Users\RUNNER~1\... 形式到达，而工作区被解析为长路径形式
+// C:\Users\runneradmin\...。词法检查判定为“outside”，应用目录被添加为受保护路径
+// ，且每次工作区写入都被拒绝。
 func TestWithinCanonicalizesWindowsShortPaths(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "tasks", "sess")

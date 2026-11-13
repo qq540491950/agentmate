@@ -126,11 +126,11 @@ func runPlatform(ctx context.Context, req Request, policy Policy) (Result, error
 	return b.run(ctx, req, policy, home)
 }
 
-// configureDirectProcess hides the console window of danger-full-access
-// children. The desktop app is built with -H windowsgui and owns no console,
-// so without CREATE_NO_WINDOW every cmd.exe child allocates a visible console
-// that flashes over the app (the same regression as issue #54, reintroduced
-// when run_command moved to sandbox.Run).
+// configureDirectProcess 隐藏 danger-full-access
+// 子进程的控制台窗口。桌面应用使用 -H windowsgui
+// 构建且不拥有控制台，因此如果没有 CREATE_NO_WINDOW，每个 cmd.exe
+// 子进程都会分配一个可见控制台，并在应用上方闪现（与 issue #54 相同的回归，在
+// run_command 迁移到 sandbox.Run 时重新引入）。
 func configureDirectProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
@@ -225,8 +225,8 @@ func (b *windowsBackend) prepare(policy Policy) (string, error) {
 		return false
 	}
 	for _, path := range policy.ProtectedPaths {
-		// A protected path outside every writable root already has no
-		// AppContainer access; adding a deny ACE would only slow startup.
+		// 位于所有可写根目录之外的受保护路径本来就不具有 AppContainer 访问权限；添加
+		// deny ACE 只会减慢启动。
 		if !inWritableRoot(path) {
 			continue
 		}
@@ -370,8 +370,8 @@ func (b *windowsBackend) run(ctx context.Context, req Request, policy Policy, ho
 		return Result{}, fmt.Errorf("恢复沙箱进程失败: %w", err)
 	}
 
-	// The child owns the write end; the parent must close its copy or the read
-	// loop never observes EOF after the child exits.
+	// 子进程拥有写入端；父进程必须关闭自己的副本，否则子进程退出后，读取循环绝不会
+	// 观察到 EOF。
 	if err := outWrite.Close(); err != nil {
 		return Result{}, err
 	}
@@ -407,7 +407,7 @@ func (b *windowsBackend) run(ctx context.Context, req Request, policy Policy, ho
 		_, _ = windows.WaitForSingleObject(pi.Process, 5000)
 		break
 	}
-	// Closing the job also kills descendants that inherited the job.
+	// 关闭作业对象也会终止继承了该作业对象的后代进程。
 	_ = windows.CloseHandle(job)
 	jobOpen = false
 	_ = outRead.Close()
@@ -584,10 +584,9 @@ func (b *windowsBackend) grantRead(path string) error {
 	return b.icacls(path, "/grant", "*"+b.sidString+":(OI)(CI)RX")
 }
 
-// setRootMode keeps a workspace's AppContainer ACE aligned with the current
-// profile. workspace-write grants are inherited and persist in the filesystem,
-// so switching the same workspace to read-only must first revoke the old ACE;
-// merely adding RX would leave the earlier Modify grant in force.
+// setRootMode 保持工作区的 AppContainer ACE 与当前配置一致。workspace-write
+// 授权会被继承并持久保存在文件系统中，因此将同一工作区切换为只读时，必须首先撤
+// 销旧的 ACE；仅添加 RX 会让先前的 Modify 授权继续生效。
 func (b *windowsBackend) setRootMode(path string, mode Mode) error {
 	key := strings.ToLower(filepath.Clean(path))
 	b.mu.Lock()

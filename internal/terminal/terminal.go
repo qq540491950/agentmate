@@ -1,7 +1,6 @@
-// Package terminal resolves the non-interactive shell used by run_command.
+// Package terminal 解析 run_command 使用的非交互式 shell。
 //
-// The package is deliberately independent of agentkit: detection is useful to
-// the settings service, and the shell tool only needs the resulting Spec.
+// 该包有意独立于 agentkit：检测对设置服务有用，而 shell 工具仅需要生成的 Spec。
 package terminal
 
 import (
@@ -28,8 +27,8 @@ const (
 	defaultWSLShell   = "/bin/bash"
 )
 
-// Detected is one shell shown in the settings picker. Path is the executable
-// path that would actually run; Source explains where it came from.
+// Detected 是设置选择器中显示的一个 shell。Path
+// 是实际会运行的可执行文件路径；Source 说明其来源。
 type Detected struct {
 	Mode         string `json:"mode"`
 	DisplayName  string `json:"displayName"`
@@ -41,7 +40,7 @@ type Detected struct {
 	WSLDistro    string `json:"wslDistro,omitempty"`
 }
 
-// Inventory is the complete detection result for the current host.
+// Inventory 是当前主机的完整检测结果。
 type Inventory struct {
 	OS         string     `json:"os"`
 	Auto       Detected   `json:"auto"`
@@ -51,7 +50,7 @@ type Inventory struct {
 	Errors     []string   `json:"errors,omitempty"`
 }
 
-// ProbeResult is the fixed-command result shown by the settings test action.
+// ProbeResult 是设置测试操作显示的固定命令结果。
 type ProbeResult struct {
 	Mode        string `json:"mode"`
 	DisplayName string `json:"displayName"`
@@ -61,7 +60,7 @@ type ProbeResult struct {
 	Sandbox     string `json:"sandbox"`
 }
 
-// Spec is the runtime shell adapter consumed by the shell tool.
+// Spec 是 shell 工具使用的运行时 shell 适配器。
 type Spec struct {
 	Mode               string
 	DisplayName        string
@@ -76,7 +75,7 @@ type Spec struct {
 	LoadProfile        bool
 }
 
-// Invocation is the exact process invocation for one command.
+// Invocation 是一条命令的精确进程调用。
 type Invocation struct {
 	Command string
 	Args    []string
@@ -84,7 +83,7 @@ type Invocation struct {
 	Dir     string
 }
 
-// Host makes detection testable without depending on the test machine.
+// Host 使检测可测试，而无需依赖测试机器。
 type Host struct {
 	GOOS     string
 	Getenv   func(string) string
@@ -93,7 +92,7 @@ type Host struct {
 	Probe    func(context.Context, string, ...string) (string, int, error)
 }
 
-// DefaultHost uses the real process environment and hidden direct probes.
+// DefaultHost 使用真实进程环境和隐藏的直接探测。
 func DefaultHost() Host {
 	return Host{
 		GOOS:     runtime.GOOS,
@@ -141,8 +140,8 @@ func normalizeHost(h Host) Host {
 	return h
 }
 
-// Detect lists the shells available on this host. Missing shells are omitted;
-// WSL distributions are returned separately because they need full access.
+// Detect 列出此主机上可用的 shell。缺失的 shell 会被省略； WSL
+// 发行版单独返回，因为它们需要完整访问权限。
 func Detect(ctx context.Context, host Host, sandboxMode ...string) Inventory {
 	host = normalizeHost(host)
 	candidates, errs := detectCandidates(ctx, host, true, true)
@@ -167,8 +166,8 @@ func Detect(ctx context.Context, host Host, sandboxMode ...string) Inventory {
 	return inv
 }
 
-// Resolve returns the runtime spec for the saved setting. Only auto may fall
-// back; an explicitly selected shell must exist.
+// Resolve 返回已保存设置的运行时 spec。仅 auto 可以回退；显式选择的 shell
+// 必须存在。
 func Resolve(ctx context.Context, settings config.TerminalSettings, host Host, sandboxMode ...string) (Spec, error) {
 	host = normalizeHost(host)
 	settings = config.NormalizeTerminalSettings(settings)
@@ -205,8 +204,8 @@ func Resolve(ctx context.Context, settings config.TerminalSettings, host Host, s
 	return specFromCandidate(*chosen, settings), nil
 }
 
-// LegacySpec preserves the historical cmd.exe / /bin/sh behavior for callers
-// that do not have a settings snapshot (mostly tests and old tool wrappers).
+// LegacySpec 为没有设置快照的调用方（主要是测试和旧的工具包装器）保留历史上的
+// cmd.exe / /bin/sh 行为。
 func LegacySpec() Spec {
 	if runtime.GOOS == "windows" {
 		return Spec{
@@ -224,8 +223,8 @@ func LegacySpec() Spec {
 	}
 }
 
-// Test runs a fixed command through the selected shell. It uses direct
-// execution because this is a shell availability test, not a sandbox test.
+// Test 通过所选 shell 运行一个固定命令。它使用直接执行，因为这是 shell
+// 可用性测试，而非沙箱测试。
 func Test(ctx context.Context, settings config.TerminalSettings, host Host, sandboxMode ...string) (ProbeResult, error) {
 	spec, err := Resolve(ctx, settings, host, firstString(sandboxMode))
 	if err != nil {
@@ -257,7 +256,7 @@ func Test(ctx context.Context, settings config.TerminalSettings, host Host, sand
 	}, nil
 }
 
-// Invocation builds the process command for this shell.
+// Invocation 构建此 shell 的进程命令。
 func (s Spec) Invocation(workspace, command string) Invocation {
 	dir := workspace
 	if strings.TrimSpace(dir) == "" {
@@ -559,10 +558,9 @@ func findPwsh(host Host) (string, string, bool) {
 	if p := firstExisting(host,
 		filepath.Join(localAppData, "Microsoft", "WindowsApps", "pwsh.exe"),
 	); p != "" {
-		// Store aliases are valid executables but often cannot be launched
-		// inside the Windows AppContainer. Keep them selectable explicitly,
-		// but let auto prefer the system install, Git Bash, or Windows
-		// PowerShell.
+		// Store 别名是有效的可执行文件，但往往无法在 Windows AppContainer
+		// 内启动。保留它们以便显式选择，但让 auto 优先选择系统安装、Git Bash 或
+		// Windows PowerShell。
 		return p, "store-alias", false
 	}
 	if p, ok := lookPath(host, "pwsh.exe"); ok {

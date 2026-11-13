@@ -54,7 +54,7 @@ func TestConfigBackupRoundTrip(t *testing.T) {
 		t.Fatal("unmasked export must contain the API key")
 	}
 
-	// Wipe the config, then import the backup back.
+	// 清空配置，然后重新导入备份。
 	if err := store.Update(func(cfg *config.Config) {
 		*cfg = config.Config{}
 	}); err != nil {
@@ -70,7 +70,7 @@ func TestConfigBackupRoundTrip(t *testing.T) {
 	if len(got.Agents) != 1 || len(got.RemoteAgents) != 1 || len(got.Teams) != 1 {
 		t.Fatalf("config not fully restored: %+v", got)
 	}
-	// The seeded store ships default skills too; ours must be among them.
+	// 预置的存储也会附带默认技能；我们的技能必须也在其中。
 	var haveSkill bool
 	for _, sk := range got.Skills {
 		if sk.ID == "skill_1" {
@@ -99,8 +99,8 @@ func TestConfigBackupMasked(t *testing.T) {
 	if strings.Contains(string(data), "sk-secret-123") {
 		t.Fatal("masked export leaked the API key")
 	}
-	// Regression: masking must be applied to a copy. A masked export used to
-	// blank the live provider keys, breaking every later request until restart.
+	// 回归：掩码必须应用于副本。过去，掩码后的导出会清空当前生效的供应商密钥，导致
+	// 之后每次请求都失败，直到重启。
 	if got := store.Get(); len(got.Providers) != 1 || got.Providers[0].APIKey != "sk-secret-123" {
 		t.Fatalf("masked export mutated the live config: %+v", got.Providers)
 	}
@@ -122,7 +122,7 @@ func TestConfigBackupMasked(t *testing.T) {
 	if strings.Contains(string(data2), "at-secret") {
 		t.Fatal("export leaked the MCP OAuth token cache")
 	}
-	// The key file must not be group/other readable since it may hold secrets.
+	// 密钥文件不得对组或其他用户可读，因为它可能保存机密。
 	if filepath.Dir(path) != filepath.Join(workspace, "exports") {
 		t.Fatalf("unexpected export dir: %s", path)
 	}
@@ -141,7 +141,7 @@ func TestConfigImportValidation(t *testing.T) {
 		t.Fatal("expected missing config rejection")
 	}
 
-	// Valid backup: sessions in the live config survive the import.
+	// 有效备份：当前生效配置中的会话在导入后仍会保留。
 	if err := app.ImportConfig(`{"version":1,"config":{"settings":{"themeMode":"light"},"providers":[],"agents":[]}}`); err != nil {
 		t.Fatal(err)
 	}
@@ -154,8 +154,8 @@ func TestConfigImportValidation(t *testing.T) {
 	}
 }
 
-// TestSettingsA2AAutoStartPersisted: the auto-start trio survives a save/load
-// round trip (config.json serialization).
+// TestSettingsA2AAutoStartPersisted:
+// 自动启动的三项设置在保存/加载往返（config.json 序列化）后仍会保留。
 func TestSettingsA2AAutoStartPersisted(t *testing.T) {
 	dir := t.TempDir()
 	store, err := config.Open(dir)
@@ -179,8 +179,8 @@ func TestSettingsA2AAutoStartPersisted(t *testing.T) {
 	}
 }
 
-// TestSaveSettingsProxyValidation: malformed proxy URLs are rejected at save
-// time with a clear error.
+// TestSaveSettingsProxyValidation: 格式错误的代理 URL
+// 在保存时会被拒绝，并给出清晰的错误。
 func TestSaveSettingsProxyValidation(t *testing.T) {
 	app, store, _ := newBackupTestService(t)
 	st := store.Get().Settings
@@ -224,9 +224,9 @@ func TestSaveSettingsCompactionValidation(t *testing.T) {
 	}
 }
 
-// TestConfigBackupMaskedCoversEnvAndHeaders: a "safe to share" export must
-// also strip MCP Env/Headers (they routinely carry API keys and Authorization
-// headers), not just provider keys and auth tokens.
+// TestConfigBackupMaskedCoversEnvAndHeaders: 一个 “safe to share”
+// 的导出必须同时剥离 MCP Env/Headers（它们通常携带 API 密钥和 Authorization
+// 头），而不只是供应商密钥和认证令牌。
 func TestConfigBackupMaskedCoversEnvAndHeaders(t *testing.T) {
 	app, store, _ := newBackupTestService(t)
 	if err := store.Update(func(cfg *config.Config) {
@@ -253,21 +253,20 @@ func TestConfigBackupMaskedCoversEnvAndHeaders(t *testing.T) {
 	}
 }
 
-// TestConfigImportPreservesLocalState pins the import semantics: OAuth token
-// cache is machine-local and survives, old-schema backups come out normalized
-// (settings defaults + legacy price migration), and changed/deleted MCP
-// servers drop their cached connections.
+// TestConfigImportPreservesLocalState: 固化导入语义：OAuth
+// 令牌缓存是机器本地的且会保留，旧 schema 的备份会以规范化形式输出（设置默认值
+// + 遗留价格迁移），并且已更改/已删除的 MCP 服务器会丢弃其缓存的连接。
 func TestConfigImportPreservesLocalState(t *testing.T) {
 	app, store, _ := newBackupTestService(t)
 	if err := store.Update(func(cfg *config.Config) {
 		cfg.MCPTokens = map[string]config.MCPOAuthToken{"m1": {AccessToken: "at-local", TokenURL: "https://x/token"}}
 		cfg.Settings.ThemeMode = ""
-		cfg.Providers[0].PriceIn = 2.0 // legacy provider-level price
+		cfg.Providers[0].PriceIn = 2.0 // 遗留的供应商级价格
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	// Backup from an OLD schema: no tokens, no per-model price, empty theme.
+	// 来自旧 schema 的备份：没有令牌、没有按模型价格、主题为空。
 	backup := `{"version":1,"config":{
 		"settings":{"workspaceDir":"/tmp/ws"},
 		"providers":[{"id":"prov_1","name":"P","protocol":"openai","baseUrl":"https://api.example.com/v1","apiKey":"k","priceIn":2.0,"priceOut":8.0,"models":[{"id":"m1"}]}],
@@ -294,8 +293,8 @@ func TestConfigImportPreservesLocalState(t *testing.T) {
 		t.Fatalf("legacy provider-level price not cleared: %+v", got.Providers[0])
 	}
 
-	// A server whose config changed (or vanished) must drop its cached
-	// toolset: the second import replaces /bin/tool with /bin/tool2.
+	// 配置已更改（或已消失）的服务器必须丢弃其缓存的工具集：第二次导入会将
+	// /bin/tool 替换为 /bin/tool2。
 	cfg := `{"version":1,"config":{
 		"settings":{},
 		"providers":[],

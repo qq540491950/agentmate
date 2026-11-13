@@ -7,8 +7,8 @@ describe("shouldOpenLatestSession", () => {
   });
 
   it("keeps an explicit new-chat draft blank (issue #30)", () => {
-    // Clicking「新聊天」must not be undone by the auto-open effect: the blank
-    // composer stays until the first message is sent.
+    // 点击「新聊天」不得被自动打开 effect
+    // 撤销：空白输入区会保持空白，直到发送第一条消息。
     expect(shouldOpenLatestSession({ activeID: "", draft: true, sessionCount: 3 })).toBe(false);
     expect(shouldOpenLatestSession({ activeID: "", draft: true, sessionCount: 0 })).toBe(false);
   });
@@ -32,8 +32,7 @@ describe("draftModelFor", () => {
 
   it("falls back to the provider default for an empty or stale pick", () => {
     expect(draftModelFor(models, "")?.id).toBe("model_a");
-    // A model removed from the provider must not leave the chip blank; the
-    // backend clamps an unknown override the same way.
+    // 从供应商中移除的模型不得使 chip 留空；后端会以相同方式钳制未知的覆盖项。
     expect(draftModelFor(models, "model_gone")?.id).toBe("model_a");
   });
 
@@ -44,8 +43,8 @@ describe("draftModelFor", () => {
 
 describe("draftUsesProject", () => {
   it("binds a draft opened under a project to that project", () => {
-    // The project's「+」only records the binding; the first send creates the
-    // session through NewSessionWithProject (issue #60).
+    // 项目的「+」仅记录绑定；首次发送会通过 NewSessionWithProject
+    // 创建会话（issue #60）。
     expect(draftUsesProject("proj_1")).toBe(true);
   });
 

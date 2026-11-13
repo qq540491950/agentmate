@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// TestThinkingStreamsAndPersists covers issue #46: a provider that returns
-// reasoning (DeepSeek's reasoning_content) must produce a streamed thinking
-// block, then a durable history message before the answer.
+// TestThinkingStreamsAndPersists 覆盖 issue #46：返回推理内容（DeepSeek 的
+// reasoning_content）的供应商必须先生成流式思考块，然后在答案之前生成一条持久化
+// 的历史消息。
 func TestThinkingStreamsAndPersists(t *testing.T) {
 	chat, events, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

@@ -13,9 +13,9 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// TestForkSession branches a conversation: the fork carries a full copy of
-// the source history, then diverges independently (a send in the fork must
-// not touch the original).
+// TestForkSession
+// 会分叉一个会话：分叉会携带源历史的完整副本，随后独立分叉（在分叉中发送必须不
+// 会影响原始会话）。
 func TestForkSession(t *testing.T) {
 	turn := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34,10 +34,10 @@ func TestForkSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The default workspace is $HOME/Documents/AgentMateWorkspace, which does
-	// not exist on a bare CI runner (and making every test depend on $HOME is
-	// how you get a red build that says nothing about the code). Point the
-	// session workspace at the test's temp dir instead.
+	// 默认工作区是 $HOME/Documents/AgentMateWorkspace，它在裸 CI runner
+	// 上不存在（让每个测试都依赖
+	// $HOME，正是得到与代码无关的红色构建的方式）。请改为将会话工作区指向测试的临
+	// 时目录。
 	ws := filepath.Join(dir, "workspace")
 	if err := os.MkdirAll(ws, 0o755); err != nil {
 		t.Fatal(err)
@@ -85,7 +85,7 @@ func TestForkSession(t *testing.T) {
 		t.Fatalf("fork title should carry suffix: %q", branch.Title)
 	}
 
-	// Fork must contain the same rendered history.
+	// 分叉必须包含相同的渲染后历史。
 	origMsgs, err := chat.GetSessionMessages(orig.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestForkSession(t *testing.T) {
 		t.Fatalf("fork history mismatch: orig=%d fork=%d", len(origMsgs), len(forkMsgs))
 	}
 
-	// Divergence: a send in the fork appears only there.
+	// 分化：分叉中的发送仅出现在该分叉中。
 	if err := chat.Send(branch.ID, "换个说法", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestForkSession(t *testing.T) {
 		t.Fatalf("original timeline was mutated by fork activity: %+v", origMsgs2)
 	}
 
-	// Forking a missing session errors cleanly.
+	// 对不存在的会话执行分叉会干净地报错。
 	if _, err := chat.ForkSession("sess_nope"); err == nil {
 		t.Fatal("expected error forking unknown session")
 	}
@@ -126,8 +126,8 @@ func joinTexts(msgs []ChatMessage) string {
 	return sb.String()
 }
 
-// TestPinSessionOrdering: pinned sessions surface first regardless of
-// recency, and unpinning restores updated-at order.
+// TestPinSessionOrdering：已固定的会话无论最近程度如何都最先显示，取消固定后会
+// 恢复 updated-at 顺序。
 func TestPinSessionOrdering(t *testing.T) {
 	chat, _, _, dir := newConfirmTestChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -164,8 +164,8 @@ func TestPinSessionOrdering(t *testing.T) {
 	_ = second
 }
 
-// TestExportSessionIncludesStats: the exported Markdown carries a stats
-// summary header derived from the stored events.
+// TestExportSessionIncludesStats：导出的 Markdown
+// 带有根据已存储事件生成的统计摘要标头。
 func TestExportSessionIncludesStats(t *testing.T) {
 	turn := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -220,8 +220,8 @@ func TestExportSessionIncludesStats(t *testing.T) {
 	}
 }
 
-// TestExportSessionHTML: the HTML export renders a self-contained styled
-// document — title heading, markdown paragraphs, no raw markdown syntax.
+// TestExportSessionHTML：HTML 导出会渲染一个自包含的带样式文档——标题、Markdown
+// 段落，且不含原始 Markdown 语法。
 func TestExportSessionHTML(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -277,8 +277,8 @@ func TestExportSessionHTML(t *testing.T) {
 	}
 }
 
-// TestSessionPreviewUpdated: after a turn the session record carries the
-// latest assistant reply tail for the sidebar.
+// TestSessionPreviewUpdated:
+// 一个回合后，会话记录会携带最新的助手回复末尾片段，供侧边栏使用。
 func TestSessionPreviewUpdated(t *testing.T) {
 	turn := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -338,8 +338,8 @@ func TestSessionPreviewUpdated(t *testing.T) {
 	}
 }
 
-// TestExportSessionMarksForkLine: forking from a session that already has a
-// history makes the exported Markdown note the origin.
+// TestExportSessionMarksForkLine: 从已有历史的会话分叉时，导出的 Markdown
+// 会标注来源。
 func TestExportSessionMarksForkLine(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -392,8 +392,8 @@ func TestExportSessionMarksForkLine(t *testing.T) {
 	}
 }
 
-// TestSessionLifecycleAudit: create/fork/delete/rename all land in the JSONL
-// audit trail when enabled.
+// TestSessionLifecycleAudit: 启用后，创建/分叉/删除/重命名都会写入 JSONL
+// 审计轨迹。
 func TestSessionLifecycleAudit(t *testing.T) {
 	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -452,8 +452,8 @@ func TestSessionLifecycleAudit(t *testing.T) {
 	}
 }
 
-// TestArchiveSessionRoundTrip: archive/unarchive toggles the persisted flag
-// and writes both phases to the audit trail.
+// TestArchiveSessionRoundTrip:
+// 归档/取消归档会切换持久化标志，并将两个阶段都写入审计轨迹。
 func TestArchiveSessionRoundTrip(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -519,7 +519,7 @@ func TestArchiveSessionRoundTrip(t *testing.T) {
 	}
 }
 
-// TestExportAllSessions: bulk export writes one Markdown file per session.
+// TestExportAllSessions: 批量导出会为每个会话写入一个 Markdown 文件。
 func TestExportAllSessions(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

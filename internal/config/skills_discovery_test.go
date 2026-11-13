@@ -31,7 +31,7 @@ func TestDiscoveredSkillsScansOneLevelFromBothRoots(t *testing.T) {
 	writeSkill(t, projectRoot, "no-desc", skillMD("no-desc", "", "# x"))
 	writeSkill(t, projectRoot, "nested/deep", skillMD("deep", "嵌套不算", "# x"))
 	writeSkill(t, globalRoot, "omega", skillMD("omega", "全局技能", "# 全局"))
-	// Stray files at the root and a lower-case filename are ignored.
+	// 根目录下的散落文件和小写文件名会被忽略。
 	if err := os.WriteFile(filepath.Join(projectRoot, "loose.md"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestDiscoveredSkillsMissingRootsAreSilent(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf("missing roots should be empty, got %+v", got)
 	}
-	// Empty workspace skips only the project root; the global root still works.
+	// 空工作区仅跳过项目根目录；全局根目录仍然有效。
 	globalRoot := t.TempDir()
 	writeSkill(t, globalRoot, "omega", skillMD("omega", "全局", "# x"))
 	if got := DiscoveredSkills("", globalRoot); len(got) != 1 || got[0].Name != "omega" {
@@ -105,8 +105,8 @@ func TestEffectiveSkillsPriorityProjectGlobalApp(t *testing.T) {
 			t.Fatalf("effective names = %v, want %v", names, wantNames)
 		}
 	}
-	// Project beats global beats app; the week name is compared after
-	// normalization, so "Weekly Report" is shadowed by "weekly-report".
+	// 项目优先于全局，全局优先于应用；周名称在规范化后进行比较，因此 "Weekly
+	// Report" 会被 "weekly-report" 遮蔽。
 	if descs[0] != "项目版本" || descs[1] != "全局周报" {
 		t.Fatalf("precedence lost: %v", descs)
 	}

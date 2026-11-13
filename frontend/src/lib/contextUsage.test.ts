@@ -7,9 +7,10 @@ import {
   type ContextUsageView,
 } from "./contextUsage";
 
-// 口径回归：分子必须是「最后一次调用的 prompt tokens」（真实上下文），
-// 不是历次调用的累计 totalTokens——后者在工具循环里重复计入共享前缀，
-// 曾把 16.6% 的真实占用显示成 100%（issue「token 耗尽」）。
+// 口径回归：分子必须是「最后一次调用的 prompt
+// tokens」（真实上下文），不是历次调用的累计
+// totalTokens——后者在工具循环里重复计入共享前缀，曾把 16.6% 的真实占用显示成
+// 100%（issue「token 耗尽」）。
 describe("resolveContextUsage", () => {
   it("真实占用 166k / 1M 窗口 ≈ 17%，绿色", () => {
     const v = resolveContextUsage(166145, 1_000_000);
@@ -72,9 +73,8 @@ describe("compactTokens", () => {
   });
 });
 
-// 估算口径：CJK ≈0.7 token/字、其余（含每条消息 12 字符的信封开销）
-// ≈0.25 token/字符；工具载荷按 96KB/条封顶——只给「上游从不报 usage」
-// 的模型兜底。
+// 估算口径：CJK ≈0.7 token/字、其余（含每条消息 12 字符的信封开销）≈0.25
+// token/字符；工具载荷按 96KB/条封顶——仅给「上游从不报 usage」的模型兜底。
 describe("estimateContextTokens", () => {
   it("中文与 ASCII 分别计价，含信封开销", () => {
     expect(estimateContextTokens([{ kind: "user", text: "一二三四五六七八九十" }])).toBe(Math.ceil(10 * 0.7 + 12 * 0.25));

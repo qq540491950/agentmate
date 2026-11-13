@@ -164,9 +164,9 @@ func TestEmptyWorkspaceRejected(t *testing.T) {
 	}
 }
 
-// TestSafeWorkspacePathBlocksSymlinkEscape: a symlink inside the workspace
-// must not become a way out of it. The lexical prefix check alone passes such
-// a path, so this pins the resolved-path check.
+// TestSafeWorkspacePathBlocksSymlinkEscape:
+// 工作区内的符号链接不得成为逃离工作区的途径。仅靠词法前缀检查会放行此类路径，
+// 因此这里锁定对解析后路径的检查。
 func TestSafeWorkspacePathBlocksSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
@@ -182,7 +182,7 @@ func TestSafeWorkspacePathBlocksSymlinkEscape(t *testing.T) {
 		t.Fatal("symlink pointing outside the workspace was allowed")
 	}
 
-	// A symlinked directory escaping the workspace is equally blocked.
+	// 逃出工作区的符号链接目录同样会被拦截。
 	if err := os.Symlink(outside, filepath.Join(root, "outdir")); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestSafeWorkspacePathBlocksSymlinkEscape(t *testing.T) {
 		t.Fatal("path through an escaping symlinked dir was allowed")
 	}
 
-	// A symlink that stays inside remains usable.
+	// 仍留在工作区内部的符号链接依然可用。
 	inner := filepath.Join(root, "inner.txt")
 	if err := os.WriteFile(inner, []byte("ok"), 0o644); err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestSafeWorkspacePathBlocksSymlinkEscape(t *testing.T) {
 
 func TestSanitizeAgentName(t *testing.T) {
 	cases := map[string]string{
-		"周报助手":        "agent_", // non-ascii only -> fallback suffix needed; starts with agent_
+		"周报助手":        "agent_", // 仅含非 ASCII 字符 -> 需要回退后缀；以 agent_ 开头
 		"Weekly Bot!": "weekly_bot",
 		"user":        "user_agent",
 	}

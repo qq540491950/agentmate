@@ -78,9 +78,8 @@ export function sidebarVersionTitle(version: string): string {
 }
 
 /**
- * SidebarFooter keeps the version, updater entry and utility actions on one
- * compact row. The updater mirrors the backend state machine via Status() and
- * updater events; the same service still backs 设置 → 关于.
+ * SidebarFooter 将版本、更新入口和辅助操作保持在一行紧凑布局中。更新器通过
+ * Status() 和更新事件映射后端状态机；同一个服务仍为 设置 → 关于 提供支持。
  */
 export function SidebarFooter({
   version,
@@ -106,8 +105,7 @@ export function SidebarFooter({
         if (mounted.current) setStatus(next);
       })
       .catch(() => {
-        // The sidebar entry is an enhancement: an unavailable updater must not
-        // turn the footer into a toast generator.
+        // 侧栏入口只是增强功能：更新器不可用时，不应让页脚变成 toast 生成器。
       });
   }, []);
 
@@ -137,8 +135,8 @@ export function SidebarFooter({
     };
   }, [refresh]);
 
-  // A staged update is a one-time prompt. Choosing「稍后重启」keeps the
-  //「重启更新」chip so the prompt can be reopened without nagging.
+  // 已暂存的更新是一次性提示。选择「稍后重启」会保留「重启更新」chip，以便在不
+  // 反复打扰的情况下重新打开该提示。
   useEffect(() => {
     const state = status?.state ?? "";
     if (state === "ready" && previousState.current !== "ready" && !readyDismissed) {
@@ -164,8 +162,8 @@ export function SidebarFooter({
     }
     setBusy(true);
     setProgress(null);
-    // Feedback starts immediately; updater events then replace this snapshot
-    // with the authoritative downloading/verifying/installing states.
+    // 反馈会立即开始；随后更新器事件会用权威的 downloading/verifying/installing
+    // 状态替换此快照。
     setStatus((current) => (current ? { ...current, state: "downloading" } : current));
     try {
       const next = await Update.InstallUpdate();

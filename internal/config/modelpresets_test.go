@@ -53,22 +53,22 @@ func TestSuggestModelInfoFamilies(t *testing.T) {
 }
 
 func TestSuggestModelInfoRequestShapes(t *testing.T) {
-	// OpenAI reasoning families send a scalar reasoning_effort.
+	// OpenAI 推理系列发送标量 reasoning_effort。
 	openAI := SuggestModelInfo("gpt-5.2").Reasoning
 	param, value, ok := openAI.ActiveReasoning()
 	if !ok || param != "reasoning_effort" || value != "medium" {
 		t.Fatalf("gpt default = (%q,%q,%v), want reasoning_effort/medium", param, value, ok)
 	}
 
-	// Claude 4.6+ needs a JSON object merged at the top level (adaptive
-	// thinking + output_config.effort), so Param stays empty.
+	// Claude 4.6+ 需在顶层合并一个 JSON 对象（自适应思考 +
+	// output_config.effort），因此 Param 保持为空。
 	claude := SuggestModelInfo("claude-sonnet-4-6").Reasoning
 	param, value, ok = claude.ActiveReasoning()
 	if !ok || param != "" || !strings.Contains(value, `"output_config"`) {
 		t.Fatalf("claude default = (%q,%q,%v), want merged JSON", param, value, ok)
 	}
 
-	// DeepSeek's off level disables thinking through a JSON object.
+	// DeepSeek 的 off 级别通过 JSON 对象禁用思考。
 	param, value, ok = SuggestModelInfo("deepseek-v3.2").Reasoning.Resolve("off")
 	if !ok || param != "thinking" || value != `{"type":"disabled"}` {
 		t.Fatalf("deepseek off = (%q,%q,%v)", param, value, ok)
@@ -88,15 +88,14 @@ func TestActiveReasoningFallbacks(t *testing.T) {
 	if _, _, ok := empty.ActiveReasoning(); ok {
 		t.Fatal("empty level table must not resolve")
 	}
-	// Empty DefaultLevel falls back to the first level.
+	// DefaultLevel 为空时回退到第一个级别。
 	first := &ReasoningConfig{Enabled: true, Levels: []ReasoningLevel{
 		{Level: "high", Param: "reasoning_effort", Value: "high"},
 	}}
 	if p, v, ok := first.ActiveReasoning(); !ok || p != "reasoning_effort" || v != "high" {
 		t.Fatalf("first-level fallback = (%q,%q,%v)", p, v, ok)
 	}
-	// A DefaultLevel that no longer exists is a configuration error, not a
-	// silent switch to another level.
+	// DefaultLevel 已不存在时属于配置错误，而不是静默切换到另一个级别。
 	stale := &ReasoningConfig{Enabled: true, DefaultLevel: "max", Levels: []ReasoningLevel{
 		{Level: "high", Param: "reasoning_effort", Value: "high"},
 	}}
@@ -130,7 +129,7 @@ func TestCloneDeepCopiesModelReasoning(t *testing.T) {
 		got.Reasoning.Levels[0].Level != "high" || len(got.Reasoning.Levels) != 1 {
 		t.Fatalf("clone mutated original: %+v", got)
 	}
-	// The models slice itself is independent as well.
+	// models 切片本身同样独立。
 	clone.Providers[0].Models = append(clone.Providers[0].Models, ModelInfo{ID: "m2"})
 	if len(original.Providers[0].Models) != 1 {
 		t.Fatal("models slice shares backing array")
@@ -159,8 +158,8 @@ func TestModelInfoReasoningJSONRoundTrip(t *testing.T) {
 }
 
 func TestModelInfoReasoningTableFallback(t *testing.T) {
-	// A model saved before level tables existed gets the built-in family table
-	// for the picker, but is not "configured": nothing is sent implicitly.
+	// 在级别表存在之前保存的模型会获得用于选择器的内置系列表，但不算
+	// "configured"：不会隐式发送任何内容。
 	bare := ModelInfo{ID: "codearts/glm-5.3-flash"}
 	table := bare.ReasoningTable()
 	if table == nil || len(table.Levels) != 3 {
@@ -170,7 +169,7 @@ func TestModelInfoReasoningTableFallback(t *testing.T) {
 		t.Fatal("a fallback table must not count as configured")
 	}
 
-	// A saved table wins over the fallback and is configured.
+	// 已保存的表优先于回退表，且视为已配置。
 	saved := &ReasoningConfig{
 		Enabled:      true,
 		DefaultLevel: "low",
@@ -181,13 +180,13 @@ func TestModelInfoReasoningTableFallback(t *testing.T) {
 		t.Fatalf("saved table not preferred: %+v", explicit.ReasoningTable())
 	}
 
-	// Explicitly disabled stays disabled — no fallback resurrects it.
+	// 显式禁用会保持禁用——没有任何回退会将其恢复。
 	disabled := ModelInfo{ID: "glm-5.3", Reasoning: &ReasoningConfig{Enabled: false}}
 	if disabled.ReasoningTable() != nil || disabled.ReasoningConfigured() {
 		t.Fatal("disabled table must stay off")
 	}
 
-	// Unknown families have no table at all.
+	// 未知系列根本没有表。
 	if (ModelInfo{ID: "llama-3.3-70b"}).ReasoningTable() != nil {
 		t.Fatal("unknown family must not get a table")
 	}
@@ -212,8 +211,8 @@ func TestReasoningMatchLevelAndDefaultName(t *testing.T) {
 		t.Fatalf("default name = %q, want High (case-insensitive)", name)
 	}
 
-	// Blank default falls back to the first level; a stale default is an
-	// error rather than a silent switch (same contract as Resolve).
+	// 空默认值会回退到第一级；过期的默认值是错误，而不是静默切换（与 Resolve
+	// 的契约相同）。
 	first := &ReasoningConfig{Enabled: true, Levels: cfg.Levels}
 	if name := first.DefaultLevelName(); name != "low" {
 		t.Fatalf("first-level default = %q, want low", name)

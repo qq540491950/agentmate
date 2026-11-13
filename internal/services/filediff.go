@@ -29,7 +29,7 @@ const (
 	diffContextLines   = 3         // hunk 上下文行数
 )
 
-// FileDiffLineType distinguishes diff lines for the result pane renderer.
+// FileDiffLineType 用于区分差异行，供结果窗格渲染器使用。
 type FileDiffLineType string
 
 const (
@@ -38,7 +38,7 @@ const (
 	DiffLineContext FileDiffLineType = "context"
 )
 
-// FileDiffLine is one rendered diff row with its 1-based source line numbers.
+// FileDiffLine 表示一条已渲染的差异行，并带有其从 1 开始的源码行号。
 type FileDiffLine struct {
 	Type  FileDiffLineType `json:"type"`
 	OldNo int              `json:"oldNo,omitempty"`
@@ -46,7 +46,8 @@ type FileDiffLine struct {
 	Text  string           `json:"text"`
 }
 
-// FileDiffHunk is a unified-diff hunk: @@ -oldStart,oldLines +newStart,newLines @@.
+// FileDiffHunk 是一个 unified-diff 块：@@ -oldStart,oldLines +newStart,newLines
+// @@。
 type FileDiffHunk struct {
 	OldStart int            `json:"oldStart"`
 	OldLines int            `json:"oldLines"`
@@ -55,9 +56,9 @@ type FileDiffHunk struct {
 	Lines    []FileDiffLine `json:"lines"`
 }
 
-// FileDiffResult is the FileDiff RPC contract. A non-empty Unsupported means
-// the request was valid but the file cannot be diffed (binary / oversize /
-// baseline content missing); the pane shows the reason inline instead.
+// FileDiffResult 是 FileDiff RPC 的契约。Unsupported
+// 非空表示请求有效，但该文件无法进行差异比较（二进制 / 过大 /
+// 基线内容缺失）；此时窗格改为内联显示原因。
 type FileDiffResult struct {
 	SessionID    string                `json:"sessionId"`
 	Path         string                `json:"path"`
@@ -71,9 +72,8 @@ type FileDiffResult struct {
 	Unsupported  string                `json:"unsupported,omitempty"`
 }
 
-// looksTextual applies the same predicate to baseline snapshots and current
-// files so both sides of a diff agree on what counts as text: valid UTF-8
-// with no NUL byte in the leading window.
+// looksTextual 对基线快照和当前文件应用相同的判定条件，从而使差异两侧对什么算作文本达成一致
+// ：有效 UTF-8，且前导窗口中不含 NUL 字节。
 func looksTextual(data []byte) bool {
 	if !utf8.Valid(data) {
 		return false
@@ -94,8 +94,8 @@ func splitDiffLines(text string) []string {
 	for i, l := range raw {
 		lines[i] = strings.TrimSuffix(l, "\r")
 	}
-	// A trailing newline yields a phantom empty last element ("a\n" is one
-	// line) while a real trailing empty line ("a\n\n" is two) stays.
+	// 末尾换行会产生一个虚假的末尾空元素（"a\n"
+	// 是一行），而真正的末尾空行（"a\n\n" 是两行）会保留。
 	if len(lines) > 0 && lines[len(lines)-1] == "" && strings.HasSuffix(text, "\n") {
 		lines = lines[:len(lines)-1]
 	}
@@ -104,15 +104,15 @@ func splitDiffLines(text string) []string {
 
 type diffOp struct {
 	tag byte // '=', '-', '+'
-	i1  int  // old range start
-	i2  int  // old range end
-	j1  int  // new range start
-	j2  int  // new range end
+	i1  int  // 旧范围起点
+	i2  int  // 旧范围终点
+	j1  int  // 新范围起点
+	j2  int  // 新范围终点
 }
 
-// lineDiff diffs two line slices into ordered ops with absolute indices.
-// Common prefix/suffix are trimmed first, then the middle goes through LCS DP
-// when small enough or a chunked divide when large, so memory stays bounded.
+// lineDiff 将两个行切片进行差异比较，生成带绝对索引的有序操作。先裁剪公共前缀和公共后缀
+// ，然后中间部分在足够小时经 LCS DP
+// 处理，较大时采用分块划分，从而使内存保持有界。
 func lineDiff(a, b []string) []diffOp {
 	p := 0
 	for p < len(a) && p < len(b) && a[p] == b[p] {
@@ -151,8 +151,8 @@ func middleDiff(a, b []string, depth int) []diffOp {
 	return chunkedDiff(a, b, depth)
 }
 
-// lcsDiff is the classic LCS dynamic program; both sides are capped at
-// diffDPMaxLines so the table stays well under 20 MB.
+// lcsDiff 是经典的 LCS 动态规划；两侧均以 diffDPMaxLines 为上限，因此该表远低于
+// 20 MB。
 func lcsDiff(a, b []string) []diffOp {
 	n, m := len(a), len(b)
 	table := make([][]uint16, n+1)
@@ -200,10 +200,10 @@ func lcsDiff(a, b []string) []diffOp {
 	return mergeAdjacent(ops)
 }
 
-// chunkedDiff handles middles beyond the DP cap: split into fixed-size line
-// blocks, LCS over the block keys (sides shrink by diffChunkLines), then
-// recurse into mismatched regions. Equal block keys imply byte-equal raw
-// lines, so equality expansion is exact, not hash-probabilistic.
+// chunkedDiff 处理超出 DP 上限的中间部分：将其拆分为固定大小的行块，对块键执行
+// LCS（两侧按 diffChunkLines
+// 收缩），然后递归处理不匹配区域。块键相等意味着原始行逐字节相等，因此相等性扩
+// 展是精确的，而非基于哈希概率的。
 func chunkedDiff(a, b []string, depth int) []diffOp {
 	if depth <= 0 || len(a) == 0 || len(b) == 0 {
 		return replaceOp(len(a), len(b))
@@ -233,9 +233,9 @@ func chunkedDiff(a, b []string, depth int) []diffOp {
 		}
 		return v
 	}
-	// lcsDiff never emits a combined "replace" tag: mismatches come back as
-	// adjacent del/add runs. Group each such run into a rectangular mismatch
-	// region and recurse into the raw lines instead of block-replacing it.
+	// lcsDiff 绝不生成组合的 "replace" 标签：不匹配项会以相邻的 del/add
+	// 连续段形式返回。将每个此类连续段归入一个矩形不匹配区域，并递归处理原始行，而
+	// 不是对其进行块替换。
 	blockOps := lcsDiff(blockKeys(a), blockKeys(b))
 	var ops []diffOp
 	for start := 0; start < len(blockOps); {
@@ -251,8 +251,7 @@ func chunkedDiff(a, b []string, depth int) []diffOp {
 		end := start
 		oi1, oi2, oj1, oj2 := blockOps[start].i1, blockOps[start].i2, blockOps[start].j1, blockOps[start].j2
 		for end < len(blockOps) && blockOps[end].tag != '=' {
-			// Ops are sequential, so the last op of the run carries the
-			// region's far edge on each side.
+			// 操作是顺序排列的，因此该连续段的最后一个操作在每一侧承载该区域的远端边界。
 			oi2, oj2 = blockOps[end].i2, blockOps[end].j2
 			end++
 		}
@@ -281,8 +280,7 @@ func replaceOp(oldLen, newLen int) []diffOp {
 	return ops
 }
 
-// mergeAdjacent folds neighboring ops of the same tag into one range and
-// drops empty context runs.
+// mergeAdjacent 将标签相同的相邻操作合并为一个范围，并丢弃空的上下文连续段。
 func mergeAdjacent(ops []diffOp) []diffOp {
 	out := ops[:0]
 	for _, op := range ops {
@@ -300,10 +298,10 @@ func mergeAdjacent(ops []diffOp) []diffOp {
 	return out
 }
 
-// groupHunks renders ops into unified-diff hunks with diffContextLines of
-// context, merging change groups whose gap keeps them inside one hunk.
-// added/removed count every op line regardless of the render cap; truncated
-// reports that hunks were cut at diffMaxOutputLines.
+// groupHunks 将 ops 渲染为带 diffContextLines 行上下文的 unified-diff
+// hunk，并合并变更组，只要其间隔使它们仍处于同一个 hunk 内。added/removed
+// 统计每个 op 行，不受渲染上限影响；truncated 表示 hunk 在 diffMaxOutputLines
+// 处被截断。
 func groupHunks(ops []diffOp, a, b []string) (hunks []FileDiffHunk, added, removed int, truncated bool) {
 	for _, op := range ops {
 		switch op.tag {
@@ -313,7 +311,7 @@ func groupHunks(ops []diffOp, a, b []string) (hunks []FileDiffHunk, added, remov
 			added += op.j2 - op.j1
 		}
 	}
-	// Flatten ops into annotated rows while recording change row indices.
+	// 将 ops 展平为带标注的行，同时记录变更行索引。
 	var rows []FileDiffLine
 	changeIdx := []int{}
 	for _, op := range ops {
@@ -337,8 +335,7 @@ func groupHunks(ops []diffOp, a, b []string) (hunks []FileDiffHunk, added, remov
 	if len(changeIdx) == 0 {
 		return nil, 0, 0, false
 	}
-	// Expand each change into a [start,end) window with context, merging
-	// windows that touch or overlap.
+	// 将每个变更扩展为带上下文的 [start,end) 窗口，并合并相接或重叠的窗口。
 	type rowRange struct{ start, end int }
 	var ranges []rowRange
 	cur := rowRange{}
@@ -351,7 +348,7 @@ func groupHunks(ops []diffOp, a, b []string) (hunks []FileDiffHunk, added, remov
 			hi = len(rows)
 		}
 		if cur.end > 0 {
-			if lo <= cur.end { // touching windows share context: one hunk
+			if lo <= cur.end { // 相接的窗口共享上下文：一个 hunk
 				if hi > cur.end {
 					cur.end = hi
 				}
@@ -428,10 +425,10 @@ func removeTaskContent(store *config.Store, sessionID string) {
 	_ = os.RemoveAll(taskContentDir(store, sessionID))
 }
 
-// FileDiff returns the line-level diff of one workspace file against the task
-// baseline. Added files diff from empty, deleted files diff the baseline
-// content, and unsupported cases (binary/oversize/missing baseline content)
-// come back as a result with an Unsupported reason rather than an error.
+// FileDiff 返回单个工作区文件相对于任务基线的行级 diff。新增文件从空内容进行
+// diff，删除文件则对基线内容进行
+// diff；不受支持的场景（二进制/超大/缺少基线内容）会返回带有 Unsupported
+// 原因的结果，而不是错误。
 func (a *ArtifactService) FileDiff(sessionID, relPath string) (*FileDiffResult, error) {
 	ws, err := a.sessionWorkspace(sessionID)
 	if err != nil {
@@ -507,9 +504,8 @@ func (a *ArtifactService) FileDiff(sessionID, relPath string) (*FileDiffResult, 
 	return res, nil
 }
 
-// classifyChange is the single file-level classification shared by the
-// snapshot diff (buildTaskSnapshot) and FileDiff: files identical to their
-// baseline entry carry no status.
+// classifyChange 是快照 diff（buildTaskSnapshot）与 FileDiff
+// 共用的唯一文件级分类：与基线条目完全相同的文件不携带状态。
 func classifyChange(base taskBaselineFile, existed bool, size int64, modTime time.Time) WorkspaceChangeStatus {
 	switch {
 	case !existed:
@@ -521,7 +517,7 @@ func classifyChange(base taskBaselineFile, existed bool, size int64, modTime tim
 	}
 }
 
-// changeStatus adapts classifyChange to FileDiff's existence inputs.
+// changeStatus 使 classifyChange 适配 FileDiff 的存在性输入。
 func changeStatus(baseExisted, curExists bool, base taskBaselineFile, st os.FileInfo) WorkspaceChangeStatus {
 	switch {
 	case baseExisted && !curExists:

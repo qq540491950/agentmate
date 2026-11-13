@@ -13,8 +13,7 @@ import (
 	"agentmate/internal/config"
 )
 
-// reasoningLabel renders the common level names in Chinese for exports; a
-// custom level keeps its configured label.
+// reasoningLabel 在导出时将常见级别名称渲染为中文；自定义级别保留其配置的标签。
 func reasoningLabel(level string) string {
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "off":
@@ -31,8 +30,7 @@ func reasoningLabel(level string) string {
 	return level
 }
 
-// ExportSession writes the conversation as Markdown into the workspace export
-// directory and returns the file path.
+// ExportSession 将对话以 Markdown 写入工作区导出目录，并返回文件路径。
 func (c *ChatService) ExportSession(sessionID string) (string, error) {
 	cfg := c.S.Store.Get()
 	var meta *config.ChatSession
@@ -104,7 +102,7 @@ func (c *ChatService) ExportSession(sessionID string) (string, error) {
 			}
 			fmt.Fprintf(&sb, "> 🛡️ **HITL 决策**: %s\n\n", decision)
 		case "message":
-			// compatibility with older renders
+			// 兼容旧版渲染
 			fmt.Fprintf(&sb, "## 🤖 %s\n\n%s\n\n", m.Author, m.Text)
 		}
 	}
@@ -128,8 +126,8 @@ func (c *ChatService) ExportSession(sessionID string) (string, error) {
 	return path, nil
 }
 
-// ExportAllSessions writes every conversation as Markdown into the workspace
-// exports directory and returns the number of exported sessions.
+// ExportAllSessions 将每个对话以 Markdown
+// 写入工作区导出目录，并返回已导出会话的数量。
 func (c *ChatService) ExportAllSessions() (int, error) {
 	sessions := c.ListSessions()
 	count := 0
@@ -141,8 +139,8 @@ func (c *ChatService) ExportAllSessions() (int, error) {
 	return count, nil
 }
 
-// ExportSessionHTML renders the conversation as a self-contained styled HTML
-// file (Markdown pipeline via gomarkdown) and returns the file path.
+// ExportSessionHTML 将对话渲染为自包含的带样式 HTML 文件（通过 gomarkdown 的
+// Markdown 管线），并返回文件路径。
 func (c *ChatService) ExportSessionHTML(sessionID string) (string, error) {
 	cfg := c.S.Store.Get()
 	var meta *config.ChatSession
@@ -160,9 +158,9 @@ func (c *ChatService) ExportSessionHTML(sessionID string) (string, error) {
 		return "", err
 	}
 
-	// Config-derived strings (titles, agent names) are user-controlled and
-	// tool names are model-controlled: everything except the intentionally
-	// markdown body text is escaped before it reaches the HTML file.
+	// 由配置派生的字符串（标题、Agent
+	// 名称）由用户控制，工具名称由模型控制：除有意作为 Markdown
+	// 的正文文本外，所有内容在到达 HTML 文件前都会转义。
 	var body strings.Builder
 	fmt.Fprintf(&body, "# %s\n\n", htmlEscapeString(meta.Title))
 	kind := "Agent"
@@ -198,8 +196,7 @@ func (c *ChatService) ExportSessionHTML(sessionID string) (string, error) {
 				htmlEscapeString(m.ToolName), htmlEscapeString(string(args)))
 		case "tool_result":
 			if m.ToolName == "plan_todos" {
-				// Escape first, then swap newlines for <br>: escaping after the
-				// substitution would turn the injected <br> into text.
+				// 先转义，再将换行符替换为 <br>：若在替换后再转义，注入的 <br> 会变成文本。
 				if list := renderTodoList(m.ToolResp, true); list != "" {
 					list = strings.ReplaceAll(list, "\n", "<br>\n")
 					fmt.Fprintf(&body, "> %s\n\n", list)
@@ -218,12 +215,12 @@ func (c *ChatService) ExportSessionHTML(sessionID string) (string, error) {
 			}
 			fmt.Fprintf(&body, "> 🛡️ **HITL 决策**: %s\n\n", decision)
 		case "message":
-			// compatibility with older renders
+			// 兼容旧版渲染
 			fmt.Fprintf(&body, "## 🤖 %s\n\n%s\n\n", m.Author, m.Text)
 		}
 	}
 
-	// Append usage summary + per-day cost table when stats are available.
+	// 当统计可用时，追加用量摘要和每日成本表。
 	if st, err := c.SessionStats(sessionID); err == nil {
 		fmt.Fprintf(&body, "\n## 用量统计\n\n")
 		fmt.Fprintf(&body, "| 指标 | 数值 |\n| --- | --- |\n")
@@ -277,7 +274,7 @@ img{max-width:100%%}
 	return path, nil
 }
 
-// htmlEscapeString escapes text for safe embedding into the HTML export.
+// htmlEscapeString 转义文本，以便安全地嵌入 HTML 导出内容中。
 func htmlEscapeString(sv string) string {
 	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
 	return r.Replace(sv)
@@ -288,7 +285,7 @@ func sanitizeExportName(name string) string {
 	for _, r := range name {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
-			r >= 0x4e00 && r <= 0x9fff: // CJK
+			r >= 0x4e00 && r <= 0x9fff: // 中日韩
 			sb.WriteRune(r)
 		case r == '-' || r == '_' || r == ' ':
 			sb.WriteRune('-')
@@ -297,9 +294,8 @@ func sanitizeExportName(name string) string {
 	return strings.Trim(sb.String(), "-")
 }
 
-// shortID returns the last 6 characters of id, or the whole id when shorter.
-// Direct slicing panics on IDs under 6 chars, and these methods are reachable
-// from JS with arbitrary input.
+// shortID 返回 id 的最后 6 个字符；当 id 更短时，返回整个 id。 直接切片在 ID
+// 少于 6 个字符时会触发 panic，而这些方法可从 JS 以任意输入调用。
 func shortID(id string) string {
 	if len(id) <= 6 {
 		return id

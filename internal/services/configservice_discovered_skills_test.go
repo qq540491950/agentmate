@@ -9,14 +9,14 @@ import (
 	"agentmate/internal/config"
 )
 
-// TestGetConfigMergesDiscoveredSkillsReadOnly pins issue #52's contract:
-// project/global .agents/skills appear in GetConfig (so the Skills page and
-// the Agent skill picker show them) but never leak into config.json, and the
-// read-only entries cannot be edited or deleted through the app.
+// TestGetConfigMergesDiscoveredSkillsReadOnly 固定了 issue #52 的约定：
+// 项目级/全局 .agents/skills 会出现在 GetConfig 中（因此 Skills 页面和 Agent
+// 技能选择器会显示它们），但绝不会泄漏进 config.json，并且
+// 这些只读条目无法通过应用编辑或删除。
 func TestGetConfigMergesDiscoveredSkillsReadOnly(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
+	t.Setenv("USERPROFILE", home) // Windows 上的 os.UserHomeDir
 
 	workspace := t.TempDir()
 	writeDiscoveredSkill(t, filepath.Join(workspace, ".agents", "skills"), "project-skill", "项目技能")
@@ -47,7 +47,7 @@ func TestGetConfigMergesDiscoveredSkillsReadOnly(t *testing.T) {
 		t.Fatalf("global skill missing from GetConfig: %+v", found)
 	}
 
-	// Read-only: the discovered entries are not persisted.
+	// 只读：发现的条目不会被持久化。
 	for _, s := range store.Get().Skills {
 		if _, discovered := config.DiscoveredSkillSource(s.ID); discovered {
 			t.Fatalf("discovered skill leaked into config.json: %+v", s)

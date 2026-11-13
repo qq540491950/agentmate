@@ -13,9 +13,8 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// TestChatParallelSessions proves two sessions can run turns concurrently
-// (per-session runner + cancel registry) without cross-talk: each session's
-// history contains only its own conversation.
+// TestChatParallelSessions 证明两个会话可以并发运行回合（每会话运行器 +
+// 取消注册表）而不会相互干扰：每个会话的历史仅包含其自身的对话。
 func TestChatParallelSessions(t *testing.T) {
 	mkServer := func(reply string) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +60,7 @@ func TestChatParallelSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// IsRunning must reflect in-flight state per session, independently.
+	// IsRunning 必须独立反映每个会话的进行中状态。
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {

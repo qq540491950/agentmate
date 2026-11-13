@@ -9,7 +9,8 @@ import (
 	"agentmate/internal/sandbox"
 )
 
-// AppInfo must expose the version injected from main (single source of truth).
+// TestAppInfoReportsInjectedVersion AppInfo 必须暴露从 main
+// 注入的版本（单一事实来源）。
 func TestAppInfoReportsInjectedVersion(t *testing.T) {
 	AppVersion = "9.9.9-test"
 	defer func() { AppVersion = "dev" }()

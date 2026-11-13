@@ -14,8 +14,8 @@ import (
 	"google.golang.org/genai"
 )
 
-// sseServer hosts a fake OpenAI-compatible /chat/completions endpoint that
-// streams the given chunks as SSE, then [DONE].
+// sseServer 托管一个伪造的 OpenAI 兼容 /chat/completions
+// 端点，该端点将给定分块作为 SSE 流式发送，然后发送 [DONE]。
 func sseServer(t *testing.T, chunks []string, captures *map[string]any) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -68,9 +68,9 @@ func TestOpenAICompatStreamingText(t *testing.T) {
 	}
 }
 
-// TestOpenAICompatStreamsReasoningContent pins DeepSeek's reasoning_content
-// handling: deltas must surface as Thought parts (the UI's thinking block)
-// and the aggregated final response must keep the full reasoning.
+// TestOpenAICompatStreamsReasoningContent 锁定 DeepSeek 的 reasoning_content
+// 处理方式：增量必须作为 Thought 部分（UI
+// 的思考块）呈现，聚合后的最终响应必须保留完整的推理内容。
 func TestOpenAICompatStreamsReasoningContent(t *testing.T) {
 	srv := sseServer(t, []string{
 		`{"choices":[{"delta":{"reasoning_content":"先确认天气"}}]}`,
@@ -193,7 +193,7 @@ func TestOpenAICompatToolCallRoundTrip(t *testing.T) {
 		},
 	}
 
-	// Turn 1: model should emit a function call.
+	// 第 1 回合：模型应发出函数调用。
 	var call *genai.FunctionCall
 	for resp, err := range llm.GenerateContent(context.Background(), req, true) {
 		if err != nil {
@@ -214,7 +214,7 @@ func TestOpenAICompatToolCallRoundTrip(t *testing.T) {
 		t.Fatalf("expected city=北京, got %v", call.Args)
 	}
 
-	// Verify tools reached the request payload.
+	// 验证 tools 已进入请求负载。
 	if captured["tools"] == nil {
 		t.Fatal("tools missing from request payload")
 	}
@@ -222,7 +222,7 @@ func TestOpenAICompatToolCallRoundTrip(t *testing.T) {
 		t.Fatal("temperature missing from request payload")
 	}
 
-	// Turn 2: send the function response back; model should answer in text.
+	// 第 2 回合：将函数响应发回；模型应以文本作答。
 	req.Contents = append(req.Contents,
 		&genai.Content{Role: genai.RoleModel, Parts: []*genai.Part{{FunctionCall: call}}},
 		&genai.Content{Role: genai.RoleUser, Parts: []*genai.Part{{FunctionResponse: &genai.FunctionResponse{
@@ -293,7 +293,7 @@ func TestAnthropicStreamingTextAndTools(t *testing.T) {
 }
 
 func TestOpenAICompatUsageExtraction(t *testing.T) {
-	// Non-streaming: top-level usage.
+	// 非流式：usage 位于顶层。
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"hi"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`))
@@ -317,7 +317,7 @@ func TestOpenAICompatUsageExtraction(t *testing.T) {
 		t.Fatalf("no cache info should stay 0, got %d", got.CachedContentTokenCount)
 	}
 
-	// Streaming: usage arrives on a choices-less chunk via stream_options.
+	// 流式：usage 经 stream_options 在一个不含 choices 的分块中到达。
 	var askedForUsage bool
 	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
@@ -347,10 +347,9 @@ func TestOpenAICompatUsageExtraction(t *testing.T) {
 	}
 }
 
-// TestOpenAICompatStreamUsageOnContentChunk pins usage parsing for gateways
-// that attach the usage object to the final content chunk instead of sending
-// a choices-less trailer — the trailer-only capture dropped those numbers and
-// left such turns without any usage data.
+// TestOpenAICompatStreamUsageOnContentChunk 锁定网关的用量解析：这些网关将用量对象附加到最终内容块，而不是发送不含
+// choices 的尾部数据块——仅从尾部数据块进行捕获会丢弃这些数字，并使此类回合没有任何用量
+// 数据。
 func TestOpenAICompatStreamUsageOnContentChunk(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -452,10 +451,9 @@ func TestAnthropicUsageExtraction(t *testing.T) {
 	}
 }
 
-// TestAnthropicCacheUsageExtraction pins prompt-cache accounting: the read
-// counter rides on message_start in the documented shape, and some proxies fold
-// it into message_delta instead. It is a SUBSET of input_tokens, so the prompt
-// total must stay unchanged.
+// TestAnthropicCacheUsageExtraction 锁定提示词缓存计量：读取计数器按文档中的结构承载在 message_start
+// 上，而某些代理则将其并入 message_delta。它是 input_tokens
+// 的子集，因此提示词总量必须保持不变。
 func TestAnthropicCacheUsageExtraction(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -610,9 +608,8 @@ func TestAnthropicImageAttachment(t *testing.T) {
 	}
 }
 
-// TestPostWithRetryRetries429: rate limiting is transient — the request is
-// retried instead of failing the turn, and a Retry-After header raises the
-// wait (capped so a turn keeps its timeout budget).
+// TestPostWithRetryRetries429：速率限制是暂时性的——请求会被重试，而不是使回合失
+// 败；Retry-After 头会增加等待时间（设有上限，使回合保留其超时预算）。
 func TestPostWithRetryRetries429(t *testing.T) {
 	attempts := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -640,8 +637,7 @@ func TestPostWithRetryRetries429(t *testing.T) {
 	}
 }
 
-// TestPostWithRetryUsesFiveRetries locks the built-in retry budget: five
-// retries after the initial attempt, with no user-facing configuration.
+// TestPostWithRetryUsesFiveRetries 锁定内置重试预算：初始尝试之后重试五次，且没有任何面向用户的配置。
 func TestPostWithRetryUsesFiveRetries(t *testing.T) {
 	if maxProviderRetries != 5 || len(retryDelays) != maxProviderRetries {
 		t.Fatalf("retry budget = %d, delays = %d, want 5", maxProviderRetries, len(retryDelays))
@@ -687,9 +683,8 @@ func TestRetryAfterDelayCap(t *testing.T) {
 	}
 }
 
-// TestStopSequencesWireFormat: the configured stop sequences reach both
-// providers under their native field names (OpenAI "stop", Anthropic
-// "stop_sequences").
+// TestStopSequencesWireFormat：配置的停止序列会以各自的原生字段名送达两个供应商
+// （OpenAI 的 "stop"，Anthropic 的 "stop_sequences"）。
 func TestStopSequencesWireFormat(t *testing.T) {
 	var oaBody map[string]any
 	oaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -732,9 +727,8 @@ func TestStopSequencesWireFormat(t *testing.T) {
 	}
 }
 
-// TestOpenAICompatBrokenToolArgsSkipped: truncated/corrupt argument fragments
-// must not reach the tool as silent zero-value {} arguments — the call is
-// skipped and the reply text says so.
+// TestOpenAICompatBrokenToolArgsSkipped：截断/损坏的参数片段不得作为零值 {}
+// 参数静默地传给工具——该调用会被跳过，且回复文本会说明这一点。
 func TestOpenAICompatBrokenToolArgsSkipped(t *testing.T) {
 	chunks := []string{
 		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"write_workspace_file","arguments":"{\"path\":\"x"}}]}}]}`,
@@ -768,9 +762,8 @@ func TestOpenAICompatBrokenToolArgsSkipped(t *testing.T) {
 	}
 }
 
-// holdOpenServer answers once and then keeps the response body open until the
-// test releases it — the shape of a gateway/proxy that never signals EOF after
-// the stream's terminator.
+// holdOpenServer 应答一次，然后保持响应体打开，直到测试释放它——这正是网关/代理在流的终止标记之
+// 后绝不发出 EOF 信号的形态。
 func holdOpenServer(t *testing.T, send func(http.ResponseWriter)) *httptest.Server {
 	t.Helper()
 	release := make(chan struct{})
@@ -854,9 +847,9 @@ func TestAnthropicStopsAtMessageStop(t *testing.T) {
 	}
 }
 
-// TestOpenAICompatStreamRequestAnsweredWithJSONError: a gateway that answers
-// the stream request with a plain JSON error object (the reported ECONNRESET
-// case) must surface that error — not end the turn with an empty answer.
+// TestOpenAICompatStreamRequestAnsweredWithJSONError：以纯 JSON
+// 错误对象应答流式请求的网关（所报告的 ECONNRESET
+// 情形）必须将该错误暴露出来——不得以空答案结束回合。
 func TestOpenAICompatStreamRequestAnsweredWithJSONError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -899,9 +892,9 @@ func TestAnthropicStreamRequestAnsweredWithJSONError(t *testing.T) {
 	}
 }
 
-// TestOpenAICompatStreamRequestAnsweredWithJSONCompletion: some gateways ignore
-// stream=true and return the whole completion as JSON. Both tool calls must
-// survive (complete responses have no per-call index field).
+// TestOpenAICompatStreamRequestAnsweredWithJSONCompletion: 某些网关会忽略
+// stream=true，并将整个补全结果作为 JSON
+// 返回。两个工具调用都必须保留（完整响应没有逐调用的 index 字段）。
 func TestOpenAICompatStreamRequestAnsweredWithJSONCompletion(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -946,8 +939,8 @@ func TestOpenAICompatStreamRequestAnsweredWithJSONCompletion(t *testing.T) {
 	}
 }
 
-// TestStreamIdleTimeoutAbortsStalledProvider: a provider that sends a first
-// chunk and then goes silent must not hold the turn open indefinitely.
+// TestStreamIdleTimeoutAbortsStalledProvider:
+// 先发送首个分块、随后静默的供应商不得无限期地让回合保持打开状态。
 func TestStreamIdleTimeoutAbortsStalledProvider(t *testing.T) {
 	old := streamIdleTimeout
 	streamIdleTimeout = 400 * time.Millisecond
@@ -978,9 +971,9 @@ func TestStreamIdleTimeoutAbortsStalledProvider(t *testing.T) {
 	}
 }
 
-// TestFunctionParametersFromJSONSchema pins the tool-schema wire format:
-// ADK's built-in/MCP/skill tools publish ParametersJsonSchema, and providers
-// must receive the real properties instead of an argument-less object.
+// TestFunctionParametersFromJSONSchema: 锁定工具 schema 的传输格式：ADK
+// 的内置/MCP/技能工具会发布
+// ParametersJsonSchema，供应商必须收到真实属性，而不是一个无参数对象。
 func TestFunctionParametersFromJSONSchema(t *testing.T) {
 	schema := map[string]any{
 		"type": "object",
@@ -1042,8 +1035,8 @@ func TestFunctionParametersFromJSONSchema(t *testing.T) {
 	}
 }
 
-// TestFunctionParametersLegacySchemaStillWorks keeps the genai.Schema path for
-// callers that build declarations the old way (tests, remote tool metadata).
+// TestFunctionParametersLegacySchemaStillWorks:
+// 为按旧方式构建声明的调用方（测试、远程工具元数据）保留 genai.Schema 路径。
 func TestFunctionParametersLegacySchemaStillWorks(t *testing.T) {
 	got := functionParameters(&genai.FunctionDeclaration{
 		Name: "f",
@@ -1059,8 +1052,8 @@ func TestFunctionParametersLegacySchemaStillWorks(t *testing.T) {
 	}
 }
 
-// TestOpenAICompatNonSSEBodySurfacesError: a proxy/block page (HTML instead of
-// SSE) must produce a readable error rather than an empty turn.
+// TestOpenAICompatNonSSEBodySurfacesError: 代理/拦截页面（HTML 而非
+// SSE）必须产生可读的错误，而不是一个空回合。
 func TestOpenAICompatNonSSEBodySurfacesError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")

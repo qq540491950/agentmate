@@ -16,8 +16,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// TestApplyGlobalProxy: with a proxy configured, requests via
-// http.DefaultTransport arrive at the proxy server (absolute-form URI).
+// TestApplyGlobalProxy: 配置代理后，经由 http.DefaultTransport
+// 的请求会到达代理服务器（absolute-form URI）。
 func TestApplyGlobalProxy(t *testing.T) {
 	t.Cleanup(func() { _ = ApplyGlobalProxy("") })
 	transport, ok := http.DefaultTransport.(*http.Transport)
@@ -61,11 +61,11 @@ func TestApplyGlobalProxy(t *testing.T) {
 	}
 }
 
-// TestApplyGlobalProxyEmptyFallsBackToEnvironment: without an in-app proxy
-// the transport must honor HTTP_PROXY/HTTPS_PROXY — blanking the proxy func
-// used to silently ignore environment proxies. The fallback delegates to
-// ProxyFromEnvironment, whose env handling (including NO_PROXY) is stdlib
-// behavior; here we pin that the delegation actually happens.
+// TestApplyGlobalProxyEmptyFallsBackToEnvironment:
+// 没有应用内代理时，传输必须遵循
+// HTTP_PROXY/HTTPS_PROXY——将代理函数置空以前会静默忽略环境代理。回退会委托给
+// ProxyFromEnvironment，其环境变量处理（包括
+// NO_PROXY）属于标准库行为；这里我们锁定该委托确实发生。
 func TestApplyGlobalProxyEmptyFallsBackToEnvironment(t *testing.T) {
 	t.Cleanup(func() { _ = ApplyGlobalProxy("") })
 	transport, ok := http.DefaultTransport.(*http.Transport)
@@ -117,15 +117,15 @@ func TestApplyGlobalProxySkipsLoopback(t *testing.T) {
 }
 
 func TestApplyGlobalProxyInvalid(t *testing.T) {
-	// A syntactically broken proxy must not corrupt the transport.
+	// 语法损坏的代理不得破坏传输。
 	if err := ApplyGlobalProxy("://bad"); err == nil {
 		t.Fatal("expected parse error")
 	}
 }
 
-// TestGlobalProxyCoversMCPTransport pins the proxy coverage contract: a
-// streamable-http MCP transport with no explicit HTTPClient must route
-// through http.DefaultTransport, so the global proxy setting applies.
+// TestGlobalProxyCoversMCPTransport 锁定代理覆盖契约：没有显式 HTTPClient 的
+// streamable-http MCP 传输必须经由 http.DefaultTransport
+// 路由，因此全局代理设置会生效。
 func TestGlobalProxyCoversMCPTransport(t *testing.T) {
 	var hitProxy atomic.Bool
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-mcp", Version: "1.0.0"}, nil)
@@ -139,11 +139,10 @@ func TestGlobalProxyCoversMCPTransport(t *testing.T) {
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil)
 
 	mux := http.NewServeMux()
-	// Bind the origin to 127.0.0.2: loopback traffic is exempt from the
-	// global proxy by design, and the exemption list is 127.0.0.1/localhost/
-	// ::1 — so this address keeps the MCP-over-proxy contract observable
-	// while everything stays on the local machine. Platforms that cannot
-	// route the rest of 127/8 (older macOS) skip instead of failing.
+	// 将源站绑定到 127.0.0.2：按设计，回环流量豁免于全局代理，豁免列表为
+	// 127.0.0.1/localhost/::1——因此该地址能让 MCP-over-proxy
+	// 契约保持可观测，同时一切仍留在本地机器上。无法路由 127/8
+	// 中其余地址的平台（较旧的 macOS）会跳过而不是失败。
 	ln, err := net.Listen("tcp", "127.0.0.2:0")
 	if err != nil {
 		t.Skipf("platform does not route 127.0.0.2: %v", err)
@@ -162,8 +161,7 @@ func TestGlobalProxyCoversMCPTransport(t *testing.T) {
 
 	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hitProxy.Store(true)
-		// Forward with a DIRECT transport: the real destination does not
-		// loop back through the global proxy it is advertised by.
+		// 使用 DIRECT 传输进行转发：真实目标不会经由其被通告的全局代理发生回环。
 		rp := httputil.NewSingleHostReverseProxy(target)
 		direct := http.DefaultTransport.(*http.Transport).Clone()
 		direct.Proxy = nil
@@ -177,7 +175,7 @@ func TestGlobalProxyCoversMCPTransport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tr := &mcp.StreamableClientTransport{Endpoint: base + "/mcp"} // default transport path
+	tr := &mcp.StreamableClientTransport{Endpoint: base + "/mcp"} // 默认传输路径
 	client := mcp.NewClient(&mcp.Implementation{Name: "proxy-test", Version: "1.0.0"}, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -195,10 +193,9 @@ func TestGlobalProxyCoversMCPTransport(t *testing.T) {
 	}
 }
 
-// TestGlobalProxyAppliesToEmptyClients documents/verifies that SDK-style
-// fallback clients (empty &http.Client{} as used by the gemini SDK and the
-// a2a-go JSONRPC client) ride http.DefaultTransport, so the global proxy
-// applies to them too.
+// TestGlobalProxyAppliesToEmptyClients 记录/验证：SDK 风格的回退客户端（gemini
+// SDK 和 a2a-go JSONRPC 客户端所使用的空 &http.Client{}）走
+// http.DefaultTransport，因此全局代理同样适用于它们。
 func TestGlobalProxyAppliesToEmptyClients(t *testing.T) {
 	transport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
@@ -218,10 +215,10 @@ func TestGlobalProxyAppliesToEmptyClients(t *testing.T) {
 	if err := ApplyGlobalProxy(proxySrv.URL); err != nil {
 		t.Fatal(err)
 	}
-	client := &http.Client{} // same shape as the gemini/a2a fallbacks
-	// The request TARGET must be a non-loopback host for the proxy func to
-	// engage (loopback targets are exempt by design); the proxy itself still
-	// listens on the local httptest addr.
+	client := &http.Client{} // 与 gemini/a2a 回退的形态相同
+	// 请求的 TARGET
+	// 必须是非回环主机，代理函数才会生效（按设计，回环目标被豁免）；代理本身仍监听
+	// 本地 httptest 地址。
 	resp, err := client.Get("http://destination.example/v1beta/models")
 	if err != nil {
 		t.Fatal(err)

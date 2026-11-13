@@ -19,10 +19,9 @@ export default defineConfig({
     },
   },
   build: {
-    // Split the vendor libraries out of the app chunk: React and the
-    // markdown renderer change rarely, so they can be cached across app
-    // updates instead of re-downloaded with every build. Rolldown (Vite 8)
-    // only accepts the function form.
+    // 将第三方库从应用 chunk 中拆分出来：React 和 markdown 渲染器很少变更，
+    // 因此它们可以跨应用更新被缓存，而不是每次构建都重新下载。Rolldown（Vite
+    // 8） 仅接受函数形式。
     rollupOptions: {
       output: {
         manualChunks(id: string) {

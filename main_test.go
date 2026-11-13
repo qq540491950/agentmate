@@ -13,16 +13,14 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// TestSystemTrayNeverAttachesWindow pins the fix for the "summon jumps to the
-// bottom-right corner" bug. Wails' AttachWindow calls PositionWindow on every
-// show, which docks the window beside the taskbar tray icon instead of
-// restoring its previous (initially centered) position. The tray only needs
-// click-to-toggle, so wiring that explicitly must stay independent of
-// AttachWindow/WindowOffset.
+// TestSystemTrayNeverAttachesWindow 锁定了针对“summon jumps to the bottom-right
+// corner”缺陷的修复。Wails 的 AttachWindow 会在每次显示时调用
+// PositionWindow，这会将窗口停靠在任务栏托盘图标旁，而不是恢复其先前（初始居中
+// ）的位置。托盘仅需要点击切换，因此显式连接该行为必须保持独立于
+// AttachWindow/WindowOffset。
 //
-// Wails exposes no way to synthesize a tray click in-process, so this AST
-// guard is the narrowest regression seam for the dependency behavior that
-// caused the bug.
+// Wails 未提供在进程内合成托盘点击的方式，因此这个 AST
+// 防护是针对导致该缺陷的依赖行为的最窄回归接缝。
 func TestSystemTrayNeverAttachesWindow(t *testing.T) {
 	file, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
 	if err != nil {
@@ -66,10 +64,9 @@ func (w *fakeMainWindow) Show() application.Window {
 	return nil
 }
 
-// TestToggleMainWindow: every summon path shares the same state machine. A
-// hidden window must be un-minimised/shown/focused without any repositioning,
-// while a visible normal window is hidden. A minimised window is still
-// "visible" on Windows, so it must restore rather than hide.
+// TestToggleMainWindow：每个唤起路径共享同一状态机。隐藏窗口必须在不进行任何重
+// 新定位的情况下取消最小化/显示/聚焦，而可见的普通窗口则被隐藏。在 Windows
+// 上，最小化窗口仍被视为“可见”，因此它必须恢复而不是隐藏。
 func TestToggleMainWindow(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -94,9 +91,9 @@ func TestToggleMainWindow(t *testing.T) {
 	toggleMainWindow(nil)
 }
 
-// TestRotatingWriterRotates: exceeding maxBytes moves the file to .old and
-// subsequent writes land in a fresh app.log — long-resident tray apps used to
-// grow app.log without bound (rotation ran only at startup).
+// TestRotatingWriterRotates：超过 maxBytes 会将文件移动到
+// .old，后续写入会落到全新的 app.log 中——长期驻留的托盘应用过去会让 app.log
+// 无界增长（轮转仅在启动时运行）。
 func TestRotatingWriterRotates(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
@@ -105,8 +102,7 @@ func TestRotatingWriterRotates(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = w.Close() })
-	// Write past the cap: some writes go into the first generation, the rest
-	// into the rotated one.
+	// 写入超过上限：部分写入进入第一代文件，其余写入进入轮转后的文件。
 	for i := 0; i < 20; i++ {
 		if _, err := w.Write([]byte("0123456789")); err != nil {
 			t.Fatal(err)
@@ -128,9 +124,10 @@ func TestRotatingWriterRotates(t *testing.T) {
 	}
 }
 
-// TestShutdownBounded: a wedged shutdown hook must not hold Quit() — and with
-// it the in-app updater's 30 s parent-exit window — hostage. Missing that
-// window makes the updater relaunch the OLD binary, i.e. two apps at once.
+// TestShutdownBounded：卡死的关闭钩子不得扣住 Quit()
+// 不放，也不得连带扣住应用内更新器的 30 s
+// 父进程退出窗口。错过该窗口会使更新器重新启动 OLD
+// 二进制文件，即同时出现两个应用。
 func TestShutdownBounded(t *testing.T) {
 	wedged := make(chan struct{})
 	t.Cleanup(func() { close(wedged) })
@@ -149,15 +146,14 @@ func TestShutdownBounded(t *testing.T) {
 		t.Fatal("shutdownBounded must run the hook")
 	}
 
-	// A panicking hook is logged, never propagated into Quit().
+	// 发生 panic 的钩子会被记录，绝不会传播到 Quit()。
 	shutdownBounded("测试恐慌钩子", time.Second, func() { panic("boom") })
 }
 
-// TestSingleInstanceOptions: a second launch (desktop icon, Start menu) must
-// be forwarded to the running instance and surface its window instead of
-// opening another fully usable copy. UniqueID is the lock name both copies
-// must agree on, so it is pinned here: changing it silently re-enables
-// multi-instance launches alongside an older running build.
+// TestSingleInstanceOptions：第二次启动（桌面图标、开始菜单）必须转发到正在运行
+// 的实例并显示其窗口，而不是打开另一个完全可用的副本。UniqueID
+// 是两个副本必须一致的锁名称，因此在此固定：更改它会静默重新启用与较旧运行中构
+// 建并存的多实例启动。
 func TestSingleInstanceOptions(t *testing.T) {
 	activations := 0
 	opts := singleInstanceOptions(func() { activations++ })
@@ -175,9 +171,9 @@ func TestSingleInstanceOptions(t *testing.T) {
 		t.Fatalf("second launch activated the window %d times, want 1", activations)
 	}
 
-	// A launch can race window creation; a nil activator must be tolerated.
+	// 一次启动可能与窗口创建发生竞态；必须容忍 nil 激活器。
 	singleInstanceOptions(nil).OnSecondInstanceLaunch(application.SecondInstanceData{})
 
-	// And the production activator must not panic before the window exists.
+	// 并且生产激活器不得在窗口存在之前 panic。
 	activateMainWindow(nil)
 }

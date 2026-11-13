@@ -24,9 +24,8 @@ export type SandboxProfileOption = {
 };
 
 /**
- * Permission profiles are the only user-facing execution setting. Each profile
- * is expanded into the two internal dimensions (approval + sandbox) by the
- * backend/API layer, matching Codex's preset-style permission picker.
+ * 权限配置是唯一面向用户的执行设置。每个配置由后端/API
+ * 层展开为两个内部维度（审批 + 沙箱），与 Codex 的预设式权限选择器保持一致。
  */
 export type PermissionProfile =
   | "request-approval"
@@ -42,7 +41,7 @@ export type PermissionProfileOption = {
   danger?: boolean;
 };
 
-/** Shared approval labels/descriptions for Settings and the composer picker. */
+/** 用于设置页与输入区选择器的共享审批标签/描述。 */
 export const APPROVAL_OPTIONS: ApprovalPolicyOption[] = [
   {
     value: "request-approval",
@@ -62,7 +61,7 @@ export const APPROVAL_OPTIONS: ApprovalPolicyOption[] = [
   },
 ];
 
-/** Shared sandbox labels/descriptions for Settings and the composer picker. */
+/** 用于设置页与输入区选择器的共享沙箱标签/描述。 */
 export const SANDBOX_PROFILE_OPTIONS: SandboxProfileOption[] = [
   {
     value: "workspace-write",
@@ -84,7 +83,7 @@ export const SANDBOX_PROFILE_OPTIONS: SandboxProfileOption[] = [
   },
 ];
 
-/** The three Codex-style presets shown in the composer and Settings. */
+/** 输入区与设置页中展示的三个 Codex 风格预设。 */
 export const PERMISSION_PROFILE_OPTIONS: PermissionProfileOption[] = [
   {
     value: "request-approval",
@@ -141,9 +140,8 @@ export function permissionProfilePolicy(value: PermissionProfile): ExecutionPoli
 }
 
 /**
- * Returns the matching preset only for an exact pair. A custom pair (for
- * example never + workspace-write) returns null and must stay custom; snapping
- * it to the nearest preset could silently weaken the sandbox.
+ * 仅对完全匹配的组合返回预设。自定义组合（例如 never + workspace-write）返回
+ * null，且必须保持自定义；把它吸附到最近的预设可能静默削弱沙箱。
  */
 export function permissionProfileForPolicy(policy: ExecutionPolicy): PermissionProfileOption | null {
   const approval = normalizeApprovalPolicy(policy.approvalPolicy);
@@ -187,12 +185,12 @@ export function sandboxProfileShortLabel(value?: string): string {
   return option.shortLabel ?? option.label;
 }
 
-/** Selecting full access always requires an explicit risk acknowledgement. */
+/** 选择完全访问权限始终需要明确的风险确认。 */
 export function sandboxNeedsRiskConfirmation(value?: string): boolean {
   return normalizeSandboxProfile(value) === "danger-full-access";
 }
 
-/** Explain the two cross-axis combinations that are easy to misread. */
+/** 解释两种容易误读的跨轴组合。 */
 export function executionPolicyHint(policy: ExecutionPolicy): string | null {
   const approval = normalizeApprovalPolicy(policy.approvalPolicy);
   const sandbox = normalizeSandboxProfile(policy.sandboxProfile);
@@ -236,7 +234,7 @@ export function sandboxBackendLabel(backend?: string | null): string {
   }
 }
 
-/** sandboxStatusSummary is the presentation contract for AppService.SandboxStatus. */
+/** sandboxStatusSummary 是 AppService.SandboxStatus 的展示契约。 */
 export function sandboxStatusSummary(status?: SandboxStatusLike | null): SandboxStatusView {
   if (!status) {
     return {
@@ -268,7 +266,7 @@ export type SandboxNetworkCopy = {
   notice: string | null;
 };
 
-/** sandboxNetworkCopy keeps danger's implied network state out of settings. */
+/** sandboxNetworkCopy 将 danger 隐含的网络状态排除在设置之外。 */
 export function sandboxNetworkCopy(
   policy: ExecutionPolicy,
   persistedNetwork?: string | null,
@@ -295,24 +293,24 @@ function normalizeSandboxNetwork(value?: string | null): "on" | "off" {
   return (value ?? "").trim().toLowerCase() === "on" ? "on" : "off";
 }
 
-/** @deprecated Legacy alias; new UI uses PermissionProfileOption. */
+/** @deprecated 遗留别名；新 UI 使用 PermissionProfileOption。 */
 export type SandboxModeOption = PermissionProfileOption;
 
-/** @deprecated Legacy three-way metadata; new UI uses PERMISSION_PROFILE_OPTIONS. */
+/** @deprecated 遗留的三路元数据；新 UI 使用 PERMISSION_PROFILE_OPTIONS。 */
 export const SANDBOX_MODE_OPTIONS: SandboxModeOption[] = PERMISSION_PROFILE_OPTIONS;
 
-/** @deprecated Use approvalPolicyOption. */
+/** @deprecated 使用 approvalPolicyOption。 */
 export function sandboxModeOption(mode?: string): SandboxModeOption {
   const normalized = normalizeSandboxMode(mode);
   return SANDBOX_MODE_OPTIONS.find((option) => option.value === normalized) ?? SANDBOX_MODE_OPTIONS[0];
 }
 
-/** @deprecated Use approvalPolicyLabel / sandboxProfileLabel. */
+/** @deprecated 使用 approvalPolicyLabel / sandboxProfileLabel。 */
 export function sandboxModeLabel(mode?: string): string {
   return sandboxModeOption(mode).label;
 }
 
-/** @deprecated Use approvalPolicyShortLabel / sandboxProfileShortLabel. */
+/** @deprecated 使用 approvalPolicyShortLabel / sandboxProfileShortLabel。 */
 export function sandboxModeShortLabel(mode?: string): string {
   const option = sandboxModeOption(mode);
   return option.shortLabel ?? option.label;

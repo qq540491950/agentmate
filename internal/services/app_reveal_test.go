@@ -17,10 +17,10 @@ func TestRevealCommandPerPlatform(t *testing.T) {
 	if cmd := revealCommand("windows", `C:\w\x.txt`); len(cmd.Args) != 2 || !strings.HasPrefix(cmd.Args[1], "/select,") {
 		t.Fatalf("windows reveal = %v", cmd.Args)
 	}
-	// The linux branch derives the containing dir with filepath.Dir, i.e. with
-	// the HOST separator, so the expected value is host-specific: on Windows
-	// "/w/x.txt" yields `\w`. Production only ever calls this with
-	// runtime.GOOS, so this is test portability, not cross-OS behaviour.
+	// linux 分支使用 filepath.Dir 推导出所在目录，即使用 HOST
+	// 分隔符，因此期望值因宿主平台而异：在 Windows 上，"/w/x.txt" 会得到
+	// `\w`。生产环境仅会使用 runtime.GOOS
+	// 调用它，因此这属于测试可移植性问题，而非跨操作系统行为。
 	if runtime.GOOS != "windows" {
 		if cmd := revealCommand("linux", "/w/x.txt"); len(cmd.Args) != 2 || cmd.Args[1] != "/w" {
 			t.Fatalf("linux reveal = %v (must open the containing dir)", cmd.Args)

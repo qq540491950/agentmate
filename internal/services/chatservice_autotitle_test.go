@@ -14,9 +14,9 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// TestMain keeps scripted model fixtures deterministic: auto-title is on by
-// default in production, so an unrelated test would otherwise race an extra
-// non-streaming request. Dedicated title tests opt in with autoTitleInline.
+// TestMain 保持脚本化模型测试夹具的确定性：自动标题在生产环境中默认开启，因此无关测试原
+// 本会与一个额外的非流式请求发生竞态。专用标题测试通过 autoTitleInline
+// 选择启用。
 func TestMain(m *testing.M) {
 	orig := autoTitleStart
 	autoTitleStart = func(func()) {}
@@ -32,9 +32,8 @@ func autoTitleInline(t *testing.T) {
 	t.Cleanup(func() { autoTitleStart = prev })
 }
 
-// TestAutoTitleGeneratesTitle: after the first exchange the configured title
-// model is asked for a short title (a non-streaming side call) and the
-// truncated-text fallback is replaced. Failure keeps the fallback.
+// TestAutoTitleGeneratesTitle：首次交流后，会向配置的标题模型请求一个简短标题（
+// 一次非流式辅助调用），并替换截断文本回退。失败时保留该回退。
 func TestAutoTitleGeneratesTitle(t *testing.T) {
 	autoTitleInline(t)
 	var bodies []string
@@ -42,7 +41,7 @@ func TestAutoTitleGeneratesTitle(t *testing.T) {
 		body := readAllBody(r)
 		bodies = append(bodies, body)
 		if strings.Contains(body, `"stream":false`) {
-			// Title request: plain completion.
+			// 标题请求：普通补全。
 			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"周报规划讨论"}}]}`))
 			return
 		}
@@ -75,7 +74,7 @@ func TestAutoTitleGeneratesTitle(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// Auto-title is opt-in by default: enable it for this test.
+	// 自动标题默认需要显式启用：为本测试启用它。
 	on := true
 	if err := store.Update(func(cfg *config.Config) {
 		cfg.Settings.AutoTitle = &on
@@ -92,8 +91,7 @@ func TestAutoTitleGeneratesTitle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Pin the conversation to another model: the title side call should use
-	// the explicit title model, not the session override.
+	// 将对话固定到另一个模型：标题辅助调用应使用显式标题模型，而不是会话覆盖。
 	if err := chat.SetSessionModel(sess.ID, "fake-large"); err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +108,7 @@ func TestAutoTitleGeneratesTitle(t *testing.T) {
 			}
 		}
 		if title == "周报规划讨论" {
-			// The title request went through the configured title model.
+			// 标题请求经由配置的标题模型完成。
 			found := false
 			for _, b := range bodies {
 				if strings.Contains(b, "中文标题") {
@@ -132,8 +130,8 @@ func TestAutoTitleGeneratesTitle(t *testing.T) {
 	}
 }
 
-// TestAutoTitleDisabledKeepsFallback: turning the setting off (or a failing
-// side call) keeps the truncated first-message fallback.
+// TestAutoTitleDisabledKeepsFallback：关闭该设置（或辅助调用失败）会保留截断的
+// 首条消息回退。
 func TestAutoTitleDisabledKeepsFallback(t *testing.T) {
 	chat, store, _ := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -165,10 +163,9 @@ func TestAutoTitleDisabledKeepsFallback(t *testing.T) {
 	}
 }
 
-// TestGenerateTitleSkipsReasoningContent pins the reported thinking-model
-// behavior: the title call receives a reasoning part plus the final answer,
-// but the sidebar must use only the answer. The fake also reproduces the old
-// 40-token cap, where reasoning consumed the whole budget and no title existed.
+// TestGenerateTitleSkipsReasoningContent 锁定了所报告的思考模型行为：标题调用会收到推理部分以及最终答案，但侧边栏必须
+// 仅使用答案。伪造实现还复现了旧的 40 token
+// 上限：推理消耗了整个预算，因此没有标题。
 func TestGenerateTitleSkipsReasoningContent(t *testing.T) {
 	var seen string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -178,8 +175,7 @@ func TestGenerateTitleSkipsReasoningContent(t *testing.T) {
 		}
 		_ = json.Unmarshal([]byte(seen), &req)
 		if req.MaxTokens < 256 {
-			// Mirrors the live relay under the old budget: thinking consumed
-			// all 40 output tokens and content stayed empty.
+			// 在旧预算下复现实时中继：思考消耗了全部 40 个输出 token，content 保持为空。
 			_, _ = w.Write([]byte(`{"choices":[{"finish_reason":"length","message":{"content":"","reasoning_content":"我们需要回答标题，不超过12汉字，只输出标题本身。需要概括对话开头"}}]}`))
 			return
 		}
@@ -204,9 +200,8 @@ func TestGenerateTitleSkipsReasoningContent(t *testing.T) {
 	}
 }
 
-// TestAutoTitleUsesMainModelByDefault pins the reported behavior: without an
-// explicit autoTitle setting, a chat pinned to a secondary model still gets a
-// refined title from the global default ("main") model.
+// TestAutoTitleUsesMainModelByDefault 锁定所报告的行为：在没有显式 autoTitle
+// 设置时，固定使用次要模型的会话仍会从全局默认（"main"）模型获得精炼后的标题。
 func TestAutoTitleUsesMainModelByDefault(t *testing.T) {
 	autoTitleInline(t)
 	var bodies []string
@@ -281,9 +276,8 @@ func TestAutoTitleUsesMainModelByDefault(t *testing.T) {
 	}
 }
 
-// TestRefineSessionTitleCleansExistingFallback covers sessions created before
-// auto-title or with a raw slash-command fallback: the explicit action reads
-// the stored first user message/latest reply and rewrites the title.
+// TestRefineSessionTitleCleansExistingFallback 覆盖在自动标题之前创建的会话，或带有原始斜杠命令回退的会话：该显式操作会读取
+// 已存储的首条用户消息/最新回复并重写标题。
 func TestRefineSessionTitleCleansExistingFallback(t *testing.T) {
 	turn := 0
 	chat, store, bodies := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
@@ -304,8 +298,7 @@ func TestRefineSessionTitleCleansExistingFallback(t *testing.T) {
 	if err := chat.Send(sess.ID, "/stats", nil); err != nil {
 		t.Fatal(err)
 	}
-	// auto-title is suppressed by TestMain, so the row still has the raw
-	// fallback until the explicit action runs.
+	// 自动标题被 TestMain 抑制，因此在显式操作运行之前，该行仍保留原始回退值。
 	if got := sessionTitle(store, sess.ID); got != "/stats" {
 		t.Fatalf("precondition: fallback title = %q", got)
 	}

@@ -26,11 +26,10 @@ const (
 	testAPIKey      = "test-api-key-456"
 )
 
-// TestBrowserCommandKeepsAuthorizeURLIntact pins the platform browser-open
-// commands: the URL must arrive as ONE unmodified argument. Windows used to
-// route it through `cmd /c start`, which re-parses the command line — the `&`
-// in every OAuth authorize URL truncated the address and executed the rest as
-// a command, breaking consent entirely.
+// TestBrowserCommandKeepsAuthorizeURLIntact 固定各平台打开浏览器的命令：URL
+// 必须作为单个未经修改的参数传入。Windows 过去通过 `cmd /c start`
+// 路由它，这会重新解析命令行——每个 OAuth 授权 URL 中的 `&`
+// 都会截断地址，并把其余部分当作命令执行，从而彻底破坏授权同意流程。
 func TestBrowserCommandKeepsAuthorizeURLIntact(t *testing.T) {
 	const authorizeURL = "https://auth.example.com/authorize?response_type=code&client_id=abc&redirect_uri=http%3A%2F%2F127.0.0.1%3A0%2Fcallback"
 	for _, goos := range []string{"windows", "darwin", "linux"} {
@@ -44,8 +43,9 @@ func TestBrowserCommandKeepsAuthorizeURLIntact(t *testing.T) {
 	}
 }
 
-// newProtectedMCPServer hosts a real go-sdk MCP server behind an auth
-// middleware. kind: "oauth2" (Bearer issued by the fake AS) | "api-key" | "bearer" (static).
+// newProtectedMCPServer 在认证中间件后面托管一个真实的 go-sdk MCP
+// 服务器。kind："oauth2"（由模拟 AS 签发的 Bearer）| "api-key" |
+// "bearer"（静态）。
 func newProtectedMCPServer(t *testing.T, kind, asBase string) *httptest.Server {
 	t.Helper()
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-mcp", Version: "1.0.0"}, nil)
@@ -69,8 +69,8 @@ func newProtectedMCPServer(t *testing.T, kind, asBase string) *httptest.Server {
 		return true
 	}
 
-	// Mux registration happens after the server starts (same trick as the
-	// official fixtures): the PRM document needs the final server URL.
+	// Mux 注册在服务器启动之后进行（与官方测试夹具相同的技巧）：PRM
+	// 文档需要最终的服务器 URL。
 	mux := http.NewServeMux()
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -92,8 +92,9 @@ func newProtectedMCPServer(t *testing.T, kind, asBase string) *httptest.Server {
 	return srv
 }
 
-// newFakeAuthorizationServer implements the MCP authorization-server surface:
-// protected resource metadata, AS metadata, /authorize (PKCE echo) and /token.
+// newFakeAuthorizationServer 实现了 MCP
+// 授权服务器的接口面：受保护资源元数据、AS 元数据、/authorize（PKCE 回显）和
+// /token。
 func newFakeAuthorizationServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -146,8 +147,8 @@ func newFakeAuthorizationServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// browserSimulator "opens" the authorization URL like a user agent: follows
-// the authorize redirect once and lands on the loopback callback.
+// browserSimulator 像用户代理一样“打开”授权 URL：跟随一次 authorize
+// 重定向，并落在回环回调上。
 func browserSimulator() func(string) error {
 	return func(raw string) error {
 		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -163,7 +164,7 @@ func browserSimulator() func(string) error {
 		if loc == "" {
 			return fmt.Errorf("authorize did not redirect: status=%d url=%s body=%.200s", resp.StatusCode, raw, body)
 		}
-		_, err = client.Get(loc) // hits the app's loopback callback
+		_, err = client.Get(loc) // 访问应用的回环回调
 		return err
 	}
 }
@@ -256,7 +257,7 @@ func TestMCPAuthUnauthenticatedRejected(t *testing.T) {
 	srv := newProtectedMCPServer(t, "oauth2", as.URL)
 	cfg := config.MCPServerConfig{
 		ID: "m4", Name: "noauth", Transport: config.MCPStreamableHTTP,
-		URL: srv.URL + "/mcp", // no AuthType
+		URL: srv.URL + "/mcp", // 无 AuthType
 	}
 	tr, err := buildTransport(cfg, nil, nil)
 	if err != nil {
@@ -275,9 +276,9 @@ func TestMCPAuthUnauthenticatedRejected(t *testing.T) {
 	}
 }
 
-// TestMCPAuthTokenPersistence runs the OAuth flow once with a config-backed
-// token store, then simulates an app restart: a fresh transport seeded from
-// the cache must connect WITHOUT opening the browser.
+// TestMCPAuthTokenPersistence 使用由配置支持的令牌存储运行一次 OAuth
+// 流程，然后模拟应用重启：从缓存初始化的全新传输必须在不打开浏览器的情况下连接
+// 。
 func TestMCPAuthTokenPersistence(t *testing.T) {
 	as := newFakeAuthorizationServer(t)
 	resource := newProtectedMCPServer(t, "oauth2", as.URL)
@@ -292,7 +293,7 @@ func TestMCPAuthTokenPersistence(t *testing.T) {
 		OAuthClientID: "agentmate-desktop",
 	}
 
-	// First run: full consent flow; the browser simulator is required.
+	// 首次运行：完整的同意流程；浏览器模拟器是必需的。
 	defer func() { URLOpener = defaultURLOpener }()
 	URLOpener = browserSimulator()
 	tr1, err := buildTransport(cfg, store, nil)
@@ -308,8 +309,8 @@ func TestMCPAuthTokenPersistence(t *testing.T) {
 		t.Fatalf("token not persisted: %+v (store has %+v)", cached, snap.MCPTokens)
 	}
 
-	// "Restart": fresh transport from the same store. The browser must NOT
-	// be opened (opening fails the test).
+	// "Restart"：从同一存储创建全新的
+	// transport。不得打开浏览器（打开浏览器会导致测试失败）。
 	URLOpener = func(string) error { return fmt.Errorf("browser must not open for cached token") }
 	tr2, err := buildTransport(cfg, store, nil)
 	if err != nil {

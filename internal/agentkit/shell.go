@@ -21,13 +21,12 @@ import (
 )
 
 const (
-	// maxShellOutput caps how much combined stdout/stderr is handed back to
-	// the model. npm/go builds can print megabytes; the tail beyond the cap is
-	// discarded but the child keeps draining its pipes.
+	// maxShellOutput 限制交还给模型的合并后的 stdout/stderr 输出量。npm/go
+	// 构建可能打印数兆字节；超出上限的尾部会被丢弃，但子进程仍会继续排空其管道。
 	maxShellOutput = 64 * 1024
-	// defaultShellTimeout bounds a single command when the model does not pass
-	// timeoutSeconds. It must stay below the default 600s turn timeout so the
-	// model still gets the killed-command result instead of losing the turn.
+	// defaultShellTimeout 在模型未传入 timeoutSeconds
+	// 时为单条命令设上限。它必须低于默认的 600s
+	// 回合超时，以便模型仍能获得命令被终止的结果，而不会丢失该回合。
 	defaultShellTimeout = 300 * time.Second
 	maxShellTimeout     = 600 * time.Second
 )
@@ -35,12 +34,10 @@ const (
 type shellArgs struct {
 	Command        string `json:"command" jsonschema:"shell command line to run with the task workspace as the working directory"`
 	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"kill the command after this many seconds (default 300, max 600)"`
-	// Escalate is deliberately opt-in per call. The model must first run the
-	// command inside the sandbox and only request this after the sandbox
-	// denied it; it is never a way to preempt the boundary.
+	// Escalate 特意设计为每次调用都需要显式启用。模型必须先在沙箱内运行该命令，并且仅在沙箱
+	// 拒绝后才请求使用此选项；它绝不是抢先越过边界的方式。
 	Escalate bool `json:"escalate,omitempty" jsonschema:"request permission to run THIS invocation outside the sandbox; only set after an in-sandbox command was denied, never preemptively"`
-	// Justification is shown verbatim on the confirmation card so the user can
-	// decide whether crossing the boundary is necessary.
+	// Justification 会原样显示在确认卡片上，以便用户判断是否有必要越过边界。
 	Justification string `json:"justification,omitempty" jsonschema:"when escalate is true, explain to the user why this command must leave the sandbox"`
 }
 
@@ -52,16 +49,15 @@ type shellResult struct {
 	Shell     string `json:"shell,omitempty"`
 }
 
-// ShellTool runs shell commands inside the task workspace through the default
-// workspace-write sandbox policy. requireConfirmation routes every call
-// through ADK HITL, the same contract as write_workspace_file.
+// ShellTool 通过默认的 workspace-write 沙箱策略在任务工作区内运行 shell
+// 命令。requireConfirmation 会通过 ADK HITL 路由每次调用，其约定与
+// write_workspace_file 相同。
 func ShellTool(workspace string, requireConfirmation bool) (tool.Tool, error) {
 	return ShellToolWithPolicy(workspace, requireConfirmation, sandbox.DefaultPolicy(workspace))
 }
 
-// ShellToolWithPolicy runs every command through the session's OS sandbox.
-// The plain ShellTool wrapper keeps the historical default for tests and
-// callers that construct a tool without a chat policy.
+// ShellToolWithPolicy 通过会话的 OS 沙箱运行每条命令。普通的 ShellTool
+// 包装器为测试以及在没有聊天策略的情况下构造工具的调用方保留历史默认值。
 func ShellToolWithPolicy(workspace string, requireConfirmation bool, policy sandbox.Policy) (tool.Tool, error) {
 	execution := shellExecution{
 		policy:         policy,
@@ -78,19 +74,17 @@ func ShellToolWithPolicy(workspace string, requireConfirmation bool, policy sand
 	return newShellTool(workspace, requireConfirmation, provider, execution)
 }
 
-// ShellToolWithPolicyAndMode applies the chat's approval policy. In
-// auto-approve mode a safe command runs immediately; a command matching the
-// risk detector pauses for HITL before the handler starts. The mode argument
-// accepts legacy combined-profile names for old call sites. allowEscalation
-// gates the per-call escape hatch; when it is false an escalate=true call is
-// rejected instead of being silently downgraded to a sandboxed run.
+// ShellToolWithPolicyAndMode 应用聊天的审批策略。在自动批准模式下，安全命令会立即运行；命中风险检测器的命
+// 令会在处理器启动前暂停以等待 HITL。mode
+// 参数接受旧调用点使用的遗留组合配置名称。allowEscalation
+// 控制每次调用的逃生通道；当它为 false 时，escalate=true
+// 的调用会被拒绝，而不会被静默降级为沙箱内运行。
 func ShellToolWithPolicyAndMode(workspace string, requireConfirmation bool, approvalPolicy string, policy sandbox.Policy, allowEscalation bool) (tool.Tool, error) {
 	return ShellToolWithSpec(workspace, requireConfirmation, approvalPolicy, policy, allowEscalation, terminal.LegacySpec())
 }
 
-// ShellToolWithSpec is the session-aware entry point. The caller resolves the
-// user's terminal setting once and passes the resulting spec; the tool itself
-// never branches on a platform shell.
+// ShellToolWithSpec 是会话感知的入口点。调用方会一次性解析用户的终端设置并传入得到的
+// spec；工具本身绝不按平台 shell 进行分支。
 func ShellToolWithSpec(workspace string, requireConfirmation bool, approvalPolicy string, policy sandbox.Policy, allowEscalation bool, spec terminal.Spec) (tool.Tool, error) {
 	approval := config.NormalizeApprovalPolicy(approvalPolicy)
 	execution := shellExecution{
@@ -99,23 +93,21 @@ func ShellToolWithSpec(workspace string, requireConfirmation bool, approvalPolic
 		allowEscalation: allowEscalation,
 		spec:            spec,
 	}
-	// Escalation is only meaningful while the command would otherwise run
-	// confined. A danger-full-access tool is already direct, and never-policy
-	// deliberately has no way to cross the boundary.
+	// 只有当命令原本会在受限环境中运行时，提权才有意义。danger-full-access 工具
+	// 本来就是直连，而 never 策略故意不提供跨越边界的方式。
 	escalationNeedsConfirmation := allowEscalation &&
 		policy.Mode != sandbox.ModeDangerFullAccess &&
 		approval != config.ApprovalPolicyNever
 	guard := NewPreviewGuardWithPolicy(workspace, policy)
 	provider := func(args shellArgs) bool {
-		// A call the handler will reject must not open a dead-end approval
-		// card: let it run and return the error to the model.
+		// handler 会拒绝的调用不得打开死胡同式的审批卡片：应让它运行并把错误返回给模型。
 		if !shellPreviewAllows(guard, execution, args) {
 			return false
 		}
 		switch approval {
 		case config.ApprovalPolicyRequestApproval:
-			// Request-approval asks before every executable call, including a
-			// command that would otherwise be safe to auto-approve.
+			// Request-approval
+			// 会在每次可执行调用前请求确认，包括原本可以安全自动批准的命令。
 			return true
 		case config.ApprovalPolicyNever:
 			return false
@@ -132,8 +124,8 @@ func ShellToolWithSpec(workspace string, requireConfirmation bool, approvalPolic
 	return newShellTool(workspace, requireConfirmation, provider, execution)
 }
 
-// shellExecution resolves per-call sandbox overrides without mutating the
-// session policy. Only the approved invocation gets a danger policy.
+// shellExecution 会解析每次调用的沙箱覆盖设置，而不修改会话策略。仅获批准的调用会获得 danger
+// 策略。
 type shellExecution struct {
 	policy          sandbox.Policy
 	approvalPolicy  string
@@ -141,9 +133,8 @@ type shellExecution struct {
 	spec            terminal.Spec
 }
 
-// shellPreviewAllows is the read-only gate shared by both shell entry points.
-// A failure means the handler itself will reject the call, so no confirmation
-// prompt should be shown.
+// shellPreviewAllows 是两个 shell 入口点共享的只读门禁。失败意味着 handler
+// 本身会拒绝该调用，因此不应显示确认提示。
 func shellPreviewAllows(guard PreviewGuard, execution shellExecution, args shellArgs) bool {
 	if strings.TrimSpace(args.Command) == "" {
 		return false
@@ -165,8 +156,7 @@ func (e shellExecution) policyFor(args shellArgs) (sandbox.Policy, error) {
 		return e.policy, nil
 	}
 	if e.policy.Mode == sandbox.ModeDangerFullAccess {
-		// The command is already direct; ignore escalation rather than adding
-		// a second, meaningless confirmation.
+		// 命令已是直接执行；应忽略升级，而不是再添加一次无意义的确认。
 		return e.policy, nil
 	}
 	if !e.allowEscalation {
@@ -250,8 +240,8 @@ func runShellCommandWithPolicySpec(ctx context.Context, workspace, command strin
 	}, nil
 }
 
-// runShellCommand is the execution core, split from the tool wrapper so tests
-// can drive it with a plain context.
+// runShellCommand 是执行核心，已从工具包装器中拆出，以便测试能用普通 context
+// 驱动它。
 func runShellCommand(ctx context.Context, workspace, command string, timeout time.Duration, limit int) (shellResult, error) {
 	command = strings.TrimSpace(command)
 	if command == "" {
@@ -292,8 +282,8 @@ func runShellCommand(ctx context.Context, workspace, command string, timeout tim
 
 	result := shellResult{Output: out.String(), Truncated: out.Truncated(), Shell: terminal.LegacySpec().DisplayName}
 	if runCtx.Err() == context.DeadlineExceeded {
-		// Killing the process makes Wait return an error; the timeout result
-		// carries the output produced so far so the model can react.
+		// 终止进程会使 Wait
+		// 返回错误；超时结果会携带截至目前产生的输出，以便模型作出反应。
 		result.TimedOut = true
 		result.ExitCode = -1
 		return result, nil
@@ -333,9 +323,9 @@ func shellDescription(spec terminal.Spec) string {
 	}
 }
 
-// boundedBuffer keeps the first limit bytes written to it and reports whether
-// anything was dropped. Writes past the cap are accepted (discarded) so the
-// child never blocks on a full pipe.
+// boundedBuffer 保留写入其中的前 limit
+// 个字节，并报告是否有任何内容被丢弃。超过上限的写入会被接受（丢弃），以便子进
+// 程绝不会因管道已满而阻塞。
 type boundedBuffer struct {
 	mu        sync.Mutex
 	buf       bytes.Buffer

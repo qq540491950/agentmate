@@ -23,9 +23,8 @@ import (
 	"agentmate/internal/sandbox"
 )
 
-// compactionEventRetentionSize keeps the current turn and a short recent tail
-// raw when tail-retention compaction fires. ADK requires a positive value
-// whenever TokenThreshold is enabled.
+// compactionEventRetentionSize 在尾部保留压缩触发时，会将当前回合和最近的一小段尾部保持为原始未压缩状态。只
+// 要启用了 TokenThreshold，ADK 就要求该值为正值。
 const compactionEventRetentionSize = 10
 
 func addUsage(total, u *UsageInfo) *UsageInfo {
@@ -40,36 +39,33 @@ func addUsage(total, u *UsageInfo) *UsageInfo {
 	m.PromptTokens += u.PromptTokens
 	m.CompletionTokens += u.CompletionTokens
 	m.TotalTokens += u.TotalTokens
-	// Context occupancy never accumulates: the last call's prompt wins.
+	// 上下文占用绝不累积：最后一次调用的提示词为准。
 	m.ContextTokens = u.ContextTokens
-	// Same for the cached share of that prompt — it describes the current
-	// context, not a cumulative total (and re-summing it would report cache
-	// hits that never happened).
+	// 该提示词的缓存份额同理——它描述的是当前上下文，而不是累计总量（重复累加会
+	// 报告从未发生过的缓存命中）。
 	m.CachedTokens = u.CachedTokens
 	return &m
 }
 
-// Send runs one user turn against the session's target agent/team. It blocks
-// until the run completes and streams progress via chat:stream events.
+// Send 针对会话的目标 Agent/团队运行一个用户回合。它会阻塞直到运行完成，并通过
+// chat:stream 事件流式传输进度。
 func (c *ChatService) Send(sessionID, text string, attachments []AttachmentIn) error {
 	return c.sendTurn(sessionID, text, attachments, "")
 }
 
-// SendWithReasoning runs one user turn with a per-turn thinking level (empty
-// keeps the session default, then the model's own default). It is what the
-// composer's per-message picker calls: the level applies to this turn only and
-// is never written back to the session or provider configuration.
+// SendWithReasoning 使用每回合的思考级别运行一个用户回合（空值会保留会话默认值，随后采用模型自身
+// 的默认值）。它正是输入框的逐消息选择器所调用的方法：该级别仅应用于本回合，绝
+// 不会写回会话或供应商配置。
 func (c *ChatService) SendWithReasoning(sessionID, text string, attachments []AttachmentIn, reasoningLevel string) error {
 	return c.sendTurn(sessionID, text, attachments, reasoningLevel)
 }
 
-// trimLastTurn removes all stored events from the last user message onward
-// (inclusive) and returns that message's text, image attachments and thinking
-// level, so Regenerate/EditAndResend re-run the turn faithfully — including
-// the level it originally used. HITL resume events (a FunctionResponse stored
-// under the user author by ConfirmToolCall) are not user messages and never
-// start a turn boundary — treating them as one made every regenerate after a
-// tool confirmation fail.
+// trimLastTurn 从最后一条用户消息开始（含该消息）移除所有已存储事件，并返回该消息的文本、图
+// 片附件和思考级别，以便 Regenerate/EditAndResend
+// 忠实重新运行该回合——包括其最初使用的级别。HITL 恢复事件（由 ConfirmToolCall
+// 存储在用户作者下的
+// FunctionResponse）不是用户消息，绝不开启回合边界——将它们视作用户消息曾导致工
+// 具确认后的每次重新生成都失败。
 func (c *ChatService) trimLastTurn(sessionID string) (string, []AttachmentIn, string, error) {
 	resp, err := c.sessions.Get(context.Background(), &session.GetRequest{
 		AppName: c.appName, UserID: c.userID, SessionID: sessionID,
@@ -126,8 +122,8 @@ func (c *ChatService) trimLastTurn(sessionID string) (string, []AttachmentIn, st
 	return text, atts, reasoning, nil
 }
 
-// hasFunctionResponse reports whether the event carries a FunctionResponse
-// part (HITL resumes and tool results), i.e. it is not a plain user message.
+// hasFunctionResponse 报告事件是否携带 FunctionResponse 部分（HITL
+// 恢复和工具结果），即它并非普通用户消息。
 func hasFunctionResponse(ev *session.Event) bool {
 	for _, p := range ev.Content.Parts {
 		if p != nil && p.FunctionResponse != nil {
@@ -139,12 +135,12 @@ func hasFunctionResponse(ev *session.Event) bool {
 
 var _ = context.Background
 
-// Regenerate redoes the last user turn: it trims the trailing conversation
-// (from the last user message onward, inclusive) and re-runs the same message
-// with its original attachments.
+// Regenerate 重做最后一个用户回合：它裁剪末尾对话（从最后一条用户消息开始，含该消息），并
+// 使用该消息的原始附件重新运行同一条消息。
 func (c *ChatService) Regenerate(sessionID string) error {
-	// Same contract as DeleteSession: stop the in-flight run BEFORE touching
-	// stored events, or the old run keeps appending to the trimmed timeline.
+	// 与 DeleteSession
+	// 相同的约定：先停止进行中的运行，再触碰已存储的事件，否则旧运行会持续向已裁剪
+	// 的时间线追加内容。
 	c.cancelAndWaitBounded(sessionID)
 	text, atts, reasoning, err := c.trimLastTurn(sessionID)
 	if err != nil {
@@ -153,13 +149,12 @@ func (c *ChatService) Regenerate(sessionID string) error {
 	return c.sendTurn(sessionID, text, atts, reasoning)
 }
 
-// EditAndResend replaces the text of the last user turn and re-runs it,
-// keeping the turn's original attachments.
+// EditAndResend 替换最后一个用户回合的文本并重新运行该回合，保留该回合原有的附件。
 func (c *ChatService) EditAndResend(sessionID, newText string) error {
 	if strings.TrimSpace(newText) == "" {
 		return fmt.Errorf("消息内容不能为空")
 	}
-	c.cancelAndWaitBounded(sessionID) // see Regenerate: trim only after the old run stopped
+	c.cancelAndWaitBounded(sessionID) // 参见 Regenerate：仅在旧运行停止后才裁剪
 	_, atts, reasoning, err := c.trimLastTurn(sessionID)
 	if err != nil {
 		return err
@@ -167,7 +162,7 @@ func (c *ChatService) EditAndResend(sessionID, newText string) error {
 	return c.sendTurn(sessionID, newText, atts, reasoning)
 }
 
-// deleteEvents removes stored events by ID (used by Regenerate).
+// deleteEvents 按 ID 删除已存储的事件（由 Regenerate 使用）。
 func (c *ChatService) deleteEvents(sessionID string, ids []string) error {
 	return c.db.WithContext(context.Background()).Exec(
 		"DELETE FROM events WHERE app_name = ? AND user_id = ? AND session_id = ? AND id IN ?",
@@ -175,7 +170,7 @@ func (c *ChatService) deleteEvents(sessionID string, ids []string) error {
 	).Error
 }
 
-// resolveSessionTarget finds the ChatSession metadata for a session ID.
+// resolveSessionTarget 查找会话 ID 对应的 ChatSession 元数据。
 func (c *ChatService) resolveSessionTarget(cfg config.Config, sessionID string) *config.ChatSession {
 	for i := range cfg.Sessions {
 		if cfg.Sessions[i].ID == sessionID {
@@ -185,7 +180,7 @@ func (c *ChatService) resolveSessionTarget(cfg config.Config, sessionID string) 
 	return nil
 }
 
-// emitChat delivers a stream event to the test hook or the Wails event bus.
+// emitChat 将流式事件投递到测试钩子或 Wails 事件总线。
 func (c *ChatService) emitChat(sessionID string, ev ChatStreamEvent) {
 	ev.SessionID = sessionID
 	if appEventHook != nil {
@@ -197,9 +192,8 @@ func (c *ChatService) emitChat(sessionID string, ev ChatStreamEvent) {
 	}
 }
 
-// sendTurn sanitizes the user input (guardrails), builds the message content
-// and hands the turn to runTurn. turnReasoning is a per-turn thinking level
-// override (empty keeps the session default).
+// sendTurn 对用户输入做净化处理（护栏），构建消息内容并将该回合交给
+// runTurn。turnReasoning 是按回合覆盖的思考级别（为空则保留会话默认值）。
 func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentIn, turnReasoning string) error {
 	lock := c.sessionWorkspaceLock(sessionID)
 	lock.Lock()
@@ -210,21 +204,21 @@ func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentI
 		return fmt.Errorf("会话 %q 不存在", sessionID)
 	}
 
-	// A leading @mention routes just this turn; guardrails follow the turn's
-	// effective target so an @'d agent's own guardrail setting applies.
+	// 开头的 @ 提及仅路由当前回合；护栏遵循该回合的有效目标，因此被 @ 的 Agent
+	// 自身的护栏设置会生效。
 	turnTarget := turnTargetFor(cfg, target, text)
-	// A leading "/<skill-name>" command attaches that skill's SKILL.md to this
-	// turn only (see runTurn). The message text itself stays untouched: it is
-	// what history renders, and Regenerate/EditAndResend re-parse it verbatim.
-	// Discovery is resolved against this chat's effective workspace so project
-	// SKILL.md files never have to be imported into config.json first.
+	// 以 "/<skill-name>" 开头的命令仅将对应技能的 SKILL.md 附加到本回合（见
+	// runTurn）。消息文本本身保持不变：历史记录所渲染的就是它，而
+	// Regenerate/EditAndResend
+	// 会逐字重新解析它。发现逻辑会基于此会话的有效工作区进行解析，因此项目中的
+	// SKILL.md 文件绝不需要先导入 config.json。
 	workspace := target.EffectiveWorkspaceFor(cfg)
 	skillCfg, skillArgs := resolveSkillCommand(effectiveSkillsFor(cfg, workspace), text)
 	turnContext := joinTurnContexts(
 		buildSkillTurnContext(skillCfg, skillArgs),
 		buildFileMentionContext(workspace, text),
 	)
-	// Layered guardrails: sanitize user input; flag injection attempts.
+	// 分层护栏：清理用户输入；标记注入尝试。
 	agentCfg := c.targetAgentConfig(cfg, turnTarget)
 	guardOn := agentCfg == nil || agentkit.GuardrailsEnabled(*agentCfg)
 	userText := text
@@ -248,9 +242,8 @@ func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentI
 	return c.runTurn(turnTarget, guardOn, msg, text, turnContext, turnReasoning)
 }
 
-// ConfirmToolCall answers a pending ADK tool-confirmation interrupt (HITL):
-// approved=true resumes the original tool call, false rejects it so the model
-// sees the rejection and can adjust.
+// ConfirmToolCall 响应待处理的 ADK 工具确认中断（HITL）：approved=true
+// 会恢复原始工具调用，false 会拒绝该调用，使模型看到拒绝并能够调整。
 func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) error {
 	if strings.TrimSpace(callID) == "" {
 		return fmt.Errorf("缺少确认请求 ID")
@@ -325,50 +318,43 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 	if target == nil {
 		return fmt.Errorf("会话 %q 不存在", sessionID)
 	}
-	// A HITL resume must rebuild the SAME agent tree the interrupted turn ran
-	// on — including a turn that was routed by a leading @mention in the
-	// originating user message.
+	// HITL 恢复必须重建被中断回合所运行的完全相同的 Agent
+	// 树——包括由原始用户消息中开头的 @mention 路由的回合。
 	turnTarget := turnTargetFor(cfg, target, lastUserText)
 	agentCfg := c.targetAgentConfig(cfg, turnTarget)
 	guardOn := agentCfg == nil || agentkit.GuardrailsEnabled(*agentCfg)
-	// A resumed turn recomputes the turn context (slash skill and @-referenced
-	// files) from the same user message: temporary state is not persisted, so
-	// the confirmation round-trip must re-attach what the interrupted turn
-	// started with.
+	// 恢复的回合会从同一条用户消息重新计算回合上下文（斜杠技能和 @
+	// 引用的文件）：临时状态不会被持久化，因此确认往返必须重新附加被中断回合开始时
+	// 已有的内容。
 	workspace := target.EffectiveWorkspaceFor(cfg)
 	skillCfg, skillArgs := resolveSkillCommand(effectiveSkillsFor(cfg, workspace), lastUserText)
 	turnContext := joinTurnContexts(
 		buildSkillTurnContext(skillCfg, skillArgs),
 		buildFileMentionContext(workspace, lastUserText),
 	)
-	// Resume on the level the interrupted turn used: a HITL round-trip is one
-	// logical turn, so the continuation must not switch thinking budgets
-	// halfway through.
+	// 按被中断回合所使用的级别恢复：一次 HITL
+	// 往返是一个逻辑回合，因此续跑不得在中途切换思考预算。
 	return c.runTurn(turnTarget, guardOn, msg, "", turnContext, lastUserReasoning)
 }
 
-// runTurn builds the agent tree for the session target, runs one turn with
-// the given message content and streams progress. It is the shared engine
-// behind Send (user text) and ConfirmToolCall (HITL FunctionResponse resume);
-// titleFromText is non-empty only for genuine user messages (drives the
-// user-bubble event and auto-title). turnReasoning is a per-turn level
-// override (empty keeps the session default), resolved once here so the
-// request body and the recorded badge cannot disagree.
+// runTurn 为会话目标构建 Agent
+// 树，用给定消息内容运行一个回合，并流式输出进度。它是 Send（用户文本）与
+// ConfirmToolCall（HITL FunctionResponse 恢复）共用的引擎；titleFromText
+// 仅对真正的用户消息非空（驱动用户气泡事件与自动标题）。turnReasoning
+// 是每回合的级别覆盖（为空则保持会话默认值），在此处统一解析一次，使请求体与记
+// 录的徽标不会互相矛盾。
 //
-// The turn context carries the slash-invoked skill body and the inlined
-// content of @-referenced workspace files. It rides on temporary session
-// state, so it reaches the model for this invocation only.
+// 回合上下文携带斜杠调用的技能正文以及 @
+// 引用的工作区文件的内联内容。它依附于临时会话状态，因此仅本次调用会到达模型。
 //
-// A panic anywhere in the agent/tool stack is converted into an error event:
-// one misbehaving MCP server or tool must not take the whole desktop process
-// down with the user's unsaved work in it.
+// agent/tool 栈中任何位置的 panic 都会被转换为错误事件：一个行为异常的 MCP
+// 服务器或工具不得让整个桌面进程连同用户未保存的工作一起崩溃。
 func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *genai.Content, titleFromText, turnContext, turnReasoning string) (err error) {
 	sessionID := target.ID
 	defer c.recoverRun(sessionID, &err)
-	// Register before any setup. IsRunning powers the frontend's session
-	// calibration and must already report this turn while the agent tree is
-	// being built; registering after the expensive setup (or after the user
-	// event) lets a concurrent probe see a false idle state.
+	// 在任何设置之前注册。IsRunning 为前端的会话校准提供支持，并且必须在 Agent
+	// 树构建期间就已报告本回合；如果在高开销设置之后（或在用户事件之后）才注册，就
+	// 会让并发探测看到错误的空闲状态。
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	release := c.registerRun(sessionID, cancel)
@@ -376,17 +362,16 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	cfg := c.S.Store.Get()
 	sessionTerminal := c.terminalSettingsFor(sessionID, cfg.Settings.Terminal)
 	workspace := target.EffectiveWorkspaceFor(cfg)
-	// Per-turn pick > session default > model default. With no resolvable
-	// model (remote targets) there is nothing to inject or record.
+	// 每回合选择 > 会话默认 >
+	// 模型默认。在没有可解析的模型（远程目标）时，没有可注入或记录的内容。
 	applyLevel, recordedLevel := "", ""
 	modelInfo, hasModel := c.effectiveTurnModel(cfg, target)
 	if hasModel {
 		applyLevel, recordedLevel = resolveTurnReasoning(modelInfo, turnReasoning, target.ReasoningLevel)
 	}
-	// Per-agent tool guardrail (0 = unlimited). Turns have no wall-clock
-	// deadline: long agent tasks are allowed to run until they finish, fail,
-	// or are cancelled. A stalled model stream is bounded separately by the
-	// LLM adapter's idle watchdog.
+	// 每个 Agent 的工具护栏（0 = 不限）。回合没有墙钟截止时间：允许长时间运行的
+	// Agent 任务持续运行，直到完成、失败或被取消。停滞的模型流式由 LLM
+	// 适配器的空闲看门狗单独限界。
 	maxToolCalls := 0
 	var maxSessionTokens int64
 	if agentCfg := c.targetAgentConfig(cfg, target); agentCfg != nil {
@@ -402,9 +387,9 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		}
 	}
 
-	// Build the agent tree from the current configuration. The session's
-	// approval policy and sandbox profile are independent dimensions; direct
-	// chats, @-routed turns and every local team member share both.
+	// 根据当前配置构建 Agent
+	// 树。会话的审批策略与沙箱配置是相互独立的维度；直接聊天、@
+	// 路由的回合以及每个本地团队成员都共享这两者。
 	approvalPolicy := target.EffectiveApprovalPolicy(cfg)
 	sandboxProfile := target.EffectiveSandboxProfile(cfg)
 	sandboxNetwork := target.EffectiveSandboxNetwork(cfg)
@@ -416,9 +401,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	var root agent.Agent
 	switch target.TargetType {
 	case "":
-		// Direct chat: no configured target, run the default provider's
-		// model with a generic prompt. The per-session model override still
-		// applies so the header picker works the same as agent sessions.
+		// 直接聊天：没有配置目标时，使用通用提示词运行默认供应商的模型。按会话的模型
+		// 覆盖仍然生效，因此头部选择器的工作方式与 Agent 会话相同。
 		ac, derr := directAgentConfig(cfg)
 		if derr != nil {
 			return derr
@@ -455,8 +439,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	default:
 		for _, a := range cfg.Agents {
 			if a.ID == target.TargetID {
-				// Per-session model override (chat-header picker): empty keeps
-				// the agent's configured model.
+				// 按会话的模型覆盖（聊天头部选择器）：为空时保留 Agent 已配置的模型。
 				a.SandboxNetwork = sandboxNetwork
 				a.ApplyExecutionPolicy(approvalPolicy, sandboxProfile)
 				a.Terminal = &sessionTerminal
@@ -479,10 +462,9 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		MemoryService:     c.S.Memory,
 		AutoCreateSession: true,
 	}
-	// Context compaction: sliding window over completed turns and/or tail
-	// retention at a token threshold. Local LLM-rooted targets only — the
-	// default summarizer rides the root agent's model, which remote A2A
-	// agents do not have.
+	// 上下文压缩：在 token
+	// 阈值下，对已完成的回合使用滑动窗口和/或保留尾部。仅限以本地 LLM
+	// 为根的目标——默认摘要器沿用根 Agent 的模型，而远程 A2A Agent 不具备该模型。
 	if target.TargetType != "remote" {
 		se := cfg.Settings
 		tokenThreshold := 0
@@ -496,8 +478,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			}
 			if tokenThreshold > 0 {
 				cc.TokenThreshold = tokenThreshold
-				// Keep the current turn and a small tail raw; ADK requires a
-				// positive retention size whenever TokenThreshold is enabled.
+				// 保留当前回合和一小段尾部为原始内容；只要启用了 TokenThreshold，ADK
+				// 就要求保留大小为正数。
 				cc.EventRetentionSize = compactionEventRetentionSize
 			}
 			runnerCfg.Compaction = cc
@@ -511,8 +493,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	emit := func(ev ChatStreamEvent) { c.emitChat(sessionID, ev) }
 
 	if budgetExceeded && titleFromText != "" {
-		// Refuse new user turns only; pending HITL confirm resumes must still
-		// run so an in-flight tool round-trip can finish.
+		// 仅拒绝新的用户回合；待处理的 HITL
+		// 确认恢复仍必须运行，以便进行中的工具往返能够完成。
 		emit(ChatStreamEvent{Kind: "error", Text: fmt.Sprintf("会话 token 预算已满（%d），本轮未执行。", maxSessionTokens)})
 		emit(ChatStreamEvent{Kind: "done"})
 		return nil
@@ -521,13 +503,12 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		emit(ChatStreamEvent{Kind: "user", Text: titleFromText, Attachments: attachmentsOut(msg), Reasoning: recordedLevel})
 	}
 
-	// Record the level on the user message event itself so history rendering,
-	// exports and Regenerate/confirm resume see the level this turn actually
-	// used. A HITL resume appends a FunctionResponse event, not a new user
-	// message, so it records nothing.
-	// State deltas apply in order and the last RunOption wins, so both keys go
-	// into ONE map. The skill key is "temp:"-prefixed: ADK applies it to this
-	// invocation but trims it before persisting the user event.
+	// 将级别记录在用户消息事件本身，以便历史渲染、导出以及 Regenerate/confirm
+	// 恢复时能看到本回合实际使用的级别。一次 HITL 恢复会追加一个 FunctionResponse
+	// 事件，而不是一条新的用户消息，因此它不会记录任何内容。
+	// 状态增量按顺序应用，且最后一个 RunOption 生效，因此这两个键要放入同一个
+	// map。技能键带有 "temp:" 前缀：ADK
+	// 会在本次调用中应用它，但在持久化用户事件之前会将其裁剪掉。
 	stateDelta := map[string]any{}
 	if titleFromText != "" && recordedLevel != "" {
 		stateDelta[turnReasoningStateKey] = recordedLevel
@@ -539,8 +520,9 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	if len(stateDelta) > 0 {
 		runOpts = append(runOpts, runner.WithStateDelta(stateDelta))
 	}
-	// Remote A2A agents have no local instruction provider, so a skill command
-	// or file context must ride on the message itself to take effect there.
+	// 远程 A2A Agent
+	// 没有本地指令供应商，因此技能命令或文件上下文必须随消息本身一起传递，才能在那
+	// 里生效。
 	if turnContext != "" && target.TargetType == "remote" && msg != nil {
 		msg.Parts = append([]*genai.Part{genai.NewPartFromText(turnContext + "\n\n用户输入：")}, msg.Parts...)
 	}
@@ -549,15 +531,14 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	var sessionUsage *UsageInfo
 	toolCallsSeen := 0
 	lastReply := ""
-	// MaxLLMCalls is pinned to "no limit" on purpose. ADK v2.7.0 introduced a
-	// per-invocation model-call budget whose zero value resolves to 500 (or to
-	// ADK_MAX_LLM_CALLS when that env var parses), and reaching it aborts the
-	// whole run with ErrLLMCallsLimitExceeded. That contradicts this app's
-	// "a turn has no wall-clock limit" contract: a long task that churns
-	// through tool calls (plan_todos rewrites, many MCP tools, team members)
-	// would otherwise die at an invisible, framework-chosen threshold that the
-	// user can only discover by hitting it. Ending a turn stays the model's or
-	// the user's decision.
+	// MaxLLMCalls 被有意固定为 "no limit"。ADK v2.7.0
+	// 引入了按调用计的模型调用预算，其零值会解析为
+	// 500（当该环境变量可解析时，也会解析为
+	// ADK_MAX_LLM_CALLS），一旦达到该预算，就会以 ErrLLMCallsLimitExceeded
+	// 中止整个运行。这与本应用 "一个回合没有实际耗时限制"
+	// 的约定相矛盾：否则，一个不断产生工具调用（plan_todos 重写、大量 MCP
+	// 工具、团队成员）的长任务，就会终止在一个不可见、由框架选择的阈值上，而用户只
+	// 有撞上该阈值时才能发现它。结束一个回合仍然是模型或用户的决定。
 	for ev, err := range rn.Run(ctx, c.userID, sessionID, msg, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
 		MaxLLMCalls:   -1,
@@ -567,12 +548,11 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			return context.Canceled
 		}
 		if err != nil {
-			// The failure is only streamed to the UI; without this line it
-			// leaves no trace on disk (provider 429s / quota errors were
-			// previously undiagnosable after the fact).
+			// 失败仅会流式发送到 UI；没有这一行，磁盘上不会留下任何痕迹（供应商 429 /
+			// 配额错误此前在事后无法诊断）。
 			log.Printf("会话 %s 轮次失败: %v", sessionID, err)
 			emit(ChatStreamEvent{Kind: "error", Text: err.Error()})
-			// Surface the failure to the caller instead of reporting success.
+			// 将失败暴露给调用方，而不是报告成功。
 			return fmt.Errorf("run turn: %w", err)
 		}
 		if ev == nil || ev.Content == nil || ev.Author == "user" {
@@ -583,10 +563,9 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			for _, p := range ev.Content.Parts {
 				if p != nil && p.Text != "" {
 					text := p.Text
-					// Guardrails must cover the streaming path too: deltas reach
-					// the UI before the final aggregated message is sanitized.
-					// A secret split across two deltas is only caught by the
-					// final message event, which replaces the streamed text.
+					// 护栏还必须覆盖流式路径：增量会在最终聚合消息被净化之前到达
+					// UI。拆分到两个增量中的机密仅会被最终消息事件捕获，而该事件会替换已流式输
+					// 出的文本。
 					if guardOn {
 						text = agentkit.ApplyOutputGuardrail(text)
 					}
@@ -599,11 +578,11 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			}
 			continue
 		}
-		// Final event for this model turn.
+		// 本次模型回合的最终事件。
 		if u := usageOf(ev); u != nil {
-			// A turn with a tool loop / team transfer makes several model
-			// calls; accumulate instead of keeping only the last call's
-			// numbers (which under-reported multi-step turns).
+			// 一个带工具循环 /
+			// 团队转交的回合会进行多次模型调用；应累加，而不是仅保留最后一次调用的数字（
+			// 这会少报多步骤回合）。
 			turnUsage = addUsage(turnUsage, u)
 			sessionUsage = addUsage(sessionUsage, u)
 		}
@@ -613,9 +592,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		var textBuf strings.Builder
 		var thoughtBuf strings.Builder
 		toolCallsThisTurn := 0
-		// flushThought/flushText keep the event order of the aggregated parts:
-		// reasoning arrives before the answer, so its block must close before
-		// the assistant bubble starts.
+		// flushThought/flushText 保持聚合部分的事件顺序：
+		// 推理先于答案到达，因此其块必须在助手气泡开始之前关闭。
 		flushThought := func() {
 			if thoughtBuf.Len() == 0 {
 				return
@@ -652,9 +630,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			flushThought()
 			switch {
 			case p.FunctionCall != nil && isConfirmationInterrupt(ev, p.FunctionCall):
-				// HITL pause point: surface an actionable confirmation
-				// request and let the turn end; the answer arrives via
-				// ConfirmToolCall as a FunctionResponse resume.
+				// HITL 暂停点：呈现可操作的确认请求，并让回合就此结束；答案通过
+				// ConfirmToolCall 以 FunctionResponse 恢复的形式到达。
 				name, args := p.FunctionCall.Name, p.FunctionCall.Args
 				hint := ""
 				if orig, h := confirmRequestInfo(p.FunctionCall.Args); orig != nil {
@@ -694,8 +671,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	}
 	emit(ChatStreamEvent{Kind: "done", SessionUsage: sessionUsage})
 
-	// Auto-remember: opt-in ingestion of the finished turn into long-term
-	// memory. Best-effort — failures must not fail the turn.
+	// 自动记忆：按需选择将已完成的回合写入长期
+	// 记忆。尽力而为——失败不得导致回合失败。
 	if c.S.Store.Get().Settings.AutoRemember && c.S.Memory != nil {
 		if resp, err := c.sessions.Get(context.Background(), &session.GetRequest{
 			AppName: c.appName, UserID: c.userID, SessionID: sessionID,
@@ -704,7 +681,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		}
 	}
 
-	// Sidebar preview + auto-title from the first user message.
+	// 侧边栏预览 + 基于首条用户消息的自动标题。
 	autoFallback := ""
 	if lastReply != "" || titleFromText != "" {
 		c.S.Store.Update(func(cfg *config.Config) {
@@ -723,10 +700,9 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			}
 		})
 	}
-	// Model-generated title replaces the truncated-text fallback once the
-	// first exchange completes (best-effort, async — never blocks the turn).
-	// The goroutine carries its own recover: it runs outside runTurn's
-	// deferred recoverRun, and a panic here would take the whole process down.
+	// 第一轮交互完成后，模型生成的标题会替换基于截断文本的回退标题
+	// （尽力而为、异步——绝不阻塞回合）。 该 goroutine 自带 recover：它运行在
+	// runTurn 的 deferred recoverRun 之外，此处的 panic 会导致整个进程崩溃。
 	if autoFallback != "" && cfg.Settings.AutoTitleEnabled() {
 		autoTitleStart(func() {
 			defer func() {
@@ -740,13 +716,13 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	return nil
 }
 
-// confirmRequestReason builds the human-facing reason for a HITL card. It is
-// computed on the backend so the frontend only renders ChatStreamEvent.Hint;
-// the policy itself stays in agentkit (PreviewGuard) and is never copied here.
+// confirmRequestReason 为 HITL 卡片构建面向用户的理由。它
+// 在后端计算，因此前端仅渲染 ChatStreamEvent.Hint； 策略本身保留在
+// agentkit（PreviewGuard）中，绝不复制到这里。
 func confirmRequestReason(guard agentkit.PreviewGuard, call *genai.FunctionCall, fallback string) string {
 	hint := strings.TrimSpace(fallback)
-	// ADK always supplies a generic English prompt. Treat that (and an empty
-	// hint) as "no application hint" and derive the actionable reason.
+	// ADK 始终提供一个通用的英文提示。将其（以及空的
+	// hint）视为“无应用提示”，并据此推导出可操作的理由。
 	if hint != "" && !isGenericConfirmationHint(hint) {
 		return hint
 	}
@@ -792,18 +768,17 @@ func confirmRequestReason(guard agentkit.PreviewGuard, call *genai.FunctionCall,
 	}
 }
 
-// isGenericConfirmationHint reports whether ADK supplied its built-in prompt
-// instead of an application-specific explanation.
+// isGenericConfirmationHint 判断 ADK 提供的是否为其内置提示，
+// 而非应用专属说明。
 func isGenericConfirmationHint(hint string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(hint)), "please approve or reject")
 }
 
-// effectiveTurnModel resolves the ModelInfo of the model this session's root
-// agent will run, mirroring the build path: the direct chat's default model
-// (with the per-chat override), an agent's model (override included), or the
-// team's explicit lead / auto coordinator (teams ignore the chat override,
-// exactly like BuildTeamWithWorkspaceAndReasoning). Remote targets have no
-// local model, so they report false.
+// effectiveTurnModel 解析本会话根 Agent 将要运行的模型的
+// ModelInfo，与构建路径保持一致：直接聊天时的默认模型（含按会话的覆盖）、Agent
+// 自身的模型（同样包含覆盖），或者团队显式指定的 lead
+// 或自动协调者（团队会忽略会话级覆盖，与 BuildTeamWithWorkspaceAndReasoning
+// 完全一致）。远程目标没有本地模型，因此返回 false。
 func (c *ChatService) effectiveTurnModel(cfg config.Config, target *config.ChatSession) (config.ModelInfo, bool) {
 	providerID, modelID := "", ""
 	applyOverride := true
@@ -853,16 +828,16 @@ func (c *ChatService) effectiveTurnModel(cfg config.Config, target *config.ChatS
 	modelID = agentkit.EffectiveModel(cfg, providerID, modelID, override)
 	mi, ok := provider.FindModel(modelID)
 	if !ok {
-		// The build path resolves level fields through FindModel too: a model
-		// the provider no longer lists gets no table, so report no table here.
+		// 构建路径同样通过 FindModel
+		// 解析等级字段：供应商已不再列出的模型没有对应的表，因此这里同样报告为无表。
 		return config.ModelInfo{}, false
 	}
 	return mi, true
 }
 
-// compactionTokenThreshold converts a context-window percentage into the
-// absolute prompt-token threshold ADK expects. Unknown context windows disable
-// this strategy rather than guessing a window that could summarize too early.
+// compactionTokenThreshold 把上下文窗口的百分比转换为 ADK 期望的绝对提示词
+// token 阈值。遇到未知的上下文窗口时会禁用该策略，而不是猜测一个可能导致过早压缩的窗
+// 口。
 func compactionTokenThreshold(contextWindow, percent int) int {
 	if contextWindow <= 0 || percent <= 0 {
 		return 0
@@ -873,7 +848,7 @@ func compactionTokenThreshold(contextWindow, percent int) int {
 	return contextWindow * percent / 100
 }
 
-// findAgentConfig returns the configured agent with the given ID.
+// findAgentConfig 返回具有给定 ID 的已配置 Agent。
 func findAgentConfig(cfg config.Config, id string) *config.AgentConfig {
 	if id == "" {
 		return nil
@@ -886,12 +861,11 @@ func findAgentConfig(cfg config.Config, id string) *config.AgentConfig {
 	return nil
 }
 
-// resolveTurnReasoning picks a turn's thinking level from the model's table:
-// the per-turn pick first, then the session default, then the table's own
-// default. apply is what the request builder receives ("" lets a configured
-// table resolve its default); recorded is the level shown on the message.
-// A built-in fallback table records nothing unless someone picked a level,
-// because nothing is sent in that case.
+// resolveTurnReasoning 从模型的表中挑选某个回合的思考等级：先取该回合的选择，再取会话默认值，最后取
+// 表自身的默认值。apply 是请求构建器实际收到的值（""
+// 表示由已配置的表自行解析默认值）；recorded
+// 是显示在消息上的等级。内置回退表不会记录任何等级，除非有人显式选择了等级，因
+// 为这种情况下不会发送任何内容。
 func resolveTurnReasoning(mi config.ModelInfo, explicit, session string) (apply, recorded string) {
 	table := mi.ReasoningTable()
 	if table == nil {
@@ -910,8 +884,8 @@ func resolveTurnReasoning(mi config.ModelInfo, explicit, session string) (apply,
 	return "", ""
 }
 
-// eventReasoning reads the thinking level recorded on a stored user message
-// event (see turnReasoningStateKey).
+// eventReasoning 读取已存储的用户消息事件上记录的思考等级（参见
+// turnReasoningStateKey）。
 func eventReasoning(ev *session.Event) string {
 	if ev == nil || ev.Actions.StateDelta == nil {
 		return ""
@@ -922,15 +896,13 @@ func eventReasoning(ev *session.Event) string {
 	return ""
 }
 
-// autoTitleStart schedules the best-effort title side call. Tests replace it
-// with a synchronous runner so scripted fake-model expectations stay stable.
+// autoTitleStart 调度尽力而为的标题旁路调用。测试会把它替换为同步执行器，以便脚本化的假模型预
+// 期保持稳定。
 var autoTitleStart = func(run func()) { go run() }
 
-// autoTitleModel resolves the provider/model used for title refinement:
-// explicit title settings first, then the global default provider's first
-// model ("main model"). The conversation target and its model override are
-// intentionally ignored: a weak agent model or a remote target must not
-// degrade the sidebar title.
+// autoTitleModel 解析用于标题润色的供应商/模型：优先使用显式的标题设置，其次使用全局默认供应商
+// 的第一个模型（"主模型"）。会话目标及其模型覆盖被有意忽略：弱小的 Agent
+// 模型或远程目标不得使侧边栏标题降级。
 func autoTitleModel(cfg config.Config) (config.ModelProvider, string, bool) {
 	titleProviderID := strings.TrimSpace(cfg.Settings.TitleProviderID)
 	titleModel := strings.TrimSpace(cfg.Settings.TitleModel)
@@ -951,9 +923,8 @@ func autoTitleModel(cfg config.Config) (config.ModelProvider, string, bool) {
 	return *provider, provider.Models[0].ID, true
 }
 
-// autoTitle asks the configured title model for a short conversation title
-// and replaces the truncated-text fallback. Failures keep the fallback
-// silently.
+// autoTitle 向配置的标题模型请求一个简短的会话标题，并替换基于截断文本的回退。失败时静默
+// 保留该回退。
 func (c *ChatService) autoTitle(sessionID string, cfg config.Config, fallback, userText, reply string) {
 	clean, ok := c.generateTitle(cfg, userText, reply)
 	if !ok {
@@ -961,7 +932,7 @@ func (c *ChatService) autoTitle(sessionID string, cfg config.Config, fallback, u
 	}
 	err := c.S.Store.Update(func(cfg2 *config.Config) {
 		for i := range cfg2.Sessions {
-			// Only replace OUR fallback: a manual rename in between wins.
+			// 仅替换我们自己的回退：期间发生的手动重命名优先。
 			if cfg2.Sessions[i].ID == sessionID && cfg2.Sessions[i].Title == fallback {
 				cfg2.Sessions[i].Title = clean
 			}
@@ -970,16 +941,14 @@ func (c *ChatService) autoTitle(sessionID string, cfg config.Config, fallback, u
 	if err != nil {
 		return
 	}
-	// Nudge the sidebar via the dedicated metadata event (a synthetic done
-	// would clobber the live usage/context indicators).
+	// 通过专用元数据事件通知侧边栏（合成的 done 会覆盖实时用量/上下文指示器）。
 	if app := application.Get(); app != nil {
 		app.Event.Emit("sessions:updated", sessionID)
 	}
 }
 
-// generateTitle performs the non-streaming title side call. It returns false
-// when no usable title model is configured or the model produced no usable
-// text, so callers can keep their existing title/fallback.
+// generateTitle 执行非流式标题旁路调用。当未配置可用的标题模型，或模型未生成可用文本时，它返
+// 回 false，因此调用方可保留其现有的标题/回退。
 func (c *ChatService) generateTitle(cfg config.Config, userText, reply string) (string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -991,7 +960,7 @@ func (c *ChatService) generateTitle(cfg config.Config, userText, reply string) (
 	if err != nil {
 		return "", false
 	}
-	// Guardrail the quoted user content just like a normal turn.
+	// 像普通回合一样，对引用的用户内容应用护栏。
 	prompt := "根据下面的对话开头，概括一个不超过 12 个汉字的中文标题。只输出标题本身，一行，不要引号、书名号、句号、Markdown 或任何解释；不要把用户消息里的斜杠命令或代码原样作为标题。\n\n用户: " +
 		agentkit.ApplyOutputGuardrail(truncateRunes(userText, 200)) +
 		"\n助手: " + agentkit.ApplyOutputGuardrail(truncateRunes(reply, 200))
@@ -999,9 +968,8 @@ func (c *ChatService) generateTitle(cfg config.Config, userText, reply string) (
 		Contents: []*genai.Content{
 			genai.NewContentFromText(prompt, genai.RoleUser),
 		},
-		// Thinking models spend output tokens on reasoning_content first; 40
-		// tokens can be consumed entirely before the title is emitted. The
-		// title itself is still capped below, so a larger budget is cheap.
+		// 思考模型会先在 reasoning_content 上消耗输出 token；在标题输出前，40 个
+		// token 可能被完全消耗。标题本身仍会在下方受到上限限制，因此更大的预算代价很小。
 		Config: &genai.GenerateContentConfig{MaxOutputTokens: 512, Temperature: ptrFloat32(0.3)},
 	}
 	var title strings.Builder
@@ -1011,9 +979,8 @@ func (c *ChatService) generateTitle(cfg config.Config, userText, reply string) (
 		}
 		if resp != nil && resp.Content != nil {
 			for _, p := range resp.Content.Parts {
-				// Reasoning is display-only. Some providers return it before
-				// the answer; concatenating both made the first thought line
-				// the sidebar title.
+				// 推理内容仅用于显示。部分供应商会在答案之前返回它；将两者拼接曾使第一行思
+				// 考内容成为侧边栏标题。
 				if p != nil && p.Text != "" && !p.Thought {
 					title.WriteString(p.Text)
 				}
@@ -1030,15 +997,14 @@ func (c *ChatService) generateTitle(cfg config.Config, userText, reply string) (
 	}
 	clean = truncateRunes(clean, 16)
 	if clean == "" || strings.HasPrefix(clean, "{") || strings.HasPrefix(clean, "/") {
-		return "", false // empty, non-text, or raw command output
+		return "", false // 空内容、非文本或原始命令输出
 	}
 	return clean, true
 }
 
-// RefineSessionTitle regenerates an existing session's title from its stored
-// first user message and latest assistant reply. It is the explicit action
-// for chats created before auto-title existed, or whose fallback was a raw
-// slash command; new sessions refine automatically after their first turn.
+// RefineSessionTitle 根据已存储的首条用户消息和最新助手回复，重新生成现有会话的标题。对于自动标题
+// 功能出现之前创建的会话，或回退为原始斜杠命令的会话，这是显式操作；新会话在首
+// 个回合后会自动优化。
 func (c *ChatService) RefineSessionTitle(sessionID string) (string, error) {
 	cfg := c.S.Store.Get()
 	if c.resolveSessionTarget(cfg, sessionID) == nil {
@@ -1078,9 +1044,9 @@ func (c *ChatService) RefineSessionTitle(sessionID string) (string, error) {
 	return title, nil
 }
 
-// truncateRunes caps a string at maxRunes without splitting a UTF-8 rune.
-// C0 control bytes and DEL are stripped first: model output can carry them
-// (e.g. U+0001) and they render as garbage in the sidebar preview and titles.
+// truncateRunes 在不拆分 UTF-8 rune 的前提下，将字符串截断至 maxRunes
+// 长度。先剥离 C0 控制字节和 DEL：模型输出可能携带这些字符（例如
+// U+0001），它们在侧边栏预览和标题中会显示为乱码。
 func truncateRunes(s string, maxRunes int) string {
 	s = strings.Map(func(r rune) rune {
 		if (r < 0x20 && r != '\n' && r != '\t') || r == 0x7f {

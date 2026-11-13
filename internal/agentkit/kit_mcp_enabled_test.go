@@ -28,14 +28,14 @@ func TestBuildAgentInjectsEnabledMCPServers(t *testing.T) {
 	}
 	ac := config.AgentConfig{ID: "a1", Name: "工具人", ProviderID: "p1", Model: "m1"}
 
-	// Enabled (broken) server: must be mounted and reported.
+	// 已启用的（损坏的）服务器：必须被挂载并报告。
 	if _, err := kit.BuildAgent(ac); err == nil {
 		t.Fatal("enabled MCP server must be injected (broken transport must surface)")
 	} else if !strings.Contains(err.Error(), "启用服务") {
 		t.Fatalf("error missing enabled server: %v", err)
 	}
 
-	// Disabled (broken) server alone: must stay off and build cleanly.
+	// 仅有已停用的（损坏的）服务器：必须保持关闭并正常构建。
 	if err := store.Update(func(cfg *config.Config) {
 		for i := range cfg.MCPServers {
 			if cfg.MCPServers[i].ID == "mcp_on" {
@@ -49,7 +49,7 @@ func TestBuildAgentInjectsEnabledMCPServers(t *testing.T) {
 		t.Fatalf("disabled MCP server must not be injected: %v", err)
 	}
 
-	// Escape hatch: an agent explicitly mounting a disabled server opts back in.
+	// 逃生通道：Agent 显式挂载已停用的服务器即可重新选择加入。
 	ac.MCPServerIDs = []string{"mcp_off"}
 	if _, err := kit.BuildAgent(ac); err == nil || !strings.Contains(err.Error(), "停用服务") {
 		t.Fatalf("explicit mount of a disabled server must be honored, got: %v", err)

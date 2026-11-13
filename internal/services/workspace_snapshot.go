@@ -14,17 +14,16 @@ import (
 	"agentmate/internal/config"
 )
 
-// taskSnapshotVersion v2 adds per-file baseline content snapshots (see
-// taskBaselineFile.Content). A stored v1 baseline is treated as stale and
-// rebuilt so line-level diff works immediately after upgrade.
+// taskSnapshotVersion v2 增加了按文件的基线内容快照（参见
+// taskBaselineFile.Content）。已存储的 v1
+// 基线会被视为过期并重建，以便升级后行级 diff 可立即正常工作。
 const taskSnapshotVersion = 2
 
 type taskBaselineFile struct {
 	Size    int64     `json:"size"`
 	ModTime time.Time `json:"modTime"`
-	// Content is the file name (inside the session's content dir) of the
-	// baseline content snapshot, empty when the file was not snapshotable
-	// (binary, empty, or over the per-file/budget caps).
+	// Content 是基线内容快照的文件名（位于会话的 content
+	// 目录内），当文件无法生成快照（二进制、空文件或超过单文件/预算上限）时为空。
 	Content string `json:"content,omitempty"`
 }
 
@@ -81,8 +80,8 @@ func loadTaskBaselineLocked(store *config.Store, sessionID, workspace string) (*
 		baseline.Version != taskSnapshotVersion ||
 		baseline.SessionID != sessionID ||
 		!samePath(baseline.Workspace, workspace) {
-		// A corrupt or stale baseline is recoverable: preserve it as .bak and
-		// start a fresh task baseline rather than making the result pane unusable.
+		// 损坏或过期的基线可恢复：将其保留为
+		// .bak，并新建任务基线，而不是让结果窗格不可用。
 		_ = os.Rename(taskSnapshotPath(store, sessionID), taskSnapshotPath(store, sessionID)+".bak")
 		baseline, err := createTaskBaselineLocked(store, sessionID, workspace)
 		return baseline, true, err
@@ -94,8 +93,7 @@ func loadTaskBaselineLocked(store *config.Store, sessionID, workspace string) (*
 }
 
 func createTaskBaselineLocked(store *config.Store, sessionID, workspace string) (*taskBaseline, error) {
-	// A fresh baseline invalidates any content snapshots left by a previous
-	// (stale, corrupt or reset) baseline for this session.
+	// 新建基线会使该会话先前（过期、损坏或已重置）基线留下的任何内容快照失效。
 	removeTaskContent(store, sessionID)
 	files, _, _, err := scanTaskFiles(workspace)
 	if err != nil {
@@ -118,9 +116,9 @@ func createTaskBaselineLocked(store *config.Store, sessionID, workspace string) 
 	return baseline, nil
 }
 
-// snapshotBaselineContent stores the text of small files so later diffs can
-// compare against the task baseline. Best-effort: read or write failures only
-// skip the file (its diff will report missing baseline content).
+// snapshotBaselineContent 存储小文件的文本，以便后续 diff
+// 能与任务基线比较。尽力而为：读取或写入失败仅会跳过该文件（其 diff
+// 将报告缺少基线内容）。
 func snapshotBaselineContent(store *config.Store, sessionID, workspace string, files []WorkspaceFileInfo, baseline *taskBaseline) {
 	budget := int64(diffContentBudget)
 	stored := 0

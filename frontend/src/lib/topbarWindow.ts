@@ -1,6 +1,6 @@
 // 顶栏窗口控制：状态 → 图标语义映射（约定 seam）与窗口操作适配。
-// 操作适配层统一做平台降级：非桌面环境（浏览器 / stub）下全部无操作，
-// 保证 stub 视觉回归「点击按钮不报错」。
+// 操作适配层统一做平台降级：非桌面环境（浏览器 / stub）下全部无操作， 保证 stub
+// 视觉回归「点击按钮不报错」。
 import { System, Window } from "@wailsio/runtime";
 
 export type MaximiseIcon = "maximise" | "restore";

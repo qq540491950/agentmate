@@ -2,8 +2,7 @@ import { SegmentedControl } from "@/components/ui/choice";
 import { SettingRow } from "@/components/layout/PageShell";
 import { THEME_OPTIONS, normalizeThemePreset, type ThemePreset } from "@/lib/theme";
 
-/** ThemeChoice keeps the four presets in the same compact control rhythm as
- *  the other appearance settings; the live UI is the theme preview. */
+/** ThemeChoice 让四个预设与其他外观设置保持同样紧凑的控件节奏；实时 UI 就是主题预览。 */
 export function ThemeChoice({
   value,
   onChange,

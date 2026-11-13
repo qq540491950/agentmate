@@ -85,26 +85,24 @@ function blankAgent(): AgentConfig {
     maxTokens: 4096,
     skillIds: [],
     mcpServerIds: [],
-    // Empty means the full built-in set (see ALL_BUILTIN_TOOLS); removing a
-    // capability is the explicit action.
+    // 为空表示完整的内置工具集（参见
+    // ALL_BUILTIN_TOOLS）；移除某项能力属于显式操作。
     builtinTools: [],
-    // The terminal stays behind human approval by default, matching the
-    // behavior of ticking its checkbox manually.
-    // Approval defaults to the global sandbox profile; per-agent switches
-    // below are an explicit extra guardrail.
+    // 终端默认仍需人工审批，与手动勾选其复选框的行为一致。审批默认采用全局沙箱
+    // 配置；下方按 Agent 的开关是显式的额外护栏。
     confirmTools: [],
     createdAt: "",
     enableGuardrails: true,
   };
 }
 
-// ALL_BUILTIN_TOOLS mirrors config.AllBuiltinTools on the Go side. An agent
-// whose builtinTools list is empty inherits every category.
+// ALL_BUILTIN_TOOLS 与 Go 侧的 config.AllBuiltinTools 保持一致。builtinTools
+// 列表为空的 Agent 会继承所有类别。
 const ALL_BUILTIN_TOOLS = ["time", "files", "knowledge", "memory", "todos", "shell"];
 
-// MODEL_INHERIT is the select value for "follow the global default". It is
-// never persisted; choosing it clears providerId/model so the agent keeps
-// inheriting whatever the default is at run time.
+// MODEL_INHERIT 是“follow the global
+// default”的选择值。它绝不会被持久化；选择它会清空 providerId/model，使 Agent
+// 在运行时持续继承当时的默认值。
 const MODEL_INHERIT = "__inherit";
 
 function effectiveBuiltinTools(a: Pick<AgentConfig, "builtinTools">): string[] {
@@ -153,8 +151,7 @@ export function AgentsPage() {
     ? `${defaultProvider.name} / ${modelLabel(defaultModel) || "未配置模型"}`
     : "尚未配置供应商";
 
-  /** openEditor always starts on the simple first screen: only the three
-   * required fields are visible, advanced settings stay collapsed. */
+  /** openEditor 始终从简洁的首屏开始：仅显示三个必填字段，高级设置保持折叠。 */
   const openEditor = (a: AgentConfig) => {
     setAdvancedOpen(false);
     numericValidity.current = {};
@@ -179,12 +176,12 @@ export function AgentsPage() {
       toast.error("请填写系统提示词");
       return;
     }
-    // NumericField validates and blocks invalid drafts; keep the final clamp
-    // as defense in depth for imported agents or future callers.
+    // NumericField 会校验并阻止无效草稿；保留最终的钳制，作为针对导入的 Agent
+    // 或未来调用方的纵深防御。
     const temperature = Math.min(2, Math.max(0, editing.temperature || 0));
     const maxTokens = editing.maxTokens > 0 ? Math.floor(editing.maxTokens) : 0;
-    // Model and tools are optional: blank values inherit the global default
-    // provider/model and the full built-in tool set at run time.
+    // 模型和工具均为可选：留空会在运行时继承全局默认供应商/模型以及完整的内置工
+    // 具集。
     try {
       await Config.SaveAgent({ ...editing, temperature, maxTokens });
       toast.success("已保存");
@@ -237,8 +234,8 @@ export function AgentsPage() {
     setRemoteCheck(null);
     try {
       const result = await Config.CheckRemoteAgent(url);
-      // Stale-response guard: the user may have edited the URL while the
-      // check was in flight — the old result must not describe the new URL.
+      // 过期响应防护：检查仍在进行时，用户可能已经编辑了
+      // URL——旧结果不得用于描述新的 URL。
       if (remoteEditing?.cardUrl.trim() === url) setRemoteCheck(result);
     } catch (e) {
       toast.error(`连接失败: ${errText(e)}`);
@@ -302,8 +299,8 @@ export function AgentsPage() {
                     toast.warning(res.warnings.join("；"));
                   }
                   reload();
-                  // Open the editor for review; imported definitions are valid
-                  // as-is when they rely on the default model and tools.
+                  // 打开编辑器进行审阅；
+                  // 当导入的定义依赖默认模型和工具时，按原样即有效。
                   openEditor({ ...imported, skillIds: imported.skillIds ?? [], mcpServerIds: imported.mcpServerIds ?? [], builtinTools: imported.builtinTools ?? [] });
                 } catch (err) {
                   toast.error(`导入失败: ${errText(err)}`);
@@ -723,8 +720,8 @@ export function AgentsPage() {
                         const current = effectiveBuiltinTools(editing);
                         const enabled = !current.includes("shell");
                         const nextConfirm = new Set(editing.confirmTools ?? []);
-                        // Enabling the terminal defaults to HITL approval;
-                        // the switch below can turn it off deliberately.
+                        // 启用终端时默认采用 HITL 审批；
+                        // 下方的开关可以有意将其关闭。
                         if (enabled) nextConfirm.add("shell");
                         else nextConfirm.delete("shell");
                         setEditing({

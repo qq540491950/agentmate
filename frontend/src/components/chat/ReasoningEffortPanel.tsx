@@ -16,10 +16,10 @@ type ReasoningEffortPanelProps = {
 };
 
 /**
- * ReasoningEffortPanel is the Codex-style reasoning card: the active level is
- * the headline, the model is a quiet row that opens the model list, and the
- * levels form one thick slider with a dot per stop. It is presentational so
- * the popover shell and persistence stay in ChatPage.
+ * ReasoningEffortPanel 是 Codex
+ * 风格的推理卡片：当前级别作为主标题，模型是打开模型列表的低调一行，各级别组成
+ * 一个粗滑块，每个停靠点对应一个圆点。该组件仅负责展示，因此弹出层外壳和持久化
+ * 仍留在 ChatPage。
  */
 export function ReasoningEffortPanel({
   levels,

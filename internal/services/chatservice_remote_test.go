@@ -18,12 +18,12 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// TestChatRemoteAgentE2E hosts a real llmagent behind an in-process A2A
-// server (official a2asrv + ADK executor recipe, same wiring as the ADK
-// launcher) and drives a full chat turn through
-// ChatService -> ADK remote agent -> A2A -> remote llmagent -> SQLite history.
+// TestChatRemoteAgentE2E 在进程内 A2A 服务器后面托管一个真实的 llmagent（官方
+// a2asrv + ADK executor 方案，与 ADK 启动器的连接方式相同），并通过 ChatService
+// -> ADK remote agent -> A2A -> remote llmagent -> SQLite history
+// 驱动一个完整的聊天回合。
 func TestChatRemoteAgentE2E(t *testing.T) {
-	// Remote model: honors both call modes the remote executor may use.
+	// 远程模型：遵循远程执行器可能使用的两种调用模式。
 	modelSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(readAll(r), `"stream":false`) {
 			w.Header().Set("Content-Type", "application/json")
@@ -50,7 +50,7 @@ func TestChatRemoteAgentE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Host it over A2A (card discovery + JSON-RPC invoke).
+	// 通过 A2A 托管它（卡片发现 + JSON-RPC 调用）。
 	_, serverSessions, err := newTestSessionService(t, filepath.Join(t.TempDir(), "server.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestChatRemoteAgentE2E(t *testing.T) {
 	a2aMux.Handle(a2asrv.WellKnownAgentCardPath, a2asrv.NewStaticAgentCardHandler(card))
 	a2aMux.Handle("/a2a/v1/invoke", a2asrv.NewJSONRPCHandler(a2asrv.NewHandler(executor)))
 
-	// Local app config: one remote agent pointing at the A2A server.
+	// 本地应用配置：一个指向 A2A 服务器的远程 Agent。
 	dir := t.TempDir()
 	store, err := config.Open(dir)
 	if err != nil {
@@ -128,7 +128,7 @@ func TestChatRemoteAgentE2E(t *testing.T) {
 		t.Fatalf("remote chat incomplete: user=%v answer=%v\n%+v", sawUser, sawAnswer, msgs)
 	}
 
-	// The remote agent card is discoverable for the connectivity check.
+	// 远程 Agent 卡片可供连通性检查发现。
 	info, err := agentkit.CheckRemoteAgent(t.Context(), a2aSrv.URL)
 	if err != nil {
 		t.Fatal(err)

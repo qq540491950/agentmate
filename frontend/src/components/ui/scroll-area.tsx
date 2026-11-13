@@ -8,16 +8,16 @@ function ScrollArea({
   viewportRef,
   ...props
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
-  /** The scrolling element, for "am I at the bottom?" checks. */
+  /** 滚动元素，用于"am I at the bottom?"这类检查。 */
   viewportRef?: React.Ref<HTMLDivElement>
 }) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
-      // overflow-hidden is load-bearing: as a flex-1 child of a fixed-height
-      // column it resets the automatic min-size so flexbox can shrink the
-      // area below its content height; otherwise long chats push the composer
-      // out of the window and the area itself can never scroll.
+      // overflow-hidden 是关键：作为固定高度列中的 flex-1 子项，它会重置自动
+      // min-size，使 flexbox
+      // 能将区域收缩到其内容高度以下；否则，长会话会把输入框挤出窗口，而该区域
+      // 本身绝不能滚动。
       className={cn("relative overflow-hidden", className)}
       {...props}
     >

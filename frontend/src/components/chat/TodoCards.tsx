@@ -6,19 +6,22 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-/** TodoItem mirrors the plan_todos tool payload. */
+/** TodoItem 与 plan_todos 工具的载荷一一对应。 */
 export type TodoItem = { content: string; status: string };
 
-/** TodoListCard renders the model's session plan (plan_todos result) as a
- * checklist so multi-step work is legible at a glance. The list collapses
- * once every step is done; a live plan stays open by default. */
+/**
+ * TodoListCard 将模型的会话计划（plan_todos
+ * 的结果）渲染为清单，使多步骤工作一眼可读。所有步骤完成后列表会折叠；进行中的
+ * 计划默认保持展开。
+ */
 export function TodoListCard({ resp }: { resp: { [k: string]: any } | null }) {
   const todos: TodoItem[] = Array.isArray(resp?.todos) ? resp.todos : [];
   const done = todos.filter((t) => t.status === "completed").length;
   const allDone = todos.length > 0 && done === todos.length;
   const active = todos.filter((t) => t.status === "in_progress");
-  // null follows the plan state: in-progress plans start open, settled plans
-  // start folded. A click wins for the lifetime of this card.
+  // null
+  // 表示跟随计划状态：进行中的计划初始为展开，已结束的计划初始为折叠。在本卡片
+  // 的整个生命周期内，一旦点击则以点击结果为准。
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
   const expanded = userExpanded ?? !allDone;
   if (todos.length === 0) return null;
@@ -62,8 +65,7 @@ export function TodoListCard({ resp }: { resp: { [k: string]: any } | null }) {
   );
 }
 
-/** TodoChecklist is the shared checklist body used by the inline card and the
- * header popover. */
+/** TodoChecklist 是内联卡片与头部弹出层共用的清单主体。 */
 export function TodoChecklist({ todos }: { todos: TodoItem[] }) {
   return (
     <ul className="space-y-1.5">
@@ -89,8 +91,7 @@ export function TodoChecklist({ todos }: { todos: TodoItem[] }) {
   );
 }
 
-/** PlanChip is the compact header entry point for the current plan. It opens
- * a popover instead of occupying a persistent bar above the composer. */
+/** PlanChip 是当前计划在头部的紧凑入口。它打开一个弹出层，而不是在输入区上方占用一条常驻栏。 */
 export function PlanChip({ todos, running, waiting = false, onDismiss }: {
   todos: TodoItem[];
   running: boolean;

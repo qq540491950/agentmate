@@ -10,8 +10,7 @@ import (
 	"agentmate/internal/config"
 )
 
-// TestKnowledgeFileManagement covers listing, traversal guarding and deletion
-// of workspace knowledge files.
+// TestKnowledgeFileManagement 覆盖工作区知识文件的列出、遍历防护与删除。
 func TestKnowledgeFileManagement(t *testing.T) {
 	dir := t.TempDir()
 	workspace := t.TempDir()
@@ -41,7 +40,7 @@ func TestKnowledgeFileManagement(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// Distinct mtimes: b.md written last => newest first in the listing.
+	// 不同的 mtime：b.md 最后写入 => 在列表中最新者优先。
 	if err := os.Chtimes(filepath.Join(kb, "a.md"), now.Add(-time.Hour), now.Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
@@ -56,12 +55,12 @@ func TestKnowledgeFileManagement(t *testing.T) {
 	if len(files) != 2 {
 		t.Fatalf("expected 2 files, got %+v", files)
 	}
-	// b.md written last => newest first.
+	// b.md 最后写入 => 最新者优先。
 	if files[0].Name != "b.md" {
 		t.Fatalf("expected newest first: %+v", files)
 	}
 
-	// Nested files are listed with slash-separated relative paths.
+	// 嵌套文件以斜杠分隔的相对路径列出。
 	nested := filepath.Join(kb, "docs", "sub")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
@@ -83,7 +82,7 @@ func TestKnowledgeFileManagement(t *testing.T) {
 		t.Fatalf("nested file missing from listing: %+v", files)
 	}
 
-	// Traversal-guarded deletion.
+	// 带遍历防护的删除。
 	if err := svc.DeleteKnowledgeFile("../secret.txt"); err == nil {
 		t.Fatal("expected traversal rejection")
 	}
@@ -107,8 +106,7 @@ func TestKnowledgeFileManagement(t *testing.T) {
 	}
 }
 
-// TestCreateKnowledgeFile: creation succeeds, refuses duplicates, refuses
-// traversal names, and refuses empty content.
+// TestCreateKnowledgeFile：创建成功，拒绝重复项，拒绝遍历名称，并拒绝空内容。
 func TestCreateKnowledgeFile(t *testing.T) {
 	dir := t.TempDir()
 	workspace := t.TempDir()

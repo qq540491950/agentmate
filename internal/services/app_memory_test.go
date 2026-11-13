@@ -13,9 +13,9 @@ import (
 	"agentmate/internal/memory"
 )
 
-// TestMemoryStatsAndClear: the remember flow feeds the store, stats report
-// the entries, and clear wipes them. The auto subtest exercises the settings
-// driven ingestion instead of the manual RememberSession call.
+// TestMemoryStatsAndClear：remember 流程向存储写入数据，stats
+// 报告这些条目，clear 将它们清除。auto
+// 子测试验证由设置驱动的摄取，而不是手动调用 RememberSession。
 func TestMemoryStatsAndClear(t *testing.T) {
 	t.Run("manual", func(t *testing.T) { testMemoryStatsAndClear(t, false) })
 	t.Run("auto", func(t *testing.T) { testMemoryStatsAndClear(t, true) })

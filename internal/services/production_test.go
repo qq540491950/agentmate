@@ -36,7 +36,7 @@ func TestSendTurnKeepsSessionUsableAfterFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Unreachable provider: the turn fails but the app must stay healthy.
+	// 供应商不可达：回合失败，但应用必须保持健康。
 	_ = store.Update(func(cfg *config.Config) {
 		cfg.Providers = append(cfg.Providers, config.ModelProvider{
 			ID: "p1", Name: "X", Protocol: config.ProtocolOpenAI, BaseURL: "http://127.0.0.1:1", Models: []config.ModelInfo{{ID: "m"}},
@@ -48,13 +48,13 @@ func TestSendTurnKeepsSessionUsableAfterFailure(t *testing.T) {
 	if _, err := chat.GetSessionMessages(sess.ID); err != nil {
 		t.Fatalf("session unusable after failed turn: %v", err)
 	}
-	// An error event was surfaced to the UI.
+	// 已向 UI 暴露错误事件。
 	if len(events) == 0 {
 		t.Fatal("expected stream events for the failed turn")
 	}
 }
 
-// A corrupted sessions database is backed up and recreated transparently.
+// TestCorruptSessionDBSelfHeals 损坏的会话数据库会被备份并透明地重新创建。
 func TestCorruptSessionDBSelfHeals(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sessions.db")
@@ -75,7 +75,8 @@ func TestCorruptSessionDBSelfHeals(t *testing.T) {
 	_ = db
 }
 
-// config.json must be 0600 since it holds API keys.
+// TestConfigFilePermissionRestricted config.json 必须为 0600，因为它保存 API
+// 密钥。
 func TestConfigFilePermissionRestricted(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows 无 POSIX 权限位语义（Chmod 0600 不生效）；文件仍受用户目录 ACL 保护")

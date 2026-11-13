@@ -8,15 +8,13 @@ import (
 	"unicode/utf8"
 )
 
-// maxAgentGuideBytes is the advisory size threshold for one engineering-guide
-// file, mirroring the @-mention single-file cap. Guides are never truncated:
-// an oversize file is injected in full with a trailing warning, so the model
-// knows its context is crowded and the user learns the file deserves a trim.
+// maxAgentGuideBytes 是单个工程指南文件的建议性大小阈值，与 @-mention
+// 单文件上限保持一致。指南绝不截断：超大文件会完整注入，并在末尾附带一条警告，
+// 因此模型知道其上下文已拥挤，用户也会知道该文件值得精简。
 const maxAgentGuideBytes = 48 << 10
 
-// GlobalAgentsFile is the user-level engineering guide: ~/.agents/AGENTS.md
-// (%USERPROFILE%\.agents\AGENTS.md on Windows). Empty when the home directory
-// cannot be resolved.
+// GlobalAgentsFile 是用户级工程指南：~/.agents/AGENTS.md（Windows 上为
+// %USERPROFILE%\.agents\AGENTS.md）。无法解析主目录时为空。
 func GlobalAgentsFile() string {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" {
@@ -25,12 +23,12 @@ func GlobalAgentsFile() string {
 	return filepath.Join(home, ".agents", "AGENTS.md")
 }
 
-// EffectiveAgentGuides returns the engineering-guide blocks injected into a
-// local agent's system instruction: the user-level global guide first, then
-// the effective workspace root AGENTS.md — conflicts resolve to the later,
-// more specific block. Files are injected in full, never truncated; a single
-// file over maxAgentGuideBytes carries a trailing Chinese warning. Missing,
-// unreadable, or empty files are skipped: guides must never block a session.
+// EffectiveAgentGuides 返回注入本地 Agent
+// 系统指令的工程指南块：先是用户级全局指南，然后是生效的工作区根
+// AGENTS.md——冲突时以靠后的、更具体的块为准。文件会完整注入，绝不截断；单个文件
+// 超过 maxAgentGuideBytes
+// 时，末尾会附带中文警告。缺失、不可读或为空的文件会被跳过：指南必须绝不阻塞会
+// 话。
 func EffectiveAgentGuides(workspace, globalFile string) []string {
 	var out []string
 	if f := strings.TrimSpace(globalFile); f != "" {

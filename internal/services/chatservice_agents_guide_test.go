@@ -19,10 +19,10 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// newGuideTestChat wires a ChatService against a scripted SSE model server
-// whose requests are forwarded to a channel, with the user-level
-// ~/.agents/AGENTS.md seeded through the home-dir environment before the
-// Kit (and its global guide path) is built.
+// newGuideTestChat 将 ChatService 接入一个脚本化的 SSE
+// 模型服务器，该服务器的请求会被转发到一个 channel，并在构建
+// Kit（及其全局指南路径）之前，通过 home 目录环境变量预置用户级
+// ~/.agents/AGENTS.md。
 func newGuideTestChat(t *testing.T) (*ChatService, <-chan string, string) {
 	t.Helper()
 	bodies := make(chan string, 8)
@@ -35,7 +35,7 @@ func newGuideTestChat(t *testing.T) (*ChatService, <-chan string, string) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
+	t.Setenv("USERPROFILE", home) // Windows 上的 os.UserHomeDir
 	globalDir := filepath.Join(home, ".agents")
 	if err := os.Mkdir(globalDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -74,9 +74,9 @@ func newGuideTestChat(t *testing.T) (*ChatService, <-chan string, string) {
 	return NewChatService(svc, sessions, db), bodies, home
 }
 
-// TestAgentsGuideConfiguredAgentInjectsGlobalThenWorkspace asserts the
-// workspace AGENTS.md and the global ~/.agents/AGENTS.md both reach the model,
-// global first, after the agent's own role prompt.
+// TestAgentsGuideConfiguredAgentInjectsGlobalThenWorkspace 断言工作区 AGENTS.md
+// 和全局 ~/.agents/AGENTS.md 都会到达模型，位于 Agent
+// 自身的角色提示词之后，且全局在前。
 func TestAgentsGuideConfiguredAgentInjectsGlobalThenWorkspace(t *testing.T) {
 	chat, bodies, _ := newGuideTestChat(t)
 	workspace := t.TempDir()
@@ -107,8 +107,8 @@ func TestAgentsGuideConfiguredAgentInjectsGlobalThenWorkspace(t *testing.T) {
 	}
 }
 
-// TestAgentsGuideDirectAssistantInjectsGlobal asserts the implicit direct
-// assistant also loads the global engineering guide without any agent config.
+// TestAgentsGuideDirectAssistantInjectsGlobal 断言隐式直接助手在没有任何 Agent
+// 配置的情况下也会加载全局工程指南。
 func TestAgentsGuideDirectAssistantInjectsGlobal(t *testing.T) {
 	chat, bodies, _ := newGuideTestChat(t)
 	sess, err := chat.newLegacySession("", "", "")
@@ -124,12 +124,12 @@ func TestAgentsGuideDirectAssistantInjectsGlobal(t *testing.T) {
 	}
 }
 
-// TestAgentsGuideOversizeWarns asserts a >48KB guide reaches the model in
-// full with a trailing size warning instead of being truncated.
+// TestAgentsGuideOversizeWarns 断言大于 48KB
+// 的指南会完整到达模型，并附带末尾的大小警告，而不会被截断。
 func TestAgentsGuideOversizeWarns(t *testing.T) {
 	chat, bodies, _ := newGuideTestChat(t)
 	workspace := t.TempDir()
-	content := strings.Repeat("超长项目约定", 10000) // 180,000 bytes, above the 48KB threshold
+	content := strings.Repeat("超长项目约定", 10000) // 180,000 字节，超过 48KB 阈值
 	if err := os.WriteFile(filepath.Join(workspace, "AGENTS.md"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -149,8 +149,8 @@ func TestAgentsGuideOversizeWarns(t *testing.T) {
 	}
 }
 
-// TestAgentsGuideMissingKeepsBaseline asserts a home and workspace without any
-// AGENTS.md leaves the request exactly as before — no empty guide blocks.
+// TestAgentsGuideMissingKeepsBaseline 断言不含任何 AGENTS.md 的 home
+// 目录和工作区会让请求与之前完全一致——不会出现空的指南块。
 func TestAgentsGuideMissingKeepsBaseline(t *testing.T) {
 	chat, bodies, home := newGuideTestChat(t)
 	if err := os.Remove(filepath.Join(home, ".agents", "AGENTS.md")); err != nil {
@@ -172,8 +172,7 @@ func TestAgentsGuideMissingKeepsBaseline(t *testing.T) {
 	}
 }
 
-// TestAgentsGuideWorkspaceOnly asserts a workspace guide reaches the model on
-// its own, with no global guide present.
+// TestAgentsGuideWorkspaceOnly 断言在不存在全局指南的情况下，工作区指南会单独到达模型。
 func TestAgentsGuideWorkspaceOnly(t *testing.T) {
 	chat, bodies, home := newGuideTestChat(t)
 	if err := os.Remove(filepath.Join(home, ".agents", "AGENTS.md")); err != nil {
@@ -199,8 +198,8 @@ func TestAgentsGuideWorkspaceOnly(t *testing.T) {
 	}
 }
 
-// TestAgentsGuidePrecedesSkillContext asserts the /skill body still appends
-// after the engineering guides: role prompt -> guides -> skill context.
+// TestAgentsGuidePrecedesSkillContext 断言 /skill
+// 正文仍追加在工程指南之后：角色提示词 -> 指南 -> 技能上下文。
 func TestAgentsGuidePrecedesSkillContext(t *testing.T) {
 	chat, bodies, _ := newGuideTestChat(t)
 	workspace := t.TempDir()
@@ -225,8 +224,8 @@ func TestAgentsGuidePrecedesSkillContext(t *testing.T) {
 	}
 }
 
-// TestAgentsGuideRemoteAgentUnaffected asserts a remote A2A agent never sees
-// the local engineering guides: local context stays local.
+// TestAgentsGuideRemoteAgentUnaffected 断言远程 A2A Agent
+// 绝不看到本地工程指南：本地上下文保持本地。
 func TestAgentsGuideRemoteAgentUnaffected(t *testing.T) {
 	remoteBodies := make(chan string, 4)
 	modelSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -273,7 +272,7 @@ func TestAgentsGuideRemoteAgentUnaffected(t *testing.T) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir 在 Windows 上
 	if err := os.Mkdir(filepath.Join(home, ".agents"), 0o700); err != nil {
 		t.Fatal(err)
 	}

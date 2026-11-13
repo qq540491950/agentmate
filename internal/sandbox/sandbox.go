@@ -1,8 +1,7 @@
-// Package sandbox runs local child processes behind an OS-enforced policy.
+// Package sandbox 在操作系统强制执行的策略下运行本地子进程。
 //
-// The package is deliberately independent of agentkit and mcpmgr so both
-// shell commands and stdio MCP servers can share one execution contract
-// without an import cycle.
+// 该包刻意独立于 agentkit 和 mcpmgr，以便 shell 命令和 stdio MCP
+// 服务器能够共享同一执行契约，而不会产生导入循环。
 package sandbox
 
 import (
@@ -21,23 +20,20 @@ import (
 	"time"
 )
 
-// Mode selects the filesystem boundary for a child process.
+// Mode 选择子进程的文件系统边界。
 type Mode string
 
 const (
-	// ModeReadOnly permits reading the workspace but denies every write. It is
-	// enforced by the OS backend for child processes and by Policy.CheckWrite
-	// for in-process file tools.
+	// ModeReadOnly 允许读取工作区，但拒绝所有写入。对于子进程，它由操作系统后端强制执行；对于进
+	// 程内文件工具，它由 Policy.CheckWrite 强制执行。
 	ModeReadOnly Mode = "read-only"
-	// ModeWorkspaceWrite permits writes only under the workspace and explicit
-	// writable roots. It is the default for every local tool.
+	// ModeWorkspaceWrite 仅允许在工作区和显式可写根目录下写入。它是每个本地工具的默认值。
 	ModeWorkspaceWrite Mode = "workspace-write"
-	// ModeDangerFullAccess removes the sandbox. It must only be selected by
-	// an explicit user decision.
+	// ModeDangerFullAccess 会移除沙箱。它必须仅由用户明确决定来选用。
 	ModeDangerFullAccess Mode = "danger-full-access"
 )
 
-// Network selects whether the child may reach the network.
+// Network 选择子进程是否可以访问网络。
 type Network string
 
 const (
@@ -45,49 +41,48 @@ const (
 	NetworkOn  Network = "on"
 )
 
-// Policy is the complete execution policy for one child process.
+// Policy 是单个子进程的完整执行策略。
 type Policy struct {
 	Mode           Mode
 	Network        Network
 	Workspace      string
 	WritableRoots  []string
 	ProtectedPaths []string
-	// ProxyURL is injected only into sandboxed child environments as
-	// HTTP_PROXY/HTTPS_PROXY. Direct (danger-full-access) execution ignores it
-	// and keeps inheriting the caller's environment.
+	// ProxyURL 仅作为 HTTP_PROXY/HTTPS_PROXY
+	// 注入沙箱子进程环境。直接（danger-full-access）执行会忽略它，并继续继承调用方
+	// 的环境。
 	ProxyURL string
-	// ExtraEnv is for explicitly configured values (for example a stdio MCP
-	// server's own environment). It is appended after the sanitized base
-	// environment, so it can intentionally provide a server-specific secret.
+	// ExtraEnv 用于显式配置的值（例如 stdio MCP
+	// 服务器自身的环境）。它会被追加到经过清理的基础环境之后，因此可以有意提供服务
+	// 器专属的密钥。
 	ExtraEnv []string
 }
 
-// Request describes one child process.
+// Request 描述一个子进程。
 type Request struct {
 	Command     string
 	Args        []string
 	Dir         string
 	Timeout     time.Duration
 	OutputLimit int
-	// Env is used only by the direct danger-full-access backend. Sandboxed
-	// runs build their environment from Policy.
+	// Env 仅由直接的 danger-full-access 后端使用。沙箱运行会根据 Policy
+	// 构建其环境。
 	Env []string
 }
 
-// Result is the observable result of one child process.
+// Result 是一个子进程的可观测结果。
 type Result struct {
 	ExitCode  int
 	Output    string
 	Truncated bool
 	TimedOut  bool
-	// Denied is reserved for policy denials that happen before a process
-	// starts. OS-level denials normally surface as a non-zero exit code.
+	// Denied 保留给在进程启动前发生的策略拒绝。操作系统级的拒绝通常表现为非零退出码。
 	Denied       bool
 	DeniedCode   string
 	DeniedReason string
 }
 
-// Status describes the platform backend and its readiness.
+// Status 描述平台后端及其就绪状态。
 type Status struct {
 	Available  bool
 	Backend    string
@@ -95,11 +90,11 @@ type Status struct {
 	ProfileSID string
 }
 
-// ErrUnavailable means the OS backend could not be initialized. Callers must
-// fail closed and must not retry through a direct exec path.
+// ErrUnavailable 表示操作系统后端无法初始化。调用方必须失败关闭，且不得通过直接
+// exec 路径重试。
 var ErrUnavailable = errors.New("沙箱不可用")
 
-// DefaultPolicy returns the safe default for a task workspace.
+// DefaultPolicy 返回任务工作区的安全默认值。
 func DefaultPolicy(workspace string) Policy {
 	ws := strings.TrimSpace(workspace)
 	ws = canonicalRoot(ws)
@@ -112,28 +107,27 @@ func DefaultPolicy(workspace string) Policy {
 	return p
 }
 
-// WithProtected adds paths to the protected set.
+// WithProtected 将路径添加到受保护集合。
 func (p Policy) WithProtected(paths ...string) Policy {
 	p.ProtectedPaths = append(append([]string(nil), p.ProtectedPaths...), paths...)
 	return p.normalized()
 }
 
-// WithWritableRoots adds paths that may be written by the child.
+// WithWritableRoots 添加可以由子进程写入的路径。
 func (p Policy) WithWritableRoots(paths ...string) Policy {
 	p.WritableRoots = append(append([]string(nil), p.WritableRoots...), paths...)
 	return p.normalized()
 }
 
-// WithProxy sets the proxy exposed to sandboxed children. An empty URL keeps
-// proxy variables out of the child environment.
+// WithProxy 设置暴露给沙箱内子进程的代理。空 URL
+// 会将代理变量排除在子进程环境之外。
 func (p Policy) WithProxy(proxyURL string) Policy {
 	p.ProxyURL = strings.TrimSpace(proxyURL)
 	return p
 }
 
-// WithExtraEnv appends explicitly configured child environment entries. The
-// shell adapter uses this instead of Request.Env so the same values apply to
-// both the sandboxed and danger-full-access backends.
+// WithExtraEnv 追加显式配置的子进程环境条目。shell 适配器使用它而不是
+// Request.Env，以便相同的值同时应用于沙箱后端和 danger-full-access 后端。
 func (p Policy) WithExtraEnv(env ...string) Policy {
 	p.ExtraEnv = append(append([]string(nil), p.ExtraEnv...), env...)
 	return p
@@ -173,8 +167,8 @@ func (p Policy) validate() error {
 	return nil
 }
 
-// CheckWrite reports whether path may be written. The returned code is stable
-// for tool-result consumers; reason is user-facing Chinese text.
+// CheckWrite 报告 path 是否可以被写入。返回的 code
+// 对工具结果消费方是稳定的；reason 是面向用户的中文文本。
 func (p Policy) CheckWrite(path string) (bool, string, string) {
 	p = p.normalized()
 	if p.Mode == ModeDangerFullAccess {
@@ -204,11 +198,9 @@ var protectedWritePattern = regexp.MustCompile(
 	`(?i)(>>?|\bcopy\b|\bmove\b|\bdel\b|\berase\b|\brmdir\b|\brm\b|\bmkdir\b|\btouch\b|\bset-content\b|\bout-file\b|\bnew-item\b)[^\r\n]{0,120}(\.git|\.agents|\.codex)`,
 )
 
-// CheckCommand is a defense-in-depth preflight for shell commands that
-// obviously redirect or copy into a protected path. It is deliberately not a
-// security boundary: the OS sandbox and the file-tool policy remain the hard
-// controls. A command such as "git status" must keep working even though git
-// maintains metadata under .git.
+// CheckCommand 是针对明显会重定向或复制到受保护路径的 shell
+// 命令的纵深防御预检。它有意不是安全边界：操作系统沙箱和文件工具策略仍是硬性控
+// 制。诸如 "git status" 的命令必须继续正常工作，即使 git 在 .git 下维护元数据。
 func (p Policy) CheckCommand(command string) (bool, string, string) {
 	if p.normalized().Mode == ModeDangerFullAccess {
 		return true, "", ""
@@ -219,9 +211,8 @@ func (p Policy) CheckCommand(command string) (bool, string, string) {
 	return true, "", ""
 }
 
-// Run executes one child process. Read-only and workspace-write policies never
-// silently fall back to direct execution when the platform backend is
-// unavailable.
+// Run 执行一个子进程。当平台后端不可用时，只读和 workspace-write
+// 策略绝不静默回退到直接执行。
 func Run(ctx context.Context, req Request, policy Policy) (Result, error) {
 	policy = policy.normalized()
 	if err := policy.validate(); err != nil {
@@ -262,17 +253,17 @@ func Run(ctx context.Context, req Request, policy Policy) (Result, error) {
 	return runPlatform(ctx, req, policy)
 }
 
-// Available reports whether the current platform can enforce a confined mode.
+// Available 报告当前平台是否可以强制执行受限模式。
 func Available() bool {
 	return statusPlatform().Available
 }
 
-// BackendStatus exposes backend diagnostics for the settings UI.
+// BackendStatus 为设置 UI 暴露后端诊断信息。
 func BackendStatus() Status {
 	return statusPlatform()
 }
 
-// Close releases cached backend resources (profile ACLs and job handles).
+// Close 释放缓存的后端资源（profile ACL 和作业句柄）。
 func Close() {
 	closePlatform()
 }
@@ -450,16 +441,16 @@ func withinPath(root, target string) bool {
 	return true
 }
 
-// Within reports whether target is root or lives under root. Both sides are
-// canonicalized first: Windows 8.3 spellings (RUNNER~1) and symlinked temp
-// directories must compare as the same tree, or a workspace inside the app
-// directory is misread as outside it and gets protected wholesale.
+// Within 报告 target 是 root 本身，还是位于 root
+// 之下。两侧都会先被规范化：Windows 8.3
+// 写法（RUNNER~1）和符号链接的临时目录必须按同一棵树进行比较，否则应用目录内的
+// 工作区会被误读为在其外部，并被整体保护。
 func Within(root, target string) bool {
 	return withinPath(canonicalRoot(root), canonicalRoot(target))
 }
 
-// sanitizedEnvironment builds a minimal environment for a sandboxed child.
-// It intentionally drops every parent variable not in the runtime allowlist.
+// sanitizedEnvironment 为沙箱中的子进程构建最小环境。
+// 它会刻意丢弃每一个不在运行时允许列表中的父进程变量。
 func sanitizedEnvironment(home string, extra []string) []string {
 	allowed := map[string]bool{
 		"PATH": true, "PATHEXT": true, "SYSTEMROOT": true, "SYSTEMDRIVE": true,
@@ -508,17 +499,16 @@ func sanitizedEnvironment(home string, extra []string) []string {
 	return out
 }
 
-// sandboxEnvironment returns environment values that apply only to confined
-// children. The direct backend never calls this helper, so a configured proxy
-// cannot silently replace the parent environment in danger-full-access mode.
+// sandboxEnvironment 返回仅适用于受限子进程的环境变量值。直接后端绝不调用此辅助函数，因此已配置的
+// 代理无法在 danger-full-access 模式下静默替换父进程环境。
 func (p Policy) sandboxEnvironment() []string {
 	env := proxyEnvironment(p.ProxyURL)
 	return append(env, p.ExtraEnv...)
 }
 
-// proxyEnvironment maps the single in-app proxy setting to the variables HTTP
-// clients conventionally consume. Loopback stays direct, matching the global
-// transport's no-proxy carve-out for local model and MCP endpoints.
+// proxyEnvironment 将应用内单一的代理设置映射为 HTTP
+// 客户端通常使用的变量。环回地址保持直连，与全局传输针对本地模型和 MCP
+// 端点的无代理豁免一致。
 func proxyEnvironment(proxyURL string) []string {
 	proxyURL = strings.TrimSpace(proxyURL)
 	if proxyURL == "" {

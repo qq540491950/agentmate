@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
 
 export type RailTurn = {
   id: string;
-  /** text is the truncated snippet used for the bar width and a11y label. */
+  /** text 是用于条形宽度和无障碍标签的截断片段。 */
   text: string;
-  /** fullText feeds the one-line hover/focus label. */
+  /** fullText 为单行悬停/聚焦标签提供内容。 */
   fullText: string;
 };
 
@@ -19,22 +19,25 @@ type RailLabel = {
   maxWidth: number;
 };
 
-// Bar widths are a fixed class ladder: dynamic w-* classes would be purged.
+// 条形宽度采用固定的 class 阶梯：动态的 w-* class 会被清除。
 const BAR_WIDTHS = ["w-3", "w-3.5", "w-4", "w-5", "w-6", "w-7"] as const;
 const EXPANDED_BAR_WIDTH = "w-10";
 const EXPANDED_BAR_WIDTH_REM = 2.5;
 const LABEL_MAX_WIDTH = 280;
 
-/** railBarWidth returns the static width class for a bar. A hovered/focused
- *  bar uses the fixed w-10 tier so it visibly extends to the right; every
- *  other bar keeps its text-length width. */
+/**
+ * railBarWidth 返回条形的静态宽度 class。悬停/聚焦的条形使用固定的 w-10
+ * 档位，因此会明显向右延伸；其余每个条形保持按文本长度计算的宽度。
+ */
 export function railBarWidth(text: string, expanded: boolean): string {
   return expanded ? EXPANDED_BAR_WIDTH : BAR_WIDTHS[Math.min(BAR_WIDTHS.length - 1, Math.floor(text.length / 60))];
 }
 
-/** railLabelText is the compact one-line label shown beside a rail bar. It
- *  prefers the input's short first line, then falls back to a truncated
- *  single-line prompt. Empty inputs still get a turn number. */
+/**
+ * railLabelText
+ * 是显示在导航栏条形旁的紧凑单行标签。它优先采用输入内容较短的首行，然后回退为
+ * 截断的单行提示词。空输入仍会获得回合编号。
+ */
 export function railLabelText(text: string, index: number): string {
   const trimmed = text.trim();
   if (!trimmed) return `第 ${index + 1} 轮`;
@@ -43,9 +46,11 @@ export function railLabelText(text: string, index: number): string {
   return line.length > 60 ? `${line.slice(0, 60)}…` : line;
 }
 
-/** railLabelGeometry places the compact label just to the right of its bar,
- *  vertically centred on it. The label floats over the output column instead
- *  of reserving layout space, and is clamped to the viewport. */
+/**
+ * railLabelGeometry
+ * 将紧凑标签放在其条形正右侧，并在垂直方向与其居中对齐。该标签浮在输出列上方，
+ * 而不是预留布局空间，并且会被限制在视口内。
+ */
 export function railLabelGeometry(
   barRight: number,
   barTop: number,
@@ -58,12 +63,13 @@ export function railLabelGeometry(
   return { top, left, maxWidth };
 }
 
-/** TurnRail is the slim left-edge navigator: one bar per user input, the turn
- *  the reader is currently at highlighted. Clicking a bar scrolls that turn
- *  into view. Hovering/focusing a bar grows it to the right and shows a compact
- *  one-line label beside it, floating over the output column; leaving the bar
- *  restores its original width. It hides below md and for trivial chats
- *  (fewer than two turns). */
+/**
+ * TurnRail
+ * 是左侧细长的导航器：每个用户输入对应一个条形，读者当前所在的回合会高亮显示。
+ * 点击某个条形会将该回合滚动到视野内。悬停/聚焦某个条形会使其向右变宽，并在其旁
+ * 边显示紧凑的单行标签，该标签浮于输出列之上；离开该条形会恢复其原始宽度。它在
+ * md 以下以及简单聊天（少于两个回合）中隐藏。
+ */
 export const TurnRail = memo(function TurnRail({ turns, activeId, onSelect, className }: {
   turns: RailTurn[];
   activeId: string | null;
@@ -91,8 +97,8 @@ export const TurnRail = memo(function TurnRail({ turns, activeId, onSelect, clas
 
   useEffect(() => () => cancelClose(), [cancelClose]);
 
-  // A sidebar toggle re-centres the chat column without firing resize/scroll;
-  // close the fixed label so it cannot linger over the output.
+  // 侧边栏开关会重新居中聊天列，而不会触发
+  // resize/scroll；关闭固定标签，以免其滞留在输出内容上方。
   useEffect(() => {
     const close = () => {
       setLabel(null);
@@ -102,8 +108,8 @@ export const TurnRail = memo(function TurnRail({ turns, activeId, onSelect, clas
     return () => window.removeEventListener("wb-sidebar-toggled", close);
   }, []);
 
-  // A viewport scroll/resize invalidates the fixed portal coordinates; close
-  // instead of leaving the label detached from its bar.
+  // 视口滚动/调整大小会使固定定位的 portal
+  // 坐标失效；应关闭标签，而不是让它与对应的条脱节。
   useEffect(() => {
     if (!label) return;
     const close = () => {
@@ -122,10 +128,9 @@ export const TurnRail = memo(function TurnRail({ turns, activeId, onSelect, clas
     cancelClose();
     setHoveredId(turn.id);
     const barRect = el.getBoundingClientRect();
-    // The hovered/focused bar expands to w-10 (2.5rem). Read the final width
-    // from the root font size instead of barRect.width: the transition means
-    // getBoundingClientRect() still reports the old width on the frame that
-    // focus/mouse-enter fires.
+    // 悬停/聚焦的条会展开到 w-10（2.5rem）。应从根字号读取最终宽度，而不是用
+    // barRect.width：由于过渡动画的存在，在 focus/mouse-enter
+    // 触发的那一帧，getBoundingClientRect() 仍会返回旧宽度。
     const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
     const labelRight = barRect.left + Math.max(barRect.width, rootFontSize * EXPANDED_BAR_WIDTH_REM);
     setLabel({

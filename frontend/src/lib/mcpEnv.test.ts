@@ -22,8 +22,8 @@ describe("envToText round-trip", () => {
     expect(parseEnvText(envToText(env))).toEqual(env);
   });
   it("documents the newline-in-value limitation", () => {
-    // A value holding a newline cannot survive the line-based editor: the
-    // tail becomes an orphan line and is dropped. Imported configs only.
+    // 包含换行符的值无法在基于行的编辑器中保留：尾部会变成孤立行并被丢弃。仅限
+    // 导入的配置。
     const env = { A: "line1\nline2" };
     expect(parseEnvText(envToText(env))).toEqual({ A: "line1" });
   });

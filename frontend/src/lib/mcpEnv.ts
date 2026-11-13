@@ -1,6 +1,8 @@
-/** parseEnvText turns the editor's "KEY=VALUE" lines into a config map,
- * splitting at the FIRST '=' only: values routinely contain '=' (base64
- * padding, connection strings) and split("=", 2) used to corrupt them. */
+/**
+ * parseEnvText 把编辑器中的 "KEY=VALUE" 行转换为配置映射，仅在第一处 '='
+ * 拆分：值通常包含 '='（base64 填充、连接字符串），而 split("=", 2)
+ * 过去会破坏它们。
+ */
 export function parseEnvText(text: string): Record<string, string> {
   return Object.fromEntries(
     text
@@ -13,10 +15,11 @@ export function parseEnvText(text: string): Record<string, string> {
   );
 }
 
-/** envToText is the inverse of parseEnvText for the editor's textarea.
- * Note: values containing newlines cannot be represented in the line-based
- * editor (imported configs could hold them) — the tail after the first
- * newline is dropped by parseEnvText on save. */
+/**
+ * envToText 是 parseEnvText 的逆操作，用于编辑器的 textarea。
+ * 注意：包含换行的值无法在基于行的编辑器中表示（导入的配置可能含有这类值）——保
+ * 存时，parseEnvText 会丢弃第一个换行之后的部分。
+ */
 export function envToText(env: Record<string, string> | undefined | null): string {
   return Object.entries(env ?? {})
     .map(([k, v]) => `${k}=${v}`)

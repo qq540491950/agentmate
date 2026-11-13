@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TopBar } from "./TopBar";
 import { resolveTopbarLayout } from "@/lib/topbarLayout";
 
-// Seam agreed in issue #75: only externally observable structure and semantic
-// attributes are asserted — no style details, no internals.
+// issue #75 中约定的接缝：仅断言外部可观察的结构和语义 属性 ——
+// 不涉及样式细节，也不涉及内部实现。
 describe("TopBar", () => {
   it("渲染品牌区、中部与右侧扩展槽位", () => {
     const html = renderToStaticMarkup(<TopBar />);
@@ -34,7 +34,7 @@ describe("TopBar", () => {
     expect(html).toContain('data-slot="topbar-traffic-light-inset"');
   });
 
-  // 端到端 seam：TopBar 不传 layout 时应从 window._wails.environment 自动解析
+  // 端到端接缝：TopBar 不传 layout 时应从 window._wails.environment 自动解析
   // 平台。真实注入（internal/runtime/runtime_prod.go）是大写 OS 字段——此前
   // 组件读小写 os 导致平台恒判 browser、拖拽区永不声明（顶栏拖动失效）。
   describe("平台自动检测（真实 Wails 注入契约）", () => {

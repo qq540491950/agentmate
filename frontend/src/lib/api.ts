@@ -1,4 +1,4 @@
-// Thin re-export layer over the generated Wails bindings.
+// 基于生成的 Wails 绑定的轻量再导出层。
 import * as services from "../../bindings/agentmate/internal/services";
 import * as configModels from "../../bindings/agentmate/internal/config/models";
 import * as mcpModels from "../../bindings/agentmate/internal/mcpmgr/models";
@@ -67,12 +67,12 @@ export type TerminalProbe = terminalModels.ProbeResult;
 export type ChatSession = configModels.ChatSession;
 export type Project = configModels.Project;
 
-/** getSandboxStatus reads the platform backend for Settings warnings. */
+/** getSandboxStatus 读取平台后端以获取设置警告。 */
 export function getSandboxStatus(): Promise<SandboxStatusInfo> {
   return App.SandboxStatus();
 }
 
-/** setSessionExecutionPolicy persists the current chat's independent axes. */
+/** setSessionExecutionPolicy 持久化当前聊天的各独立轴。 */
 export function setSessionExecutionPolicy(
   sessionID: string,
   approvalPolicy: string,
@@ -81,26 +81,26 @@ export function setSessionExecutionPolicy(
   return Chat.SetSessionExecutionPolicy(sessionID, approvalPolicy, sandboxProfile, "composer");
 }
 
-/** @deprecated Use setSessionExecutionPolicy. */
+/** @deprecated 使用 setSessionExecutionPolicy。 */
 export function setSessionSandboxMode(sessionID: string, mode: string): Promise<void> {
   return Chat.SetSessionSandboxMode(sessionID, mode, "composer");
 }
 
 
-/** WorkspaceEntry is one "@" picker row: a path relative to the chat workspace. */
+/** WorkspaceEntry 是 "@" 选择器中的一行：相对于聊天工作区的路径。 */
 export type WorkspaceEntry = serviceModels.WorkspaceEntry;
 
-/** effectiveSkills lists the "/" skills for a session or draft project. */
+/** effectiveSkills 列出会话或草稿项目的 "/" 技能。 */
 export function effectiveSkills(sessionID: string, projectID: string): Promise<SkillConfig[]> {
   return Chat.EffectiveSkills(sessionID, projectID).then((list) => list ?? []);
 }
 
-/** listContextPaths lists files and folders for the composer "@" picker. */
+/** listContextPaths 列出供输入区 "@" 选择器使用的文件和文件夹。 */
 export function listContextPaths(sessionID: string, projectID: string): Promise<WorkspaceEntry[]> {
   return Artifact.ListContextPaths(sessionID, projectID).then((list) => list ?? []);
 }
 
-/** errText extracts a human-readable message from any binding failure. */
+/** errText 从任何绑定失败中提取人类可读的消息。 */
 export function errText(e: unknown): string {
   if (!e) return "未知错误";
   const anyE = e as { message?: string; cause?: unknown };
@@ -110,7 +110,7 @@ export function errText(e: unknown): string {
   try { return JSON.stringify(e); } catch { return String(e); }
 }
 
-/** uid makes a client-side unique id for streaming message keys. */
+/** uid 为流式消息 key 生成客户端唯一 id。 */
 let uidCounter = 0;
 export function uid(prefix = "u"): string {
   uidCounter += 1;

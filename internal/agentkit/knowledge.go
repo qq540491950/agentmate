@@ -16,22 +16,22 @@ const (
 	knowledgeMaxResults   = 6
 	knowledgeSnippet      = 240
 	knowledgeMaxFileKB    = 512
-	knowledgeMaxScanFiles = 200 // keyword search caps full-text scans per call
+	knowledgeMaxScanFiles = 200 // 关键字搜索限制每次调用的全文扫描次数
 )
 
 type queryArgs struct {
 	Query string `json:"query" jsonschema:"search keywords, space separated"`
 }
 
-// filesResult is the search_knowledge payload; Refs carries
-// workspace-relative paths so the UI can offer artifact previews.
+// filesResult 是 search_knowledge 的载荷；Refs 携带工作区相对路径，以便 UI
+// 可以提供产物预览。
 type filesResult struct {
 	Entries string   `json:"entries"`
 	Refs    []string `json:"refs,omitempty"`
 }
 
-// SearchKnowledgeTool searches the workspace knowledge base: hybrid
-// semantic+keyword when an embedding backend is wired in, keyword otherwise.
+// SearchKnowledgeTool 搜索工作区知识库：接入嵌入后端时采用语义 +
+// 关键字混合检索，否则采用关键字检索。
 func SearchKnowledgeTool(opts SearchOptions) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "search_knowledge",
@@ -40,9 +40,9 @@ func SearchKnowledgeTool(opts SearchOptions) (tool.Tool, error) {
 		if strings.TrimSpace(args.Query) == "" {
 			return filesResult{}, os.ErrInvalid
 		}
-		// The run context bounds embedding HTTP calls: a cancelled or
-		// timed-out turn stops in-flight indexing instead of holding the
-		// index lock behind context.Background().
+		// 运行上下文限定嵌入 HTTP
+		// 调用的范围：已取消或超时的回合会停止进行中的索引，而不是在
+		// context.Background() 下继续持有索引锁。
 		o := opts
 		o.Ctx = ctx
 		res, err := searchHybrid(o, args.Query)
@@ -53,7 +53,7 @@ func SearchKnowledgeTool(opts SearchOptions) (tool.Tool, error) {
 	})
 }
 
-// searchKnowledge scans knowledge files and ranks them by keyword hits.
+// searchKnowledge 扫描知识文件，并按关键字命中情况排序。
 func searchKnowledge(workspace, query string) (string, error) {
 	if workspace == "" {
 		return "", os.ErrInvalid
@@ -69,10 +69,10 @@ func searchKnowledge(workspace, query string) (string, error) {
 		score int
 		snip  string
 	}
-	// Keyword search re-reads every file on every call (the vector path has
-	// mtime-incremental indexing; this one does not), so an unbounded corpus
-	// would read hundreds of MB per tool call. Collect candidates first, then
-	// full-text scan only the knowledgeMaxScanFiles most recently modified.
+	// 关键字搜索在每次调用时都会重新读取每个文件（向量路径使用基于 mtime
+	// 的增量索引；这条路径则不会），因此无界语料库会导致每次工具调用读取数百
+	// MB。先收集候选文件，然后仅对最近修改过的 knowledgeMaxScanFiles
+	// 个文件执行全文扫描。
 	type candidate struct {
 		path string
 		rel  string
@@ -81,7 +81,7 @@ func searchKnowledge(workspace, query string) (string, error) {
 	var candidates []candidate
 	walkErr := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil // skip unreadable entries
+			return nil // 跳过无法读取的条目
 		}
 		if d.IsDir() || !isKnowledgeFile(d.Name()) {
 			return nil

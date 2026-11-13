@@ -45,8 +45,8 @@ func TestCompactionPercentUsesEffectiveModelContextWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A valid percent + context window must produce a compaction config that
-	// ADK accepts even when the prompt does not reach the threshold yet.
+	// 有效的百分比 + 上下文窗口必须生成 ADK
+	// 接受的压缩配置，即使提示词尚未达到阈值。
 	if err := chat.Send(sess.ID, "你好", nil); err != nil {
 		t.Fatalf("turn with percent compaction failed: %v", err)
 	}

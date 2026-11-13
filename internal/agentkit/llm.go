@@ -1,7 +1,6 @@
-// Package agentkit builds ADK agents from user configuration.
-// This file implements model.LLM adapters for OpenAI-compatible
-// Chat Completions APIs and the Anthropic Messages API, both with
-// streaming and function calling, so any provider can be configured.
+// Package agentkit 从用户配置构建 ADK Agent。 本文件为 OpenAI 兼容的 Chat
+// Completions API 和 Anthropic Messages API 实现 model.LLM
+// 适配器，二者均支持流式和函数调用，因此可以配置任意供应商。
 package agentkit
 
 import (
@@ -23,9 +22,8 @@ import (
 	"google.golang.org/genai"
 )
 
-// httpClient is shared by both adapters. Streaming responses are bounded by
-// the request context, never by a client-wide timeout. An empty client is
-// intentional: it rides http.DefaultTransport so ApplyGlobalProxy applies.
+// httpClient 由两个适配器共享。流式响应受请求上下文约束，绝不受客户端级超时约束。空客户端
+// 是有意为之：它使用 http.DefaultTransport，以便 ApplyGlobalProxy 生效。
 var httpClient = &http.Client{}
 
 func readErrBody(body io.Reader) string {
@@ -34,7 +32,7 @@ func readErrBody(body io.Reader) string {
 }
 
 // ---------------------------------------------------------------------------
-// genai helpers shared by both adapters
+// genai 辅助函数，由两个适配器共享
 
 type adkFunctionDecl struct {
 	name        string
@@ -62,12 +60,11 @@ func configTools(req *model.LLMRequest) []adkFunctionDecl {
 	return out
 }
 
-// functionParameters resolves a declaration's JSON Schema. ADK's built-in
-// tools (functiontool) and MCP toolsets publish their schema through
-// ParametersJsonSchema; reading only the legacy genai.Schema field advertised
-// every tool to OpenAI-compatible/Anthropic providers as an argument-less
-// {"type":"object"}, so models could not call workspace, skill or MCP tools
-// with the right arguments (issue #23).
+// functionParameters 解析声明中的 JSON Schema。ADK 的内置工具（functiontool）和
+// MCP 工具集通过 ParametersJsonSchema 发布其 schema；仅读取遗留的 genai.Schema
+// 字段会把每个工具都向 OpenAI 兼容/Anthropic 供应商描述为无参数的
+// {"type":"object"}，导致模型无法以正确的参数调用工作区、技能或 MCP 工具（issue
+// #23）。
 func functionParameters(fd *genai.FunctionDeclaration) map[string]any {
 	if fd.ParametersJsonSchema != nil {
 		if m, ok := jsonSchemaMap(fd.ParametersJsonSchema); ok {
@@ -77,9 +74,8 @@ func functionParameters(fd *genai.FunctionDeclaration) map[string]any {
 	return schemaToJSONSchema(fd.Parameters)
 }
 
-// jsonSchemaMap normalizes a JSON-schema payload (jsonschema-go structs, the
-// map[string]any MCP toolsets use, or any other JSON-marshalable value) into a
-// plain object.
+// jsonSchemaMap 将 JSON schema 载荷（jsonschema-go 结构体、MCP 工具集使用的
+// map[string]any，或任何其他可 JSON 序列化的值）规范化为普通对象。
 func jsonSchemaMap(v any) (map[string]any, bool) {
 	if m, ok := v.(map[string]any); ok && len(m) > 0 {
 		return m, true
@@ -155,7 +151,7 @@ func maxTokensOf(req *model.LLMRequest) int64 {
 	return int64(req.Config.MaxOutputTokens)
 }
 
-// stopSequencesOf surfaces the configured stop sequences (nil when unset).
+// stopSequencesOf 暴露已配置的停止序列（未设置时为 nil）。
 func stopSequencesOf(req *model.LLMRequest) []string {
 	if req.Config == nil {
 		return nil
@@ -163,8 +159,8 @@ func stopSequencesOf(req *model.LLMRequest) []string {
 	return req.Config.StopSequences
 }
 
-// withUsage attaches provider usage to a final response so the ADK runner
-// stores it and the UI can surface token counts.
+// withUsage 将供应商用量附加到最终响应，以便 ADK runner 存储它，并让 UI 能显示
+// token 计数。
 func withUsage(resp *model.LLMResponse, u *oaUsage) *model.LLMResponse {
 	if resp == nil || u == nil {
 		return resp
@@ -183,9 +179,8 @@ func withUsageA(resp *model.LLMResponse, u *anUsage) *model.LLMResponse {
 		return resp
 	}
 	total := u.InputTokens + u.OutputTokens
-	// cache_read_input_tokens is a subset of input on the Anthropic API, so it
-	// never changes the prompt total — it only tells the UI how much of it was
-	// served from cache.
+	// 在 Anthropic API 上，cache_read_input_tokens 是 input
+	// 的子集，因此它绝不会改变提示词总量——它仅告诉 UI 其中有多少是由缓存提供的。
 	resp.UsageMetadata = &genai.GenerateContentResponseUsageMetadata{
 		PromptTokenCount:        int32(u.InputTokens),
 		CandidatesTokenCount:    int32(u.OutputTokens),
@@ -195,10 +190,9 @@ func withUsageA(resp *model.LLMResponse, u *anUsage) *model.LLMResponse {
 	return resp
 }
 
-// argsToMap parses tool-call arguments. An error means the streamed argument
-// fragments never formed valid JSON (truncated stream, dropped lines); callers
-// must not invoke the tool with zero-value arguments — silently running a
-// write tool with empty args is worse than failing the turn loudly.
+// argsToMap 解析工具调用参数。出现错误意味着流式参数片段从未形成有效
+// JSON（流被截断、行被丢弃）；调用方不得以零值参数调用工具——静默地以空参数运行
+// 写工具，比显式地让回合失败更糟。
 func argsToMap(raw []byte) (map[string]any, error) {
 	m := map[string]any{}
 	if len(raw) > 0 {
@@ -209,8 +203,8 @@ func argsToMap(raw []byte) (map[string]any, error) {
 	return m, nil
 }
 
-// appendBrokenArgsNote appends a user-visible note for tool calls whose
-// streamed arguments never formed valid JSON (they were skipped, not run).
+// appendBrokenArgsNote 为流式参数始终未能构成合法 JSON 的工具调用追加一条用户
+// 可见提示（这些调用被跳过，未执行）。
 func appendBrokenArgsNote(text string, skipped []string) string {
 	if len(skipped) == 0 {
 		return text
@@ -222,15 +216,15 @@ func appendBrokenArgsNote(text string, skipped []string) string {
 	return text + fmt.Sprintf("%s（工具调用 %s 的参数流损坏，已跳过本次执行，请重试。）", sep, strings.Join(skipped, ", "))
 }
 
-// finalLLMResponse assembles the single non-partial event that the ADK
-// Runner processes: complete text plus every function call.
+// finalLLMResponse 组装 ADK Runner
+// 处理的单个非部分事件：完整文本加上每个函数调用。
 func finalLLMResponse(modelName, text string, parts []*genai.Part) *model.LLMResponse {
 	return finalLLMResponseWithThought(modelName, "", text, parts)
 }
 
-// finalLLMResponseWithThought assembles the single non-partial event that the
-// ADK Runner processes. The reasoning part goes first so history renders the
-// thinking block above the answer and its tool calls.
+// finalLLMResponseWithThought 组装 ADK Runner
+// 处理的单个非部分事件。推理部分放在最前面，使历史记录将思考块渲染在答案及其工
+// 具调用之上。
 func finalLLMResponseWithThought(modelName, thought, text string, parts []*genai.Part) *model.LLMResponse {
 	all := make([]*genai.Part, 0, len(parts)+2)
 	if thought != "" {
@@ -255,8 +249,8 @@ func textDelta(modelName, delta string) *model.LLMResponse {
 	}
 }
 
-// thoughtDelta streams a reasoning fragment as a Thought part. The UI renders
-// these in a collapsible "思考过程" block instead of the answer bubble.
+// thoughtDelta 将一段思考内容作为 Thought 部分流式输出。UI 会把这些内容渲染到
+// 可折叠的「思考过程」块中，而不是答案气泡里。
 func thoughtDelta(modelName, delta string) *model.LLMResponse {
 	return &model.LLMResponse{
 		ModelVersion: modelName,
@@ -272,18 +266,16 @@ func scanSSE(body io.Reader) *bufio.Scanner {
 }
 
 // ---------------------------------------------------------------------------
-// Streaming response plumbing shared by both adapters
+// 两个适配器共享的流式响应管道
 
-// streamIdleTimeout bounds how long an open stream may stay silent. Without
-// it a provider/gateway that stopped sending bytes but never closed the
-// response left the turn in "正在回复…" until the whole-turn deadline (10
-// minutes by default) — the symptom reported in issue #23.
+// streamIdleTimeout 限制打开的流可以静默多久。没有它时，供应商/网关停止发送
+// 字节却从不关闭响应，会让回合一直停留在「正在回复…」直到整轮截止时间
+// （默认 10 分钟）——这正是 issue #23 报告的症状。
 var streamIdleTimeout = 2 * time.Minute
 
-// startStreamWatchdog turns the request context into one that cancels after
-// `d` without activity. Callers reset the timer for every received line, so
-// only a genuinely stalled stream trips it. stop must run when the stream
-// ends; it does not turn the normal completion path into a failure.
+// startStreamWatchdog 将请求上下文转换为在无活动持续 `d`
+// 后取消的上下文。调用方每收到一行都会重置定时器，因此仅真正停滞的流才会触发它
+// 。流结束时必须运行 stop；它不会把正常完成路径变成失败。
 func startStreamWatchdog(parent context.Context, d time.Duration) (context.Context, *time.Timer, *atomic.Bool, func()) {
 	ctx, cancel := context.WithCancel(parent)
 	var idle atomic.Bool
@@ -298,9 +290,8 @@ func startStreamWatchdog(parent context.Context, d time.Duration) (context.Conte
 	return ctx, timer, &idle, stop
 }
 
-// streamFailure turns a transport error into the most useful message: the
-// caller's own cancellation wins, then a stream watchdog trip, then the raw
-// error.
+// streamFailure 将传输错误转换为最有用的消息：调用方自身的取消优先，其次是流看门狗触发，最后
+// 是原始错误。
 func streamFailure(parent context.Context, idle *atomic.Bool, fallback error) error {
 	if parent.Err() != nil {
 		return parent.Err()
@@ -311,7 +302,7 @@ func streamFailure(parent context.Context, idle *atomic.Bool, fallback error) er
 	return fallback
 }
 
-// bodyKind classifies the start of a model response body.
+// bodyKind 对模型响应体的开头进行分类。
 type bodyKind int
 
 const (
@@ -319,12 +310,11 @@ const (
 	bodyJSON
 )
 
-// sniffBody reports how a response body starts and replays every byte it
-// consumed. A plain JSON document (some gateways answer a stream request with
-// a single JSON object, often an error when their upstream died) is decoded as
-// a whole; everything else is scanned as SSE, where unrecognised lines are
-// skipped as noise. Treating a JSON error object as SSE silently ended the turn
-// with no content.
+// sniffBody 报告响应体以什么开头，并回放其消耗的每一个字节。普通 JSON
+// 文档（有些网关会以单个 JSON
+// 对象响应流式请求，通常是其上游失效时返回的错误）会整体解码；其余内容都按 SSE
+// 扫描，其中未识别的行会作为噪声跳过。将 JSON 错误对象按 SSE
+// 处理曾导致回合静默结束且没有内容。
 func sniffBody(body io.Reader) (bodyKind, io.Reader, error) {
 	br := bufio.NewReaderSize(body, 64*1024)
 	var prefix []byte
@@ -340,15 +330,14 @@ func sniffBody(body io.Reader) (bodyKind, io.Reader, error) {
 			return bodySSE, replay, nil
 		}
 		if err != nil || len(prefix) > 64*1024 {
-			// EOF (empty body) or an unreasonable run of blank lines: stop
-			// sniffing and let the SSE scanner deal with the rest.
+			// EOF（空响应体）或出现不合理的一连串空行：停止嗅探，并让 SSE
+			// 扫描器处理剩余内容。
 			return bodySSE, io.MultiReader(bytes.NewReader(prefix), br), err
 		}
 	}
 }
 
-// bodySnippet returns a short, printable excerpt of an unexpected response
-// body for the error message.
+// bodySnippet 返回意外响应体的简短、可打印摘录，用于错误消息。
 func bodySnippet(s string) string {
 	s = strings.TrimSpace(s)
 	if r := []rune(s); len(r) > 200 {
@@ -358,15 +347,15 @@ func bodySnippet(s string) string {
 }
 
 // ---------------------------------------------------------------------------
-// OpenAI Chat Completions compatible adapter
+// OpenAI Chat Completions 兼容适配器
 
-// OpenAICompatConfig configures the OpenAI-compatible adapter.
+// OpenAICompatConfig 配置 OpenAI 兼容适配器。
 type OpenAICompatConfig struct {
-	BaseURL string // e.g. https://api.deepseek.com/v1
+	BaseURL string // 例如 https://api.deepseek.com/v1
 	APIKey  string
 	Model   string
-	// ExtraBody carries the resolved model-level thinking fields
-	// (reasoning_effort, thinking, ...). They are merged into every request.
+	// ExtraBody 携带已解析的模型级思考字段（reasoning_effort、thinking、...）。这些字段会合
+	// 并进每个请求。
 	ExtraBody map[string]any
 }
 
@@ -374,8 +363,8 @@ type openaiCompatLLM struct {
 	cfg OpenAICompatConfig
 }
 
-// NewOpenAICompat builds a model.LLM speaking the OpenAI Chat Completions
-// protocol (OpenAI, DeepSeek, Kimi, Qwen, Ollama, vLLM, ...).
+// NewOpenAICompat 构建一个遵循 OpenAI Chat Completions 协议的
+// model.LLM（OpenAI、DeepSeek、Kimi、Qwen、Ollama、vLLM、...）。
 func NewOpenAICompat(cfg OpenAICompatConfig) (model.LLM, error) {
 	if cfg.Model == "" {
 		return nil, fmt.Errorf("OpenAI 兼容: 缺少模型 ID")
@@ -401,7 +390,7 @@ type oaToolCall struct {
 
 type oaMessage struct {
 	Role       string       `json:"role"`
-	Content    any          `json:"content,omitempty"` // string or content-part array
+	Content    any          `json:"content,omitempty"` // 字符串或 content-part 数组
 	ToolCalls  []oaToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string       `json:"tool_call_id,omitempty"`
 	Name       string       `json:"name,omitempty"`
@@ -426,12 +415,11 @@ type oaRequest struct {
 	MaxTokens   int64    `json:"max_tokens,omitempty"`
 	Temperature *float32 `json:"temperature,omitempty"`
 	Stop        []string `json:"stop,omitempty"`
-	// ExtraBody is merged into the JSON object after the typed fields.
+	// ExtraBody 会在类型化字段之后被合并进 JSON 对象。
 	ExtraBody map[string]any `json:"-"`
 }
 
-// MarshalJSON keeps the typed request shape and merges ExtraBody (thinking
-// levels) at the top level.
+// MarshalJSON 保留类型化请求结构，并将 ExtraBody（thinking 级别）合并到顶层。
 func (r oaRequest) MarshalJSON() ([]byte, error) {
 	type alias oaRequest
 	return marshalWithExtra(alias(r), r.ExtraBody)
@@ -441,17 +429,17 @@ type oaUsage struct {
 	PromptTokens     int64 `json:"prompt_tokens"`
 	CompletionTokens int64 `json:"completion_tokens"`
 	TotalTokens      int64 `json:"total_tokens"`
-	// PromptTokensDetails carries the cached prompt portion. OpenAI-compatible
-	// gateways that forward an upstream cache hit report it here (and some use
-	// the flat "cached_tokens" field, handled by oaUsage.cached).
+	// PromptTokensDetails 承载提示词中已缓存的部分。转发上游缓存命中的 OpenAI
+	// 兼容网关会在此处报告该部分（有些网关则使用扁平的 "cached_tokens" 字段，由
+	// oaUsage.cached 处理）。
 	PromptTokensDetails *struct {
 		CachedTokens int64 `json:"cached_tokens"`
 	} `json:"prompt_tokens_details,omitempty"`
 	CachedTokens int64 `json:"cached_tokens,omitempty"`
 }
 
-// cachedPrompt is the cached portion of the prompt (0 when the provider does
-// not report caching). Both spellings seen in the wild are accepted.
+// cachedPrompt 是提示词中已缓存的部分（当供应商未报告缓存时为
+// 0）。实际中见到的两种拼写均可接受。
 func (u *oaUsage) cachedPrompt() int64 {
 	if u == nil {
 		return 0
@@ -472,10 +460,10 @@ type oaToolDef struct {
 	Parameters  map[string]any `json:"parameters,omitempty"`
 }
 
-// oaReasoningText accepts the shapes providers use for reasoning text:
-// DeepSeek streams reasoning_content as a plain string, some gateways use
-// reasoning instead. An object-valued field is ignored instead of failing the
-// whole chunk and dropping the answer that rides in the same delta.
+// oaReasoningText 接受供应商用于推理文本的各种形式：DeepSeek 将
+// reasoning_content 作为普通字符串流式传输，有些网关则改用
+// reasoning。值为对象的字段会被忽略，而不是导致整个数据块失败并丢弃同一 delta
+// 中携带的答案。
 type oaReasoningText string
 
 func (r *oaReasoningText) UnmarshalJSON(b []byte) error {
@@ -538,9 +526,8 @@ func (o *openaiCompatLLM) buildMessages(req *model.LLMRequest) []oaMessage {
 			case p.FunctionResponse != nil:
 				responses = append(responses, p.FunctionResponse)
 			case p.Text != "" && !p.Thought:
-				// Reasoning is display-only: DeepSeek rejects its own
-				// reasoning_content in the next request, and replaying it would
-				// also inflate the prompt.
+				// 推理内容仅用于显示：DeepSeek 会在下一个请求中拒绝其自身的
+				// reasoning_content，重放它还会使提示词膨胀。
 				textParts = append(textParts, p.Text)
 			}
 		}
@@ -644,10 +631,9 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 			return
 		}
 		if kind == bodyJSON {
-			// Some gateways ignore "stream":true and answer with one plain
-			// document (often an error object when their upstream died).
-			// Parsing it keeps the failure visible instead of ending the turn
-			// with no content.
+			// 有些网关会忽略
+			// "stream":true，并返回一个普通文档（当其上游失效时，通常是一个错误对象）。
+			// 解析它能让失败保持可见，而不是在没有内容的情况下结束该回合。
 			final, err := o.fullResponse(bodyReader)
 			if err != nil {
 				yield(nil, streamFailure(parentCtx, idle, err))
@@ -662,9 +648,9 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 		var tb strings.Builder
 		calls := map[int]*oaAccumCall{}
 		var order []int
-		// Leading non-SSE lines are skipped as noise (some gateways prepend
-		// status text), but remembering the first one lets an HTML/plain-text
-		// failure page surface as an error instead of an empty answer.
+		// 前导的非 SSE
+		// 行会作为噪声被跳过（部分网关会前置状态文本），但记住第一行可以让
+		// HTML/纯文本的失败页面以错误形式暴露出来，而不是返回空答案。
 		var noise strings.Builder
 		sawData := false
 
@@ -690,9 +676,9 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 				continue
 			}
 			if data == "[DONE]" {
-				// [DONE] is the protocol terminator. Waiting for EOF instead
-				// hung the turn whenever a gateway/proxy kept the response open
-				// after the last chunk (issue #23).
+				// [DONE] 是协议终止符。改为等待
+				// EOF，则每当网关/代理在最后一个分块之后保持响应不关闭时，就会挂起回合（iss
+				// ue #23）。
 				break
 			}
 			var chunk oaChunk
@@ -747,7 +733,7 @@ func (o *openaiCompatLLM) GenerateContent(ctx context.Context, req *model.LLMReq
 	}
 }
 
-// oaFullResponse is a complete (non-SSE) Chat Completions response.
+// oaFullResponse 是完整的（非 SSE）Chat Completions 响应。
 type oaFullResponse struct {
 	Choices []struct {
 		Message struct {
@@ -763,9 +749,8 @@ type oaFullResponse struct {
 	} `json:"error"`
 }
 
-// fullResponse decodes a complete chat completion, surfacing a provider error
-// object and refusing an answer-less payload instead of silently ending the
-// turn.
+// fullResponse 解码完整的 chat
+// completion，暴露供应商错误对象，并拒绝无答案的载荷，而不是静默结束回合。
 func (o *openaiCompatLLM) fullResponse(r io.Reader) (*model.LLMResponse, error) {
 	var full oaFullResponse
 	if err := json.NewDecoder(io.LimitReader(r, 8<<20)).Decode(&full); err != nil {
@@ -788,17 +773,17 @@ func (o *openaiCompatLLM) fullResponse(r io.Reader) (*model.LLMResponse, error) 
 	}
 	tb.WriteString(thought)
 	for i, tc := range full.Choices[0].Message.ToolCalls {
-		// Complete responses carry no per-call index; the slice position is
-		// the only ordering. Using tc.Index merged every call into index 0.
+		// 完整响应不携带逐调用索引；切片位置是唯一的排序依据。使用 tc.Index
+		// 会把所有调用都合并到索引 0。
 		oaAccumulate(calls, &order, i, tc.ID, tc.Function.Name, tc.Function.Arguments)
 	}
 	return withUsage(o.final(tb.String(), sb.String(), calls, order), full.Usage), nil
 }
 
-// oaAccumulate groups streamed tool-call fragments by index.
+// oaAccumulate 按索引对流式工具调用片段进行分组。
 func oaAccumulate(calls map[int]*oaAccumCall, order *[]int, idx int, id, name, argDelta string) *oaAccumCall {
 	if idx < 0 || idx > 1024 {
-		return nil // broken/harsh provider index; ignore the fragment
+		return nil // 供应商索引损坏/异常；忽略该片段
 	}
 	a := calls[idx]
 	if a == nil {
@@ -823,8 +808,7 @@ func (o *openaiCompatLLM) final(thought, text string, calls map[int]*oaAccumCall
 		c := calls[idx]
 		args, err := argsToMap([]byte(c.args.String()))
 		if err != nil {
-			// Broken argument stream: executing the tool with {} would be a
-			// silent zero-value call. Surface it in the reply text instead.
+			// 参数流损坏：用 {} 执行工具会变成静默的零值调用。改为在回复文本中暴露出来。
 			skipped = append(skipped, c.name)
 			continue
 		}
@@ -863,15 +847,15 @@ func (o *openaiCompatLLM) post(ctx context.Context, body oaRequest) (*http.Respo
 }
 
 // ---------------------------------------------------------------------------
-// Anthropic Messages adapter
+// Anthropic Messages 适配器
 
-// AnthropicConfig configures the Anthropic adapter.
+// AnthropicConfig 用于配置 Anthropic 适配器。
 type AnthropicConfig struct {
 	BaseURL string
 	APIKey  string
 	Model   string
-	// ExtraBody carries the resolved model-level thinking fields (thinking,
-	// output_config, ...). They are merged into every request.
+	// ExtraBody 承载已解析的模型级 thinking
+	// 字段（thinking、output_config、...）。这些字段会合并到每个请求中。
 	ExtraBody map[string]any
 }
 
@@ -879,7 +863,7 @@ type anthropicLLM struct {
 	cfg AnthropicConfig
 }
 
-// NewAnthropic builds a model.LLM speaking the Anthropic Messages API.
+// NewAnthropic 构建一个使用 Anthropic Messages API 的 model.LLM。
 func NewAnthropic(cfg AnthropicConfig) (model.LLM, error) {
 	if cfg.Model == "" {
 		return nil, fmt.Errorf("Anthropic: 缺少模型 ID")
@@ -895,17 +879,17 @@ func (a *anthropicLLM) Name() string { return a.cfg.Model }
 
 type anBlock struct {
 	Type string `json:"type"`
-	// text
+	// Text 文本
 	Text string `json:"text,omitempty"`
-	// tool_use
+	// ID 为 tool_use。
 	ID    string `json:"id,omitempty"`
 	Name  string `json:"name,omitempty"`
 	Input any    `json:"input,omitempty"`
-	// tool_result
+	// ToolUseID 对应 tool_result
 	ToolUseID string `json:"tool_use_id,omitempty"`
 	Content   any    `json:"content,omitempty"`
 	IsError   bool   `json:"is_error,omitempty"`
-	// image
+	// Source 图像
 	Source *anImageSource `json:"source,omitempty"`
 }
 
@@ -928,14 +912,13 @@ type anRequest struct {
 	Tools     []anTool    `json:"tools,omitempty"`
 	Stream    bool        `json:"stream"`
 	Temp      *float32    `json:"temperature,omitempty"`
-	// StopSequences maps the genai config onto Anthropic's stop_sequences.
+	// StopSequences 将 genai 配置映射到 Anthropic 的 stop_sequences。
 	StopSequences []string `json:"stop_sequences,omitempty"`
-	// ExtraBody is merged into the JSON object after the typed fields.
+	// ExtraBody 会在类型化字段之后合并到 JSON 对象中。
 	ExtraBody map[string]any `json:"-"`
 }
 
-// MarshalJSON keeps the typed request shape and merges ExtraBody (thinking
-// levels) at the top level.
+// MarshalJSON 保留类型化请求结构，并将 ExtraBody（思考层级）合并到顶层。
 func (r anRequest) MarshalJSON() ([]byte, error) {
 	type alias anRequest
 	return marshalWithExtra(alias(r), r.ExtraBody)
@@ -950,8 +933,9 @@ type anTool struct {
 type anUsage struct {
 	InputTokens  int64 `json:"input_tokens"`
 	OutputTokens int64 `json:"output_tokens"`
-	// CacheReadInputTokens is the prompt prefix served from Anthropic's prompt
-	// cache; CacheCreationInputTokens is what was written into it this call.
+	// CacheReadInputTokens 是从 Anthropic
+	// 的提示词缓存中提供的提示词前缀；CacheCreationInputTokens
+	// 是本次调用写入该缓存的内容。
 	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
 	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 }
@@ -1075,8 +1059,8 @@ func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 		var tools []*anAccumTool
 		var noise strings.Builder
 		sawData := false
-		// Anthropic indexes content blocks; a hostile/broken endpoint can send
-		// negative or absurd indexes (panic / OOM via unbounded append).
+		// Anthropic 会为内容块建立索引；恶意/损坏的端点可能发送负数或离谱的索引（通过无界
+		// append 引发 panic / OOM）。
 		const maxContentBlocks = 1024
 		getTool := func(idx int) *anAccumTool {
 			if idx < 0 || idx >= maxContentBlocks {
@@ -1137,9 +1121,8 @@ func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 			}
 			switch ev.Type {
 			case "message_stop":
-				// The protocol terminator. Waiting for EOF instead hung the
-				// turn whenever the gateway kept the connection open after the
-				// final event (issue #23).
+				// 协议终止符。若改为等待
+				// EOF，则只要网关在最终事件后保持连接开启，就会挂起回合（issue #23）。
 				break scan
 			case "error":
 				msg := "unknown error"
@@ -1160,14 +1143,13 @@ func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 				if ev.Usage == nil {
 					break
 				}
-				// Some proxies drop message_start; synthesize the accumulator
-				// here so output tokens are still counted.
+				// 某些代理会丢弃 message_start；在此合成累加器，以便仍能统计输出 token。
 				if usage == nil {
 					usage = &anUsage{}
 				}
 				usage.OutputTokens = ev.Usage.OutputTokens
-				// The cache counters can ride on message_delta instead of
-				// message_start (proxies differ); keep whichever arrived.
+				// 缓存计数器可能挂在 message_delta 而非 message_start
+				// 上（代理实现不同）；保留实际到达的那个。
 				if ev.Usage.CacheReadInputTokens > 0 {
 					usage.CacheReadInputTokens = ev.Usage.CacheReadInputTokens
 				}
@@ -1179,7 +1161,7 @@ func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 					if ev.Index < 0 || ev.Index >= maxContentBlocks {
 						continue
 					}
-					getTool(ev.Index) // reserve slot
+					getTool(ev.Index) // 预留槽位
 					tools[ev.Index] = &anAccumTool{id: ev.ContentBlock.ID, name: ev.ContentBlock.Name}
 				}
 			case "content_block_delta":
@@ -1215,7 +1197,7 @@ func (a *anthropicLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 	}
 }
 
-// anFullResponse is a complete (non-SSE) Anthropic Messages response.
+// anFullResponse 是完整的（非 SSE）Anthropic Messages 响应。
 type anFullResponse struct {
 	Content []anBlock `json:"content"`
 	Usage   *anUsage  `json:"usage"`
@@ -1224,9 +1206,8 @@ type anFullResponse struct {
 	} `json:"error"`
 }
 
-// fullResponse decodes a complete Messages response. Non-stream responses (the
-// A2A executor path) carry usage too — without it the server-side token
-// accounting was empty.
+// fullResponse 解码完整的 Messages 响应。非流式响应（A2A 执行器路径）也携带
+// usage——没有它，服务端的 token 核算曾为空。
 func (a *anthropicLLM) fullResponse(r io.Reader) (*model.LLMResponse, error) {
 	var full anFullResponse
 	if err := json.NewDecoder(io.LimitReader(r, 8<<20)).Decode(&full); err != nil {
@@ -1253,7 +1234,7 @@ func (a *anthropicLLM) fullResponse(r io.Reader) (*model.LLMResponse, error) {
 	return withUsageA(a.final(sb.String(), tools), full.Usage), nil
 }
 
-// anyAnTool reports whether any content-block slot holds a tool call.
+// anyAnTool 报告任一内容块槽位是否包含工具调用。
 func anyAnTool(tools []*anAccumTool) bool {
 	for _, t := range tools {
 		if t != nil {
@@ -1320,12 +1301,11 @@ func (a *anthropicLLM) post(ctx context.Context, body anRequest) (*http.Response
 	return resp, nil
 }
 
-// maxProviderRetries is the built-in retry budget for transient provider
-// failures. It is intentionally not user-configurable: five retries cover
-// short network flaps and gateway restarts without requiring a settings UI.
+// maxProviderRetries 是用于瞬时供应商故障的内置重试预算。它有意不可由用户配置：五次重试可覆盖短暂
+// 网络波动和网关重启，而无需设置 UI。
 const maxProviderRetries = 5
 
-// retryDelays are the waits between transient-failure retries.
+// retryDelays 是瞬时故障重试之间的等待时长。
 var retryDelays = []time.Duration{
 	500 * time.Millisecond,
 	1 * time.Second,
@@ -1334,12 +1314,11 @@ var retryDelays = []time.Duration{
 	8 * time.Second,
 }
 
-// maxRetryAfter caps a server-provided Retry-After wait: honouring a huge
-// value verbatim would stall a retry for an unreasonable amount of time.
+// maxRetryAfter 限制服务器提供的 Retry-After
+// 等待时间的上限：原样遵循过大的值会使重试停滞不合理长的时间。
 const maxRetryAfter = 8 * time.Second
 
-// retryAfterDelay parses a Retry-After header (seconds form); 0 when absent
-// or unparseable.
+// retryAfterDelay 解析 Retry-After 头（秒数形式）；缺失或无法解析时为 0。
 func retryAfterDelay(h string) time.Duration {
 	if h == "" {
 		return 0
@@ -1354,11 +1333,10 @@ func retryAfterDelay(h string) time.Duration {
 	return 0
 }
 
-// postWithRetry executes the request built by build, retrying transient
-// failures (network errors, 429 rate limiting and 502/503/504) up to five
-// extra times with backoff. A 429 with a Retry-After header waits at least
-// that long (capped). Retries only happen when no response bytes have been
-// consumed, so streaming output is never duplicated.
+// postWithRetry 执行由 build 构建的请求，对瞬时失败（网络错误、429 限流以及
+// 502/503/504）进行退避重试，最多额外重试五次。带 Retry-After 头的 429
+// 至少等待该时长（有上限）。仅当尚未消费任何响应字节时才会重试，因此流式输出绝
+// 不会重复。
 func postWithRetry(ctx context.Context, build func() (*http.Request, error), model, kind string) (*http.Response, error) {
 	var lastErr error
 	for attempt := 0; ; attempt++ {

@@ -15,9 +15,9 @@ import (
 	"agentmate/internal/config"
 )
 
-// TestBuildTransportTrimsStdioCommand: pasted or imported configs can carry
-// stray whitespace ("npx "); exec must see the trimmed command and args, or
-// LookPath fails with "executable file not found in %PATH%".
+// TestBuildTransportTrimsStdioCommand: 粘贴或导入的配置可能带入多余的空白（"npx
+// "）；exec 必须看到去除首尾空白后的命令和参数，否则 LookPath 会失败并报
+// "executable file not found in %PATH%"。
 func TestBuildTransportTrimsStdioCommand(t *testing.T) {
 	base := "sh"
 	if runtime.GOOS == "windows" {
@@ -57,10 +57,10 @@ func TestBuildTransportTrimsStdioCommand(t *testing.T) {
 	}
 }
 
-// TestBuildTransportAppliesStdioProcessAttrs pins the wire-up for issue #67:
-// the platform helper's process attributes must land on the exec.Cmd before
-// CommandTransport starts it. On Windows that is CREATE_NO_WINDOW; on other
-// platforms it stays nil (no console to hide).
+// TestBuildTransportAppliesStdioProcessAttrs 锁定 issue #67
+// 的接线方式：平台辅助函数提供的进程属性必须在 CommandTransport 启动它之前落到
+// exec.Cmd 上。在 Windows 上该属性是 CREATE_NO_WINDOW；在其他平台上它保持为
+// nil（没有需要隐藏的控制台）。
 func TestBuildTransportAppliesStdioProcessAttrs(t *testing.T) {
 	base := "sh"
 	if runtime.GOOS == "windows" {
@@ -85,10 +85,10 @@ func TestBuildTransportAppliesStdioProcessAttrs(t *testing.T) {
 	}
 }
 
-// TestToolsetCachedUntilDisconnect pins the manager contract: toolsets are
-// keyed by server ID and reused across calls; Disconnect drops the cache so
-// the next build creates a fresh transport (used by SaveMCPServer to stop
-// stale connections after a config edit).
+// TestToolsetCachedUntilDisconnect 锁定管理器契约：工具集以服务器 ID
+// 为键，并在多次调用之间复用；Disconnect
+// 会丢弃缓存，使下一次构建创建全新的传输（SaveMCPServer
+// 借此在配置修改后停止陈旧连接）。
 func TestToolsetCachedUntilDisconnect(t *testing.T) {
 	m := New()
 	cfg := config.MCPServerConfig{ID: "srv1", Name: "S", Transport: config.MCPStdio, Command: "/bin/cat"}
@@ -115,10 +115,9 @@ func TestToolsetCachedUntilDisconnect(t *testing.T) {
 	}
 }
 
-// TestCloseAllClearsStateAndIsIdempotent pins the shutdown contract: one call
-// drops every tracked server (cache + status), repeated calls are safe. The
-// app's shutdown hook relies on this so stdio child processes do not outlive
-// the desktop app as orphans.
+// TestCloseAllClearsStateAndIsIdempotent 锁定关闭契约：一次调用会丢弃所有被跟踪的服务器（缓存 +
+// 状态），重复调用是安全的。应用的关闭钩子依赖这一点，以确保 stdio
+// 子进程不会作为孤儿进程比桌面应用存活更久。
 func TestCloseAllClearsStateAndIsIdempotent(t *testing.T) {
 	m := New()
 	stdio := config.MCPServerConfig{ID: "srv1", Name: "S", Transport: config.MCPStdio, Command: "/bin/cat"}
@@ -131,7 +130,7 @@ func TestCloseAllClearsStateAndIsIdempotent(t *testing.T) {
 	}
 
 	m.CloseAll()
-	m.CloseAll() // idempotent: no panic, no state resurrection
+	m.CloseAll() // 幂等：不 panic，状态不会复活
 
 	for _, cfg := range []config.MCPServerConfig{stdio, httpSrv} {
 		ts1, err := m.Toolset(cfg)
@@ -149,8 +148,8 @@ func TestCloseAllClearsStateAndIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestDisconnectClearsStaleError: a stopped server must not keep reporting
-// the error that caused the last disconnect.
+// TestDisconnectClearsStaleError:
+// 已停止的服务器不得继续报告导致上次断连的那个错误。
 func TestDisconnectClearsStaleError(t *testing.T) {
 	m := New()
 	m.setState(&ServerStatus{ID: "srv1", Name: "S", State: "error", Error: "boom"})
@@ -161,10 +160,10 @@ func TestDisconnectClearsStaleError(t *testing.T) {
 	}
 }
 
-// TestOAuthTransportPortNotHeld pins the lazy-listen contract: building an
-// OAuth transport must not keep the redirect port bound (a cached token makes
-// the consent flow unreachable, and holding the port broke reconnects on the
-// same configured redirect port with EADDRINUSE).
+// TestOAuthTransportPortNotHeld 锁定延迟监听契约：构建 OAuth
+// 传输时不得持续占用重定向端口（缓存的 token
+// 会使授权同意流程无法触达，而占用该端口会导致在同一配置的重定向端口上重连时出
+// 现 EADDRINUSE）。
 func TestOAuthTransportPortNotHeld(t *testing.T) {
 	probe, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -182,7 +181,7 @@ func TestOAuthTransportPortNotHeld(t *testing.T) {
 		if _, err := buildTransport(cfg, nil, nil); err != nil {
 			t.Fatalf("build %d: %v", i, err)
 		}
-		// The port must be free again immediately after the build.
+		// 构建完成后，该端口必须立即重新可用。
 		again, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			t.Fatalf("port still held after build %d: %v", i, err)
@@ -191,10 +190,9 @@ func TestOAuthTransportPortNotHeld(t *testing.T) {
 	}
 }
 
-// trackingToolset is a cached toolset that records whether the manager closed
-// it. ADK v2.7.0 made mcptoolset.New return an io.Closer, and the manager owns
-// the cached instance, so Disconnect must release it instead of dropping the
-// cache entry and leaking the session (and, for auth'd servers, the pool).
+// trackingToolset 是一个缓存的工具集，用于记录管理器是否关闭了它。ADK v2.7.0 使
+// mcptoolset.New 返回 io.Closer，而管理器拥有该缓存实例，因此 Disconnect
+// 必须释放它，而不是丢弃缓存条目并泄漏会话（对于已认证的服务器，还会泄漏池）。
 type trackingToolset struct {
 	tool.Toolset
 	closed bool
@@ -205,9 +203,8 @@ func (t *trackingToolset) Close() error {
 	return nil
 }
 
-// TestDisconnectClosesCachedToolset pins the resource contract: dropping the
-// cache must close the toolset before the transport goes away, otherwise the
-// MCP session is never released.
+// TestDisconnectClosesCachedToolset 锁定资源契约：丢弃缓存必须在传输层消失之前关闭工具集，否则 MCP
+// 会话绝不会被释放。
 func TestDisconnectClosesCachedToolset(t *testing.T) {
 	m := New()
 	ts := &trackingToolset{}
@@ -225,8 +222,8 @@ func TestDisconnectClosesCachedToolset(t *testing.T) {
 	}
 }
 
-// TestCloseAllClosesEveryToolset: the shutdown hook relies on CloseAll, so it
-// must close each toolset exactly once, not only clear the maps.
+// TestCloseAllClosesEveryToolset：关闭钩子依赖
+// CloseAll，因此它必须恰好关闭每个工具集一次，而不只是清空映射。
 func TestCloseAllClosesEveryToolset(t *testing.T) {
 	m := New()
 	a, b := &trackingToolset{}, &trackingToolset{}

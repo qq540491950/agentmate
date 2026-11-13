@@ -1,23 +1,23 @@
 import { skillSource, type SkillSource } from "./skills";
 
-/** Where a "/" entry comes from; built-ins run locally, the rest are skills. */
+/** "/" 条目来自哪里；内置项在本地运行，其余的是技能。 */
 export type SlashSource = "builtin" | SkillSource;
 
-/** One entry of the composer's "/" suggestion popup. */
+/** 输入框的 "/" 建议弹窗中的一个条目。 */
 export type SlashCommand = { cmd: string; desc: string; source?: SlashSource };
 
-/** The configured-skill fields the slash menu needs (SkillConfig is wider). */
+/** 斜杠菜单所需的已配置技能字段（SkillConfig 更宽泛）。 */
 export type SkillSlashSource = { id?: string; name: string; description?: string };
 
 /**
- * skillCommandName mirrors agentkit.MaterializedSkillName: the lowercase,
- * hyphenated name ADK exposes for a skill. Commands must use exactly this
- * form, because the backend re-parses "/<name>" with the same normalization
- * (a skill named "Weekly Report" is invoked as "/weekly-report").
+ * skillCommandName 与 agentkit.MaterializedSkillName 保持一致：ADK
+ * 为技能暴露的小写、连字符名称。命令必须使用完全相同的这种形式，因为后端会使用
+ * 相同的规范化方式重新解析 "/<name>"（名为 "Weekly Report" 的技能会以
+ * "/weekly-report" 被调用）。
  */
 export function skillCommandName(name: string): string {
   let out = "";
-  let prevHyphen = true; // suppress leading hyphens
+  let prevHyphen = true; // 抑制前导连字符
   for (const ch of name.toLowerCase()) {
     if ((ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9")) {
       out += ch;
@@ -32,9 +32,9 @@ export function skillCommandName(name: string): string {
 }
 
 /**
- * slashCandidates merges the built-in commands with the configured skills.
- * Built-ins win a name collision: they run locally and must keep that
- * behavior, while a skill of the same name could never be addressed anyway.
+ * slashCandidates
+ * 将内置命令与已配置技能合并。名称冲突时内置命令胜出：它们在本地运行，必须保持
+ * 该行为，而同名技能无论如何都绝不可能被寻址。
  */
 export function slashCandidates(
   builtins: readonly SlashCommand[],
@@ -51,7 +51,7 @@ export function slashCandidates(
   return out;
 }
 
-/** slashSourceLabel renders where a command came from. */
+/** slashSourceLabel 渲染命令的来源。 */
 export function slashSourceLabel(source: SlashSource | undefined): string {
   switch (source) {
     case "project":
@@ -66,9 +66,9 @@ export function slashSourceLabel(source: SlashSource | undefined): string {
 }
 
 /**
- * filterSlashCommands keeps the existing menu semantics: suggestions appear
- * only while the whole input still looks like one command token (no space
- * yet), and matching is a case-insensitive prefix match.
+ * filterSlashCommands
+ * 保留现有菜单语义：建议仅在整段输入仍看起来像一个命令词元（尚无空格）时出现，
+ * 并且匹配是不区分大小写的前缀匹配。
  */
 export function filterSlashCommands(
   candidates: readonly SlashCommand[],
@@ -80,15 +80,15 @@ export function filterSlashCommands(
 }
 
 /**
- * skillCommandNameFor extracts the materialized command name from the leading
- * "/<token>" of a message, or null when the message does not start with one.
+ * skillCommandNameFor 从消息开头的 "/<token>"
+ * 中提取物化后的命令名，若消息不以它开头则返回 null。
  */
 export function skillCommandNameFor(text: string): string | null {
   const m = /^\s*\/([^\s]+)/.exec(text);
   return m ? skillCommandName(m[1]) : null;
 }
 
-/** isSkillCommand reports whether the leading "/<token>" names a real skill. */
+/** isSkillCommand 报告开头的 "/<token>" 是否指向真实技能。 */
 export function isSkillCommand(
   text: string,
   skills: readonly SkillSlashSource[],

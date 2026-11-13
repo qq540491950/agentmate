@@ -19,8 +19,8 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// newChatFixture spins up a fake OpenAI SSE server whose reply is controlled
-// by the caller, plus a chat service backed by a temp SQLite database.
+// newChatFixture 会启动一个伪造的 OpenAI SSE
+// 服务器，其回复由调用方控制，还会启动一个由临时 SQLite 数据库支持的聊天服务。
 func newChatFixture(t *testing.T, reply *atomic.Value) (*ChatService, config.ChatSession, *config.Store) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -135,9 +135,9 @@ func TestExportSessionWritesMarkdown(t *testing.T) {
 	_ = context.Background
 }
 
-// TestShortIDAndExportRejectShortIDs pins the bounds fix: export filenames
-// slice the session ID to 6 characters, which panicked for IDs shorter than
-// that. These methods are reachable from JS with arbitrary input.
+// TestShortIDAndExportRejectShortIDs 锁定该边界修复：导出文件名会将会话 ID
+// 截取为 6 个字符，对短于该长度的 ID 会触发 panic。这些方法可由 JS
+// 以任意输入调用。
 func TestShortIDAndExportRejectShortIDs(t *testing.T) {
 	if got := shortID("sess_0123456789"); got != "456789" {
 		t.Fatalf("shortID long id = %q", got)
@@ -260,7 +260,7 @@ func TestSendWithImageAttachment(t *testing.T) {
 		t.Fatal("image payload missing from provider request")
 	}
 
-	// History round-trips the attachment for rendering.
+	// 历史记录会往返传递该附件以用于渲染。
 	msgs, err := chat.GetSessionMessages(sess.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -283,7 +283,7 @@ func TestSendWithImageAttachment(t *testing.T) {
 		t.Fatalf("history attachments = %+v", atts)
 	}
 
-	// Rejected types fail cleanly.
+	// 被拒绝的类型会干净地失败。
 	err = chat.Send(sess.ID, "再看看", []AttachmentIn{{Name: "x.exe", MIME: "application/exe", Data: "AAAA"}})
 	if err == nil || !strings.Contains(err.Error(), "不支持的附件类型") {
 		t.Fatalf("expected unsupported type error, got %v", err)
@@ -348,7 +348,7 @@ func TestGuardrailRedactsUserInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Stored history must hold the REDACTED text, never the raw secret.
+	// 存储的历史记录必须保存已脱敏的文本，绝不能保存原始密钥。
 	for _, m := range msgs {
 		if strings.Contains(m.Text, secret) {
 			t.Fatalf("raw secret leaked into history: %+v", m)
@@ -373,7 +373,7 @@ func TestRememberSessionIngestsMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Memory service starts empty.
+	// 记忆服务初始为空。
 	db, sessions, err := newTestSessionService(t, filepath.Join(t.TempDir(), "s.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -395,7 +395,7 @@ func TestRememberSessionIngestsMemory(t *testing.T) {
 	if n <= 0 {
 		t.Fatalf("expected memories after ingest, got %d", n)
 	}
-	// The deployment fact must be recallable.
+	// 部署事实必须能够被召回。
 	resp, err := memSvc.SearchMemory(context.Background(), &adkmemory.SearchRequest{
 		AppName: "agentmate", UserID: "local", Query: "europe-west4",
 	})
@@ -407,7 +407,7 @@ func TestRememberSessionIngestsMemory(t *testing.T) {
 	}
 	_ = store
 
-	// RememberSession without a memory service errors cleanly.
+	// 在没有记忆服务时，RememberSession 会干净地报错。
 	chat2, sess2, _ := newChatFixture(t, &reply)
 	chat2.S.Memory = nil
 	if _, err := chat2.RememberSession(sess2.ID); err == nil {

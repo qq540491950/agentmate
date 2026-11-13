@@ -12,7 +12,7 @@ describe("SessionRowLabel", () => {
     );
 
     expect(html).toContain("会话统计命令");
-    // The preview is tooltip-only metadata; the rendered text stays title-only.
+    // 预览仅是工具提示元数据；渲染的文本仍仅为标题。
     expect(html.replace(/<[^>]*>/g, "")).toBe("会话统计命令");
     expect(html).toContain("truncate");
     expect(sessionRowTooltip({

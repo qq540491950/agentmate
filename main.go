@@ -27,7 +27,7 @@ import (
 	"agentmate/internal/services"
 )
 
-// Wails uses Go's `embed` package to embed the frontend files into the binary.
+// Wails 使用 Go 的 `embed` 包把前端文件嵌入二进制。
 //
 //go:embed all:frontend/dist
 var assets embed.FS
@@ -35,26 +35,25 @@ var assets embed.FS
 //go:embed build/appicon.png
 var trayIcon []byte
 
-// Version is the app version, exposed to the frontend via AppService.AppInfo
-// and used by the updater as the "currently running" version.
+// Version 是应用版本，通过 AppService.AppInfo 暴露给前端，并被更新器用作
+// "currently running" 版本。
 //
-// The git tag is the single source of truth: release builds inject it with
-// `-ldflags "-X main.Version=0.5.0"` (see the VERSION var in Taskfile.yml and
-// scripts/set-version.sh, which also refreshes build/config.yml and the
-// generated build assets so exe metadata, NSIS, Info.plist and deb/rpm all
-// agree). Anything built without a tag — `go run .`, `wails3 dev`, a test
-// binary — reports "dev", which the updater treats as older than every
-// release, so a dev build is always offered the newest one.
+// Git 标签是唯一事实来源：发布构建通过 `-ldflags "-X main.Version=0.5.0"`
+// 注入它（参见 Taskfile.yml 中的 VERSION 变量和
+// scripts/set-version.sh，该脚本还会刷新 build/config.yml
+// 以及生成的构建资源，使 exe 元数据、NSIS、Info.plist 和 deb/rpm
+// 全部一致）。任何未打标签构建的产物——`go run .`、`wails3
+// dev`、测试二进制——都会报告
+// "dev"，更新器会将其视为比所有发布版本都旧，因此开发构建始终会被提供最新版本。
 var Version = "dev"
 
 func init() {
-	// Register the chat streaming event so the generated bindings carry a
-	// strongly typed JS/TS API for it.
+	// 注册聊天流式事件，使生成的绑定为其携带强类型的 JS/TS API。
 	application.RegisterEvent[services.ChatStreamEvent](services.EventChatStream)
 }
 
 func main() {
-	// Configuration lives under the OS user config directory.
+	// 配置位于操作系统用户配置目录下。
 	cfgDir, err := osUserConfigDir("agentmate")
 	if err != nil {
 		log.Fatal(err)
@@ -66,16 +65,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Outbound proxy for model/embedding/MCP traffic. Applies to
-	// http.DefaultTransport, so it must run before any HTTP request;
-	// changing the setting requires an app restart.
+	// 用于模型/嵌入/MCP 流量的出站代理。它应用于
+	// http.DefaultTransport，因此必须在任何 HTTP
+	// 请求之前运行；更改该设置需要重启应用。
 	if err := agentkit.ApplyGlobalProxy(store.Get().Settings.HTTPProxy); err != nil {
 		log.Printf("代理配置无效（使用直连）: %v", err)
 	}
 
-	// MCP manager + agent kit.
+	// MCP 管理器 + Agent 工具包。
 	mgr := mcpmgr.New()
-	mgr.SetTokenStore(store) // OAuth tokens persist across restarts
+	mgr.SetTokenStore(store) // OAuth 令牌在重启后持久保留。
 	mgr.SetAuthPendingHook(func(server, authURL string) {
 		if app := application.Get(); app != nil {
 			app.Event.Emit("mcp:auth-pending", map[string]string{"server": server, "url": authURL})
@@ -85,14 +84,14 @@ func main() {
 	svc := &services.Services{Store: store, Kit: kit, MCP: mgr}
 	services.AppVersion = Version
 
-	// Persistent ADK session storage (SQLite via pure-Go driver). The same
-	// *gorm.DB is shared with ChatService (Regenerate) and long-term memory.
+	// 持久化的 ADK 会话存储（通过纯 Go 驱动使用 SQLite）。同一个 *gorm.DB 由
+	// ChatService（Regenerate）和长期记忆共享。
 	gormDB, sessions, err := newSessionService(filepath.Join(cfgDir, "sessions.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Long-term memory (SQLite, same DB as sessions).
+	// 长期记忆（SQLite，与会话使用同一数据库）。
 	memSvc, err := memory.NewSQLiteService(gormDB)
 	if err != nil {
 		log.Fatal(err)
@@ -100,18 +99,17 @@ func main() {
 	kit.SetMemoryTool(loadmemorytool.New())
 	svc.Memory = memSvc
 
-	// Knowledge vector index (semantic search upgrade; failure degrades to
-	// keyword search, so it must not block startup).
+	// 知识向量索引（语义搜索升级；失败时降级为关键词搜索，因此不得阻塞启动）。
 	if ki, err := agentkit.OpenKnowledgeIndex(filepath.Join(cfgDir, "knowledge.index.db")); err == nil {
 		kit.SetKnowledgeIndex(ki)
 	} else {
 		log.Printf("knowledge index disabled: %v", err)
 	}
 
-	// Always register the A2A service (start/stop RPCs); auto-start may have
-	// begun serving already via the settings hook below.
+	// 始终注册 A2A 服务（start/stop RPC）；自动启动可能已通过下面的 settings
+	// 钩子开始提供服务。
 	a2aRPC := services.NewA2AService(svc, sessions)
-	svc.A2A = a2aRPC // config mutations can take published agents offline
+	svc.A2A = a2aRPC // 配置变更可能会使已发布的 Agent 下线
 
 	chatSvc := services.NewChatService(svc, sessions, gormDB)
 	chatSvc.SetToolAuditPath(filepath.Join(cfgDir, "logs", "tools-audit.jsonl"))
@@ -121,14 +119,14 @@ func main() {
 		gormDB)
 	logSvc.SetLogPath(filepath.Join(cfgDir, "logs", "app.log"))
 	logSvc.SetToolAuditPath(filepath.Join(cfgDir, "logs", "tools-audit.jsonl"))
-	// Update checks run against GitHub Releases (see updateservice.go). The
-	// service is registered before the app exists, so the updater itself is
-	// configured by Bind below.
+	// 更新检查针对 GitHub Releases 运行（见
+	// updateservice.go）。该服务在应用存在之前就已注册，因此更新器本身由下方的
+	// Bind 进行配置。
 	updSvc := services.NewUpdateService(svc)
 
-	// The main window only exists after application.New, while a second launch
-	// can arrive at any moment after the lock is taken; the atomic handle keeps
-	// that callback race-free (and nil means "still starting").
+	// 主窗口仅在 application.New
+	// 之后才存在，而第二次启动在取得锁之后的任意时刻都可能到达；原子句柄使该回调免
+	// 于竞态（nil 表示"仍在启动中"）。
 	var mainWindow atomic.Pointer[application.WebviewWindow]
 
 	app := application.New(application.Options{
@@ -143,12 +141,11 @@ func main() {
 			application.NewService(a2aRPC),
 			application.NewService(updSvc),
 		},
-		// Launching the app again (desktop icon, Start menu, `open`) must
-		// surface the running window instead of opening another full copy.
-		// Wails takes a cross-platform single-instance lock (named mutex +
-		// WM_COPYDATA on Windows, lock file + distributed notification on
-		// macOS/Linux), hands this launch to the callback and exits the new
-		// process with ExitCode before it builds a window or starts services.
+		// 再次启动应用（桌面图标、开始菜单、`open`）必须唤出正在运行的窗口，而不是再
+		// 打开一个完整副本。Wails 会获取跨平台单实例锁（Windows 上为命名互斥量 +
+		// WM_COPYDATA，macOS/Linux 上为锁文件 +
+		// 分布式通知），将本次启动交给回调，并在构建窗口或启动服务之前，以 ExitCode
+		// 退出新进程。
 		SingleInstance: singleInstanceOptions(func() {
 			activateMainWindow(mainWindow.Load())
 			log.Printf("检测到二次启动：已唤回正在运行的窗口，新进程退出")
@@ -157,10 +154,9 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		Mac: application.MacOptions{
-			// The tray + global shortcut are resident features: closing the
-			// window must not quit the whole app (it would silently kill the
-			// published A2A servers and the summon shortcut). Quit lives in
-			// the tray menu.
+			// 托盘 +
+			// 全局快捷键是常驻功能：关闭窗口不得退出整个应用（否则会静默终止已发布的 A2A
+			// 服务和唤出快捷键）。退出功能位于托盘菜单中。
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 		// Windows 兜底（#77）：最后一个窗口关闭不退出进程，防止任何未拦截
@@ -169,21 +165,19 @@ func main() {
 			DisableQuitOnLastWindowClosed: true,
 		},
 		OnShutdown: func() {
-			services.StopUpdates(updSvc) // stop the background update poll
-			// Wails runs OnShutdown synchronously inside Quit(). The in-app
-			// updater's helper only waits 30 s for this process to exit before
-			// it gives up on the swap and relaunches the OLD binary, leaving
-			// two copies of the app running. Teardown that can stall (an MCP
-			// stdio child that ignores stdin close, an A2A stream still in
-			// flight) must therefore never spend that whole budget.
-			shutdownBounded("A2A 服务下线", shutdownHookTimeout, a2aRPC.StopAll) // graceful: unpublish agents before exit
-			shutdownBounded("MCP 连接关闭", shutdownHookTimeout, mgr.CloseAll)   // then close MCP transports (no orphan stdio children)
+			services.StopUpdates(updSvc) // 停止后台更新轮询
+			// Wails 在 Quit() 内同步执行 OnShutdown。应用内更新器的辅助进程只等待
+			// 本进程退出 30 秒；超时后它会放弃替换并重新启动旧二进制，导致同时运行
+			// 两个应用副本。因此，可能卡住的清理流程（忽略 stdin 关闭的 MCP stdio
+			// 子进程、仍在传输的 A2A 流）绝不能耗尽整个等待预算。
+			shutdownBounded("A2A 服务下线", shutdownHookTimeout, a2aRPC.StopAll) // 优雅退出：退出前取消发布 Agent。
+			shutdownBounded("MCP 连接关闭", shutdownHookTimeout, mgr.CloseAll)   // 然后关闭 MCP 传输（不留下孤立的 stdio 子进程）
 			shutdownBounded("沙箱资源清理", 2*time.Second, sandbox.Close)
 		},
 	})
 
-	// Updates must never block startup: a broken feed, an unreachable proxy or
-	// a malformed pinned key leaves the app fully usable, just without updates.
+	// 更新绝不能阻塞启动：更新源损坏、代理不可达或固定密钥格式错误时，应用仍应
+	// 完全可用，只是没有更新功能。
 	if err := services.BindUpdates(updSvc, app); err != nil {
 		log.Printf("更新服务初始化失败（不影响使用）: %v", err)
 	}
@@ -223,7 +217,7 @@ func main() {
 		app.Event.Emit("shell:hidden-to-tray")
 	})
 
-	// A2A server auto-start (publish a local agent for remote A2A clients).
+	// A2A 服务器自动启动（为远程 A2A 客户端发布本地 Agent）。
 	if svcSettings := store.Get().Settings; svcSettings.A2AAutoStart && svcSettings.A2AAgentID != "" {
 		if st, err := a2aRPC.Start(svcSettings.A2AAgentID, svcSettings.A2APort); err != nil {
 			log.Printf("A2A 服务自启动失败: %v", err)
@@ -250,8 +244,7 @@ func main() {
 	}()
 
 	setupSystemTray(app, window, &quitting)
-	// Global summon shortcut; a conflicting registration (another app owns
-	// it) must not block startup.
+	// 全局唤起快捷键；冲突的注册（归另一个应用所有）不得阻塞启动。
 	if err := app.GlobalShortcut.Register("shift+cmd+space", func() {
 		toggleMainWindow(window)
 	}); err != nil {
@@ -263,17 +256,14 @@ func main() {
 	}
 }
 
-// shutdownHookTimeout bounds one shutdown hook. Each hook here tears down
-// network listeners or child processes, work that can stall for long enough
-// to matter: Quit() is synchronous, and the in-app updater gives the old
-// process a 30-second window to exit (see services.ApplyUpdate). Two hooks
-// at 5 s each stay well inside it.
+// shutdownHookTimeout 为单个关闭钩子设定上限。这里的每个钩子都会清理网络监听器或子进程，这类工作可
+// 能停滞足够久，从而产生影响：Quit() 是同步的，应用内更新器给旧进程 30
+// 秒的退出窗口（参见 services.ApplyUpdate）。两个各 5 秒的钩子仍远在该窗口内。
 const shutdownHookTimeout = 5 * time.Second
 
-// shutdownBounded runs fn in the background and returns once it finishes or
-// the timeout passes, whichever comes first. A timed-out hook keeps running
-// while the process exits underneath it; the alternative is a wedged Quit
-// that turns an update into two copies of the old app.
+// shutdownBounded 在后台运行 fn，并在 fn
+// 完成或超时后返回，以先发生者为准。超时的钩子会继续运行，而进程会在其仍在运行
+// 时退出；替代方案是 Quit 卡死，从而把一次更新变成旧应用的两个副本。
 func shutdownBounded(name string, timeout time.Duration, fn func()) {
 	done := make(chan struct{})
 	go func() {
@@ -292,8 +282,8 @@ func shutdownBounded(name string, timeout time.Duration, fn func()) {
 	}
 }
 
-// setupSystemTray adds a menu bar tray: click toggles the window, the menu
-// offers show/hide and quit (常驻托盘入口).
+// setupSystemTray 添加菜单栏托盘：点击切换窗口显隐，菜单提供显示/隐藏和退出
+// （常驻托盘入口）。
 func setupSystemTray(app *application.App, window *application.WebviewWindow, quitting *atomic.Bool) {
 	tray := app.SystemTray.New()
 	tray.SetIcon(trayIcon)
@@ -315,9 +305,8 @@ func setupSystemTray(app *application.App, window *application.WebviewWindow, qu
 	tray.SetMenu(menu)
 }
 
-// mainWindowController is the subset of window operations used by the tray,
-// menu and global-shortcut summon paths. Keeping it small lets tests exercise
-// the toggle state machine without a running WebView.
+// mainWindowController 是托盘、菜单和全局快捷键唤起路径所使用的窗口操作子集。保持其精简，可让测试无
+// 需运行 WebView 即可验证切换状态机。
 type mainWindowController interface {
 	IsVisible() bool
 	IsMinimised() bool
@@ -327,10 +316,9 @@ type mainWindowController interface {
 	Focus()
 }
 
-// toggleMainWindow hides a visible, non-minimised window and restores
-// everything else. A minimised window still reports IsVisible on Windows, so
-// checking IsMinimised here prevents a tray click from hiding a window the
-// user is trying to reopen.
+// toggleMainWindow 会隐藏一个可见且未最小化的窗口，并恢复其他所有情况。在
+// Windows 上，最小化的窗口仍会报告 IsVisible，因此在这里检查 IsMinimised
+// 可防止托盘点击隐藏用户正试图重新打开的窗口。
 func toggleMainWindow(window mainWindowController) {
 	if window == nil {
 		return
@@ -342,26 +330,23 @@ func toggleMainWindow(window mainWindowController) {
 	showMainWindow(window)
 }
 
-// showMainWindow restores the window without changing its position. The initial
-// position is already centered by Wails; summon paths must preserve whatever
-// position the user left instead of re-docking next to the tray.
+// showMainWindow 恢复窗口而不改变其位置。初始位置已由 Wails
+// 居中；唤起路径必须保留用户离开时的任意位置，而不是重新停靠到托盘旁边。
 func showMainWindow(window mainWindowController) {
 	if window == nil {
 		return
 	}
-	// UnMinimise (rather than Restore) keeps a maximised or fullscreen window
-	// exactly as the user left it.
+	// UnMinimise（而非 Restore）会让最大化或全屏窗口完全保持用户离开时的状态。
 	window.UnMinimise()
 	window.Show()
 	window.Focus()
 }
 
-// singleInstanceOptions builds the Wails single-instance configuration.
+// singleInstanceOptions 构建 Wails 单实例配置。
 //
-// UniqueID is the lock name the running copy and a newly launched copy use to
-// find each other, so it must stay stable across releases: changing it lets a
-// new build run side by side with an older one (the exact bug this prevents).
-// It matches productIdentifier in build/config.yml.
+// UniqueID 是正在运行的副本与新启动副本用于相互发现的锁名称，因此它必须在各版本间保持稳
+// 定：更改它会让新构建与旧构建并排运行（这正是它要防止的缺陷）。它与
+// build/config.yml 中的 productIdentifier 匹配。
 func singleInstanceOptions(activate func()) *application.SingleInstanceOptions {
 	return &application.SingleInstanceOptions{
 		UniqueID: "com.agentmate.app",
@@ -373,11 +358,11 @@ func singleInstanceOptions(activate func()) *application.SingleInstanceOptions {
 	}
 }
 
-// activateMainWindow brings the already-running window back to the front.
+// activateMainWindow 将已在运行的窗口带回前台。
 //
-// The callback runs on the first instance when a second launch is detected.
-// A nil window only happens when the second launch beats window creation and
-// the app is about to show it anyway.
+// 检测到第二次启动时，回调会在第一个实例上运行。nil
+// 窗口仅在第二次启动抢在窗口创建之前、且应用无论如何都即将显示该窗口时才会出现
+// 。
 func activateMainWindow(window *application.WebviewWindow) {
 	if window == nil {
 		return
@@ -385,8 +370,9 @@ func activateMainWindow(window *application.WebviewWindow) {
 	showMainWindow(window)
 }
 
-// setupLogging writes the standard logger to a size-capped rotating file in
-// addition to stderr. app.log moves to app.log.old once it exceeds 5 MB.
+// setupLogging 除 stderr
+// 外，还会将标准日志记录器写入一个有大小上限的轮转文件。app.log 一旦超过 5 MB
+// 就会移动到 app.log.old。
 func setupLogging(logDir string) {
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return
@@ -399,10 +385,9 @@ func setupLogging(logDir string) {
 	log.SetFlags(log.LstdFlags | log.LUTC)
 }
 
-// rotatingWriter caps its file at maxBytes: tray apps stay resident for
-// weeks, and the startup-only rotation check used to let app.log grow
-// without bound within one session. Every write checks the size and rotates
-// to <path>.old before appending.
+// rotatingWriter 将其文件大小上限设为
+// maxBytes：托盘应用会驻留数周，而过去仅在启动时执行的轮转检查会让 app.log
+// 在单次会话内无限增长。每次写入都会检查大小，并在追加前轮转到 <path>.old。
 type rotatingWriter struct {
 	mu       sync.Mutex
 	path     string
@@ -424,9 +409,8 @@ func newRotatingWriter(path string, maxBytes int64) (*rotatingWriter, error) {
 func (w *rotatingWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	// A failed reopen leaves w.f nil; every later write retries the open so a
-	// transient EMFILE/permission error does not kill file logging for the
-	// rest of the process lifetime.
+	// 重新打开失败会使 w.f 保持为 nil；后续每次写入都会重试打开，因此短暂的
+	// EMFILE/权限错误不会导致文件日志在进程剩余生命周期内失效。
 	if w.f == nil {
 		f, err := os.OpenFile(w.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 		if err != nil {
@@ -440,7 +424,7 @@ func (w *rotatingWriter) Write(p []byte) (int, error) {
 		_ = os.Rename(w.path, w.path+".old")
 		f, err := os.OpenFile(w.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 		if err != nil {
-			w.f = nil // retried on the next write
+			w.f = nil // 会在下一次写入时重试
 			return 0, err
 		}
 		w.f = f
@@ -448,8 +432,8 @@ func (w *rotatingWriter) Write(p []byte) (int, error) {
 	return w.f.Write(p)
 }
 
-// Close releases the current log file handle (used by tests so TempDir
-// cleanup does not fail on Windows where open handles block deletion).
+// Close 释放当前日志文件句柄（供测试使用，以免在 Windows
+// 上因打开的句柄阻止删除而导致 TempDir 清理失败）。
 func (w *rotatingWriter) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -461,9 +445,8 @@ func (w *rotatingWriter) Close() error {
 	return err
 }
 
-// newSessionService opens the ADK session service backed by SQLite and
-// returns the shared gorm handle alongside it. A corrupted database is moved
-// aside (backed up) and recreated so the app always starts.
+// newSessionService 打开由 SQLite 支持的 ADK 会话服务，并同时返回共享的 gorm
+// 句柄。损坏的数据库会被移到一旁（备份）并重新创建，以确保应用始终能够启动。
 func newSessionService(path string) (*gorm.DB, session.Service, error) {
 	open := func() (*gorm.DB, session.Service, error) {
 		dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
@@ -471,10 +454,9 @@ func newSessionService(path string) (*gorm.DB, session.Service, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		// Serialize all access: parallel sessions write this DB concurrently,
-		// and WAL alone cannot help a deferred transaction that hits a snapshot
-		// conflict (SQLITE_BUSY bypasses busy_timeout). One connection queues
-		// every statement instead — plenty for a desktop app.
+		// 将所有访问串行化：并行会话会并发写入此数据库，而仅靠 WAL
+		// 无法帮助遇到快照冲突的延迟事务（SQLITE_BUSY 会绕过
+		// busy_timeout）。改为由单个连接将每条语句排队——对桌面应用而言已足够。
 		if sqlDB, err := db.DB(); err == nil {
 			sqlDB.SetMaxOpenConns(1)
 		}
@@ -485,9 +467,9 @@ func newSessionService(path string) (*gorm.DB, session.Service, error) {
 		if err := database.AutoMigrate(svc); err != nil {
 			return nil, nil, err
 		}
-		// Probe: a corrupt file can pass Open but fail on first query.
+		// 探测：损坏的文件可能通过 Open，但在首次查询时失败。
 		if err := db.Exec("SELECT count(*) FROM sessions").Error; err != nil {
-			closeDB(db) // release the pool before the corrupt-file rename
+			closeDB(db) // 在对损坏文件重命名之前释放连接池
 			return nil, nil, err
 		}
 		return db, svc, nil
@@ -495,9 +477,9 @@ func newSessionService(path string) (*gorm.DB, session.Service, error) {
 	db, svc, err := open()
 	if err != nil {
 		backup := path + ".corrupt-" + time.Now().Format("20060102-150405")
-		// Close any leaked handle first: Windows refuses to rename a file
-		// that is still open (sharing violation), which would turn the
-		// self-heal path into a hard startup failure.
+		// 先关闭任何泄漏的句柄：Windows
+		// 会拒绝重命名仍处于打开状态的文件（共享冲突），进而使自愈路径变成硬性启动失
+		// 败。
 		closeDB(db)
 		if rerr := os.Rename(path, backup); rerr != nil {
 			log.Printf("sessions database corrupt but backup rename failed: %v", rerr)
@@ -514,7 +496,7 @@ func newSessionService(path string) (*gorm.DB, session.Service, error) {
 	return db, svc, nil
 }
 
-// closeDB releases the underlying SQL pool of a gorm handle (best effort).
+// closeDB 释放 gorm 句柄底层的 SQL 连接池（尽力而为）。
 func closeDB(db *gorm.DB) {
 	if db == nil {
 		return

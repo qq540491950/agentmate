@@ -47,7 +47,7 @@ func TestSaveProjectValidatesAndDedupes(t *testing.T) {
 	if _, err := chat.SaveProject("", "", filepath.Join(root, "missing")); err == nil {
 		t.Fatal("expected missing dir rejection")
 	}
-	// Rename keeps the root; a blank root on update is a no-op.
+	// 重命名会保留根目录；更新时根目录为空是空操作。
 	renamed, err := chat.SaveProject(p.ID, "agentmate", "")
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestNewSessionWithProjectSharesRootWithLegacyTask(t *testing.T) {
 	if legacy.WorkspaceDir == "" {
 		t.Fatal("legacy session should own the explicit workspace")
 	}
-	// Task sessions still refuse to share an explicitly bound directory.
+	// 任务会话仍拒绝共享显式绑定的目录。
 	if _, err := chat.NewSessionWithWorkspace("", "", "第二个任务", root); err == nil || !strings.Contains(err.Error(), "已被任务") {
 		t.Fatalf("expected exclusive task-workspace rejection, got %v", err)
 	}
@@ -127,9 +127,9 @@ func TestNewSessionWithProjectSharesRootWithLegacyTask(t *testing.T) {
 	}
 }
 
-// TestChatServiceHasNoRebindProjectRPC pins issue #29: moving an existing
-// chat to another project is retired, so the service surface must not expose
-// the old rehoming RPC again. Chats take their project at creation time.
+// TestChatServiceHasNoRebindProjectRPC 锁定 issue
+// #29：将现有聊天迁移到另一个项目已停用，因此服务接口不得再次暴露旧的重新归属
+// RPC。聊天在创建时确定其项目。
 func TestChatServiceHasNoRebindProjectRPC(t *testing.T) {
 	if _, ok := reflect.TypeOf(&ChatService{}).MethodByName("SetSessionProject"); ok {
 		t.Fatal("SetSessionProject must stay removed: chats are bound to their project at creation")

@@ -14,9 +14,10 @@ export type UpdateBadge = {
   percent?: number;
 };
 
-/** updateProgressFromEvent unwraps the WailsEvent envelope. Payloads from the
- * updater live under `event.data`; reading `written` from the envelope leaves
- * the progress bar stuck at zero. */
+/**
+ * updateProgressFromEvent 会解包 WailsEvent 信封。来自更新器的载荷位于
+ * `event.data` 下；从信封中读取 `written` 会导致进度条卡在零。
+ */
 export function updateProgressFromEvent(event: unknown): UpdateProgress | null {
   const payload = (event as { data?: unknown })?.data ?? event;
   if (
@@ -39,15 +40,17 @@ const VISIBLE_STATES = new Set([
   "error",
 ]);
 
-/** sidebarUpdateVisible deliberately ignores check-only failures. The footer
- * only grows an entry when there is a real release to act on (or a failed
- * install of that release). */
+/**
+ * sidebarUpdateVisible
+ * 有意忽略仅检查类失败。页脚仅在有可操作的真实发布（或该发布安装失败）时才会增
+ * 加条目。
+ */
 export function sidebarUpdateVisible(status: UpdateStatus | null): boolean {
   if (!status || !VISIBLE_STATES.has(status.state)) return false;
   return !!status.availableVersion;
 }
 
-/** formatUpdateBytes renders the small transfer sizes shown in the updater. */
+/** formatUpdateBytes 渲染更新器中显示的较小传输大小。 */
 export function formatUpdateBytes(n: number): string {
   if (!n) return "0 B";
   const units = ["B", "KB", "MB", "GB"];
@@ -60,13 +63,13 @@ export function formatUpdateBytes(n: number): string {
   return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
-/** updatePercent returns null until the updater reports a total byte count. */
+/** updatePercent 在更新器报告总字节数之前返回 null。 */
 export function updatePercent(progress: UpdateProgress | null): number | null {
   if (!progress || progress.total <= 0) return null;
   return Math.min(100, Math.max(0, Math.round((progress.written / progress.total) * 100)));
 }
 
-/** updateBadge keeps the entry compact at the sidebar's minimum width. */
+/** updateBadge 使条目在侧边栏的最小宽度下保持紧凑。 */
 export function updateBadge(
   status: UpdateStatus | null,
   progress: UpdateProgress | null,
@@ -89,7 +92,7 @@ export function updateBadge(
   };
 }
 
-/** updatePhaseTitle is used by both the chip title and the popover heading. */
+/** updatePhaseTitle 同时用于标签标题和弹出框标题。 */
 export function updatePhaseTitle(status: UpdateStatus | null): string {
   switch (status?.state) {
     case "available":

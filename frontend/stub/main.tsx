@@ -1,16 +1,16 @@
-// IPC stub harness: renders the REAL app UI in a plain browser by replacing
-// the Wails transport with canned data. Used for visual regression walks of
-// new UI (confirm cards, fork button, remote agents, settings cards).
+// IPC 桩测试装置：在普通浏览器中通过用预制数据替换 Wails
+// 传输层来渲染真实的应用程序 UI。用于新 UI（确认卡片、fork 按钮、远程
+// Agent、设置卡片）的视觉回归走查。
 import { setTransport } from "@wailsio/runtime";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "../src/App";
 import "../src/index.css";
 
-// ---- method IDs -----------------------------------------------------------
-// Wails routes ByID calls by FNV-1a32 over the Go method's full name. Compute
-// them here instead of hardcoding numbers: regenerating bindings previously
-// rotted every hardcoded numeric key at once.
+// ---- 方法 ID -----------------------------------------------------------
+// Wails 根据 Go 方法全名的 FNV-1a32 哈希来路由 ByID
+// 调用。在此处计算它们，而不是硬编码数字：此前重新生成绑定会一次性让每个硬编码
+// 的数字键腐坏。
 function fnv1a32(text: string): string {
   let hash = 0x811c9dc5;
   for (const byte of new TextEncoder().encode(text)) {
@@ -22,7 +22,7 @@ function fnv1a32(text: string): string {
 const svc = (service: string, method: string) =>
   fnv1a32(`agentmate/internal/services.${service}.${method}`);
 
-// ---- seed data ------------------------------------------------------------
+// ---- 种子数据 ------------------------------------------------------------
 
 const query = new URLSearchParams(window.location.search);
 const queryTheme = ["nord", "graphite", "paper", "contrast"].includes(query.get("theme") ?? "")
@@ -136,8 +136,8 @@ const seedConfig = {
       createdAt: "2026-09-18T01:00:00Z",
     },
   ],
-  // Slash-menu fixtures: one discovered project skill and one app skill, so
-  // the source tags and descriptions are visible in the browser stub.
+  // 斜杠菜单测试数据：一个已发现的项目技能和一个应用技能，以便在浏览器桩中看到
+  // 来源标签和描述。
   skills: [
     {
       id: "fs:project:weekly-report",
@@ -172,8 +172,8 @@ const seedConfig = {
     { id: "proj_beta", name: "agentmate", rootDir: "D:/projects/agentmate", createdAt: "2026-10-20T00:00:00Z" },
   ],
   sessions: [
-    // Compact project-tree fixtures: the first project has fewer than the
-    // five-row preview, the second overflows into「展开显示」.
+    // 紧凑项目树测试数据：第一个项目的行数少于五行预览，第二个会溢出到「展开显
+    // 示」。
     { id: "sess_pm_flash", title: "设计模型等待回复的闪烁状态", targetType: "", targetId: "", createdAt: iso(0, 16), updatedAt: iso(0, 16), projectId: "proj_beta" },
     { id: "sess_cloud_443", title: "我来比对两个配置中的 443 端口节点", targetType: "", targetId: "", createdAt: iso(0, 11), updatedAt: iso(0, 11), projectId: "proj_alpha", pinned: true },
     { id: "sess_cloud_pull1", title: "拉取最新的代码", targetType: "", targetId: "", createdAt: iso(0, 10), updatedAt: iso(0, 10), projectId: "proj_alpha" },
@@ -189,8 +189,8 @@ const seedConfig = {
     { id: "sess_process", title: "执行过程四档演示", preview: "检查、测试与文件写入均已完成。", targetType: "", targetId: "", createdAt: iso(0, 9), updatedAt: iso(0, 10), sandboxMode: "danger-full-access" },
     { id: "sess_plain", title: "普通对话", targetType: "team", targetId: "team_1", createdAt: "2026-09-17T09:00:00Z", updatedAt: "2026-09-17T09:10:00Z" },
     { id: "sess_direct", title: "我如何选择模型呢？", targetType: "", targetId: "", createdAt: "2026-11-01T00:45:00Z", updatedAt: "2026-11-01T00:48:00Z", sandboxMode: "auto-approve" },
-    // Sidebar-grouping fixtures: dates relative to load time so the time
-    // buckets (置顶/今天/昨天/7天内/更早) always have members to show.
+    // 侧边栏分组测试数据：日期相对于加载时间，因此时间分桶（置顶/今天/昨天/7天
+    // 内/更早）始终有成员可显示。
     { id: "sess_pinned", title: "置顶：本周迭代计划", targetType: "", targetId: "", createdAt: "2026-10-20T09:00:00Z", updatedAt: "2026-10-20T10:00:00Z", pinned: true },
     { id: "sess_yesterday", title: "整理会议纪要", targetType: "", targetId: "", createdAt: iso(-1, 15), updatedAt: iso(-1, 16) },
     { id: "sess_week", title: "分析导出数据", targetType: "agent", targetId: "agent_1", createdAt: iso(-3, 10), updatedAt: iso(-3, 11) },
@@ -202,7 +202,7 @@ const seedConfig = {
   ],
 };
 
-// iso(dayOffset, hour) builds a local-time ISO stamp relative to today.
+// iso(dayOffset, hour) 构建相对于今天的本地时间 ISO 时间戳。
 function iso(dayOffset: number, hour: number): string {
   const d = new Date();
   d.setDate(d.getDate() + dayOffset);
@@ -312,11 +312,11 @@ const histories: Record<string, any[]> = {
 };
 
 let pendingAnswer = 0;
-// Session-level approval modes, merged into ListSessions so switching chats
-// in the stub restores each chat's own mode.
+// 会话级审批模式，合并到 ListSessions
+// 中，以便在桩中切换聊天时恢复每个聊天自身的模式。
 const sessionSandboxModes = new Map<string, string>();
 type TaskSnapshotMode = "success" | "empty" | "error" | "truncated" | "slow";
-// Browser walks can request empty/error/truncated/slow states with ?taskMode=.
+// 浏览器走查可以通过 ?taskMode= 请求 empty/error/truncated/slow 状态。
 const stubParams = new URLSearchParams(window.location.search);
 const requestedTaskSnapshotMode = stubParams.get("taskMode");
 let taskSnapshotMode: TaskSnapshotMode = (["success", "empty", "error", "truncated", "slow"] as const).includes(
@@ -326,7 +326,7 @@ const workspaceMockMode = stubParams.get("workspaceMode") === "conflict"
   ? "conflict"
   : stubParams.get("workspaceMode") === "error" ? "error" : "success";
 const dialogMode = stubParams.get("dialogMode") === "cancel" ? "cancel" : "select";
-// Update flow fixtures: ?update=hidden|available|downloading|ready|error|notify
+// 更新流程夹具：?update=hidden|available|downloading|ready|error|notify
 const requestedUpdateMode = stubParams.get("update") ?? "available";
 const updateModes = ["hidden", "available", "downloading", "ready", "error", "notify"] as const;
 type UpdateMode = (typeof updateModes)[number];
@@ -355,8 +355,8 @@ function stubUpdateStatus() {
 const handlers: Record<string, (args: any[]) => any> = {
   // GetConfig
   [svc("ConfigService", "GetConfig")]: () => seedConfig,
-  // SaveSettings: the settings pages share an explicit save path, so the
-  // stub must persist the draft for the dirty state to clear after saving.
+  // SaveSettings：设置页面共享一条显式保存路径，因此 stub
+  // 必须持久化草稿，以便保存后清除脏状态。
   [svc("ConfigService", "SaveSettings")]: (args) => {
     seedConfig.settings = args[0];
     return null;
@@ -440,9 +440,9 @@ const handlers: Record<string, (args: any[]) => any> = {
   [svc("ChatService", "GetSessionMessages")]: (args) => histories[args[0]] ?? [],
   // IsRunning(sessionID)
   [svc("ChatService", "IsRunning")]: () => false,
-  // SessionStats(sessionID): the numbers mirror the composer's「背景信息窗口」
-  // hover card (109k of a 996k window ≈ 11%, plus a 96k cache hit) so the card
-  // can be walked without a live model call.
+  // SessionStats(sessionID)：这些数字与 composer
+  // 的「背景信息窗口」悬停卡片一致（996k 窗口中的 109k ≈ 11%，外加 96k
+  // 缓存命中），因此无需实际模型调用即可走查该卡片。
   [svc("ChatService", "SessionStats")]: () => ({
     messages: 1, toolCalls: 1, toolFailures: 0, assistantTurns: 0,
     tokensIn: 109000, tokensOut: 0, tokensTotal: 109000,
@@ -505,7 +505,7 @@ const handlers: Record<string, (args: any[]) => any> = {
       userMsg,
       { id: `m-ans-${pendingAnswer}`, kind: "assistant", author: "助手", text: answer, timestamp: stamp },
     ];
-    // Mirror the backend stream: user bubble (with the turn's level), reply, done.
+    // 镜像后端流式：用户气泡（带该回合的级别）、回复、完成。
     queueMicrotask(() => {
       window.__emit("chat:stream", { sessionId: sid, kind: "user", text, ...(reasoning ? { reasoning } : {}) });
       window.__emit("chat:stream", { sessionId: sid, kind: "message", author: "助手", text: answer });
@@ -720,8 +720,9 @@ const handlers: Record<string, (args: any[]) => any> = {
   },
   // AppInfo
   [svc("AppService", "AppInfo")]: () => ({ name: "AgentMate", version: "0.6.3", adk: "google adk-go v2" }),
-  // UpdateService — the browser walk can start from any updater state via
-  // ?update=hidden|available|downloading|ready|error|notify.
+  // UpdateService — 浏览器走查可通过
+  // ?update=hidden|available|downloading|ready|error|notify
+  // 从任意更新器状态开始。
   [svc("UpdateService", "Status")]: () => stubUpdateStatus(),
   [svc("UpdateService", "CheckNow")]: () => stubUpdateStatus(),
   [svc("UpdateService", "InstallUpdate")]: async () => {
@@ -785,7 +786,7 @@ const handlers: Record<string, (args: any[]) => any> = {
            { id: `m-final-${pendingAnswer}`, kind: "assistant", author: "写手助手", text: "已确认并写入 notes/weekly.md。", timestamp: "2026-09-18T01:06:02Z" }]
         : [{ id: `m-reject-${pendingAnswer}`, kind: "assistant", author: "写手助手", text: "好的，已取消写入。", timestamp: "2026-09-18T01:06:02Z" }]),
     ];
-    // Stream the confirmation resume flow back into the UI.
+    // 将确认恢复流程流式回传到 UI。
     queueMicrotask(() => {
       window.__emit("chat:stream", { sessionId: args[0], kind: "tool_result", author: "写手助手", toolName: "write_workspace_file", toolResp: { ok: true, bytes: 6 } });
       window.__emit("chat:stream", { sessionId: args[0], kind: "message", author: "写手助手", text: approved ? "已确认并写入 notes/weekly.md。" : "好的，已取消写入。" });
@@ -793,8 +794,8 @@ const handlers: Record<string, (args: any[]) => any> = {
     });
     return null;
   },
-  // ChatService.SessionSandboxMode(sessionID) / SetSessionSandboxMode.
-  // These RPCs are called by name, so the stub routes on methodName as well.
+  // ChatService.SessionSandboxMode(sessionID) / SetSessionSandboxMode。这些 RPC
+  // 按名称调用，因此 stub 也会根据 methodName 进行路由。
   "agentmate/internal/services.ChatService.SessionSandboxMode": (args) => {
     const id = String(args[0] ?? "");
     return sessionSandboxModes.get(id)
@@ -809,12 +810,12 @@ const handlers: Record<string, (args: any[]) => any> = {
     if (session) session.sandboxMode = mode;
     return null;
   },
-  // ChatService.EffectiveSkills(sessionID, projectID) — composer "/" menu.
-  // Numeric key = generated binding's ByID route; the ByName key keeps older
-  // snapshots working.
+  // ChatService.EffectiveSkills(sessionID, projectID) — composer
+  // 的“/”菜单。数字键 = 生成绑定的 ByID 路由；ByName 键让较旧的快照继续工作。
   [svc("ChatService", "EffectiveSkills")]: () => seedConfig.skills,
   "agentmate/internal/services.ChatService.EffectiveSkills": () => seedConfig.skills,
-  // ArtifactService.ListContextPaths(sessionID, projectID) — composer "@" menu.
+  // ArtifactService.ListContextPaths(sessionID, projectID) — composer
+  // 的“@”菜单。
   [svc("ArtifactService", "ListContextPaths")]: () => [
     { path: "notes", dir: true },
     { path: "notes/weekly.md", dir: false },
@@ -831,8 +832,8 @@ const handlers: Record<string, (args: any[]) => any> = {
   ],
   // ListProviderModels
   [svc("ConfigService", "ListProviderModels")]: () => ["gpt-5-mini", "gpt-5"],
-  // SaveMCPServer mirrors the normalized saved-server contract so the MCP
-  // page can immediately apply the enabled/disabled desired state.
+  // SaveMCPServer 会镜像规范化后的已保存服务器契约，使 MCP
+  // 页面可以立即应用启用/禁用的期望状态。
   [svc("ConfigService", "SaveMCPServer")]: (args) => {
     const saved = args[0];
     const index = seedConfig.mcpServers.findIndex((s: any) => s.id === saved.id);
@@ -856,8 +857,9 @@ const handlers: Record<string, (args: any[]) => any> = {
   [svc("ConfigService", "SuggestModels")]: (args) => (args[0] ?? []).map((id: string) => {
     const hit = seedConfig.providers[0].models.find((m) => m.id === id);
     const base: any = hit ? { ...hit } : { id, displayName: id };
-    // Mirror config.suggestReasoning's family fallback: a model saved without
-    // a table still gets levels, so the per-turn picker stays visible (#42).
+    // 镜像 config.suggestReasoning
+    // 的系列回退：保存时没有表的模型仍会获得级别，因此每回合的选择器保持可见（#
+    // 42）。
     if (!base.reasoning && /gpt-5|gpt-6|o3|deepseek|glm|claude|qwen|kimi/.test(id.toLowerCase())) {
       base.reasoning = {
         enabled: true,
@@ -884,7 +886,7 @@ const handlers: Record<string, (args: any[]) => any> = {
   [svc("AppService", "StorageStats")]: () => ({ sessionsDbBytes: 524288, knowledgeDbBytes: 65536 }),
   // AppService.MemoryStats
   [svc("AppService", "MemoryStats")]: () => ({ count: 7 }),
-  // AppService.SandboxStatus — Settings platform warning.
+  // AppService.SandboxStatus — Settings 平台警告。
   [svc("AppService", "SandboxStatus")]: () => ({
     available: true,
     backend: "windows-appcontainer",
@@ -907,25 +909,25 @@ setTransport({
       return dialogMode === "cancel" ? "" : "/tmp/agentmate-picked";
     }
     (window as any).__lastCalls.push(descriptor);
-    // The descriptor {call-id, methodID, args} arrives as the args slot.
+    // 描述符 {call-id, methodID, args} 作为 args 槽位传入。
     const opt = (descriptor && typeof descriptor === "object"
       ? descriptor
       : { methodID: descriptor, args: [] }) as { methodID?: number | string; methodName?: string; args?: any[] };
-    // ByName calls carry methodName; ByID calls (every generated binding) carry
-    // methodID. Route on whichever the runtime sent.
+    // ByName 调用携带 methodName；ByID 调用（每个生成的绑定）携带
+    // methodID。按运行时发送的字段进行路由。
     const h = handlers[opt.methodName ?? String(opt.methodID)];
     if (!h) return null;
     const list = Array.isArray(opt.args) ? opt.args : opt.args == null ? [] : [opt.args];
-    // Deep-copy results like real IPC serialization does: returning shared
-    // references lets in-place stub mutations slip past React state updates
-    // (same-reference setSessions bails out) and shows stale lists. Async
-    // handlers must settle first — structuredClone cannot clone a Promise.
+    // 像真实 IPC 序列化那样对结果进行深拷贝：返回共享引用会让对桩的原地修改绕过
+    // React 状态更新（同一引用的 setSessions
+    // 会跳过），并显示过期的列表。异步处理器必须先完成——structuredClone
+    // 无法克隆 Promise。
     const result = await h(list);
     return result == null ? result : structuredClone(result);
   },
 });
 
-// Expose a helper so tests can inject backend events (chat:stream ...).
+// 暴露一个辅助函数，以便测试注入后端事件（chat:stream ...）。
 (window as any).__emit = (name: string, data: unknown) => {
   (window as any)._wails?.dispatchWailsEvent?.({ name, data });
 };
@@ -939,8 +941,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   </React.StrictMode>,
 );
 
-// Visual-regression helper: ?collapse=<project> exercises the closed project
-// row (folder icon, hidden children) without a manual click.
+// 视觉回归辅助：?collapse=<project>
+// 用于触发关闭状态的项目行（文件夹图标、子项隐藏），无需手动点击。
 const collapseProject = stubParams.get("collapse");
 if (collapseProject) {
   let attempts = 0;

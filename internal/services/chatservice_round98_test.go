@@ -16,9 +16,9 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// newRecordingChat is a fixture like newConfirmTestChat whose fake model
-// server records every request body, so tests can assert what the model
-// actually received across turns.
+// newRecordingChat 是一个与 newConfirmTestChat
+// 类似的测试夹具，其假模型服务器会记录每个请求体，因此测试可以断言模型在各回合
+// 实际接收到的内容。
 func newRecordingChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *config.Store, *[]string) {
 	t.Helper()
 	var bodies []string
@@ -52,8 +52,8 @@ func newRecordingChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *co
 	return NewChatService(svc, sessions, db), store, &bodies
 }
 
-// TestRegeneratePreservesAttachments pins the Regenerate contract: the re-run
-// must carry the original turn's image attachments, not just its text.
+// TestRegeneratePreservesAttachments 锁定 Regenerate
+// 的契约：重新运行必须携带原始回合的图像附件，而不只是其文本。
 func TestRegeneratePreservesAttachments(t *testing.T) {
 	turn := 0
 	chat, _, bodies := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
@@ -75,8 +75,8 @@ func TestRegeneratePreservesAttachments(t *testing.T) {
 	if len(*bodies) != 1 || !strings.Contains((*bodies)[0], base64.StdEncoding.EncodeToString(png)) {
 		t.Fatalf("first send missing image payload")
 	}
-	// The user stream event must carry the attachment so the optimistic UI
-	// renders the image without waiting for a history reload.
+	// 用户流式事件必须携带该附件，以便乐观 UI
+	// 无需等待历史记录重新加载即可渲染图像。
 	var sawAtt bool
 	for _, ev := range *events {
 		if ev.Kind == "user" && len(ev.Attachments) == 1 && strings.Contains(ev.Attachments[0].DataURL, base64.StdEncoding.EncodeToString(png)) {
@@ -99,7 +99,7 @@ func TestRegeneratePreservesAttachments(t *testing.T) {
 	if !strings.Contains((*bodies)[1], "看看这张图") {
 		t.Fatal("regenerated turn lost the message text")
 	}
-	// History must render the attachment again (exactly once).
+	// 历史记录必须再次渲染该附件（恰好一次）。
 	msgs, err := chat.GetSessionMessages(sess.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -115,8 +115,7 @@ func TestRegeneratePreservesAttachments(t *testing.T) {
 	}
 }
 
-// TestEditAndResendKeepsAttachments: editing the text must not silently drop
-// the images of the original turn.
+// TestEditAndResendKeepsAttachments：编辑文本时不得静默丢弃原始回合的图像。
 func TestEditAndResendKeepsAttachments(t *testing.T) {
 	chat, _, bodies := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -190,8 +189,7 @@ func TestRegenerateAfterHitlConfirm(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Regenerate must work: the whole confirm trail is trimmed and the
-	// original user message re-sent.
+	// Regenerate 必须正常工作：整个确认轨迹会被裁剪，且原始用户消息会被重新发送。
 	if err := chat.Regenerate(sess.ID); err != nil {
 		t.Fatalf("regenerate after HITL confirm: %v", err)
 	}
@@ -209,9 +207,8 @@ func TestRegenerateAfterHitlConfirm(t *testing.T) {
 	}
 }
 
-// TestExportHTMLIncludesHITLAndNames pins the HTML export parity: HITL
-// decisions, resolved target names and metadata lines all appear, like in the
-// Markdown export.
+// TestExportHTMLIncludesHITLAndNames 锁定 HTML 导出的对等性：HITL
+// 决策、解析后的目标名称和元数据行都会出现，就像在 Markdown 导出中一样。
 func TestExportHTMLIncludesHITLAndNames(t *testing.T) {
 	turn := 0
 	var callID string
@@ -258,13 +255,13 @@ func TestExportHTMLIncludesHITLAndNames(t *testing.T) {
 	}
 }
 
-// TestDeleteSessionCancelsRunningTurn: deleting a session must abort its
-// in-flight run instead of leaving it burning tokens until the timeout.
+// TestDeleteSessionCancelsRunningTurn：删除会话必须中止其进行中的运行，而不是让
+// 它一直消耗 token 直到超时。
 func TestDeleteSessionCancelsRunningTurn(t *testing.T) {
 	chat, _, _ := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		// Hold the stream open until the client goes away (cancel), not a
-		// fixed sleep — t.Cleanup waits for handlers to finish.
+		// 保持流式连接打开，直到客户端离开（取消），而不是固定休眠——t.Cleanup
+		// 会等待处理程序结束。
 		select {
 		case <-r.Context().Done():
 		case <-time.After(30 * time.Second):
@@ -307,17 +304,16 @@ func TestDeleteSessionCancelsRunningTurn(t *testing.T) {
 	}
 }
 
-// TestTurnUsageAccumulatesAcrossToolLoop: a turn that makes several model
-// calls reports the SUM of their usage on the final message event, not just
-// the last call's numbers.
+// TestTurnUsageAccumulatesAcrossToolLoop：一个回合进行多次模型调用时，会在最终
+// 消息事件中报告这些调用用量之和，而不只是最后一次调用的数字。
 func TestTurnUsageAccumulatesAcrossToolLoop(t *testing.T) {
 	turn := 0
 	chat, _, _, _ := newConfirmTestChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		turn++
 		if turn == 1 {
-			// Tool call round: 10 prompt + 4 completion (fixture usage is
-			// appended by sseDone-style usage chunk below).
+			// 工具调用轮次：10 个提示词 + 4 个补全（夹具用量由下方的 sseDone
+			// 风格用量数据块追加）。
 			_, _ = w.Write([]byte(sseToolCall("c1", "write_workspace_file", `"{\"path\":\"u.txt\",\"content\":\"v\"}"`) +
 				`data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}` + "\n\n" + sseDone))
 			return
@@ -329,7 +325,7 @@ func TestTurnUsageAccumulatesAcrossToolLoop(t *testing.T) {
 
 	if err := chat.S.Store.Update(func(cfg *config.Config) {
 		for i := range cfg.Agents {
-			cfg.Agents[i].ConfirmTools = nil // no HITL: direct execution
+			cfg.Agents[i].ConfirmTools = nil // 无 HITL：直接执行
 		}
 	}); err != nil {
 		t.Fatal(err)
@@ -358,8 +354,8 @@ func TestTurnUsageAccumulatesAcrossToolLoop(t *testing.T) {
 	if msgUsage.PromptTokens != 110 || msgUsage.CompletionTokens != 44 || msgUsage.TotalTokens != 154 {
 		t.Fatalf("usage not accumulated: %+v", msgUsage)
 	}
-	// ContextTokens is the CURRENT context size — the last call's prompt, not
-	// the cumulative sum (which double-counts the shared history prefix).
+	// ContextTokens 是当前上下文大小——最后一次调用的提示词，而不是累计总和（后者会重复计算共享历
+	// 史前缀）。
 	if doneUsage == nil {
 		t.Fatal("done carried no session usage")
 	}
@@ -381,10 +377,10 @@ func TestTurnUsageAccumulatesAcrossToolLoop(t *testing.T) {
 	}
 }
 
-// TestTurnUsageCarriesCachedTokens: the provider's prompt-cache counters reach
-// the UI. CachedTokens is the cached share of the CURRENT context (last call),
-// so a tool loop that hits the cache twice must not report their sum — the
-// bubble would otherwise claim a cache bigger than the prompt.
+// TestTurnUsageCarriesCachedTokens：供应商的提示词缓存计数器会传递到
+// UI。CachedTokens
+// 是当前上下文（最后一次调用）的缓存份额，因此两次命中缓存的工具循环不得报告它
+// 们的总和——否则气泡会声称缓存大于提示词。
 func TestTurnUsageCarriesCachedTokens(t *testing.T) {
 	turn := 0
 	chat, _, _, _ := newConfirmTestChat(t, func(w http.ResponseWriter, r *http.Request) {
@@ -402,7 +398,7 @@ func TestTurnUsageCarriesCachedTokens(t *testing.T) {
 
 	if err := chat.S.Store.Update(func(cfg *config.Config) {
 		for i := range cfg.Agents {
-			cfg.Agents[i].ConfirmTools = nil // no HITL: direct execution
+			cfg.Agents[i].ConfirmTools = nil // 无 HITL：直接执行
 		}
 	}); err != nil {
 		t.Fatal(err)
@@ -428,7 +424,7 @@ func TestTurnUsageCarriesCachedTokens(t *testing.T) {
 	if msgUsage == nil || doneUsage == nil {
 		t.Fatal("missing usage on message/done events")
 	}
-	// Prompt/completion still accumulate (billing), the cached share does not.
+	// 提示词/补全仍会累计（计费），但缓存份额不会。
 	if msgUsage.PromptTokens != 110 || msgUsage.CompletionTokens != 44 {
 		t.Fatalf("billing usage not accumulated: %+v", msgUsage)
 	}
@@ -450,13 +446,13 @@ func TestTurnUsageCarriesCachedTokens(t *testing.T) {
 	}
 }
 
-// TestChatPreviewStripsControlChars: model output can carry C0 control bytes
-// (e.g. U+0001); the sidebar preview must not surface them.
+// TestChatPreviewStripsControlChars: 模型输出可能携带 C0 控制字节（例如
+// U+0001）；侧边栏预览不得将其显示出来。
 func TestChatPreviewStripsControlChars(t *testing.T) {
 	chat, _, _ := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		// \u0001 rides inside the JSON string (raw C0 bytes would be invalid
-		// JSON): after parsing, the reply carries a real U+0001.
+		// \u0001 位于 JSON 字符串内部（原始 C0 字节会导致 JSON
+		// 无效）：解析后，回复携带真实的 U+0001。
 		_, _ = w.Write([]byte(sseText("代码已拉取，当前分支已是最新\\u0001（already up to date）") + sseDone))
 	})
 	hookEvents(t)
@@ -479,8 +475,8 @@ func TestChatPreviewStripsControlChars(t *testing.T) {
 	t.Fatal("session not found")
 }
 
-// TestChatPreviewTruncatedByRune: the sidebar preview never splits a UTF-8
-// rune (multi-byte Chinese text at the 80-rune boundary).
+// TestChatPreviewTruncatedByRune: 侧边栏预览绝不拆分 UTF-8 rune（80 个 rune
+// 边界处的多字节中文文本）。
 func TestChatPreviewTruncatedByRune(t *testing.T) {
 	chat, _, _ := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -506,8 +502,7 @@ func TestChatPreviewTruncatedByRune(t *testing.T) {
 	}
 }
 
-// TestRenameSessionAuditOnlyOnSuccess keeps the lifecycle audit honest:
-// renaming an unknown session fails and must not leave a "renamed" record.
+// TestRenameSessionAuditOnlyOnSuccess 保持生命周期审计的真实性：重命名未知会话会失败，并且不得留下 "renamed" 记录。
 func TestRenameSessionAuditOnlyOnSuccess(t *testing.T) {
 	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
 	var reply atomic.Value
@@ -561,9 +556,8 @@ func TestSearchSessionsEscapesLikeWildcards(t *testing.T) {
 	}
 }
 
-// TestSessionModelOverride: the chat-header model picker pins the session to
-// a different model of the agent's provider — the request carries the
-// overridden model id and the stats pricing follows it.
+// TestSessionModelOverride: 聊天头部模型选择器将会话固定到 Agent
+// 的供应商下的另一个模型——请求携带覆盖后的模型 ID，统计定价也随之变化。
 func TestSessionModelOverride(t *testing.T) {
 	chat, store, bodies := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -571,7 +565,7 @@ func TestSessionModelOverride(t *testing.T) {
 	})
 	hookEvents(t)
 
-	// The picker only offers the provider's model list — add the override target.
+	// 选择器仅提供供应商的模型列表——添加覆盖目标。
 	if err := store.Update(func(cfg *config.Config) {
 		for i := range cfg.Providers {
 			if cfg.Providers[i].ID == "prov_r" {
@@ -602,7 +596,7 @@ func TestSessionModelOverride(t *testing.T) {
 	if !strings.Contains((*bodies)[0], `"model":"fake-mini"`) || !strings.Contains((*bodies)[1], `"model":"fake-large"`) {
 		t.Fatalf("override not applied: %q", *bodies)
 	}
-	// Clearing restores the agent default.
+	// 清除后会恢复 Agent 默认值。
 	if err := chat.SetSessionModel(sess.ID, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -614,8 +608,8 @@ func TestSessionModelOverride(t *testing.T) {
 	}
 }
 
-// TestSetSessionModelUnknownSession: the picker's RPC must reject unknown
-// session IDs instead of silently succeeding (same contract as RenameSession).
+// TestSetSessionModelUnknownSession: 选择器的 RPC 必须拒绝未知会话
+// ID，而不是静默成功（与 RenameSession 的契约相同）。
 func TestSetSessionModelUnknownSession(t *testing.T) {
 	var reply atomic.Value
 	reply.Store("ok")
@@ -625,9 +619,8 @@ func TestSetSessionModelUnknownSession(t *testing.T) {
 	}
 }
 
-// TestRenderTodoListEscapes: todo contents echo model-controlled tool
-// arguments — the HTML export must escape them (stored-XSS vector), while the
-// Markdown export keeps the raw text.
+// TestRenderTodoListEscapes: todo 内容会回显模型控制的工具参数——HTML
+// 导出必须转义它们（存储型 XSS 向量），而 Markdown 导出保留原始文本。
 func TestRenderTodoListEscapes(t *testing.T) {
 	resp := map[string]any{"todos": []any{
 		map[string]any{"content": `<img src=x onerror=alert(1)>`, "status": "pending"},

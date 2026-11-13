@@ -19,15 +19,15 @@ import (
 	"agentmate/internal/config"
 )
 
-// A2AService exposes the app's local agents over the A2A protocol so OTHER
-// A2A clients (this app or third parties) can call them remotely. It mirrors
-// the ADK launcher's server recipe: agent card discovery + JSON-RPC invoke.
+// A2AService 通过 A2A 协议暴露应用的本地 Agent，使其他 A2A
+// 客户端（本应用或第三方）可以远程调用它们。它沿用 ADK
+// 启动器的服务端方案：Agent 卡片发现 + JSON-RPC 调用。
 type A2AService struct {
 	S        *Services
 	Sessions session.Service
 
 	mu      sync.Mutex
-	servers map[string]*a2aServer // agentID -> running server
+	servers map[string]*a2aServer // agentID -> 运行中的服务器
 }
 
 type a2aServer struct {
@@ -38,13 +38,13 @@ type a2aServer struct {
 	url      string
 }
 
-// NewA2AService creates the service. sessions backs the server-side stores of
-// remote invocations (each remote call gets its own server-side session).
+// NewA2AService 创建该服务。sessions 为远程调用的服务端存储提供后端支持
+// （每次远程调用都会获得自己的服务端会话）。
 func NewA2AService(s *Services, sessions session.Service) *A2AService {
 	return &A2AService{S: s, Sessions: sessions}
 }
 
-// A2AStatus describes one running published agent.
+// A2AStatus 描述一个正在运行的已发布 Agent。
 type A2AStatus struct {
 	Running   bool   `json:"running"`
 	URL       string `json:"url,omitempty"`
@@ -52,9 +52,9 @@ type A2AStatus struct {
 	AgentName string `json:"agentName,omitempty"`
 }
 
-// Start publishes the given local agent over A2A on the requested port
-// (0 = pick a free one). Idempotent per agent: republishing a running agent
-// returns its existing status. Multiple agents may be published at once.
+// Start 在请求的端口上通过 A2A 发布指定的本地 Agent （0 =
+// 选择一个空闲端口）。按 Agent 幂等：重新发布正在运行的 Agent
+// 会返回其现有状态。可以同时发布多个 Agent。
 func (a *A2AService) Start(agentID string, port int) (A2AStatus, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -115,12 +115,11 @@ func (a *A2AService) Start(agentID string, port int) (A2AStatus, error) {
 		srv: srv, listener: ln, agentID: agentID,
 		cardName: name, url: "http://" + ln.Addr().String(),
 	}
-	// Register before serving so the failure path below can find the entry.
+	// 在开始提供服务前注册，以便下方的失败路径能够找到该条目。
 	a.servers[agentID] = entry
 	go func() {
-		// Serve only returns on listener failure or shutdown; either way the
-		// agent is no longer reachable, so drop it instead of reporting a
-		// running server that refuses connections.
+		// Serve 仅在监听器失败或关闭时返回；无论哪种情况，Agent
+		// 都不再可达，因此应将其移除，而不是报告一个仍在运行但拒绝连接的服务器。
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			a.mu.Lock()
 			if cur, ok := a.servers[agentID]; ok && cur.srv == srv {
@@ -132,21 +131,19 @@ func (a *A2AService) Start(agentID string, port int) (A2AStatus, error) {
 	return A2AStatus{Running: true, URL: entry.url, AgentID: agentID, AgentName: name}, nil
 }
 
-// a2aAgentConfig keeps a published agent non-interactive. There is no UI on
-// the A2A invocation path to answer a HITL confirmation, so inheriting the
-// chat default (request-approval) would pause every file or shell call
-// forever. Keep the workspace-write OS boundary and clear per-agent prompts
-// for this runtime copy; the persisted agent is left untouched.
+// a2aAgentConfig 使已发布的 Agent 保持非交互状态。A2A 调用路径上没有 UI 可用于
+// 回答 HITL 确认，因此继承聊天默认值（request-approval）会使每次文件或 shell
+// 调用 永久暂停。保留 workspace-write 的 OS 边界，并清除此运行时副本中各 Agent
+// 的提示词； 持久化的 Agent 保持不变。
 func a2aAgentConfig(ac config.AgentConfig) config.AgentConfig {
 	ac.ApplyExecutionPolicy(config.ApprovalPolicyNever, config.SandboxProfileWorkspaceWrite)
 	ac.SandboxNetwork = config.SandboxNetworkOff
 	return ac
 }
 
-// StopPublishedAgent is a best-effort hook for config mutations: if the given
-// agent is currently published over A2A, its server is stopped so remote
-// clients cannot keep invoking a stale (edited) or deleted agent tree. Unknown
-// IDs are a no-op.
+// StopPublishedAgent 是用于配置变更的尽力而为钩子：如果给定的 Agent 当前通过
+// A2A 发布，则停止其服务器，使远程客户端无法继续调用已过时（已编辑）或已删除的
+// Agent 树。未知 ID 为空操作。
 func (s *Services) StopPublishedAgent(agentID string) {
 	if s.A2A == nil {
 		return
@@ -154,7 +151,7 @@ func (s *Services) StopPublishedAgent(agentID string) {
 	_ = s.A2A.StopAgent(agentID)
 }
 
-// StopAgent shuts down one published agent's server.
+// StopAgent 关闭一个已发布 Agent 的服务器。
 func (a *A2AService) StopAgent(agentID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -166,16 +163,15 @@ func (a *A2AService) StopAgent(agentID string) error {
 	defer cancel()
 	err := entry.srv.Shutdown(ctx)
 	if err != nil {
-		// Graceful shutdown timed out with streaming calls still in flight:
-		// force-close so status matches reality (the entry is deleted below)
-		// and lingering handlers stop writing to the session store.
+		// 流式调用仍在进行时，优雅关闭超时：强制关闭，使状态与实际一致（下方会删除该
+		// 条目），并让残留的处理程序停止写入会话存储。
 		_ = entry.srv.Close()
 	}
 	delete(a.servers, agentID)
 	return err
 }
 
-// StopAll shuts down every published agent server.
+// StopAll 关闭所有已发布 Agent 的服务器。
 func (a *A2AService) StopAll() {
 	a.mu.Lock()
 	ids := make([]string, 0, len(a.servers))
@@ -188,7 +184,7 @@ func (a *A2AService) StopAll() {
 	}
 }
 
-// Status lists all currently published agents.
+// Status 列出所有当前已发布的 Agent。
 func (a *A2AService) Status() []A2AStatus {
 	a.mu.Lock()
 	defer a.mu.Unlock()

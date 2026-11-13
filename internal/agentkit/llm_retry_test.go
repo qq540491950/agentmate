@@ -12,8 +12,8 @@ import (
 	"google.golang.org/genai"
 )
 
-// TestOpenAICompatRetriesTransient503: a 503 before any response bytes is
-// retried and the model recovers on the next attempt.
+// TestOpenAICompatRetriesTransient503: 在任何响应字节返回之前出现 503
+// 时会重试， 模型会在下一次尝试时恢复。
 func TestOpenAICompatRetriesTransient503(t *testing.T) {
 	var calls atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -47,8 +47,8 @@ func TestOpenAICompatRetriesTransient503(t *testing.T) {
 	if lastErr != nil {
 		t.Fatalf("unexpected error: %v", lastErr)
 	}
-	// SSE mode yields both partial and final aggregated events, so the text
-	// may repeat across events; we only need the recovery content present.
+	// SSE 模式会同时产生部分事件和最终聚合事件，因此文本
+	// 可能会在各事件之间重复；我们仅需要恢复内容出现即可。
 	if !strings.Contains(text, "恢复") || calls.Load() != 3 {
 		t.Fatalf("retry recovery wrong: text=%q calls=%d", text, calls.Load())
 	}

@@ -1,19 +1,24 @@
 import type { UIMessage } from "@/lib/chatUtils";
 
-/** PendingUserTurn is the local user bubble shown before the backend's user
- * event arrives. The event confirms/replaces it; a rejected send removes it. */
+/**
+ * PendingUserTurn
+ * 是后端用户事件到达之前显示的本地用户气泡。该事件会确认或替换它；发送被拒绝时
+ * 会移除它。
+ */
 export type PendingUserTurn = {
   sessionID: string;
   message: UIMessage;
   startedAt: number;
-  /** Set once the backend user event or a history snapshot confirms the turn. */
+  /** 一旦后端用户事件或历史快照确认该回合，即设置。 */
   confirmed?: boolean;
-  /** Set when the latest history snapshot already contains this user turn. */
+  /** 当最新历史快照已包含此用户回合时设置。 */
   confirmedFromHistory?: boolean;
 };
 
-/** historySnapshotIsCurrent prevents an older session load from replacing the
- * live timeline after a newer request or a different active chat won. */
+/**
+ * historySnapshotIsCurrent
+ * 用于防止在较新的请求或另一个活跃会话胜出后，较早的会话加载替换实时时间线。
+ */
 export function historySnapshotIsCurrent(params: {
   requestSessionID: string;
   activeSessionID: string;
@@ -24,10 +29,11 @@ export function historySnapshotIsCurrent(params: {
     && params.requestGeneration === params.currentGeneration;
 }
 
-/** historyHasUserTurnAfter reports whether a history snapshot already contains
- * the user turn represented by a local optimistic bubble. The tolerance keeps
- * a just-persisted turn from being appended a second time when its timestamp
- * is a few seconds off the browser clock. */
+/**
+ * historyHasUserTurnAfter
+ * 报告历史快照是否已包含由本地乐观气泡所代表的用户回合。当时间戳与浏览器时钟相
+ * 差几秒时，容差可避免将刚刚持久化的回合再次追加。
+ */
 export function historyHasUserTurnAfter(
   messages: UIMessage[],
   startedAt: number,
@@ -41,8 +47,7 @@ export function historyHasUserTurnAfter(
   });
 }
 
-/** reconcilePendingUser appends the optimistic bubble only when the history
- * snapshot does not already carry that turn. */
+/** 仅当历史快照尚未包含该回合时，reconcilePendingUser 才会追加乐观气泡。 */
 export function reconcilePendingUser(
   history: UIMessage[],
   pending: PendingUserTurn | null,
@@ -60,8 +65,7 @@ export function reconcilePendingUser(
   };
 }
 
-/** replaceMessageByID updates one optimistic message in place, preserving its
- * list position when the backend confirms it. */
+/** replaceMessageByID 原地更新一条乐观消息，并在后端确认它时保留其列表位置。 */
 export function replaceMessageByID(
   messages: UIMessage[],
   id: string,
@@ -76,7 +80,7 @@ export function replaceMessageByID(
   return changed ? next : messages;
 }
 
-/** dropMessageByID removes a provisional message after a rejected send. */
+/** dropMessageByID 在发送被拒绝后移除临时消息。 */
 export function dropMessageByID(messages: UIMessage[], id: string): UIMessage[] {
   return messages.filter((message) => message.id !== id);
 }

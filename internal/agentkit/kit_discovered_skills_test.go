@@ -37,9 +37,9 @@ func readMaterializedSkill(t *testing.T, store interface{ SkillsDir() string }, 
 	return fm, string(body)
 }
 
-// TestDiscoveredSkillMaterialization pins issue #52 acceptance 5: a project
-// skill discovered under <workspace>/.agents/skills is mountable by its
-// discovered ID and lands in the per-agent staging directory.
+// TestDiscoveredSkillMaterialization 锁定 issue #52 验收项 5：在
+// <workspace>/.agents/skills 下发现的项目技能，可通过其被发现时的 ID
+// 挂载，并落到每个 Agent 的暂存目录中。
 func TestDiscoveredSkillMaterialization(t *testing.T) {
 	kit, store := newTestKit(t)
 	workspace := t.TempDir()
@@ -108,9 +108,8 @@ func TestGlobalSkillMaterialization(t *testing.T) {
 	}
 }
 
-// TestVanishedDiscoveredSkillIsSkipped: switching to a workspace without the
-// mounted project skill must not make the agent unbuildable (issue #52 #7);
-// a missing *app* skill keeps the existing hard error.
+// TestVanishedDiscoveredSkillIsSkipped：切换到不包含已挂载项目技能的工作区，不
+// 得使 Agent 无法构建（issue #52 #7）；缺失的 *app* 技能仍保留现有的硬错误。
 func TestVanishedDiscoveredSkillIsSkipped(t *testing.T) {
 	kit, store := newTestKit(t)
 	ac := config.AgentConfig{

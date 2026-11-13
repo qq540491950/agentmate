@@ -20,8 +20,8 @@ import (
 	"google.golang.org/adk/v2/session"
 )
 
-// newLegacySession keeps pre-task-workspace tests on their original global
-// fallback without exposing a test-only constructor through Wails.
+// newLegacySession 让任务工作区之前的测试继续使用其原有的全局回退，而不通过
+// Wails 暴露仅用于测试的构造函数。
 func (c *ChatService) newLegacySession(targetType, targetID, title string) (config.ChatSession, error) {
 	if title == "" {
 		title = "新对话"
@@ -45,9 +45,9 @@ func (c *ChatService) newLegacySession(targetType, targetID, title string) (conf
 	return cs, err
 }
 
-// canonicalDir mirrors validateTaskWorkspace's EvalSymlinks canonicalization
-// so path assertions hold on macOS, where TMPDIR (/var/folders) is itself a
-// symlink into /private/var/folders.
+// canonicalDir 与 validateTaskWorkspace 的 EvalSymlinks
+// 规范化保持一致，从而使路径断言在 macOS 上成立；在 macOS
+// 上，TMPDIR（/var/folders）本身就是指向 /private/var/folders 的符号链接。
 func canonicalDir(t *testing.T, path string) string {
 	t.Helper()
 	resolved, err := filepath.EvalSymlinks(filepath.Clean(path))
@@ -74,8 +74,8 @@ func newWorkspaceTestChat(t *testing.T, handler http.HandlerFunc) (*ChatService,
 	}
 	err = store.Update(func(cfg *config.Config) {
 		cfg.Settings.WorkspaceDir = workspace
-		// Workspace isolation tests script direct tool calls; keep approval
-		// out of the way and exercise the same OS policy in auto mode.
+		// 工作区隔离测试以脚本方式直接执行工具调用；让审批不介入，并在自动模式下检验
+		// 相同的 OS 策略。
 		cfg.Settings.SandboxMode = config.SandboxModeAutoApprove
 		cfg.Providers = append(cfg.Providers, config.ModelProvider{
 			ID: "prov_ws", Name: "Fake", Protocol: config.ProtocolOpenAI,
@@ -114,8 +114,8 @@ func TestNewSessionWorkspaceIsolatesParallelWrites(t *testing.T) {
 		mu.Unlock()
 		w.Header().Set("Content-Type", "text/event-stream")
 		if alreadyCalled {
-			// A failed write must fail the file assertions below instead of
-			// looping on the same tool call until the 10-minute test timeout.
+			// 写入失败必须使下面的文件断言失败，而不是在同一个工具调用上循环，直到 10
+			// 分钟测试超时。
 			if !strings.Contains(body, `\"ok\":true`) {
 				t.Errorf("session %s write result missing ok:true: %s", label, body)
 			}

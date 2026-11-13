@@ -67,6 +67,7 @@ frontend/bindings/        # wails3 生成绑定（勿手改）
 
 - 测试与被测代码同包同目录（`*_test.go`）；e2e 用 `httptest` 假服务器（fake SSE 模型 / 假授权服务器 / 内存 A2A），不依赖外网。
 - UI 文案中文；错误经 `errText()` 透传到 toast。
+- 代码注释统一简体中文；标识符、字符串、日志、错误文案、路径、URL、issue 编号、`//go:*` 指令和生成文件不翻译。JSDoc 保留 `/** ... */`，JSX 注释保留 `{/* ... */}`；规范见 [docs/comment-style.md](docs/comment-style.md)。
 - **前端 UI 硬约束**：改 `frontend/**` 前先读 [frontend/AGENTS.md](frontend/AGENTS.md) 与 [docs/design-system.md](docs/design-system.md)；默认 Nord、表面分层、禁止布局级边框。设计意图与验收见 [docs/specs/ui-surface-redesign.md](docs/specs/ui-surface-redesign.md)（#80）。
 - 换行符统一 LF：根目录 `.gitattributes` 管控文本文件，本机使用 `core.autocrlf=false`；不要提交 CRLF-only diff，`.bat` / `.cmd` 保持原字节。
 - 每轮功能迭代在 `docs/iteration-log.md` 顶层「视觉测试与体验设计」章节顶部追加记录（含依据、实现要点、测试证据）；README 只保留概览与「质量与验证」。
