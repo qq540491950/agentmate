@@ -42,6 +42,7 @@ export type {
     SandboxStatusInfo,
     SessionExecutionPolicy,
     SessionStats,
+    SkillImportResult,
     StatDay,
     StorageInfo,
     TaskWorkspaceSnapshot,

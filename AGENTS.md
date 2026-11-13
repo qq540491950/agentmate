@@ -55,6 +55,7 @@ frontend/bindings/        # wails3 生成绑定（勿手改）
 - **会话元数据**：Rename / SetModel / Archive / Pin 统一走 `mutateSession`；`DeleteSession` 与 `Regenerate/EditAndResend` 先 `Cancel` 再动历史。
 - **会话级模型覆盖**：`ChatSession.ModelOverride` 经 `agentkit.EffectiveModel` 统一钳制；运行与统计计费共用。标题提炼默认走全局主模型，与会话覆盖解耦。
 - **@ 文件上下文与技能发现**：`@path` / `@"quoted path"` 由 `chat_context.go` 从会话的有效工作区读取，按轮注入（单文件 48KB / 单轮 96KB / ≤8 个，越界与二进制不读）；`/skill` 在 `config.EffectiveSkills`（项目 > 用户 `~/.agents/skills` > 应用）上匹配，`ChatService.EffectiveSkills` 与 `ArtifactService.ListContextPaths` 供前端按会话/草稿项目解析菜单。
+- **Skill ZIP 导入**：`ConfigService.ImportSkillZip` 解压并校验 `SKILL.md` 后安装到全局 `~/.agents/skills` 或项目 `.agents/skills`，由发现层只读加载；附属文件原样保留，同名目录拒绝覆盖。
 - **任务级工作区**：`NewSession` 与 `NewSessionWithWorkspace` 均创建任务目录；`EffectiveWorkspace` 是文件工具、`{{workspace}}` 与预览的唯一后端解析入口；首轮后锁定，活动任务不能重复占用同一显式目录；发送/确认/改绑共用会话级 workspace 锁。知识库/Skills/导出仍用全局工作区。
 - **任务产物快照**：基线存应用数据目录 `task-snapshots/<sessionID>.json`（版本化、原子写，不进 sessions.db）；按存在性/大小/mtime 算新增、修改、删除；跳过隐藏/VCS/依赖目录与符号链接（5000 文件 / 200 条上限）；删会话清基线但保留任务文件，分叉共享工作区但独立基线。
 - **plan_todos**：状态存 ADK session state 键 `agentmate.todos`，全量替换（省略参数=只读，空数组=清空）；前端把同一轮更新收敛为一张清单卡（tool_call 不单列），当前轮计划入口在会话头，可展开/关闭。

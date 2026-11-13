@@ -6,7 +6,7 @@
 import * as config$0 from "../config/models.js";
 
 /**
- * A2AStatus describes one running published agent.
+ * A2AStatus 描述一个正在运行的已发布 Agent。
  */
 export interface A2AStatus {
     "running": boolean;
@@ -16,13 +16,13 @@ export interface A2AStatus {
 }
 
 /**
- * Artifact is a previewable file from the workspace.
+ * Artifact 是来自工作区的可预览文件。
  */
 export interface Artifact {
     "name": string;
 
     /**
-     * relative to the workspace
+     * 相对于工作区
      */
     "path": string;
 
@@ -34,19 +34,19 @@ export interface Artifact {
     "size": number;
 
     /**
-     * image/pdf (base64 data URL)
+     * image/pdf（base64 数据 URL）
      */
     "dataUrl"?: string;
 
     /**
-     * text/markdown/code
+     * image/pdf（base64 数据 URL）
      */
     "text"?: string;
     "truncated": boolean;
 }
 
 /**
- * ArtifactInfo is a lightweight listing entry.
+ * ArtifactInfo 是轻量级列表条目。
  */
 export interface ArtifactInfo {
     "name": string;
@@ -56,20 +56,20 @@ export interface ArtifactInfo {
 }
 
 /**
- * AttachmentIn is an image the user attaches to a message (base64 data).
+ * AttachmentIn 是用户附加到消息上的图片（base64 数据）。
  */
 export interface AttachmentIn {
     "name": string;
     "mime": string;
 
     /**
-     * base64, no data: prefix
+     * base64，不带 data: 前缀
      */
     "data": string;
 }
 
 /**
- * AttachmentOut is an attachment rendered in chat history.
+ * AttachmentOut 是聊天历史中渲染的附件。
  */
 export interface AttachmentOut {
     "name": string;
@@ -78,8 +78,7 @@ export interface AttachmentOut {
 }
 
 /**
- * AuthorStat breaks usage down per conversation participant (team members,
- * remote agents); "user" is excluded.
+ * AuthorStat 按会话参与者（团队成员、远程 Agent）拆分用量；"user" 不包含在内。
  */
 export interface AuthorStat {
     "author": string;
@@ -89,7 +88,7 @@ export interface AuthorStat {
 }
 
 /**
- * ChatMessage is a rendered historical message.
+ * ChatMessage 是渲染后的历史消息。
  */
 export interface ChatMessage {
     "id": string;
@@ -108,15 +107,15 @@ export interface ChatMessage {
     "attachments"?: AttachmentOut[] | null;
 
     /**
-     * Reasoning is the thinking level this turn was sent with; recorded on the
-     * user message's state delta so history and exports can show it.
+     * Reasoning 是这一回合发送时使用的思考级别；记录在用户消息的状态增量上，以便历史记录和导
+     * 出可以显示它。
      */
     "reasoning"?: string;
     "timestamp": string;
 }
 
 /**
- * ChatStreamEvent is streamed to the frontend while a run progresses.
+ * ChatStreamEvent 在一次运行进行期间流式发送到前端。
  */
 export interface ChatStreamEvent {
     "sessionId": string;
@@ -132,44 +131,42 @@ export interface ChatStreamEvent {
     "toolResp"?: { [_ in string]?: any } | null;
 
     /**
-     * CallID identifies the ADK call this event refers to: the tool_call /
-     * tool_result pair, or a confirmation interrupt. Confirmation answers are
-     * sent back via ConfirmToolCall.
+     * CallID 标识此事件所指的 ADK 调用：tool_call / tool_result
+     * 对，或一次确认中断。确认答复通过 ConfirmToolCall 回传。
      */
     "callId"?: string;
 
     /**
-     * Hint is the model-provided explanation shown on the confirmation card.
+     * Hint 是模型提供的说明，显示在确认卡片上。
      */
     "hint"?: string;
 
     /**
-     * Usage is set on the final assistant message event of a turn.
+     * Usage 在回合的最后一条助手消息事件上设置。
      */
     "usage"?: UsageInfo | null;
 
     /**
-     * Attachments ride on user events so a just-sent message (and a
-     * regenerated one) renders its images without waiting for a history
-     * reload.
+     * Attachments 随用户事件携带，使刚发送的消息（以及重新生成的消息）无需等待历史记录重新加载
+     * 即可渲染其图片。
      */
     "attachments"?: AttachmentOut[] | null;
 
     /**
-     * Reasoning is the thinking level applied to this turn (empty when the
-     * model offers no table or the level was left to the provider default).
-     * Set on user events so the bubble can show the level it was sent with.
+     * Reasoning 是应用于本回合的思考级别（当模型未提供表，或该级别留由供应商默认值决定时为空
+     * ）。在用户事件上设置，以便气泡能显示其发送时所带的级别。
      */
     "reasoning"?: string;
 
     /**
-     * SessionUsage is the cumulative usage of the session, set on done events.
+     * SessionUsage 是会话的累计用量，在 done 事件上设置。
      */
     "sessionUsage"?: UsageInfo | null;
 }
 
 /**
- * FileDiffHunk is a unified-diff hunk: @@ -oldStart,oldLines +newStart,newLines @@.
+ * FileDiffHunk 是一个 unified-diff 块：@@ -oldStart,oldLines +newStart,newLines
+ * @@。
  */
 export interface FileDiffHunk {
     "oldStart": number;
@@ -180,7 +177,7 @@ export interface FileDiffHunk {
 }
 
 /**
- * FileDiffLine is one rendered diff row with its 1-based source line numbers.
+ * FileDiffLine 表示一条已渲染的差异行，并带有其从 1 开始的源码行号。
  */
 export interface FileDiffLine {
     "type": FileDiffLineType;
@@ -190,7 +187,7 @@ export interface FileDiffLine {
 }
 
 /**
- * FileDiffLineType distinguishes diff lines for the result pane renderer.
+ * FileDiffLineType 用于区分差异行，供结果窗格渲染器使用。
  */
 export enum FileDiffLineType {
     /**
@@ -204,9 +201,9 @@ export enum FileDiffLineType {
 };
 
 /**
- * FileDiffResult is the FileDiff RPC contract. A non-empty Unsupported means
- * the request was valid but the file cannot be diffed (binary / oversize /
- * baseline content missing); the pane shows the reason inline instead.
+ * FileDiffResult 是 FileDiff RPC 的契约。Unsupported
+ * 非空表示请求有效，但该文件无法进行差异比较（二进制 / 过大 /
+ * 基线内容缺失）；此时窗格改为内联显示原因。
  */
 export interface FileDiffResult {
     "sessionId": string;
@@ -222,9 +219,9 @@ export interface FileDiffResult {
 }
 
 /**
- * ImportAgentResult is the import outcome: the stored agent plus any
- * machine-local fixes applied during import (stripped dangling refs), so the
- * UI can surface what was adjusted.
+ * ImportAgentResult 是导入结果：已存储的
+ * Agent，以及导入期间应用的任何本机修复（剥离悬空引用），以便 UI
+ * 能够展示调整了什么。
  */
 export interface ImportAgentResult {
     "agent": config$0.AgentConfig;
@@ -232,7 +229,7 @@ export interface ImportAgentResult {
 }
 
 /**
- * KnowledgeFile describes one file in the workspace knowledge directory.
+ * KnowledgeFile 描述工作区知识目录中的一个文件。
  */
 export interface KnowledgeFile {
     "name": string;
@@ -241,7 +238,7 @@ export interface KnowledgeFile {
 }
 
 /**
- * MemoryInfo reports the long-term memory store size.
+ * MemoryInfo 报告长期记忆存储的大小。
  */
 export interface MemoryInfo {
     "count": number;
@@ -255,8 +252,7 @@ export interface SandboxStatusInfo {
 }
 
 /**
- * SessionExecutionPolicy is the independent approval and OS-boundary
- * dimensions a chat will use on its next turn.
+ * SessionExecutionPolicy 是会话在下一回合将使用的独立审批维度和操作系统边界维度。
  */
 export interface SessionExecutionPolicy {
     "approvalPolicy": string;
@@ -264,7 +260,7 @@ export interface SessionExecutionPolicy {
 }
 
 /**
- * SessionStats aggregates observability metrics for one conversation.
+ * SessionStats 聚合单个会话的可观测性指标。
  */
 export interface SessionStats {
     "messages": number;
@@ -276,26 +272,26 @@ export interface SessionStats {
     "tokensTotal": number;
 
     /**
-     * ContextTokens is the CURRENT context occupancy (the last model call's
-     * prompt size), not the cumulative TokensTotal — the UI's context-window
-     * gauge must use this, or a long tool-loop session reports "context
-     * exhausted" while the real occupancy is a fraction of the window.
+     * ContextTokens 是当前（CURRENT）的上下文占用（最后一次模型调用的提示词大小），而不是累计的
+     * TokensTotal —— UI
+     * 的上下文窗口仪表必须使用此值，否则长时间工具循环的会话会报告 "context
+     * exhausted"，而真实占用只是窗口的一小部分。
      */
     "contextTokens"?: number;
 
     /**
-     * CachedTokens is the cached share of ContextTokens on the last model
-     * call (0 when the provider does not report prompt caching).
+     * CachedTokens 是最后一次模型调用中 ContextTokens
+     * 的缓存部分（当供应商不报告提示词缓存时为 0）。
      */
     "cachedTokens"?: number;
 
     /**
-     * per-day token/cost breakdown
+     * 按天的 token/费用明细
      */
     "daily"?: StatDay[] | null;
 
     /**
-     * per-participant breakdown (team timelines)
+     * 按参与者拆分的明细（团队时间线）
      */
     "authors"?: AuthorStat[] | null;
     "firstAt"?: string | null;
@@ -303,12 +299,23 @@ export interface SessionStats {
 }
 
 /**
- * StatDay is one calendar day of usage with an estimated cost using the
- * session target's current model prices (¥/1M tokens).
+ * SkillImportResult 是 Skill ZIP 导入结果。TargetDir 让前端可以直接提示安装
+ * 位置，而无需猜测全局/项目目录规则。
+ */
+export interface SkillImportResult {
+    "name": string;
+    "description": string;
+    "scope": string;
+    "targetDir": string;
+}
+
+/**
+ * StatDay 是某个日历日的用量，并附带按会话目标的当前模型价格（¥/1M
+ * tokens）估算的费用。
  */
 export interface StatDay {
     /**
-     * YYYY-MM-DD (local)
+     * YYYY-MM-DD（本地时间）
      */
     "date": string;
     "promptTokens": number;
@@ -318,7 +325,7 @@ export interface StatDay {
 }
 
 /**
- * StorageInfo reports on-disk sizes of the app databases.
+ * StorageInfo 报告各应用数据库在磁盘上的大小。
  */
 export interface StorageInfo {
     "sessionsDbBytes": number;
@@ -326,7 +333,7 @@ export interface StorageInfo {
 }
 
 /**
- * TaskWorkspaceSnapshot is the result pane contract for one chat task.
+ * TaskWorkspaceSnapshot 是一个聊天任务的结果窗格契约。
  */
 export interface TaskWorkspaceSnapshot {
     "sessionId": string;
@@ -344,7 +351,7 @@ export interface TaskWorkspaceSnapshot {
 }
 
 /**
- * UpdateStatus is the snapshot the settings page renders.
+ * UpdateStatus 是设置页面渲染的快照。
  */
 export interface UpdateStatus {
     "currentVersion": string;
@@ -361,12 +368,11 @@ export interface UpdateStatus {
 }
 
 /**
- * UsageInfo reports token consumption for a turn or a whole session.
- * ContextTokens is the CURRENT context occupancy: the last model call's
- * prompt token count (addUsage overwrites it on every call, so it never
- * accumulates). Deliberately not the cumulative total — every call re-sends
- * the full history, so the sum over a tool loop is a multiple of the real
- * context size (billing semantics vs window semantics).
+ * UsageInfo 报告一个回合或整个会话的 token 消耗。 ContextTokens
+ * 是当前上下文占用：最后一次模型调用的提示词 token 数（addUsage
+ * 在每次调用时都会覆盖它，因此它绝不会累加）。有意不采用累计总量——每次调用都会
+ * 重新发送完整历史，因此一次工具循环中各次调用的总和会是真实上下文大小的倍数（
+ * 计费语义与窗口语义）。
  */
 export interface UsageInfo {
     "promptTokens": number;
@@ -375,16 +381,16 @@ export interface UsageInfo {
     "contextTokens"?: number;
 
     /**
-     * CachedTokens is the part of the last prompt that the provider served
-     * from its prompt cache (Anthropic cache_read_input_tokens, OpenAI-style
-     * prompt_tokens_details.cached_tokens). Zero means "no caching reported",
-     * never "cache miss" — several gateways simply omit the field.
+     * CachedTokens 是最后一次提示词中由供应商从其提示词缓存提供的部分（Anthropic
+     * cache_read_input_tokens、OpenAI 风格的
+     * prompt_tokens_details.cached_tokens）。零表示 "no caching
+     * reported"，绝不表示 "cache miss"——若干网关只是省略该字段。
      */
     "cachedTokens"?: number;
 }
 
 /**
- * WorkspaceChangeStatus is the file-level state shown in the result pane.
+ * WorkspaceChangeStatus 是结果窗格中展示的文件级状态。
  */
 export enum WorkspaceChangeStatus {
     /**
@@ -398,8 +404,8 @@ export enum WorkspaceChangeStatus {
 };
 
 /**
- * WorkspaceEntry is one path the composer's "@" picker can reference. Path is
- * relative to the chat's effective workspace and always slash-separated.
+ * WorkspaceEntry 是 composer 的 “@” 选择器可以引用的一个路径。Path
+ * 相对于聊天的有效工作区，并且始终使用斜杠分隔。
  */
 export interface WorkspaceEntry {
     "path": string;
@@ -407,7 +413,7 @@ export interface WorkspaceEntry {
 }
 
 /**
- * WorkspaceFileInfo is one file in a task workspace snapshot.
+ * WorkspaceFileInfo 是任务工作区快照中的一个文件。
  */
 export interface WorkspaceFileInfo {
     "name": string;
@@ -420,7 +426,7 @@ export interface WorkspaceFileInfo {
 }
 
 /**
- * WorkspaceFileKind is the preview category of a task file.
+ * WorkspaceFileKind 是任务文件的预览类别。
  */
 export enum WorkspaceFileKind {
     /**

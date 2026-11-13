@@ -361,6 +361,83 @@ func (c *ConfigService) ImportSkillsFromWorkspace() (int, error) {
 	return imported, nil
 }
 
+// SkillImportResult 是 Skill ZIP 导入结果。TargetDir 让前端可以直接提示安装
+// 位置，而无需猜测全局/项目目录规则。
+type SkillImportResult struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Scope       string `json:"scope"`
+	TargetDir   string `json:"targetDir"`
+}
+
+const (
+	SkillImportScopeGlobal  = "global"
+	SkillImportScopeProject = "project"
+)
+
+// ImportSkillZip 解压、校验并安装一个 Skill ZIP 包。全局技能安装到
+// ~/.agents/skills；项目技能安装到所选项目的 .agents/skills（projectID 为空时
+// 使用设置中的默认工作区）。安装后的技能由现有发现层自动读取，因此不需要写入
+// config.json。
+func (c *ConfigService) ImportSkillZip(zipPath, scope, projectID string) (SkillImportResult, error) {
+	scope = strings.TrimSpace(scope)
+	projectID = strings.TrimSpace(projectID)
+	targetRoot, err := c.skillPackageRoot(scope, projectID)
+	if err != nil {
+		return SkillImportResult{}, err
+	}
+	installed, err := config.InstallSkillZip(zipPath, targetRoot)
+	if err != nil {
+		return SkillImportResult{}, err
+	}
+	return SkillImportResult{
+		Name:        installed.Name,
+		Description: installed.Description,
+		Scope:       scope,
+		TargetDir:   installed.Dir,
+	}, nil
+}
+
+// skillPackageRoot 将导入目标解析为 .agents/skills 目录。项目根目录必须已存在，
+// 避免拼错项目 ID 或项目根被移动后静默创建出一棵空目录。
+func (c *ConfigService) skillPackageRoot(scope, projectID string) (string, error) {
+	cfg := c.S.Store.Get()
+	switch scope {
+	case SkillImportScopeGlobal:
+		root := config.GlobalSkillRoot()
+		if root == "" {
+			return "", fmt.Errorf("无法解析用户目录，不能安装全局 Skill")
+		}
+		return root, nil
+	case SkillImportScopeProject:
+		if projectID != "" {
+			for _, project := range cfg.Projects {
+				if project.ID != projectID {
+					continue
+				}
+				root := strings.TrimSpace(project.RootDir)
+				info, err := os.Stat(root)
+				if err != nil || !info.IsDir() {
+					return "", fmt.Errorf("项目「%s」的根目录不存在: %s", project.Name, root)
+				}
+				return filepath.Join(root, ".agents", "skills"), nil
+			}
+			return "", fmt.Errorf("项目不存在: %s", projectID)
+		}
+		root := strings.TrimSpace(cfg.Settings.WorkspaceDir)
+		if root == "" {
+			return "", fmt.Errorf("请先在设置中配置工作区目录，或选择一个项目")
+		}
+		info, err := os.Stat(root)
+		if err != nil || !info.IsDir() {
+			return "", fmt.Errorf("默认工作区目录不存在: %s", root)
+		}
+		return filepath.Join(root, ".agents", "skills"), nil
+	default:
+		return "", fmt.Errorf("未知的 Skill 安装范围: %s", scope)
+	}
+}
+
 // addSkillIfNew 插入一个技能，除非已存在相同的规范化名称；并报告是否已添加。
 func (c *ConfigService) addSkillIfNew(name, desc, body string) bool {
 	added := false

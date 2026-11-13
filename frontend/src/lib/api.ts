@@ -38,6 +38,7 @@ export type WorkspaceFileKind = serviceModels.WorkspaceFileKind;
 export type AttachmentIn = serviceModels.AttachmentIn;
 export type AttachmentOut = serviceModels.AttachmentOut;
 export type SessionStats = serviceModels.SessionStats;
+export type SkillImportResult = serviceModels.SkillImportResult;
 export type ChatMessage = serviceModels.ChatMessage;
 export type ChatStreamEvent = serviceModels.ChatStreamEvent;
 export type ServerStatus = mcpModels.ServerStatus;

@@ -355,6 +355,28 @@ function stubUpdateStatus() {
 const handlers: Record<string, (args: any[]) => any> = {
   // GetConfig
   [svc("ConfigService", "GetConfig")]: () => seedConfig,
+  // ImportSkillZip：视觉桩只模拟一次成功的全局导入，让 Skills 列表与 toast
+  // 可以走完整流程；真实解压与校验由 Go 后端覆盖。
+  [svc("ConfigService", "ImportSkillZip")]: (args) => {
+    const scope = String(args[1] ?? "global");
+    const name = "imported-skill";
+    const existing = seedConfig.skills.find((skill: any) => skill.name === name);
+    if (!existing) {
+      seedConfig.skills.push({
+        id: scope === "project" ? `fs:project:${name}` : `fs:global:${name}`,
+        name,
+        description: "从 ZIP 包导入的示例 Skill",
+        content: "# Imported\n\n由视觉测试桩生成的技能。",
+        createdAt: "",
+      });
+    }
+    return {
+      name,
+      description: "从 ZIP 包导入的示例 Skill",
+      scope,
+      targetDir: scope === "global" ? "/tmp/agentmate-workspace/.agents/skills/imported-skill" : "/tmp/proj-alpha/.agents/skills/imported-skill",
+    };
+  },
   // SaveSettings：设置页面共享一条显式保存路径，因此 stub
   // 必须持久化草稿，以便保存后清除脏状态。
   [svc("ConfigService", "SaveSettings")]: (args) => {

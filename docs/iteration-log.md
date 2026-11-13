@@ -4,6 +4,26 @@
 
 ## 视觉测试与体验设计
 
+### 第二百八十八轮迭代：Skill ZIP 包导入与全局/项目安装（已实施）
+
+依据：用户反馈 Skills 页的「导入 Skill」仍在扫描工作区目录，截图报错「工作区中没有 skills/、.claude/skills 或 ~/.claude/skills 目录」；期望直接导入 Skill ZIP 包，解压并校验后安装到全局或项目，且导入区上方先选择「全局 / 项目」。
+
+**实现要点**
+
+- 新增 `config.InstallSkillZip` 与 `ConfigService.ImportSkillZip`：支持压缩包根目录或单层文件夹内的 `SKILL.md`，严格校验 YAML frontmatter 的 `name` / `description`；拒绝绝对路径、目录穿越、符号链接、大小写重复路径，并限制单文件 10MB、总量 64MB、最多 5000 个文件；先解压到临时目录再原子重命名，同名目录拒绝覆盖。
+- 全局安装到 `~/.agents/skills`，项目安装到所选项目根目录（`projectID` 为空时用默认工作区）的 `.agents/skills`；由既有发现层只读加载，不写入 `config.json`，`references/`、`assets/`、`scripts/` 原样保留。
+- Skills 页新增「全局 / 项目」范围切换与项目选择；「导入 Skill」改为原生 ZIP 文件选择 + 导入弹窗，弹窗顶部先选全局或项目，项目侧可选具体项目；项目列表通过 `Chat.EffectiveSkills` 读取并只展示项目级技能。
+- 列表从逐项 Card 收敛为 panel 连续行，保留来源徽标与只读提示；全局范围保留新增/编辑应用内 Skill，项目范围为只读导入。
+- 重新生成 Wails 绑定；README、AGENTS 同步 ZIP 导入机制。
+
+**测试证据**
+
+- 新增 `TestInstallSkillZipWithWrapperAndResources`、`TestInstallSkillZipAtRoot`、`TestInstallSkillZipRejectsUnsafeAndInvalidPackages`、`TestInstallSkillZipRejectsSymlinkAndDuplicateTarget`；新增 `TestImportSkillZipToGlobalAndProject`、`TestImportSkillZipUsesDefaultWorkspaceAndValidatesTargets`。
+- `go test ./internal/... -count=1`、`go test -race ./internal/... -count=1`、`go test .`、`go vet ./internal/... .` 全绿。
+- 前端 `npx tsc --noEmit`、`npm test`（43 文件 / 313 例）、`npm run build` 全绿。
+- `wails3 build` 成功生成 Windows 产物。
+- 浏览器桩走查：Skills 全局/项目切换、项目下拉、导入弹窗、导入 toast 与项目列表刷新正常（Nord 深色）。
+
 ### 第二百八十七轮迭代：移除示例 Skill 并扩展导入目录（已实施）
 
 依据：用户确认内置的 `weekly-report` / `code-review` 两个示例 Skill 暂时不需要；同时希望保留可控的导入路径，而不是继续扩大自动发现范围。
