@@ -126,9 +126,9 @@ func TestOpenAICompatStreamsReasoningContent(t *testing.T) {
 	}
 }
 
-// TestOpenAICompatDoesNotReplayReasoning guards the other half of the fix:
-// reasoning captured for display must never be sent back as assistant text.
-// DeepSeek rejects its own reasoning_content on the next request.
+// TestOpenAICompatDoesNotReplayReasoning 守护修复的另一半：为展示而捕获的
+// 思考内容绝不能作为助手文本回传。DeepSeek 会在下一次请求中拒绝自己的
+// reasoning_content。
 func TestOpenAICompatDoesNotReplayReasoning(t *testing.T) {
 	llm, err := NewOpenAICompat(OpenAICompatConfig{BaseURL: "http://127.0.0.1:1", Model: "deepseek-reasoner"})
 	if err != nil {
@@ -374,10 +374,9 @@ func TestOpenAICompatStreamUsageOnContentChunk(t *testing.T) {
 	}
 }
 
-// TestOpenAICompatCacheUsageExtraction pins the cached-prompt passthrough for
-// the two spellings gateways use: the nested prompt_tokens_details.cached_tokens
-// (OpenAI) and the flat cached_tokens (several Chinese gateways). Without this
-// the composer's「背景信息窗口」bubble could never show a cache hit.
+// TestOpenAICompatCacheUsageExtraction 固定缓存提示词透传的两种网关写法：
+// 嵌套的 prompt_tokens_details.cached_tokens（OpenAI）和扁平的 cached_tokens
+// （若干中文网关）。没有它，Composer 的「背景信息窗口」气泡将永远无法显示缓存命中。
 func TestOpenAICompatCacheUsageExtraction(t *testing.T) {
 	cases := []struct {
 		name string
@@ -781,10 +780,9 @@ func holdOpenServer(t *testing.T, send func(http.ResponseWriter)) *httptest.Serv
 	return srv
 }
 
-// TestOpenAICompatStopsAtDone pins issue #23: [DONE] terminates the stream.
-// Providers/gateways that keep the HTTP response open afterwards used to leave
-// the adapter blocked until the whole-turn deadline, with no final response —
-// no answer, no tool call, just an endless "正在回复…".
+// TestOpenAICompatStopsAtDone 固定 issue #23：[DONE] 终止流。此后仍保持 HTTP
+// 响应打开的供应商/网关，曾让适配器阻塞到整轮截止时间且没有最终响应——没有答案、
+// 没有工具调用，只有无尽的「正在回复…」。
 func TestOpenAICompatStopsAtDone(t *testing.T) {
 	srv := holdOpenServer(t, func(w http.ResponseWriter) {
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"完成"}}]}` + "\n\n"))

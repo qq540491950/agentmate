@@ -288,8 +288,8 @@ func TestCompactionIntervalSummarizes(t *testing.T) {
 	}
 }
 
-// TestSearchSessionsMatchesContent：content LIKE
-// 探针会找出历史记录包含查询的会话，即使标题不包含查询。
+// TestSearchSessionsMatchesContent 校验 content LIKE 探针：即使标题不包含查询，
+// 也能找出历史记录中包含该查询的会话。
 func TestSearchSessionsMatchesContent(t *testing.T) {
 	turn := 0
 	chat, _, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {

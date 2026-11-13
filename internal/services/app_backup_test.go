@@ -104,7 +104,7 @@ func TestConfigBackupMasked(t *testing.T) {
 	if got := store.Get(); len(got.Providers) != 1 || got.Providers[0].APIKey != "sk-secret-123" {
 		t.Fatalf("masked export mutated the live config: %+v", got.Providers)
 	}
-	// OAuth token cache must never be exported (secrets, machine-local).
+	// OAuth 令牌缓存绝不能导出（属于机密且仅限本机）。
 	err = store.Update(func(cfg *config.Config) {
 		cfg.MCPTokens = map[string]config.MCPOAuthToken{"m1": {AccessToken: "at-secret", TokenURL: "https://x/token"}}
 	})

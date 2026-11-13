@@ -7,12 +7,10 @@ import (
 	"agentmate/internal/config"
 )
 
-// TestBuildAgentInjectsEnabledMCPServers: the per-server 启用 switch is the
-// authoritative injection control — enabled servers reach every session
-// (direct chat included) without per-agent mounting, disabled ones stay off
-// unless an agent explicitly mounts them. A broken transport on an enabled
-// server must surface as a build error (no silent tool loss); the same broken
-// transport disabled must build cleanly.
+// TestBuildAgentInjectsEnabledMCPServers 校验：每个服务器的「启用」开关是权威
+// 注入控制——启用的服务器会进入每个会话（包括直接对话），无需按 Agent 挂载；
+// 未启用的服务器保持关闭，除非某个 Agent 显式挂载。启用服务器上的损坏传输必须
+// 暴露为构建错误（不得静默丢失工具）；同一损坏传输在禁用时必须能正常构建。
 func TestBuildAgentInjectsEnabledMCPServers(t *testing.T) {
 	kit, store := newTestKit(t)
 	if err := store.Update(func(cfg *config.Config) {

@@ -146,10 +146,9 @@ func TestEditAndResendKeepsAttachments(t *testing.T) {
 	}
 }
 
-// TestRegenerateAfterHitlConfirm is the regression test for the trim boundary:
-// a HITL resume is stored under the user author (a FunctionResponse event) and
-// used to swallow the real user message, making every subsequent Regenerate
-// fail with "没有可重新生成的用户消息".
+// TestRegenerateAfterHitlConfirm 是裁剪边界的回归测试：HITL 恢复事件曾以用户
+// 作者存储（一个 FunctionResponse 事件），并吞掉真正的用户消息，导致之后每次
+// Regenerate 都报「没有可重新生成的用户消息」。
 func TestRegenerateAfterHitlConfirm(t *testing.T) {
 	turn := 0
 	chat, _, workspace, _ := newConfirmTestChat(t, func(w http.ResponseWriter, r *http.Request) {
@@ -528,9 +527,8 @@ func TestRenameSessionAuditOnlyOnSuccess(t *testing.T) {
 	}
 }
 
-// TestSearchSessionsEscapesLikeWildcards: searching "符%" must match the
-// literal text only — unescaped %/_ turned content search into a fuzzy
-// substring match.
+// TestSearchSessionsEscapesLikeWildcards 校验：搜索「符%」必须只匹配字面文本——
+// 未转义的 %/_ 曾把内容搜索变成模糊子串匹配。
 func TestSearchSessionsEscapesLikeWildcards(t *testing.T) {
 	var reply atomic.Value
 	reply.Store("ok")

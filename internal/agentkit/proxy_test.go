@@ -47,9 +47,8 @@ func TestApplyGlobalProxy(t *testing.T) {
 		t.Fatal("request did not reach the proxy")
 	}
 
-	// Reset returns to direct.
-	// "Direct" now means ProxyFromEnvironment: an empty in-app proxy must
-	// not disable the user's HTTP_PROXY/HTTPS_PROXY environment.
+	// Reset 返回直连。此处的「直连」现在指 ProxyFromEnvironment：应用内代理为空
+	// 时，不得禁用用户的 HTTP_PROXY/HTTPS_PROXY 环境变量。
 	if err := ApplyGlobalProxy(""); err != nil {
 		t.Fatal(err)
 	}
@@ -83,9 +82,8 @@ func TestApplyGlobalProxyEmptyFallsBackToEnvironment(t *testing.T) {
 	}
 }
 
-// TestApplyGlobalProxySkipsLoopback pins the loopback carve-out: local
-// Ollama, local MCP servers and A2A round-trips must never be pushed through
-// the configured proxy.
+// TestApplyGlobalProxySkipsLoopback 固定回环地址例外：本地 Ollama、本地 MCP
+// 服务器和 A2A 往返绝不能走配置的代理。
 func TestApplyGlobalProxySkipsLoopback(t *testing.T) {
 	t.Cleanup(func() { _ = ApplyGlobalProxy("") })
 	transport, ok := http.DefaultTransport.(*http.Transport)

@@ -4,11 +4,10 @@ name: Release
 # prepare 解析 tag/commit，gate/windows 并行构建，publish 原子创建或更新
 # Release；构建失败不会留下不完整的发布。
 #
-# Platform scope: **Windows only, for now.** The maintainer's test environment is
-# Windows; shipping linux/macOS artifacts that nobody can smoke-test is how you
-# publish a broken build with an auto-updater attached to it. The linux and macOS
-# jobs (AppImage + deb, universal .app + dmg) are kept in git history and come
-# back in a later version once they can be verified.
+# 平台范围：**目前仅 Windows。** 维护者的测试环境是 Windows；发布无人能
+# 冒烟测试的 linux/macOS 产物，只会附带自动更新器发布一个损坏构建。linux 与
+# macOS 任务（AppImage + deb、universal .app + dmg）保留在 git 历史中，等可以
+# 验证后再回来。
 on:
   push:
     tags: ["v*"]
@@ -25,11 +24,10 @@ on:
 permissions:
   contents: write
 
-# Never let two tag pushes race on `releases/latest`: a half-published release
-# is exactly the state the updater cannot recover from (it would fetch a
-# manifest that points at assets that do not exist yet). The group is fixed, not
-# per-tag: different tags must serialize too, or a slower older release can
-# re-point `latest` after a newer one has finished.
+# 绝不让两次 tag 推送在 `releases/latest` 上竞争：半发布的 release 正是更新器
+# 无法恢复的状态（它会拉取一个指向尚不存在资产的清单）。分组是固定的，而不是
+# 按 tag：不同 tag 也必须串行，否则较慢的旧发布可能在较新的发布完成后重新指向
+# `latest`。
 concurrency:
   group: release-publish
   cancel-in-progress: false
@@ -40,7 +38,7 @@ env:
   NODE_VERSION: "20.19"
 
 jobs:
-  # ------------------------------------------------------------- prepare ----
+  # ------------------------------------------------------------- 准备 ----
   # 解析本次要发布的 tag 与其 commit；tag 必须已经存在。
   prepare:
     runs-on: ubuntu-latest
@@ -67,14 +65,13 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "release tag=$tag sha=$sha"
 
-  # ---------------------------------------------------------------- gate ----
-  # Cheap, fast refusal, running on the platform we actually ship. Windows needs
-  # no cgo headers for `go vet .`/`go test .` (the removed linux jobs needed GTK4
-  # + WebKitGTK), so this is both faster and closer to reality than an ubuntu
-  # gate. Runs *concurrently* with the Windows build; only `publish` waits for
-  # both. Race tests are deliberately skipped here: they tripled the release
-  # wall-clock for a class of bug the unit tests already catch, and `ci.yml`
-  # still runs them on every push to main.
+  # ---------------------------------------------------------------- 门禁 ----
+  # 便宜、快速的拒绝，运行在我们实际发布的平台上。Windows 上
+  # `go vet .`/`go test .` 不需要 cgo 头文件（已移除的 linux 任务需要 GTK4
+  # + WebKitGTK），因此比 ubuntu 门禁更快也更贴近现实。它与 Windows 构建
+  # *并发*运行；只有 `publish` 等待两者。这里刻意跳过 race 测试：它们让发布
+  # 墙钟时间增至三倍，而单元测试已经能捕获这类 bug，且 `ci.yml` 仍会在每次
+  # 推送到 main 时运行它们。
   gate:
     needs: prepare
     runs-on: windows-latest
@@ -114,7 +111,7 @@ jobs:
       - name: Test
         run: go test -count=1 ./internal/... .
 
-  # ------------------------------------------------------------- windows ----
+  # ------------------------------------------------------------- Windows 构建 ----
   windows:
     needs: prepare
     runs-on: windows-latest
@@ -143,8 +140,8 @@ jobs:
         id: node-modules
         uses: actions/cache@v4
         with:
-          # .task/checksum lets `task windows:build` skip its npm install
-          # dependency when node_modules came from the cache.
+          # .task/checksum 让 `task windows:build` 在 node_modules 来自缓存时
+          # 跳过其 npm install 依赖。
           path: |
             frontend/node_modules
             .task/checksum
@@ -153,10 +150,9 @@ jobs:
         if: steps.go-cli-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          # Install from the Go module proxy instead of arduino/setup-task:
-          # that action resolves the release through GitHub's API and failed
-          # the v0.5.13 release on a shared-runner rate limit. go install also
-          # keeps the version pinned and reproducible.
+          # 从 Go 模块代理安装，而不是使用 arduino/setup-task：后者通过 GitHub
+          # API 解析 release，曾因共享 runner 的速率限制让 v0.5.13 发布失败。
+          # go install 还能固定版本并保持可复现。
           go install github.com/go-task/task/v3/cmd/task@${TASK_VERSION}
       - name: Install Wails CLI
         if: steps.go-cli-cache.outputs.cache-hit != 'true'
@@ -174,10 +170,9 @@ jobs:
           export VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           bash scripts/set-version.sh "$VERSION"
-      # Windows ships one standalone exe and nothing else: no NSIS installer
-      # (so no makensis dependency either) and no zip. The same file is both
-      # what the user downloads and what the updater swaps in place, which is
-      # why a bare binary — not an installer — is the right shape here.
+      # Windows 只发布一个独立 exe，不发布其他内容：没有 NSIS 安装器
+      # （因此也不需要 makensis），也没有 zip。同一个文件既是用户下载的内容，
+      # 也是更新器原地替换的内容，因此这里正确的形态是裸二进制而不是安装器。
       - name: Build standalone exe
         shell: bash
         run: task windows:build
@@ -196,14 +191,12 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # ------------------------------------------------------------- publish ----
-  # Single atomic publish step: the build jobs upload into one artifact set and
-  # only this job creates the tag/release, so a failed build never leaves a
-  # release behind that is missing a platform.
+  # ------------------------------------------------------------- 发布 ----
+  # 单一原子发布步骤：构建任务上传到一个 artifact 集合，只有此任务创建
+  # tag/release，因此失败的构建绝不会留下缺少某个平台的 release。
   #
-  # Only Windows is published for now (see "Platform scope" at the top of the
-  # file); the linux/macos jobs are removed rather than disabled so this workflow
-  # cannot half-publish for platforms nobody can test yet.
+  # 目前只发布 Windows（见文件顶部的「平台范围」）；linux/macos 任务被移除
+  # 而不是禁用，以免该工作流为尚无人能测试的平台半发布。
   publish:
     needs: [prepare, gate, windows]
     runs-on: ubuntu-latest
@@ -212,8 +205,8 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
-      # Annotated tags require a committer identity; the runner has none by
-      # default, which made `git tag -a` fail with "empty ident name".
+      # 附注 tag 需要提交者身份；runner 默认没有，导致 `git tag -a` 报
+      # "empty ident name"。
       - name: Configure git identity
         run: |
           git config user.name "github-actions[bot]"
@@ -225,13 +218,12 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      # `go install .../cmd/wails3` links the linux backend (cgo), so the CLI we
-      # need for manifest signing cannot be built without the GTK4 headers — and
-      # the cached binary is dynamically linked, so it cannot *run* without the
-      # matching shared libraries either. The cache only stores the binary, not
-      # the system libraries, hence the apt step must run even on a cache hit
-      # (v0.5.33 failed at `wails3 updater manifest` with
-      # "libwebkitgtk-6.0.so.4: cannot open shared object file" otherwise).
+      # `go install .../cmd/wails3` 会链接 linux 后端（cgo），因此没有 GTK4
+      # 头文件就无法构建我们用于清单签名的 CLI——而且缓存的二进制是动态链接的，
+      # 没有匹配的共享库也无法 *运行*。缓存只存二进制，不存系统库，所以即使
+      # 缓存命中，apt 步骤也必须运行（否则 v0.5.33 会在
+      # `wails3 updater manifest` 报 "libwebkitgtk-6.0.so.4: cannot open shared
+      # object file"）。
       - name: Cache Wails CLI (manifest signing)
         id: wails-cache
         uses: actions/cache@v4
@@ -285,11 +277,9 @@ jobs:
           else
             echo "::warning::UPDATER_SIGNING_KEY is not set — publishing an UNSIGNED manifest. Clients only pin a public key when updatePublicKeyB64 is filled in, so set both or neither."
           fi
-          # Only the swappable payloads belong in the manifest: an installer
-          # (.dmg/.deb/.exe-setup) can never be renamed over a running install,
-          # so listing one would offer users a download that cannot apply. The
-          # Windows entry is the standalone exe — same file users download and
-          # the updater replaces.
+          # 清单只应包含可替换的载荷：安装器（.dmg/.deb/.exe-setup）永远无法
+          # 重命名覆盖正在运行的安装，列进去只会给用户一个无法应用的下载。
+          # Windows 条目是独立 exe——用户下载和更新器替换的是同一个文件。
           cd dist
           wails3 updater manifest \
             -version "$VERSION" \
@@ -306,8 +296,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            # Re-run of an existing tag: replace assets in place and re-point
-            # `latest` at it.
+            # 重新运行已有 tag：原地替换资产并重新指向 `latest`。
             gh release upload "$TAG" --clobber dist/*
             gh release edit "$TAG" --title "AgentMate $TAG" --notes-file notes.md --latest
           else

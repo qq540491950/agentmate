@@ -69,9 +69,8 @@ func hasSkillID(skills []config.SkillConfig, id string) bool {
 	return false
 }
 
-// TestFileMentionInjectsWorkspaceContent pins the composer's "@ 添加文件上下文"
-// contract: text references are resolved against the chat's effective
-// workspace and inlined for that turn only.
+// TestFileMentionInjectsWorkspaceContent 固定 Composer 的「@ 添加文件上下文」
+// 契约：文本引用按会话的有效工作区解析，并且仅在该回合内联。
 func TestFileMentionInjectsWorkspaceContent(t *testing.T) {
 	chat, bodies := newContextTestChat(t)
 	projectRoot := t.TempDir()

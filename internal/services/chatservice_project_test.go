@@ -91,11 +91,9 @@ func TestNewSessionWithProject(t *testing.T) {
 	}
 }
 
-// TestNewSessionWithProjectSharesRootWithLegacyTask pins issue #24: a
-// directory can be registered as a project while older task sessions still
-// hold it as their explicit workspace. Task sessions keep their exclusive
-// right to such directories, but the project root is shared by design, so
-// creating a project chat must not fail with "工作区已被任务…使用".
+// TestNewSessionWithProjectSharesRootWithLegacyTask 固定 issue #24：某个目录
+// 可以在旧任务会话仍将其作为显式工作区时注册为项目。任务会话保留对此类目录的独占
+// 权，但项目根目录按设计共享，因此创建项目对话不得报「工作区已被任务…使用」。
 func TestNewSessionWithProjectSharesRootWithLegacyTask(t *testing.T) {
 	chat, store, _ := newProjectTestChat(t)
 	root := t.TempDir()

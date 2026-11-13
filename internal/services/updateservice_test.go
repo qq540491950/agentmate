@@ -177,9 +177,8 @@ func TestSkipRejectsEmptyVersion(t *testing.T) {
 	}
 }
 
-// TestHelperAwaitingExit helperAwaitingExit
-// 决定强制退出是否安全，因此它必须仅读取 *此* 进程的握手，并且仅读取 "ready"
-// 载荷。
+// TestHelperAwaitingExit 校验 helperAwaitingExit：它决定强制退出是否安全，
+// 因此必须只读取「此」进程的握手，并且只接受 "ready" 载荷。
 func TestHelperAwaitingExit(t *testing.T) {
 	const pid = 4242
 	write := func(t *testing.T, dir, name, content string) {

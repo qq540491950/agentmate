@@ -13,8 +13,7 @@ import (
 	"agentmate/internal/config"
 )
 
-// A panicking or failing agent runtime must never take the app down: the
-// session stays usable after a recovered turn.
+// 崩溃或失败的 Agent 运行时绝不能拖垮整个应用：回合恢复后会话仍然可用。
 func TestSendTurnKeepsSessionUsableAfterFailure(t *testing.T) {
 	dir := t.TempDir()
 	store, err := config.Open(dir)

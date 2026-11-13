@@ -12,12 +12,10 @@ import (
 	"agentmate/internal/mcpmgr"
 )
 
-// TestRenderHistoryAuthorsConsistent verifies that history replay assigns one
-// agent's whole turn the same display author: tool_call/tool_result must not
-// fall back to the raw sanitized ADK author while thinking/assistant text uses
-// the display name — that mismatch made groupToolMessages flush on every
-// tool boundary, shredding one turn into several 执行过程 blocks after an
-// app restart.
+// TestRenderHistoryAuthorsConsistent 校验历史回放为同一 Agent 的整个回合分配
+// 相同的显示作者：tool_call/tool_result 不得回退到原始清洗后的 ADK 作者，而
+// thinking/assistant 文本却使用显示名——这种不一致曾让 groupToolMessages 在每个
+// 工具边界刷新，把应用重启后的一个回合切成多个「执行过程」块。
 func TestRenderHistoryAuthorsConsistent(t *testing.T) {
 	turn := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

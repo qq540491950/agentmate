@@ -146,9 +146,8 @@ func TestDeletedKnowledgeDirClearsIndex(t *testing.T) {
 	}
 }
 
-// TestPartialEmbeddingFailureKeepsGoodRows: one file failing to embed must
-// not discard the rows of the files that succeeded — a single network blip
-// used to throw away the whole rebuild.
+// TestPartialEmbeddingFailureKeepsGoodRows 校验：单个文件嵌入失败不得丢弃
+// 已成功文件的行——过去一次网络抖动就会丢掉整个重建结果。
 func TestPartialEmbeddingFailureKeepsGoodRows(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)

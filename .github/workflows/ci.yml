@@ -42,9 +42,9 @@ jobs:
         with:
           path: frontend/node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('frontend/package-lock.json') }}
-      # The root package imports Wails' linux backend, so vetting/testing it
-      # needs GTK4 + WebKitGTK 6 headers through cgo. Without them the job dies
-      # on pkg-config before it ever reaches the code.
+      # 根包导入 Wails 的 linux 后端，因此 vet/测试它需要 GTK4 + WebKitGTK 6
+      # 头文件（通过 cgo）。没有它们，任务会在 pkg-config 阶段失败，根本到不了
+      # 代码。
       - name: Install linux cgo headers
         run: |
           sudo apt-get update
@@ -92,11 +92,10 @@ jobs:
         working-directory: frontend
         run: npm run --silent build
 
-  # The push/PR gate above only tests Go packages and builds frontend assets;
-  # it never compiles the Wails desktop app. A change can therefore pass CI and
-  # still fail at release time on `-tags production`/windowsgui/syso. Build the
-  # Windows exe here, before a tag exists, so a release never has to discover
-  # a broken build after pushing a tag.
+  # 上面的 push/PR 门禁只测试 Go 包并构建前端资产；它从不编译 Wails 桌面
+  # 应用。因此改动可能通过 CI，却在发布时因 `-tags production`/windowsgui/syso
+  # 失败。在 tag 存在之前就在这里构建 Windows exe，这样发布永远不必在推送 tag
+  # 后才发现构建已损坏。
   windows-build:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -125,8 +124,8 @@ jobs:
         id: node-modules
         uses: actions/cache@v4
         with:
-          # .task/checksum lets `task windows:build` skip its npm install
-          # dependency when node_modules came from the cache.
+          # .task/checksum 让 `task windows:build` 在 node_modules 来自缓存时
+          # 跳过其 npm install 依赖。
           path: |
             frontend/node_modules
             .task/checksum
@@ -135,10 +134,9 @@ jobs:
         if: steps.go-cli-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          # Install from the Go module proxy instead of arduino/setup-task:
-          # that action resolves the release through GitHub's API and hit a
-          # shared-runner rate limit on #39's CI. go install also keeps the
-          # version pinned and reproducible (same as release.yml).
+          # 从 Go 模块代理安装，而不是使用 arduino/setup-task：后者通过 GitHub
+          # API 解析 release，曾在 #39 的 CI 上遇到共享 runner 速率限制。
+          # go install 还能固定版本并保持可复现（与 release.yml 相同）。
           go install github.com/go-task/task/v3/cmd/task@${TASK_VERSION}
       - name: Install Wails CLI
         if: steps.go-cli-cache.outputs.cache-hit != 'true'
@@ -151,9 +149,9 @@ jobs:
       - name: Build Windows exe
         shell: bash
         run: task windows:build
-      # Release runs its gate on windows-latest; keep the same test command here
-      # so a Windows-only failure is caught on the push, not after a tag exists.
-      # frontend/dist is already built by the step above (main.go embeds it).
+      # Release 在 windows-latest 上运行门禁；这里保持相同的测试命令，让仅
+      # Windows 才出现的失败在 push 时就被捕获，而不是等 tag 存在之后。
+      # frontend/dist 已由上一步构建（main.go 会嵌入它）。
       - name: Test (windows)
         shell: bash
         run: go test -count=1 ./internal/... .

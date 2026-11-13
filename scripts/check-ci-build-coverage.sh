@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Guard the pipeline invariant that a push/PR actually compiles the Wails
-# Windows app, not just the Go packages and frontend assets.
+# 守护流水线不变量：push/PR 必须真正编译 Wails Windows 应用，而不只是
+# Go 包和前端资产。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

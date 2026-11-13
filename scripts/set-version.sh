@@ -1,26 +1,25 @@
 #!/usr/bin/env bash
-# set-version.sh <version> — make the git tag the single source of truth for
-# the app version, then regenerate every derived build asset.
+# set-version.sh <version> — 让 git tag 成为应用版本的唯一事实来源，
+# 然后重新生成所有派生构建资产。
 #
-# The version reaches the shipped product through two disjoint paths:
+# 版本通过两条互不依赖的路径到达最终产品：
 #
-#   1. The binary: `-X main.Version=<version>` at link time (see the
-#      BUILD_FLAGS in build/{windows,linux,darwin}/Taskfile.yml).
-#   2. The installer/packager metadata: build/config.yml `info.version`
-#      feeds `wails3 update build-assets`, which renders
-#        build/windows/info.json      -> exe VERSIONINFO (wails3 generate syso)
-#        build/windows/nsis/wails_tools.nsh -> NSIS VIProductVersion + uninstall key
+#   1. 二进制：链接时通过 `-X main.Version=<version>` 注入（见
+#      build/{windows,linux,darwin}/Taskfile.yml 中的 BUILD_FLAGS）。
+#   2. 安装器/打包元数据：build/config.yml 的 `info.version` 供
+#      `wails3 update build-assets` 使用，后者生成：
+#        build/windows/info.json      -> exe VERSIONINFO（wails3 generate syso）
+#        build/windows/nsis/wails_tools.nsh -> NSIS VIProductVersion + 卸载键
 #        build/darwin/Info.plist      -> CFBundleShortVersionString
-#        build/linux/nfpm/nfpm.yaml   -> deb/rpm version
+#        build/linux/nfpm/nfpm.yaml   -> deb/rpm 版本
 #
-# Hand-editing those four files (or forgetting to) is exactly how this repo
-# ended up shipping 0.1.0 metadata inside a 0.4.0 app. Editing them is also
-# pointless: `wails3 update build-assets` overwrites them. So this script only
-# writes build/config.yml and lets the generator do the rest.
+# 手工编辑这四个文件（或忘记编辑）正是本仓库曾在 0.4.0 应用里发布 0.1.0
+# 元数据的原因。手工编辑也没有意义：`wails3 update build-assets` 会覆盖它们。
+# 因此本脚本只写 build/config.yml，其余交给生成器。
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# Same PATH accommodation as scripts/verify.sh: `go install`ed CLIs land in
-# $GOPATH/bin, which a bare bash shell may not have on PATH.
+# 与 scripts/verify.sh 相同的 PATH 处理：`go install` 安装的 CLI 位于
+# $GOPATH/bin，裸 bash shell 的 PATH 可能不包含它。
 export PATH="$PATH:$(go env GOPATH 2>/dev/null || echo "$HOME/go")/bin"
 
 VERSION="${1:-}"
@@ -34,7 +33,7 @@ if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-
 	exit 2
 fi
 
-# main.Version must be a var for -X to land; a const silently ignores the flag.
+# main.Version 必须是 var，-X 才能生效；const 会静默忽略该标志。
 if grep -qE '^const Version = ' main.go; then
 	echo "set-version: main.go still declares 'const Version'; it must be 'var Version' for -ldflags -X to work" >&2
 	exit 1

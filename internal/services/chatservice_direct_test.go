@@ -87,9 +87,8 @@ func TestDirectChatWithoutAgent(t *testing.T) {
 	}
 }
 
-// TestMentionRoutesTurnToAgent pins @mention routing: a leading "@名称" sends
-// that one turn to the named agent while the session binding stays direct,
-// and Regenerate re-runs the stored mention with the same routing.
+// TestMentionRoutesTurnToAgent 固定 @ 提及路由：开头的「@名称」只把该回合发送给
+// 指定 Agent，会话绑定仍保持直接对话；Regenerate 会按相同路由重跑已存储的提及。
 func TestMentionRoutesTurnToAgent(t *testing.T) {
 	chat, store, bodies := newDirectChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -174,10 +173,9 @@ func TestMentionUnknownFallsBackToDirect(t *testing.T) {
 	}
 }
 
-// TestDirectChatReadsWorkspaceFiles pins the issue #21 contract: a project
-// chat with no configured agent must be able to inspect its workspace instead
-// of only promising "我来查看当前项目情况". The fake model lists the directory,
-// reads README.md and answers from its actual content.
+// TestDirectChatReadsWorkspaceFiles 固定 issue #21 契约：未配置 Agent 的项目
+// 对话必须能检查工作区，而不是只承诺「我来查看当前项目情况」。假模型会列出目录、
+// 读取 README.md 并依据实际内容回答。
 func TestDirectChatReadsWorkspaceFiles(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("cloud 是一个云原生示例项目。"), 0o644); err != nil {

@@ -66,9 +66,8 @@ func TestDiscoveredSkillMaterialization(t *testing.T) {
 	}
 }
 
-// TestDiscoveredSkillShadowsAppSkill: precedence project > global > app must
-// not break an agent that mounted the app skill's ID — it materializes the
-// winning definition instead of failing the build.
+// TestDiscoveredSkillShadowsAppSkill 校验 project > global > app 的优先级不会
+// 破坏挂载了应用技能 ID 的 Agent——它会物化胜出的定义，而不是让构建失败。
 func TestDiscoveredSkillShadowsAppSkill(t *testing.T) {
 	kit, store := newTestKit(t)
 	workspace := t.TempDir()

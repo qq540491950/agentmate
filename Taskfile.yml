@@ -3,20 +3,19 @@ version: '3'
 vars:
   APP_NAME: "agentmate"
   BIN_DIR: "bin"
-  # VERSION is the single source of truth for the app version. It comes from
-  # the git tag at build time (v0.5.0 -> 0.5.0) and is injected into the
-  # binary with `-X main.Version`; tag-less builds fall back to "dev".
-  # Release CI passes VERSION=<tag> explicitly, so a shallow checkout can
-  # never ship a "dev" build by accident. The env var is read inside the shell
-  # so a caller-supplied VERSION always wins over the `git describe` default.
+  # VERSION 是应用版本的唯一事实来源。构建时从 git tag 获取
+  # （v0.5.0 -> 0.5.0），并通过 `-X main.Version` 注入二进制；
+  # 无 tag 的构建回退为 "dev"。发布 CI 显式传入 VERSION=<tag>，
+  # 因此浅克隆也绝不会意外发布 "dev" 构建。环境变量在 shell 内读取，
+  # 调用方传入的 VERSION 始终优先于 `git describe` 的默认值。
   VERSION:
     sh: 'v="${VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || echo)}"; v="${v#v}"; echo "${v:-dev}"'
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   # 9527: 不用 Wails 默认的 9245，避免和本机同时开发的其他应用（如 agent-go）抢端口
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9527}}'
-  # Target OS for build/package/run. Defaults to the host OS, and is overridden
-  # by `wails3 build GOOS=...` (or the GOOS env var) for cross-compilation. The
-  # tasks below dispatch to the matching platform Taskfile via this variable.
+  # build/package/run 的目标操作系统。默认使用宿主 OS，可通过
+  # `wails3 build GOOS=...`（或 GOOS 环境变量）覆盖以进行交叉编译。
+  # 下面的任务通过该变量分发到对应的平台 Taskfile。
   GOOS: '{{.GOOS | default OS}}'
 
 includes:
