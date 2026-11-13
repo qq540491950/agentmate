@@ -5,6 +5,7 @@ package mcpmgr
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -231,6 +232,7 @@ func (m *Manager) Connect(cfg config.MCPServerConfig) ServerStatus {
 func (m *Manager) Disconnect(id string) {
 	m.mu.Lock()
 	tr := m.conns[id]
+	ts := m.toolsets[id]
 	delete(m.toolsets, id)
 	delete(m.conns, id)
 	if st, ok := m.states[id]; ok {
@@ -241,6 +243,14 @@ func (m *Manager) Disconnect(id string) {
 	}
 	m.mu.Unlock()
 	// Close outside the lock: closing a stdio session waits on the child.
+	// The toolset is closed too: since ADK v2.7.0 an mcptoolset owns a session
+	// client that must be released (v2.4.0 had no Close on the toolset, so the
+	// transport was the only thing worth closing). Closing the toolset before
+	// the transport lets the session shut down over a live connection; a
+	// toolset that never opened a session closes without side effects.
+	if closer, ok := ts.(io.Closer); ok {
+		_ = closer.Close()
+	}
 	if tr != nil {
 		_ = tr.Close()
 	}

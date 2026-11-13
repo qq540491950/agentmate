@@ -549,8 +549,18 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	var sessionUsage *UsageInfo
 	toolCallsSeen := 0
 	lastReply := ""
+	// MaxLLMCalls is pinned to "no limit" on purpose. ADK v2.7.0 introduced a
+	// per-invocation model-call budget whose zero value resolves to 500 (or to
+	// ADK_MAX_LLM_CALLS when that env var parses), and reaching it aborts the
+	// whole run with ErrLLMCallsLimitExceeded. That contradicts this app's
+	// "a turn has no wall-clock limit" contract: a long task that churns
+	// through tool calls (plan_todos rewrites, many MCP tools, team members)
+	// would otherwise die at an invisible, framework-chosen threshold that the
+	// user can only discover by hitting it. Ending a turn stays the model's or
+	// the user's decision.
 	for ev, err := range rn.Run(ctx, c.userID, sessionID, msg, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
+		MaxLLMCalls:   -1,
 	}, runOpts...) {
 		if ctx.Err() != nil {
 			emit(ChatStreamEvent{Kind: "error", Text: "已取消"})

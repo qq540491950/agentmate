@@ -4,6 +4,24 @@
 
 ## 视觉测试与体验设计
 
+### 第二百八十轮迭代：升级 ADK 至 v2.7.1（已实施）
+
+依据：仓库固定 `google.golang.org/adk/v2 v2.4.0`，上游已发布到 v2.7.1（2026-11-04），其间 v2.5.0 / v2.6.0 / v2.7.0 三个版本累积了与本项目直接相关的修复与新约束：会话库 App/User state 写入改为行级锁（并发会话共享全局状态会丢 key）、skill frontmatter 元数据上限改为按字符计数（中文 description 原 341 字即超限）、MCP toolset 返回 `io.Closer` 需显式释放、v2.7.0 新增每次调用 500 次模型调用的默认预算。升级同时把这些隐性行为差异显式化。
+
+**实现要点**
+
+- `google.golang.org/adk/v2` 从 `v2.4.0` 升到 `v2.7.1`；`go` 指令随之上抬到 `1.26.10`（ADK 的硬要求）。连带升级 genai `1.70.0 → 1.75.0`、a2a-go `v2/v2.5.0 → v2.6.0`、modelcontextprotocol/go-sdk `1.7.0 → 1.8.0`、otel `1.46.0 → 1.47.0`、grpc `1.83.2 → 1.84.0`、api `0.295.0 → 0.304.0`。无源码 API 破坏，`go build` / `go vet` 零改动通过。
+- **模型调用预算显式关闭**：`ChatService.runTurn` 的 `agent.RunConfig` 补 `MaxLLMCalls: -1`。ADK v2.7.0 起零值会解析为 `ADK_MAX_LLM_CALLS` 或默认 500，超限以 `ErrLLMCallsLimitExceeded` 终止整轮（runner 随即停止）。这与本项目「单轮不设人为上限、结束由模型或用户取消决定」的既定契约冲突，且该阈值此前完全不可见、还会随环境变量漂移。写 `-1` 把「本轮不限调用次数」变成代码里的显式声明。
+- **MCP toolset 生命周期收口**：`Manager.Disconnect` 在关闭 transport 之前先 `ts.(io.Closer).Close()`。ADK v2.7.0 起 `mcptoolset.New` 的返回值实现 `io.Closer` 并持有 session client（`Config.Auth` 时是按凭据的池），此前只关 transport 会漏掉 session 释放；先关 toolset 再关 transport 让会话在活连接上完成关闭，未建会话的 toolset 关闭无副作用。`CloseAll` 经 `Disconnect` 复用同一路径。
+- 未做兼容处理的部分：ADK 遥测默认切到 OpenTelemetry GenAI semconv v2 属破坏性变更，但本项目未接入 ADK telemetry，无影响；`requireSecureCardSource` 会拒绝非 https / 非 loopback 的 A2A Card 源搭配凭据，现有远端 Agent 配置均为 https 或 loopback，无需改动。
+
+**测试证据**
+
+- 新增 `internal/mcpmgr/manager_test.go` 的 `TestDisconnectClosesCachedToolset` / `TestCloseAllClosesEveryToolset`：以 `trackingToolset` 断言 `Disconnect` 与 `CloseAll` 都真正关闭缓存中的 toolset。临时移除关闭逻辑验证过两条用例会失败（红），恢复后转绿。
+- `go build ./internal/... .`、`go vet ./internal/... .`、`go test -count=1 ./internal/...`、`go test -race ./internal/...` 全部通过（agentkit / config / mcpmgr / memory / sandbox / services / terminal）。
+- `npx tsc --noEmit`（HEAD 前端）、`npm test`（43 个文件 / 307 个用例）、`wails3 build`（前端生产构建 + 绑定生成 + Windows `syso` + `bin/agentmate.exe`）通过。
+- 遗留（非本轮引入）：工作区存在未提交的前端在途改动（`chatTimeline.ts` 及其 `ChatPage.tsx` 接线），其 `tsc` 报两个未使用导入（`dropMessageByID`、`replaceMessageByID`），属该在途工作未完成，与本轮升级无关。
+
 ### 第二百七十九轮迭代：升级 Wails 至 v3.1.0（已实施）
 
 依据：Wails v3.1.0 于 2026-11-01 发布，仓库仍固定 v3.0.0；Go SDK、CLI 与前端运行时需要保持同一版本，且 v3.1.0 包含事件分发、Windows WebView2、托盘/窗口与 updater 修复。

@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"google.golang.org/adk/v2/tool"
+
 	"agentmate/internal/config"
 )
 
@@ -186,5 +188,58 @@ func TestOAuthTransportPortNotHeld(t *testing.T) {
 			t.Fatalf("port still held after build %d: %v", i, err)
 		}
 		again.Close()
+	}
+}
+
+// trackingToolset is a cached toolset that records whether the manager closed
+// it. ADK v2.7.0 made mcptoolset.New return an io.Closer, and the manager owns
+// the cached instance, so Disconnect must release it instead of dropping the
+// cache entry and leaking the session (and, for auth'd servers, the pool).
+type trackingToolset struct {
+	tool.Toolset
+	closed bool
+}
+
+func (t *trackingToolset) Close() error {
+	t.closed = true
+	return nil
+}
+
+// TestDisconnectClosesCachedToolset pins the resource contract: dropping the
+// cache must close the toolset before the transport goes away, otherwise the
+// MCP session is never released.
+func TestDisconnectClosesCachedToolset(t *testing.T) {
+	m := New()
+	ts := &trackingToolset{}
+	m.mu.Lock()
+	m.toolsets["srv1"] = ts
+	m.mu.Unlock()
+
+	m.Disconnect("srv1")
+
+	if !ts.closed {
+		t.Fatal("expected Disconnect to close the cached toolset")
+	}
+	if _, ok := m.toolsets["srv1"]; ok {
+		t.Fatal("expected the cache entry to be dropped")
+	}
+}
+
+// TestCloseAllClosesEveryToolset: the shutdown hook relies on CloseAll, so it
+// must close each toolset exactly once, not only clear the maps.
+func TestCloseAllClosesEveryToolset(t *testing.T) {
+	m := New()
+	a, b := &trackingToolset{}, &trackingToolset{}
+	m.mu.Lock()
+	m.toolsets["a"] = a
+	m.toolsets["b"] = b
+	m.conns["a"] = nil
+	m.conns["b"] = nil
+	m.mu.Unlock()
+
+	m.CloseAll()
+
+	if !a.closed || !b.closed {
+		t.Fatalf("expected both toolsets closed, got a=%v b=%v", a.closed, b.closed)
 	}
 }
