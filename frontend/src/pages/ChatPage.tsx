@@ -861,9 +861,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           return [...prev, { id: nextId(), kind: "assistant", author: ev.author, text: ev.text, usage: ev.usage ?? null, timestamp: new Date().toISOString() }];
         }
         case "tool_call":
-          return [...prev, { id: nextId(), kind: "tool_call", author: ev.author, text: "", toolName: ev.toolName, toolArgs: ev.toolArgs, timestamp: new Date().toISOString() }];
+            return [...prev, { id: nextId(), kind: "tool_call", author: ev.author, text: "", toolName: ev.toolName, toolArgs: ev.toolArgs, callId: ev.callId, timestamp: new Date().toISOString() }];
         case "tool_result":
-          return [...prev, { id: nextId(), kind: "tool_result", author: ev.author, text: "", toolName: ev.toolName, toolResp: ev.toolResp, timestamp: new Date().toISOString() }];
+            return [...prev, { id: nextId(), kind: "tool_result", author: ev.author, text: "", toolName: ev.toolName, toolResp: ev.toolResp, callId: ev.callId, timestamp: new Date().toISOString() }];
         case "confirm_request":
           return [...prev, {
             id: nextId(), kind: "confirm", author: ev.author, text: "",

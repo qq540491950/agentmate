@@ -92,7 +92,7 @@ export function fmtTime(iso?: string): string {
  */
 export function computeToolDurations(messages: UIMessage[]): Map<string, number> {
   const map = new Map<string, number>();
-  const pending: { id: string; toolName: string; ts: number }[] = [];
+  const pending: { id: string; callId?: string; toolName: string; ts: number }[] = [];
   for (const m of messages) {
     const ts = m.timestamp ? Date.parse(m.timestamp) : Date.now();
     if (m.kind === "confirm") {
@@ -105,9 +105,14 @@ export function computeToolDurations(messages: UIMessage[]): Map<string, number>
     }
     if (m.kind !== "tool_call" && m.kind !== "tool_result") continue;
     if (m.kind === "tool_call") {
-      pending.push({ id: m.id, toolName: m.toolName ?? "", ts });
+      pending.push({ id: m.id, callId: m.callId, toolName: m.toolName ?? "", ts });
     } else {
-      const idx = [...pending].reverse().findIndex((p) => p.toolName === m.toolName);
+      let idx = -1;
+      if (m.callId) {
+        idx = [...pending].reverse().findIndex((p) => p.callId === m.callId);
+      } else {
+        idx = [...pending].reverse().findIndex((p) => p.toolName === m.toolName);
+      }
       if (idx >= 0) {
         const call = pending.splice(pending.length - 1 - idx, 1)[0];
         map.set(m.id, Math.max(0, ts - call.ts));
@@ -117,19 +122,25 @@ export function computeToolDurations(messages: UIMessage[]): Map<string, number>
   return map;
 }
 
-/** computeRunningTools marks tool_call messages that have no matching result yet.
- * Pairing is by tool name (same as computeToolDurations): parallel/团队 tool
- * rounds emit call A, call B, result B, result A — a FIFO queue would end A's
- * spinner early and leave B spinning forever. */
+/** computeRunningTools marks tool_call messages that have no matching result
+ * yet. ADK CallID wins when present; same-name LIFO remains the fallback for
+ * older histories and providers that omit IDs. Parallel/团队 rounds can emit
+ * call A, call B, result B, result A, so a FIFO queue would end A's spinner
+ * early and leave B spinning forever. */
 export function computeRunningTools(messages: UIMessage[]): Set<string> {
   const running = new Set<string>();
-  const pending: { id: string; toolName: string }[] = [];
+  const pending: { id: string; callId?: string; toolName: string }[] = [];
   for (const m of messages) {
     if (m.kind === "tool_call") {
       running.add(m.id);
-      pending.push({ id: m.id, toolName: m.toolName ?? "" });
+      pending.push({ id: m.id, callId: m.callId, toolName: m.toolName ?? "" });
     } else if (m.kind === "tool_result") {
-      const idx = [...pending].reverse().findIndex((p) => p.toolName === (m.toolName ?? ""));
+      let idx = -1;
+      if (m.callId) {
+        idx = [...pending].reverse().findIndex((p) => p.callId === m.callId);
+      } else {
+        idx = [...pending].reverse().findIndex((p) => p.toolName === (m.toolName ?? ""));
+      }
       if (idx >= 0) {
         const call = pending.splice(pending.length - 1 - idx, 1)[0];
         running.delete(call.id);
@@ -149,18 +160,20 @@ export function toolResultFailed(resp?: { [k: string]: any } | null): boolean {
   return resp.isError === true || resp.is_error === true;
 }
 
-/** ToolGroup is one collapsible "execution" block for a whole turn: the
- *  process events (thinking entries, tool calls, results, HITL confirmations)
- *  plus the assistant narration the model emits between tool batches, all
- *  from the same author. The turn's final reply stays outside as the result. */
+/** ToolGroup is one collapsible execution block for a contiguous stretch of
+ *  process events (thinking entries, tool calls, results and HITL
+ *  confirmations) from the same author. Assistant prose stays on the main
+ *  timeline and never enters the group. */
 export type ToolGroup = {
   kind: "tool_group";
   /** id is the first message's id, stable while the run keeps streaming. */
   id: string;
   author: string;
   messages: UIMessage[];
-  /** endTs is the final reply's timestamp: the summary counts the whole turn,
-   *  including the time spent writing the answer, not just the tool runtime. */
+  /** endTs is the turn's final reply timestamp: the summary counts the whole
+   *  turn, including the time spent writing the answer, not just the tool
+   *  runtime. Groups no longer move narration, but they all belong to the same
+   *  turn and share its completion clock. */
   endTs?: string;
   /** answered records whether the turn produced its final reply. Until it
    *  exists a live turn is still generating; a settled turn without one never
@@ -279,9 +292,9 @@ export type ToolTraceItem =
   | { kind: "message"; message: UIMessage }
   | ToolStep;
 
-/** buildToolTrace pairs a call with the most recent unpaired result of the
- *  same tool name (the same LIFO rule the duration/timer helpers use). A
- *  result without a retained call still renders as its own step. */
+/** buildToolTrace pairs a result to its call by ADK CallID first, falling back
+ *  to the most recent unpaired call of the same tool name for older history.
+ *  A result without a retained call still renders as its own step. */
 export function buildToolTrace(messages: UIMessage[]): ToolTraceItem[] {
   const out: ToolTraceItem[] = [];
   const pending: ToolStep[] = [];
@@ -301,10 +314,19 @@ export function buildToolTrace(messages: UIMessage[]): ToolTraceItem[] {
     if (m.kind === "tool_result") {
       const name = m.toolName ?? "tool";
       let pendingIdx = -1;
-      for (let i = pending.length - 1; i >= 0; i--) {
-        if (pending[i].name === name && pending[i].resp == null) {
-          pendingIdx = i;
-          break;
+      if (m.callId) {
+        for (let i = pending.length - 1; i >= 0; i--) {
+          if (pending[i].call?.callId === m.callId && pending[i].resp == null) {
+            pendingIdx = i;
+            break;
+          }
+        }
+      } else {
+        for (let i = pending.length - 1; i >= 0; i--) {
+          if (pending[i].name === name && pending[i].resp == null) {
+            pendingIdx = i;
+            break;
+          }
         }
       }
       if (pendingIdx >= 0) {
@@ -443,18 +465,19 @@ function isToolActivity(m: UIMessage): boolean {
 }
 
 /**
- * groupToolMessages turns each turn (everything between two user messages)
- * into at most one collapsible execution block plus its final reply. Process
- * events — thinking, tool calls/results, HITL confirmations — and the
- * assistant narration the model emits between tool batches all belong to the
- * same block: narration used to break the run, which split one turn into
- * several look-alike blocks (thinking card, empty skeleton, tool card, reply).
- * The turn's last assistant message after the last tool activity is the only
- * result and stays outside the block. Empty settled assistant shells are
- * dropped; plan_todos cards stay standalone without splitting the run (the
- * pinned plan must not shred a long turn into several look-alike groups);
- * errors keep breaking it. A single tool invocation also joins the block so
- * its call/result pair can render as one logical step.
+ * groupToolMessages folds only contiguous process events — thinking, tool
+ * calls/results and HITL confirmations — into execution blocks. Assistant
+ * prose always stays on the turn timeline.
+ *
+ * That is a display-state guarantee, not just a layout preference. A model can
+ * stream a short narration and then call more tools in the same response. The
+ * old grouping absorbed that narration after the next tool_call arrived, so a
+ * paragraph that had already been painted as an answer jumped into the
+ * execution block. Keeping assistant messages out of groups makes their
+ * position independent of future tool events: live streaming and persisted
+ * history now agree. Empty settled assistant shells are dropped; plan_todos
+ * cards stay standalone without splitting a contiguous process run, and a
+ * single invocation still forms its own block.
  */
 export function groupToolMessages(messages: UIMessage[]): ChatItem[] {
   const out: ChatItem[] = [];
@@ -477,14 +500,10 @@ function messageItem(m: UIMessage): ChatItem {
   return { kind: "message", id: m.id, message: m };
 }
 
-/** groupTurn packs one turn's process tail into a single execution block and
- *  keeps its final reply separate. */
+/** groupTurn folds contiguous process events and appends assistant messages
+ *  in-order as stable timeline items. */
 function groupTurn(turn: UIMessage[]): ChatItem[] {
   const out: ChatItem[] = [];
-  let lastProcessIdx = -1;
-  for (let i = turn.length - 1; i >= 0; i--) {
-    if (isProcessEvent(turn[i])) { lastProcessIdx = i; break; }
-  }
 
   // The result boundary is the last tool/confirmation activity, not the last
   // thinking event: a final reasoning block can arrive after the streamed
@@ -508,7 +527,8 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
     break;
   }
 
-  if (lastProcessIdx < 0) {
+  const hasProcess = turn.some(isProcessEvent);
+  if (!hasProcess) {
     // No execution events: render plain messages as before.
     for (const m of turn) {
       if (m.kind === "assistant" && !m.text.trim() && !m.streaming) continue;
@@ -540,41 +560,43 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
     }
   }
 
-  const endTs = resultIdx >= 0 ? ordered[resultIdx].timestamp : undefined;
   // Turn outcome, not step outcome: a failed tool the model worked around is
   // process detail. Only a turn that ended in an error without ever writing
   // its reply failed — guardrail warnings before a later user message and
   // budget warnings after the reply both still have/leave an answer.
   const answered = resultIdx >= 0;
   const errored = !answered && ordered.some((m) => m.kind === "error");
+  const endTs = resultIdx >= 0 ? ordered[resultIdx].timestamp : undefined;
   let run: UIMessage[] = [];
   const flush = () => {
     if (run.length === 0) return;
-    const hasProcess = run.some(isProcessEvent);
     // Even one invocation belongs here: its call and result are two events but
     // one logical step, and rendering them as two standalone cards duplicated
-    // every simple tool call. Thinking/narration-only runs still group too.
-    if (hasProcess) {
-      out.push({ kind: "tool_group", id: run[0].id, author: run[0].author, messages: run, endTs, answered, errored });
-    } else {
-      for (const m of run) out.push(messageItem(m));
-    }
+    // every simple tool call. Thinking-only runs still group too.
+    out.push({
+      kind: "tool_group",
+      id: run[0].id,
+      author: run[0].author,
+      messages: run,
+      endTs,
+      answered,
+      errored,
+    });
     run = [];
   };
 
   for (let i = 0; i < ordered.length; i++) {
     const m = ordered[i];
-    if (i === resultIdx) {
+    if (m.kind === "assistant") {
+      // The streaming placeholder created before the final tool response
+      // carries no text; the process header is the live indicator. A settled
+      // empty shell is noise and is dropped in both cases.
+      if (!m.text.trim()) continue;
+      // Narration is a first-class timeline item, never a member of the
+      // execution block. Do not revisit this decision when a later tool call
+      // arrives: the message's position must stay stable.
       flush();
       out.push(messageItem(m));
-      continue;
-    }
-    if (m.kind === "assistant") {
-      // Empty streaming placeholders inside a process run carry no text; the
-      // block header already shows the turn is live.
-      if (!m.text.trim()) continue;
-      if (run.length > 0 && run[0].author !== m.author) flush();
-      run.push(m);
       continue;
     }
     if (!isProcessEvent(m)) {

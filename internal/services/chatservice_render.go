@@ -94,6 +94,7 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 			m.Kind = "tool_call"
 			m.ToolName = p.FunctionCall.Name
 			m.ToolArgs = p.FunctionCall.Args
+			m.CallID = p.FunctionCall.ID
 			out = append(out, m)
 		case p.FunctionResponse != nil && p.FunctionResponse.Name == toolconfirmation.FunctionCallName:
 			flushText()
@@ -109,6 +110,7 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 			m.Kind = "tool_result"
 			m.ToolName = p.FunctionResponse.Name
 			m.ToolResp = p.FunctionResponse.Response
+			m.CallID = p.FunctionResponse.ID
 			out = append(out, m)
 		case p.InlineData != nil && p.InlineData.Data != nil:
 			if role == "user" {
@@ -271,10 +273,14 @@ func directAgentConfig(cfg config.Config) (config.AgentConfig, error) {
 			"当前任务工作区：{{workspace}}。当问题涉及项目或文件内容时，先调用 " +
 			"list_workspace_files 查看目录结构，再按需调用 read_workspace_file 读取文件，" +
 			"基于实际内容回答，不要凭空猜测。\n" +
+			"多步任务先用 plan_todos 形成简短计划；同一轮把互不依赖的检索、读取和只读命令一起发起，" +
+			"不要一次只读一个文件。每完成一批工具或切换阶段，用一句中文说明当前进展。" +
+			"只要求分析、排查或解释时默认保持只读，除非用户明确要求修改文件、升级依赖或执行有副作用的操作。" +
+			"证据已经足够就先给结论；连续两轮没有获得新证据时停止继续检索。\n" +
 			"你具备终端命令工具 run_command，可在工作区内执行 git、构建、测试、安装依赖等命令；" +
 			"需要拉取代码、运行命令时直接调用 run_command，不要声称没有终端或 Shell 能力。" +
 			"写入文件和执行命令会先请用户确认。",
-		BuiltinTools: []string{"files", "shell"},
+		BuiltinTools: []string{"files", "shell", "todos"},
 		// Approval and the OS boundary come from the session's independent
 		// execution policy. Direct chats deliberately add no per-agent
 		// override, so auto-approve only asks for risk-detected commands.

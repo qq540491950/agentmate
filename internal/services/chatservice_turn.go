@@ -667,12 +667,12 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				toolCallsThisTurn++
 				c.audit(sessionID, "call", author, p.FunctionCall.Name, mustJSON(auditToolCallArgs(p.FunctionCall)), "")
 				emit(ChatStreamEvent{Kind: "tool_call", Author: author,
-					ToolName: p.FunctionCall.Name, ToolArgs: p.FunctionCall.Args})
+					ToolName: p.FunctionCall.Name, ToolArgs: p.FunctionCall.Args, CallID: p.FunctionCall.ID})
 			case p.FunctionResponse != nil:
 				c.audit(sessionID, "result", author, p.FunctionResponse.Name,
 					mustJSON(p.FunctionResponse.Response), resultErrorOf(p.FunctionResponse.Response))
 				emit(ChatStreamEvent{Kind: "tool_result", Author: author,
-					ToolName: p.FunctionResponse.Name, ToolResp: p.FunctionResponse.Response})
+					ToolName: p.FunctionResponse.Name, ToolResp: p.FunctionResponse.Response, CallID: p.FunctionResponse.ID})
 			case p.Text != "" && !p.Thought:
 				textBuf.WriteString(p.Text)
 			}

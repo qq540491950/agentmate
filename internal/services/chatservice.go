@@ -68,8 +68,9 @@ type ChatStreamEvent struct {
 	ToolName  string         `json:"toolName,omitempty"`
 	ToolArgs  map[string]any `json:"toolArgs,omitempty"`
 	ToolResp  map[string]any `json:"toolResp,omitempty"`
-	// CallID identifies the ADK confirmation interrupt this event refers to
-	// (confirm_request events); the answer is sent back via ConfirmToolCall.
+	// CallID identifies the ADK call this event refers to: the tool_call /
+	// tool_result pair, or a confirmation interrupt. Confirmation answers are
+	// sent back via ConfirmToolCall.
 	CallID string `json:"callId,omitempty"`
 	// Hint is the model-provided explanation shown on the confirmation card.
 	Hint string `json:"hint,omitempty"`

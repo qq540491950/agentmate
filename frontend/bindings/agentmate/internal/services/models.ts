@@ -132,8 +132,9 @@ export interface ChatStreamEvent {
     "toolResp"?: { [_ in string]?: any } | null;
 
     /**
-     * CallID identifies the ADK confirmation interrupt this event refers to
-     * (confirm_request events); the answer is sent back via ConfirmToolCall.
+     * CallID identifies the ADK call this event refers to: the tool_call /
+     * tool_result pair, or a confirmation interrupt. Confirmation answers are
+     * sent back via ConfirmToolCall.
      */
     "callId"?: string;
 

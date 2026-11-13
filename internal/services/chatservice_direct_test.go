@@ -258,12 +258,15 @@ func TestDirectChatReadsWorkspaceFiles(t *testing.T) {
 	}
 
 	var sawListCall, sawListResult, sawReadCall, sawFinal bool
+	var listCallID, listResultID string
 	for _, ev := range *events {
 		switch {
 		case ev.Kind == "tool_call" && ev.ToolName == "list_workspace_files":
 			sawListCall = true
+			listCallID = ev.CallID
 		case ev.Kind == "tool_result" && ev.ToolName == "list_workspace_files":
 			sawListResult = true
+			listResultID = ev.CallID
 		case ev.Kind == "tool_call" && ev.ToolName == "read_workspace_file":
 			sawReadCall = true
 		case ev.Kind == "message" && ev.Text == "cloud 是一个云原生示例项目。":
@@ -273,6 +276,25 @@ func TestDirectChatReadsWorkspaceFiles(t *testing.T) {
 	if !sawListCall || !sawListResult || !sawReadCall || !sawFinal {
 		t.Fatalf("missing tool/answer stream events: list=%v result=%v read=%v final=%v",
 			sawListCall, sawListResult, sawReadCall, sawFinal)
+	}
+	if listCallID == "" || listCallID != listResultID {
+		t.Fatalf("tool call/result must share the ADK CallID: call=%q result=%q", listCallID, listResultID)
+	}
+	history, err := chat.GetSessionMessages(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var historyCallID, historyResultID string
+	for _, m := range history {
+		switch {
+		case m.Kind == "tool_call" && m.ToolName == "list_workspace_files":
+			historyCallID = m.CallID
+		case m.Kind == "tool_result" && m.ToolName == "list_workspace_files":
+			historyResultID = m.CallID
+		}
+	}
+	if historyCallID == "" || historyCallID != historyResultID {
+		t.Fatalf("history must preserve the shared CallID: call=%q result=%q", historyCallID, historyResultID)
 	}
 }
 
@@ -333,6 +355,11 @@ func TestDirectChatAdvertisesShellTool(t *testing.T) {
 	}
 	if !strings.Contains(first, "run_command") || !strings.Contains(first, "终端") {
 		t.Fatalf("system prompt does not advertise terminal capability: %s", first)
+	}
+	for _, want := range []string{`"name":"plan_todos"`, "互不依赖", "当前进展", "默认保持只读"} {
+		if !strings.Contains(first, want) {
+			t.Fatalf("direct chat prompt/tools missing %q: %s", want, first)
+		}
 	}
 }
 

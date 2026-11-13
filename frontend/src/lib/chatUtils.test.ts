@@ -134,6 +134,18 @@ describe("computeToolDurations", () => {
     expect(d.get("r1")).toBe(20_000);
   });
 
+  it("pairs same-name parallel calls by CallID when results arrive out of order", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "c1", kind: "tool_call", toolName: "run_command", callId: "call-a", timestamp: "2026-10-30T01:00:00Z" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "run_command", callId: "call-b", timestamp: "2026-10-30T01:00:00Z" }),
+      msg({ id: "rb", kind: "tool_result", toolName: "run_command", callId: "call-b", timestamp: "2026-10-30T01:00:10Z" }),
+      msg({ id: "ra", kind: "tool_result", toolName: "run_command", callId: "call-a", timestamp: "2026-10-30T01:00:20Z" }),
+    ];
+    const d = computeToolDurations(msgs);
+    expect(d.get("rb")).toBe(10_000);
+    expect(d.get("ra")).toBe(20_000);
+  });
+
   it("re-arms the duration clock at a HITL confirmation card", () => {
     const msgs: UIMessage[] = [
       msg({ id: "c1", kind: "tool_call", toolName: "write", timestamp: "2026-10-30T01:00:00Z" }),
@@ -155,6 +167,17 @@ describe("computeRunningTools", () => {
     const running = computeRunningTools(msgs);
     expect(running.has("a")).toBe(true); // A still running
     expect(running.has("b")).toBe(false); // B finished
+  });
+
+  it("uses CallID before the same-name fallback", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "a", kind: "tool_call", toolName: "run_command", callId: "call-a" }),
+      msg({ id: "b", kind: "tool_call", toolName: "run_command", callId: "call-b" }),
+      msg({ id: "rb", kind: "tool_result", toolName: "run_command", callId: "call-b" }),
+    ];
+    const running = computeRunningTools(msgs);
+    expect(running.has("a")).toBe(true);
+    expect(running.has("b")).toBe(false);
   });
 });
 
@@ -201,7 +224,7 @@ describe("groupToolMessages", () => {
     expect(toolGroupInvocationCount(group.messages)).toBe(1);
   });
 
-  it("keeps narration inside the turn block and splits at author changes; plan_todos cards stay pinned without splitting", () => {
+  it("keeps narration on the timeline and splits process runs at author changes", () => {
     const msgs: UIMessage[] = [
       msg({ id: "c1", kind: "tool_call", toolName: "read" }),
       msg({ id: "r1", kind: "tool_result", toolName: "read" }),
@@ -217,15 +240,16 @@ describe("groupToolMessages", () => {
       msg({ id: "r5", kind: "tool_result", toolName: "grep", author: "sub-agent" }),
     ];
     const items = groupToolMessages(msgs);
-    // Narration between tool batches no longer breaks the run; the plan_todos
-    // card stays standalone and floats above the block it used to split (the
-    // author change at c4 still starts a new block).
+    // Narration must stay between process runs: a later tool call may not pull
+    // it back into an execution block. plan_todos stays standalone without
+    // splitting a contiguous process run, and the author change at c4 starts
+    // a new block.
     expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "todos", "group:c1", "group:c4",
+      "group:c1", "mid", "todos", "group:c2", "group:c4",
     ]);
     const first = items.find((i) => i.kind === "tool_group" && i.id === "c1");
     if (!first || first.kind !== "tool_group") throw new Error("expected a tool group");
-    expect(first.messages.map((m) => m.id)).toEqual(["c1", "r1", "mid", "c2", "r2", "c3", "r3"]);
+    expect(first.messages.map((m) => m.id)).toEqual(["c1", "r1"]);
     const third = items.find((i) => i.kind === "tool_group" && i.author === "sub-agent");
     if (!third || third.kind !== "tool_group") throw new Error("expected a tool group");
     expect(third.author).toBe("sub-agent");
@@ -261,7 +285,7 @@ describe("groupToolMessages", () => {
     expect(todoCardIds).toEqual(["p1c", "p1r", "p2c", "p2r"]);
   });
 
-  it("folds an empty skeleton and inter-tool narration into one turn block", () => {
+  it("drops an empty skeleton and keeps inter-tool narration in place", () => {
     // The reported render: thinking card, empty "助手" skeleton, tool card,
     // then the reply — four look-alike blocks for a single turn.
     const msgs: UIMessage[] = [
@@ -277,13 +301,37 @@ describe("groupToolMessages", () => {
     ];
     const items = groupToolMessages(msgs);
     expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "u", "group:t1", "a",
+      "u", "group:t1", "mid", "group:c2", "a",
     ]);
     const group = items[1];
     if (group.kind !== "tool_group") throw new Error("expected a tool group");
-    expect(group.messages.map((m) => m.id)).toEqual(["t1", "c1", "r1", "mid", "c2", "r2"]);
+    expect(group.messages.map((m) => m.id)).toEqual(["t1", "c1", "r1"]);
     // endTs feeds the whole-turn 「已工作」 summary.
     expect(group.endTs).toBe("2026-10-30T01:02:04Z");
+  });
+
+  it("keeps streamed narration in the same position when another tool arrives", () => {
+    const base: UIMessage[] = [
+      msg({ id: "u", kind: "user", text: "分析" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "run_command" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "run_command", toolResp: { exitCode: 0 } }),
+      msg({ id: "mid", kind: "assistant", text: "测试已通过，继续核对变更。", streaming: true }),
+    ];
+    const before = groupToolMessages(base);
+    expect(before.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "u", "group:c1", "mid",
+    ]);
+
+    const after = groupToolMessages([
+      ...base,
+      msg({ id: "c2", kind: "tool_call", toolName: "run_command" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "run_command", toolResp: { exitCode: 0 } }),
+    ]);
+    expect(after.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "u", "group:c1", "mid", "group:c2",
+    ]);
+    const narration = after.find((i) => i.kind === "message" && i.id === "mid");
+    expect(narration?.kind).toBe("message");
   });
 
   it("drops a settled empty assistant shell that ends a tool turn", () => {
@@ -454,6 +502,18 @@ describe("buildToolTrace", () => {
     ]);
     expect(trace.map((item) => (item.kind === "tool" ? `${item.id}:${item.resp?.n ?? "orphan"}` : item.message.id))).toEqual([
       "c1:1", "c2:2", "orphan:orphan",
+    ]);
+  });
+
+  it("pairs same-name calls by CallID instead of result order", () => {
+    const trace = buildToolTrace([
+      msg({ id: "c1", kind: "tool_call", toolName: "run_command", callId: "call-a" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "run_command", callId: "call-b" }),
+      msg({ id: "rb", kind: "tool_result", toolName: "run_command", callId: "call-b", toolResp: { n: 2 } }),
+      msg({ id: "ra", kind: "tool_result", toolName: "run_command", callId: "call-a", toolResp: { n: 1 } }),
+    ]);
+    expect(trace.map((item) => (item.kind === "tool" ? `${item.id}:${item.resp?.n}` : item.message.id))).toEqual([
+      "c1:1", "c2:2",
     ]);
   });
 });

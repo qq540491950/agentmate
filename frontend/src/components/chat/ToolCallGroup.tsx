@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { TooltipHint } from "@/components/ui/tooltip";
 import { ToolCallCard } from "@/components/ToolCallCard";
 import { ConfirmCard, ThinkingBlock } from "@/components/chat/MessageBubble";
-import { MessageMarkdown } from "@/components/MessageMarkdown";
 import {
   buildToolTrace, formatToolExecutionBreakdown, formatWorkDuration, summarizeToolTrace,
   toolGroupElapsedMs, toolGroupStatus, toolStepDisplay,
@@ -27,15 +26,15 @@ const STATUS_META: Record<ToolGroupStatus, { label: string; icon: ReactNode; cls
 };
 
 /**
- * ToolCallGroup collapses one turn's whole process — thinking entries, tool
- * calls/results, HITL confirmations and the assistant narration between tool
- * batches — into a single summary row, keeping only the final reply outside
- * as the result block. The display mode picks its default expansion: auto
- * follows the run state, concise stays folded (except HITL), detailed stays
- * open, and none hides the block. A user click always wins for that block.
- * Expanding shows the narration inline, the thinking text, and one compact
- * row per invocation; clicking a row keeps its input/output detail and
- * artifact previews without turning the whole run into a stack of cards.
+ * ToolCallGroup collapses one contiguous execution run — thinking entries,
+ * tool calls/results and HITL confirmations — into a summary row. Assistant
+ * narration is deliberately not part of the group: a later tool call must not
+ * absorb text that was already shown on the conversation timeline. The
+ * display mode picks its default expansion: auto follows the run state,
+ * concise stays folded (except HITL), detailed stays open, and none hides the
+ * block. A user click always wins for that block. Expanding shows the thought
+ * rows and one compact row per invocation; clicking a row keeps its
+ * input/output detail and artifact previews.
  */
 export function ToolCallGroup({ group, live, runningTools, durations, sessionID, filterQ, displayMode, onConfirm }: {
   /** group carries the turn's messages, its final-reply timestamp and outcome
@@ -212,12 +211,6 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
                 <ConfirmCard key={m.id} m={m} onConfirm={onConfirm} />
               ) : m.kind === "thinking" ? (
                 <ThinkingBlock key={m.id} m={m} inline />
-              ) : m.kind === "assistant" ? (
-                // Inter-tool narration: process detail, so it stays muted inside
-                // the block instead of rendering another assistant bubble header.
-                <div key={m.id} className="px-2 py-1 text-muted-foreground" data-toolgroup-narration>
-                  <MessageMarkdown content={m.text} className="text-sm leading-[1.7]" />
-                </div>
               ) : null;
             })}
           </div>
