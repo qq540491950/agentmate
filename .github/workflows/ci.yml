@@ -95,8 +95,8 @@ jobs:
   # The push/PR gate above only tests Go packages and builds frontend assets;
   # it never compiles the Wails desktop app. A change can therefore pass CI and
   # still fail at release time on `-tags production`/windowsgui/syso. Build the
-  # Windows exe here, before a tag exists, so the auto-fix flow never has to
-  # discover a broken build after pushing a tag.
+  # Windows exe here, before a tag exists, so a release never has to discover
+  # a broken build after pushing a tag.
   windows-build:
     runs-on: windows-latest
     timeout-minutes: 20

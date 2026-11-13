@@ -4,6 +4,26 @@
 
 ## 视觉测试与体验设计
 
+### 第二百八十四轮迭代：移除远端 issue 自动修复与批量发版（已实施）
+
+依据：维护者决定停用 GitHub issue 的自动认领、修复、批量发版与自动关票闭环，保留手工 issue 反馈和手工 tag 发布。原机制由提票 skill、本地定时运行手册、lease/queue 脚本和 GitHub Actions 发布列车组成，跨本地与 CI 的维护成本高于收益。
+
+**实现要点**
+
+- 删除 `github-bug-relay` skill、`issue-fixer-prompt` / `issue-pipeline` 文档，以及 `scripts/issue-*.sh`、`release-train.sh`、`release-due.sh`、`next-patch-tag.sh`。
+- `.github/workflows/release.yml` 收敛为 `push v* tag` 与 `workflow_dispatch` 两条手工路径：`prepare` 只解析 tag/commit，构建后不再维护 issue 快照，也移除了 `workflow_run` / `schedule` 触发、`issues: write`、`actions: read` 与 cleanup job。
+- 保留 GitHub issue 手工反馈入口；issue 模板与 `docs/issue-template.md` 去掉自动处理承诺，只保留填写规范。
+- 清理 AGENTS / README / 历史 spec 中的流水线引用；`docs/iterations/` 改为历史片段存档说明。
+- 远端删除 9 个流水线专属标签；保留的 `module:*` 标签描述改为通用模块说明。
+
+**测试证据**
+
+- YAML 解析通过：`release.yml`、`bug_report.yml`、`feature_request.yml`。
+- `go vet ./internal/... .`、`go test -count=1 ./internal/...` 全绿。
+- 前端 `npx tsc --noEmit`、`npm test`（43 个文件 / 313 例）、`npm run build` 全绿。
+- 残留检索 `issue-fixer|issue-pipeline|release-train|github-bug-relay|agent-fix|pending-release` 零命中（历史日志、归档与旧迭代片段除外）。
+- GitHub 当前无 open issue / PR，远端仅保留 `main` 分支与手工 triage 标签。
+
 ### 第二百八十三轮迭代：任务计划退出输入区并收敛为单卡（已实施）
 
 依据：用户截图反馈任务计划同时出现在消息流和输入框上方，常驻条不能收起/关闭；核对本地会话库确认该轮最后只有工具结果、没有最终回复，`PlanStrip` 把中断轮次的 0/4 计划继续当作“当前计划”显示。代码侧同时存在 `plan_todos` 的 `tool_call` 原始 JSON 卡与 `tool_result` 清单卡并存，以及同一轮多次更新重复追加卡片的问题。

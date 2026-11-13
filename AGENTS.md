@@ -63,16 +63,6 @@ frontend/bindings/        # wails3 生成绑定（勿手改）
 - **单轮不限时与重试**：所有回合默认不设整轮墙钟上限，`MaxTurnSeconds` 已从配置和界面移除；模型流静默由 `agentkit.streamIdleTimeout` 兜底，供应商网络/429/502/503/504 默认最多重试 5 次，均不暴露用户设置；`runTurn` 的 recover 把 panic 转为 `error` + `done`。
 - **桌面壳**：单实例锁名 = `build/config.yml` 的 `productIdentifier`（不可改），二次启动转发激活后退出。Windows 更新残留 `<exe>.old.*` / `.bak` 由 `updateleftover.go` 在锁后清扫（30 秒内新文件不碰，重试至 10 分钟）。
 
-## Issue 自动修复流水线
-
-自动修复不直接改 `main`（只由 Integrator 推进）：Dispatcher / Worker / Integrator 在本地定时任务运行，Worker 一律在 `git worktree` + 分支 + PR 中工作，主 checkout 不参与。Release 是 GitHub Actions 发布列车（`.github/workflows/release.yml`），本地轮次不打 tag、不等 CI。流程见 [docs/issue-pipeline.md](docs/issue-pipeline.md)，执行步骤见 [docs/issue-fixer-prompt.md](docs/issue-fixer-prompt.md)。
-
-- 全局 WIP ≤ 3，同一 module 同时 ≤ 1；单轮只做一个短动作，不在进程内等 CI。
-- 共享文件只由 Integrator 改：`docs/iteration-log.md`、`frontend/bindings/**`、`go.mod` / `go.sum`、`frontend/package-lock.json`、版本号与构建产物。
-- 流水线的迭代记录写 `docs/iterations/issue-<N>-<slug>.md` 片段，由 Integrator 插入；人工提交可直接追加。
-- 运行手册自身只通过独立的工具链 issue/PR 修改。
-- 辅助脚本：`scripts/issue-*.sh`、`scripts/release-train.sh`。
-
 ## 约定
 
 - 测试与被测代码同包同目录（`*_test.go`）；e2e 用 `httptest` 假服务器（fake SSE 模型 / 假授权服务器 / 内存 A2A），不依赖外网。

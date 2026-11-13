@@ -1,9 +1,8 @@
 name: Release
 
-# 发布列车：tag 推送、main CI 成功、定时兜底与人工 dispatch 都会进入这里。
-# plan job 决定“这一轮要不要发版、发哪个 tag”，随后 gate/windows 构建、
-# publish 原子发布，并在同一个 run 里关闭本批 issue。本地 issue-fixer 不再
-# 打 tag、不再等待 Release run。
+# 手工发布：推送 v* tag，或通过 workflow_dispatch 重新发布已有 tag。
+# prepare 解析 tag/commit，gate/windows 并行构建，publish 原子创建或更新
+# Release；构建失败不会留下不完整的发布。
 #
 # Platform scope: **Windows only, for now.** The maintainer's test environment is
 # Windows; shipping linux/macOS artifacts that nobody can smoke-test is how you
@@ -13,16 +12,6 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # main CI 成功是最及时的信号：合并合入后通常 4-6 分钟就能触发发版评估，
-  # 不必等本地 15 分钟定时轮。PR 的 CI 由 head_branch 过滤掉。
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
-  schedule:
-    # 兜底：workflow_run 偶尔漏触发（Actions 调度延迟、仓库静默）时，每 15
-    # 分钟评估一次；plan 步骤只做几次 gh 查询，成本很低。
-    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       tag:
@@ -35,8 +24,6 @@ on:
 
 permissions:
   contents: write
-  actions: read
-  issues: write
 
 # Never let two tag pushes race on `releases/latest`: a half-published release
 # is exactly the state the updater cannot recover from (it would fetch a
@@ -53,69 +40,32 @@ env:
   NODE_VERSION: "20.19"
 
 jobs:
-  # ---------------------------------------------------------------- plan ----
-  # 决策与补关：plan 不创建 tag；reconcile 只关闭“最近已发布 tag 已包含”的
-  # 漏关 issue。真正的 tag / Release 写操作在 publish / cleanup。
-  plan:
-    # workflow_run 只在 main 的 push CI 成功后继续；schedule 与人工触发总是进入。
-    if: >-
-      github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main')
+  # ------------------------------------------------------------- prepare ----
+  # 解析本次要发布的 tag 与其 commit；tag 必须已经存在。
+  prepare:
     runs-on: ubuntu-latest
     outputs:
-      should_release: ${{ steps.decide.outputs.should_release }}
-      tag: ${{ steps.decide.outputs.tag }}
-      sha: ${{ steps.decide.outputs.sha }}
-      reason: ${{ steps.decide.outputs.reason }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      sha: ${{ steps.resolve.outputs.sha }}
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
           fetch-depth: 0
-      # 上一次发布若在 close 阶段中断，这里按“最近已发布 tag”补关。用独立
-      # 状态目录，避免覆盖本轮待发版快照。
-      - name: Reconcile pending-release strays
+      - name: Resolve release tag
+        id: resolve
         env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_STATE_DIR: ${{ runner.temp }}/reconcile
-        run: |
-          git fetch --tags origin --quiet || exit 0
-          latest="$(gh release list --repo "${{ github.repository }}" --limit 1 \
-            --json tagName --jq '.[0].tagName // ""')"
-          [ -n "$latest" ] || exit 0
-          git rev-parse --verify "refs/tags/$latest" >/dev/null 2>&1 || exit 0
-          mkdir -p "$ISSUE_STATE_DIR"
-          bash scripts/issue-release.sh snapshot >/dev/null || exit 0
-          bash scripts/issue-release.sh close "$latest" || true
-      - name: Decide release
-        id: decide
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVENT_NAME: ${{ github.event_name }}
-          REF_NAME: ${{ github.ref_name }}
           INPUT_TAG: ${{ github.event.inputs.tag }}
-          WR_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          WR_EVENT: ${{ github.event.workflow_run.event }}
-          WR_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          WR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          REPO: ${{ github.repository }}
-          ISSUE_STATE_DIR: ${{ runner.temp }}/issue-fixer
-        run: bash scripts/release-train.sh plan
-      # 手动 tag / workflow_dispatch 直接发版，不会生成批次快照；只有自动发布
-      # 路径（workflow_run / schedule）在 go 之前调用 snapshot()。这里限定事件，
-      # 避免手动发版因 if-no-files-found: error 卡住 plan。
-      - name: Upload batch snapshot
-        if: >-
-          steps.decide.outputs.should_release == 'true' &&
-          (github.event_name == 'workflow_run' || github.event_name == 'schedule')
-        uses: actions/upload-artifact@v6
-        with:
-          name: release-batch
-          path: ${{ runner.temp }}/issue-fixer/release-snapshot.tsv
-          if-no-files-found: error
-          retention-days: 7
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          tag="${INPUT_TAG:-$REF_NAME}"
+          [ -n "$tag" ] || { echo "::error::release tag is empty"; exit 1; }
+          git rev-parse --verify "refs/tags/$tag^{commit}" >/dev/null 2>&1 ||
+            { echo "::error::tag $tag does not exist"; exit 1; }
+          sha="$(git rev-parse "refs/tags/$tag^{commit}")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "release tag=$tag sha=$sha"
 
   # ---------------------------------------------------------------- gate ----
   # Cheap, fast refusal, running on the platform we actually ship. Windows needs
@@ -126,13 +76,12 @@ jobs:
   # wall-clock for a class of bug the unit tests already catch, and `ci.yml`
   # still runs them on every push to main.
   gate:
-    needs: plan
-    if: needs.plan.outputs.should_release == 'true'
+    needs: prepare
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.plan.outputs.sha }}
+          ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
       - uses: actions/setup-go@v6
         with:
@@ -167,13 +116,12 @@ jobs:
 
   # ------------------------------------------------------------- windows ----
   windows:
-    needs: plan
-    if: needs.plan.outputs.should_release == 'true'
+    needs: prepare
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.plan.outputs.sha }}
+          ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
       - uses: actions/setup-go@v6
         with:
@@ -221,7 +169,7 @@ jobs:
       - name: Stamp version (tag -> build assets)
         shell: bash
         env:
-          VERSION: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.tag }}
         run: |
           export VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
@@ -257,13 +205,12 @@ jobs:
   # file); the linux/macos jobs are removed rather than disabled so this workflow
   # cannot half-publish for platforms nobody can test yet.
   publish:
-    needs: [plan, gate, windows]
-    if: needs.plan.outputs.should_release == 'true'
+    needs: [prepare, gate, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.plan.outputs.sha }}
+          ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
       # Annotated tags require a committer identity; the runner has none by
       # default, which made `git tag -a` fail with "empty ident name".
@@ -301,33 +248,21 @@ jobs:
         run: go install "github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}"
       - name: Add Go bin to PATH
         run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      # 自动发版在 build 成功后才创建 tag：构建失败不会留下空 tag。tag 消息
-      # 写裸版本号，release-notes.sh 会忽略它并按 conventional commits 生成说明。
-      - name: Create tag if missing
+      - name: Verify tag target
         env:
-          TAG: ${{ needs.plan.outputs.tag }}
-          SHA: ${{ needs.plan.outputs.sha }}
-          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           git fetch --tags origin
-          if git rev-parse --verify "refs/tags/$TAG" >/dev/null 2>&1; then
-            existing="$(git rev-parse "$TAG^{commit}")"
-            if [ "$existing" != "$SHA" ]; then
-              echo "::error::tag $TAG points at $existing, expected $SHA"
-              exit 1
-            fi
-            echo "tag $TAG already exists"
-          else
-            git tag -a "$TAG" "$SHA" -m "$TAG"
-            if [ "$DRY_RUN" = "true" ]; then
-              echo "dry_run: tag created locally only"
-            else
-              git push origin "refs/tags/$TAG"
-            fi
+          existing="$(git rev-parse "$TAG^{commit}")"
+          if [ "$existing" != "$SHA" ]; then
+            echo "::error::tag $TAG points at $existing, expected $SHA"
+            exit 1
           fi
+          echo "tag $TAG points at $SHA"
       - name: Resolve versions
         env:
-          TAG_INPUT: ${{ needs.plan.outputs.tag }}
+          TAG_INPUT: ${{ needs.prepare.outputs.tag }}
         run: |
           TAG="$TAG_INPUT"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
@@ -382,62 +317,8 @@ jobs:
               --latest \
               dist/*
           fi
-      - name: Download batch snapshot
-        if: ${{ github.event.inputs.dry_run != 'true' }}
-        continue-on-error: true
-        uses: actions/download-artifact@v7
-        with:
-          name: release-batch
-          path: ${{ runner.temp }}/issue-fixer
-      - name: Close released issues
-        if: ${{ github.event.inputs.dry_run != 'true' }}
-        # close 失败不把整个 run 判失败：下一次 plan 的 reconcile 会补关，
-        # 避免 cleanup 把已经关闭的票重新标成 retryable。
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_STATE_DIR: ${{ runner.temp }}/issue-fixer
-        run: |
-          snapshot="$ISSUE_STATE_DIR/release-snapshot.tsv"
-          if [ ! -f "$snapshot" ]; then
-            echo "no batch snapshot; nothing to close"
-            exit 0
-          fi
-          bash scripts/issue-release.sh close "$TAG"
       - name: Dry run summary
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
           echo "dry_run: artifacts built but no release was created"
           ls -lh dist
-
-  # ------------------------------------------------------------- cleanup ----
-  # 构建/发布失败时只处理本轮快照里的 pending issue：保留 agent:pending-release
-  # 并加 agent:blocked + agent:retryable，发布列车稍后重试同一个 tag。
-  cleanup:
-    needs: [plan, gate, windows, publish]
-    if: >-
-      failure() &&
-      needs.plan.outputs.should_release == 'true' &&
-      needs.publish.result != 'success' &&
-      github.event.inputs.dry_run != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Download batch snapshot
-        continue-on-error: true
-        uses: actions/download-artifact@v7
-        with:
-          name: release-batch
-          path: ${{ runner.temp }}/issue-fixer
-      - name: Mark released batch retryable
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_STATE_DIR: ${{ runner.temp }}/issue-fixer
-        run: |
-          snapshot="$ISSUE_STATE_DIR/release-snapshot.tsv"
-          if [ ! -f "$snapshot" ]; then
-            echo "no batch snapshot; nothing to mark"
-            exit 0
-          fi
-          bash scripts/issue-release.sh fail \
-            "Release run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} 失败"

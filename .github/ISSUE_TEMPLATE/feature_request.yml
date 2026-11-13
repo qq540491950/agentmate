@@ -1,12 +1,12 @@
 name: 功能需求（enhancement）
-description: 描述期望的新功能或行为改进；自动流程会评估并实现
+description: 描述期望的新功能或行为改进；便于维护者评估
 title: "[模块] "
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        请写清目标行为和验收标准。需求不明确时自动流程会先评论询问。
+        请写清目标行为和验收标准。需求不明确时维护者会先评论询问。
 
         **一个 issue 只描述一个需求**；多个需求请分别提交。
 

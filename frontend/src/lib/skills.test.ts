@@ -3,7 +3,7 @@ import { isReadOnlySkill, skillSource, skillSourceLabel } from "./skills";
 
 describe("skillSource", () => {
   it("recognizes project and global discovered IDs", () => {
-    expect(skillSource("fs:project:github-bug-relay")).toBe("project");
+    expect(skillSource("fs:project:example-skill")).toBe("project");
     expect(skillSource("fs:global:weekly-report")).toBe("global");
   });
 

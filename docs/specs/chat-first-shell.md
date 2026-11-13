@@ -1,6 +1,6 @@
 # Spec：对话优先外壳与设置中心（Chat-First Shell & Settings Hub）
 
-> 状态：待实施（ready-for-agent）。来源：2026-11-01 设计讨论——对齐 ChatGPT / Claude / Codex 桌面端的「对话优先 + 配置收纳」模型。
+> 状态：待实施（本地规格）。来源：2026-11-01 设计讨论——对齐 ChatGPT / Claude / Codex 桌面端的「对话优先 + 配置收纳」模型。
 
 ## Problem Statement
 
