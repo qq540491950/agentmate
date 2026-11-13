@@ -27,6 +27,13 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { PROJECT_SESSION_LIMIT, buildSidebarProjectGroups, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupToolMessages, groupTurns, insertThinkingBeforeStreamingReply, isAwaitingReply, isDayChange, mdToSpeech, projectSessionWindow, sessionTargetBadgeLabel, shouldExpandProjectForSession, type ChatItem, type UIMessage } from "@/lib/chatUtils";
+import {
+  dropMessageByID,
+  historySnapshotIsCurrent,
+  reconcilePendingUser,
+  replaceMessageByID,
+  type PendingUserTurn,
+} from "@/lib/chatTimeline";
 import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
 import {
   SIDEBAR_KEYBOARD_STEP, SIDEBAR_MIN_WIDTH,
@@ -63,6 +70,7 @@ import {
   Chat, Config, errText, setSessionExecutionPolicy,
   effectiveSkills, listContextPaths,
   type AgentConfig, type AttachmentIn, type ChatSession, type TeamConfig,
+  type ChatStreamEvent,
   type RemoteAgentConfig, type UsageInfo, type ModelProvider, type ModelInfo, type SessionStats,
   type Project, type Settings, type SkillConfig, type WorkspaceEntry,
 } from "@/lib/api";
@@ -238,7 +246,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   // The risk dialog can stay open across a session switch; callbacks compare
   // against the live ID before touching the visible chat.
   const activeIDRef = useRef(activeID);
-  useEffect(() => { activeIDRef.current = activeID; }, [activeID]);
+  // Layout timing matters: the stream subscription must see the new active
+  // session before the history effect starts queueing its events.
+  useLayoutEffect(() => { activeIDRef.current = activeID; }, [activeID]);
   const [ctxBannerDismissed, setCtxBannerDismissed] = useState(false);
   const [pendingAtts, setPendingAtts] = useState<AttachmentIn[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -270,6 +280,20 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   // the backend's run registration; a false probe must not clear the local
   // optimistic running state and make the live turn look settled.
   const localRunsRef = useRef<Set<string>>(new Set());
+  // New sessions are created by send() and have no persisted history yet. A
+  // GetSessionMessages issued immediately after setActiveID can return before
+  // ADK stores the first user event and must not clear the live timeline.
+  const freshSessionsRef = useRef<Set<string>>(new Set());
+  // Only one active history read can own the message pane. Events that arrive
+  // while it is in flight are replayed after the snapshot lands.
+  const historyLoadingSessionRef = useRef("");
+  const historyGenerationRef = useRef(0);
+  const pendingActivationRef = useRef("");
+  const pendingStreamRef = useRef<Map<string, ChatStreamEvent[]>>(new Map());
+  const flushPendingStreamEventsRef = useRef<(sessionID: string) => void>(() => {});
+  // The local user bubble is rendered before Chat.Send reaches the backend.
+  // Its event confirms/replaces this entry instead of appending a duplicate.
+  const pendingUserRef = useRef<Map<string, PendingUserTurn>>(new Map());
 
   // markRunning tracks in-flight turns PER SESSION so several sessions can
   // stream in parallel without blocking each other.
@@ -494,62 +518,108 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     tbuf.timer = null;
     thinkingStreamedRef.current = null;
     thinkingOpenRef.current = null;
-    // Returning sessions paint their cached snapshot instantly. A first visit
-    // starts empty and only shows a skeleton if the local fetch is slow.
-    const cached = historyCacheRef.current.get(activeID);
-    setMessages(cached ?? []);
-    setHistoryLoading(!cached);
-    setShowHistorySkeleton(false);
+    const requestGeneration = ++historyGenerationRef.current;
+    const fresh = freshSessionsRef.current.delete(activeID);
+    pendingActivationRef.current = "";
     setRenderLimit(RENDER_LIMIT);
     setActiveTurnId(null);
-    const skeletonTimer = cached
-      ? null
-      : window.setTimeout(() => setShowHistorySkeleton(true), 160);
-    Chat.GetSessionMessages(activeID)
-      .then((ms) => {
-        if (cancelled) return;
-        // Pair confirm_request with its confirm_result so pending approvals
-        // stay interactive (e.g. after an app restart).
-        const answered = new Map<string, boolean>();
-        for (const m of ms ?? []) {
-          if (m.kind === "confirm_result" && m.callId) {
-            answered.set(m.callId, m.toolResp?.confirmed === true);
+    setShowHistorySkeleton(false);
+    let skeletonTimer: number | null = null;
+
+    if (fresh) {
+      // A lazily created session has no persisted history yet. The live turn
+      // (including its optimistic user bubble) is the source of truth; reading
+      // an empty snapshot here is the race that used to erase the first turn.
+      historyLoadingSessionRef.current = "";
+      setHistoryLoading(false);
+      flushPendingStreamEventsRef.current(activeID);
+    } else {
+      // Returning sessions paint their cached snapshot instantly. A first visit
+      // starts empty and only shows a skeleton if the local fetch is slow.
+      const cached = historyCacheRef.current.get(activeID);
+      setMessages(cached ?? []);
+      setHistoryLoading(!cached);
+      historyLoadingSessionRef.current = activeID;
+      skeletonTimer = cached
+        ? null
+        : window.setTimeout(() => setShowHistorySkeleton(true), 160);
+      Chat.GetSessionMessages(activeID)
+        .then((ms) => {
+          if (cancelled || !historySnapshotIsCurrent({
+            requestSessionID: activeID,
+            activeSessionID: activeIDRef.current,
+            requestGeneration,
+            currentGeneration: historyGenerationRef.current,
+          })) return;
+          // Pair confirm_request with its confirm_result so pending approvals
+          // stay interactive (e.g. after an app restart).
+          const answered = new Map<string, boolean>();
+          for (const m of ms ?? []) {
+            if (m.kind === "confirm_result" && m.callId) {
+              answered.set(m.callId, m.toolResp?.confirmed === true);
+            }
           }
-        }
-        const nextMessages = (ms ?? [])
-          .filter((m) => m.kind !== "confirm_result")
-          .map((m) => ({
-            id: m.id,
-            kind: (m.kind === "user" ? "user" : m.kind === "thinking" ? "thinking" : m.kind === "tool_call" ? "tool_call" : m.kind === "tool_result" ? "tool_result" : m.kind === "confirm_request" ? "confirm" : "assistant") as UIMessage["kind"],
-            author: m.author,
-            text: m.text,
-            toolName: m.toolName,
-            toolArgs: m.toolArgs,
-            toolResp: m.toolResp,
-            callId: m.callId,
-            hint: m.hint,
-            confirmStatus: m.kind === "confirm_request" ? (answered.has(m.callId!) ? (answered.get(m.callId!) ? "approved" : "rejected") : "pending") as UIMessage["confirmStatus"] : undefined,
-            timestamp: m.timestamp,
-            attachments: m.attachments ?? null,
-            reasoning: m.reasoning,
-          }));
-        rememberHistory(historyCacheRef.current, activeID, nextMessages);
-        setMessages(nextMessages);
-        // Entering a session always lands on its newest message — the shared
-        // ScrollArea keeps the previous session's scrollTop otherwise, which
-        // could open a long history at its oldest message.
-        requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
-      })
-      .catch((e) => {
-        if (!cancelled) toast.error(`加载历史失败: ${errText(e)}`);
-      })
-      .finally(() => {
-        if (skeletonTimer != null) window.clearTimeout(skeletonTimer);
-        if (!cancelled) {
-          setHistoryLoading(false);
-          setShowHistorySkeleton(false);
-        }
-      });
+          const nextMessages = (ms ?? [])
+            .filter((m) => m.kind !== "confirm_result")
+            .map((m) => ({
+              id: m.id,
+              kind: (m.kind === "user" ? "user" : m.kind === "thinking" ? "thinking" : m.kind === "tool_call" ? "tool_call" : m.kind === "tool_result" ? "tool_result" : m.kind === "confirm_request" ? "confirm" : "assistant") as UIMessage["kind"],
+              author: m.author,
+              text: m.text,
+              toolName: m.toolName,
+              toolArgs: m.toolArgs,
+              toolResp: m.toolResp,
+              callId: m.callId,
+              hint: m.hint,
+              confirmStatus: m.kind === "confirm_request" ? (answered.has(m.callId!) ? (answered.get(m.callId!) ? "approved" : "rejected") : "pending") as UIMessage["confirmStatus"] : undefined,
+              timestamp: m.timestamp,
+              attachments: m.attachments ?? null,
+              reasoning: m.reasoning,
+            }));
+          const pendingUser = pendingUserRef.current.get(activeID) ?? null;
+          const reconciled = reconcilePendingUser(nextMessages, pendingUser, activeID);
+          if (reconciled.confirmedFromHistory && pendingUser) {
+            pendingUserRef.current.set(activeID, {
+              ...pendingUser,
+              confirmedFromHistory: true,
+            });
+          }
+          // Cache only the authoritative snapshot. The provisional user bubble
+          // is reconciled again if the user returns before it is persisted.
+          rememberHistory(historyCacheRef.current, activeID, nextMessages);
+          setMessages(reconciled.messages);
+          historyLoadingSessionRef.current = "";
+          flushPendingStreamEventsRef.current(activeID);
+          // Entering a session always lands on its newest message — the shared
+          // ScrollArea keeps the previous session's scrollTop otherwise, which
+          // could open a long history at its oldest message.
+          requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
+        })
+        .catch((e) => {
+          if (!cancelled && historySnapshotIsCurrent({
+            requestSessionID: activeID,
+            activeSessionID: activeIDRef.current,
+            requestGeneration,
+            currentGeneration: historyGenerationRef.current,
+          })) {
+            toast.error(`加载历史失败: ${errText(e)}`);
+            historyLoadingSessionRef.current = "";
+            flushPendingStreamEventsRef.current(activeID);
+          }
+        })
+        .finally(() => {
+          if (skeletonTimer != null) window.clearTimeout(skeletonTimer);
+          if (!cancelled && historySnapshotIsCurrent({
+            requestSessionID: activeID,
+            activeSessionID: activeIDRef.current,
+            requestGeneration,
+            currentGeneration: historyGenerationRef.current,
+          })) {
+            setHistoryLoading(false);
+            setShowHistorySkeleton(false);
+          }
+        });
+    }
     Chat.IsRunning(activeID).then((r) => {
       if (cancelled) return;
       // The probe is asynchronous and can resolve before Chat.Send reaches
@@ -581,6 +651,12 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     return () => {
       cancelled = true;
       if (skeletonTimer != null) window.clearTimeout(skeletonTimer);
+      if (historyLoadingSessionRef.current === activeID) historyLoadingSessionRef.current = "";
+      const discarded = pendingStreamRef.current.get(activeID);
+      if (discarded?.some((ev) => ev.kind === "done")) {
+        pendingUserRef.current.delete(activeID);
+      }
+      pendingStreamRef.current.delete(activeID);
       setHistoryLoading(false);
       setShowHistorySkeleton(false);
     };
@@ -669,163 +745,231 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     });
   }, [flushThinkingBuf]);
 
-  // Stream events.
+  const applyChatStreamEvent = useCallback((ev: ChatStreamEvent, sessionID: string) => {
+    if (ev.sessionId !== sessionID) return;
+    // Replayed events bypass the network wrapper, so ordering flushes belong
+    // here: a queued delta must land before its final message/tool event.
+    if (ev.kind !== "delta") flushStreamBuf();
+    if (ev.kind !== "thinking_delta") flushThinkingBuf();
+    if (ev.kind !== "error" && ev.kind !== "done") turnStartedRef.current = true;
+    if (ev.kind === "tool_result") setWorkspaceRefresh((n) => n + 1);
+    if (ev.kind !== "thinking_delta" && ev.kind !== "thinking") finishThinking(ev.author);
+    if (ev.kind === "thinking_delta") {
+      const buf = thinkingBufRef.current;
+      if (buf.author && buf.author !== ev.author) flushThinkingBuf();
+      thinkingStreamedRef.current = ev.author;
+      thinkingOpenRef.current = ev.author;
+      buf.author = ev.author;
+      buf.text += ev.text ?? "";
+      if (buf.timer == null) {
+        buf.timer = setTimeout(flushThinkingBuf, STREAM_FLUSH_MS) as unknown as number;
+      }
+      // Show the block (with its spinner) as soon as the first fragment
+      // arrives; the flush tick fills in the text.
+      setMessages((prev) => {
+        let idx = prev.length - 1;
+        while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].streaming && prev[idx].author === ev.author)) idx--;
+        if (idx >= 0) return prev;
+        return insertThinkingBeforeStreamingReply(prev, {
+          id: nextId(), kind: "thinking", author: ev.author, text: "", streaming: true, timestamp: new Date().toISOString(),
+        });
+      });
+      return;
+    }
+    if (ev.kind === "delta") {
+      // The answer starting means the reasoning phase is over: collapse the
+      // thinking block before the first token lands in the reply bubble.
+      finishThinking(ev.author);
+      // Coalesce: buffer the text and make sure a streaming bubble exists
+      // for this author; the buffered text lands on the flush tick.
+      const buf = streamBufRef.current;
+      if (buf.author && buf.author !== ev.author) flushStreamBuf();
+      buf.author = ev.author;
+      buf.text += ev.text ?? "";
+      if (buf.timer == null) {
+        buf.timer = setTimeout(flushStreamBuf, STREAM_FLUSH_MS) as unknown as number;
+      }
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.streaming && last.author === ev.author) return prev;
+        return [...prev, { id: nextId(), kind: "assistant", author: ev.author, text: "", streaming: true, timestamp: new Date().toISOString() }];
+      });
+      return;
+    }
+    // Capture the pending user before scheduling the state update. React may
+    // invoke functional updaters later (and twice under StrictMode); reading a
+    // mutable ref inside the updater can then see a done-cleared value and
+    // append a duplicate user bubble. The snapshot keeps the updater pure.
+    const pendingUser = ev.kind === "user"
+      ? pendingUserRef.current.get(ev.sessionId) ?? null
+      : null;
+    const pendingUserID = pendingUser && !pendingUser.confirmed && !pendingUser.confirmedFromHistory
+      ? pendingUser.message.id
+      : "";
+    if (pendingUser && pendingUserID) pendingUser.confirmed = true;
+    if (ev.kind === "done") pendingUserRef.current.delete(ev.sessionId);
+    setMessages((prev) => {
+      switch (ev.kind) {
+        case "user": {
+          if (pendingUser) {
+            if (!pendingUserID) return prev;
+            const next = replaceMessageByID(prev, pendingUserID, {
+              text: ev.text,
+              attachments: ev.attachments ?? null,
+              reasoning: ev.reasoning,
+            });
+            return next === prev
+              ? [...prev, { ...pendingUser.message, text: ev.text, attachments: ev.attachments ?? null, reasoning: ev.reasoning }]
+              : next;
+          }
+          return [...prev, { id: nextId(), kind: "user", author: "user", text: ev.text, timestamp: new Date().toISOString(), attachments: ev.attachments ?? null, reasoning: ev.reasoning }];
+        }
+        case "thinking": {
+          // The backend aggregates every thought part of this model call
+          // into one event: replace the block the deltas opened (or append
+          // one when the provider only returned reasoning in the final
+          // response).
+          const fromStream = thinkingStreamedRef.current === ev.author;
+          thinkingStreamedRef.current = null;
+          thinkingOpenRef.current = null;
+          let idx = prev.length - 1;
+          while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].author === ev.author)) idx--;
+          if (fromStream && idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = { ...copy[idx], text: ev.text || copy[idx].text, streaming: false };
+            return copy;
+          }
+          if (!ev.text) return prev;
+          return insertThinkingBeforeStreamingReply(prev, {
+            id: nextId(), kind: "thinking", author: ev.author, text: ev.text, streaming: false, timestamp: new Date().toISOString(),
+          });
+        }
+        case "message": {
+          const idx = [...prev].reverse().findIndex((m) => m.streaming && m.author === ev.author);
+          if (idx >= 0) {
+            const real = prev.length - 1 - idx;
+            const copy = [...prev];
+            copy[real] = {
+              ...copy[real],
+              text: ev.text,
+              streaming: false,
+              usage: ev.usage ?? null,
+              timestamp: new Date().toISOString(),
+            };
+            return copy;
+          }
+          return [...prev, { id: nextId(), kind: "assistant", author: ev.author, text: ev.text, usage: ev.usage ?? null, timestamp: new Date().toISOString() }];
+        }
+        case "tool_call":
+          return [...prev, { id: nextId(), kind: "tool_call", author: ev.author, text: "", toolName: ev.toolName, toolArgs: ev.toolArgs, timestamp: new Date().toISOString() }];
+        case "tool_result":
+          return [...prev, { id: nextId(), kind: "tool_result", author: ev.author, text: "", toolName: ev.toolName, toolResp: ev.toolResp, timestamp: new Date().toISOString() }];
+        case "confirm_request":
+          return [...prev, {
+            id: nextId(), kind: "confirm", author: ev.author, text: "",
+            toolName: ev.toolName, toolArgs: ev.toolArgs,
+            callId: ev.callId, hint: ev.hint, confirmStatus: "pending",
+            timestamp: new Date().toISOString(),
+          } as UIMessage];
+        case "error":
+          return [...prev, { id: nextId(), kind: "error", author: "system", text: ev.text }];
+        case "done": {
+          thinkingStreamedRef.current = null;
+          thinkingOpenRef.current = null;
+          const completedAt = new Date().toISOString();
+          return prev.map((m) => (m.streaming ? { ...m, streaming: false, timestamp: completedAt } : m));
+        }
+        default:
+          return prev;
+      }
+    });
+    if (ev.kind === "done") {
+      if (!streamedErrorRef.current) turnStartedRef.current = true;
+      setSessionUsage(ev.sessionUsage ?? null);
+      setWorkspaceRefresh((n) => n + 1);
+      // Read the latest flag through a ref: this subscription is created
+      // once per session and would otherwise capture the startup value.
+      if (autoSpeakRef.current) {
+        const lastAssistant = [...messagesRef.current].reverse().find((m) => m.kind === "assistant" && m.text);
+        if (lastAssistant) speak(lastAssistant.text);
+      }
+    }
+  }, [finishThinking, flushStreamBuf, flushThinkingBuf]);
+
+  const flushPendingStreamEvents = useCallback((sessionID: string) => {
+    const pending = pendingStreamRef.current.get(sessionID);
+    if (!pending || pending.length === 0) return;
+    pendingStreamRef.current.delete(sessionID);
+    for (const ev of pending) applyChatStreamEvent(ev, sessionID);
+  }, [applyChatStreamEvent]);
+  flushPendingStreamEventsRef.current = flushPendingStreamEvents;
+
+  const handleChatStream = useCallback((ev: ChatStreamEvent) => {
+    const activeSession = activeIDRef.current;
+    const foreground = ev.sessionId === activeSession || ev.sessionId === pendingActivationRef.current;
+    // Completion bookkeeping runs for EVERY session: background runs must
+    // clear their spinner and toast even while the user is in another chat.
+    if (ev.kind === "done" || ev.kind === "error") {
+      if (ev.kind === "error" && foreground) streamedErrorRef.current = true;
+      // A done event that is queued behind a history load must not clear the
+      // optimistic user before the queued user event has had a chance to
+      // confirm it; the replay's done branch clears it after all events land.
+      const keepPendingForReplay = foreground && (
+        ev.sessionId === pendingActivationRef.current
+        || historyLoadingSessionRef.current === ev.sessionId
+      );
+      if (ev.kind === "done" && !keepPendingForReplay) {
+        pendingUserRef.current.delete(ev.sessionId);
+      }
+      localRunsRef.current.delete(ev.sessionId);
+      markRunning(ev.sessionId, false);
+      reloadSessions();
+      // A queued message fires as soon as the turn settles — including
+      // after an error, so the user's follow-up is never stranded.
+      if ((queuedRef.current[ev.sessionId]?.length ?? 0) > 0 && foreground) {
+        fireQueued(ev.sessionId);
+      }
+      if (!foreground) {
+        const title = sessionsRef.current.find((x: { id: string; title: string }) => x.id === ev.sessionId)?.title ?? "后台会话";
+        // Clicking the toast jumps straight to the finished background chat.
+        const open = () => setActiveID(ev.sessionId);
+        const action = { label: "查看", onClick: open };
+        if (ev.kind === "done") toast.success(`「${title}」已完成回复`, { action });
+        else toast.error(`「${title}」本轮出错`, { action });
+        setUnread((prev) => ({ ...prev, [ev.sessionId]: true }));
+      }
+    }
+    if (ev.kind === "user") {
+      localRunsRef.current.add(ev.sessionId);
+      markRunning(ev.sessionId, true);
+    }
+    if (!foreground) return;
+    const awaitingActivation = ev.sessionId === pendingActivationRef.current
+      && ev.sessionId !== activeSession;
+    if (awaitingActivation || historyLoadingSessionRef.current === ev.sessionId) {
+      const queued = pendingStreamRef.current.get(ev.sessionId) ?? [];
+      if (queued.length >= 500) queued.shift();
+      queued.push(ev);
+      pendingStreamRef.current.set(ev.sessionId, queued);
+      return;
+    }
+    applyChatStreamEvent(ev, ev.sessionId);
+  }, [applyChatStreamEvent, fireQueued, markRunning, reloadSessions]);
+
+  // Subscribe once. The old effect re-subscribed on every activeID change,
+  // leaving a window where backend events had no listener. The latest handler
+  // is routed through a ref so the subscription itself never churns.
+  const chatStreamHandlerRef = useRef(handleChatStream);
+  useLayoutEffect(() => {
+    chatStreamHandlerRef.current = handleChatStream;
+  }, [handleChatStream]);
   useEffect(() => {
     const off = Events.On("chat:stream", (e: any) => {
       const ev = Array.isArray(e?.data) ? e.data[0] : e?.data;
-      if (!ev) return;
-      if (ev.kind !== "delta") flushStreamBuf();
-      if (ev.kind !== "thinking_delta") flushThinkingBuf();
-      // Completion bookkeeping runs for EVERY session: background runs must
-      // clear their spinner and toast even while the user is in another chat.
-      // (This block used to sit after the active-session filter below, which
-      // made it unreachable for non-active sessions.)
-      if (ev.kind === "done" || ev.kind === "error") {
-        if (ev.kind === "error" && ev.sessionId === activeID) streamedErrorRef.current = true;
-        localRunsRef.current.delete(ev.sessionId);
-        markRunning(ev.sessionId, false);
-        reloadSessions();
-        // A queued message fires as soon as the turn settles — including
-        // after an error, so the user's follow-up is never stranded.
-        if ((queuedRef.current[ev.sessionId]?.length ?? 0) > 0 && ev.sessionId === activeID) {
-          fireQueued(ev.sessionId);
-        }
-        if (ev.sessionId !== activeID) {
-          const title = sessionsRef.current.find((x: { id: string; title: string }) => x.id === ev.sessionId)?.title ?? "后台会话";
-          // Clicking the toast jumps straight to the finished background chat.
-          const open = () => setActiveID(ev.sessionId);
-          const action = { label: "查看", onClick: open };
-          if (ev.kind === "done") toast.success(`「${title}」已完成回复`, { action });
-          else toast.error(`「${title}」本轮出错`, { action });
-          setUnread((prev) => ({ ...prev, [ev.sessionId]: true }));
-        }
-      }
-      if (ev.kind === "user") {
-        localRunsRef.current.add(ev.sessionId);
-        markRunning(ev.sessionId, true);
-      }
-      if (ev.sessionId !== activeID) return;
-      if (ev.kind === "user") turnStartedRef.current = true;
-      if (ev.kind === "tool_result") setWorkspaceRefresh((n) => n + 1);
-      if (ev.kind !== "thinking_delta" && ev.kind !== "thinking") finishThinking(ev.author);
-      if (ev.kind === "thinking_delta") {
-        const buf = thinkingBufRef.current;
-        if (buf.author && buf.author !== ev.author) flushThinkingBuf();
-        thinkingStreamedRef.current = ev.author;
-        thinkingOpenRef.current = ev.author;
-        buf.author = ev.author;
-        buf.text += ev.text ?? "";
-        if (buf.timer == null) {
-          buf.timer = setTimeout(flushThinkingBuf, STREAM_FLUSH_MS) as unknown as number;
-        }
-        // Show the block (with its spinner) as soon as the first fragment
-        // arrives; the flush tick fills in the text.
-        setMessages((prev) => {
-          let idx = prev.length - 1;
-          while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].streaming && prev[idx].author === ev.author)) idx--;
-          if (idx >= 0) return prev;
-          return insertThinkingBeforeStreamingReply(prev, {
-            id: nextId(), kind: "thinking", author: ev.author, text: "", streaming: true, timestamp: new Date().toISOString(),
-          });
-        });
-        return;
-      }
-      if (ev.kind === "delta") {
-        // The answer starting means the reasoning phase is over: collapse the
-        // thinking block before the first token lands in the reply bubble.
-        finishThinking(ev.author);
-        // Coalesce: buffer the text and make sure a streaming bubble exists
-        // for this author; the buffered text lands on the flush tick.
-        const buf = streamBufRef.current;
-        if (buf.author && buf.author !== ev.author) flushStreamBuf();
-        buf.author = ev.author;
-        buf.text += ev.text ?? "";
-        if (buf.timer == null) {
-          buf.timer = setTimeout(flushStreamBuf, STREAM_FLUSH_MS) as unknown as number;
-        }
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last && last.streaming && last.author === ev.author) return prev;
-          return [...prev, { id: nextId(), kind: "assistant", author: ev.author, text: "", streaming: true, timestamp: new Date().toISOString() }];
-        });
-        return;
-      }
-      setMessages((prev) => {
-        switch (ev.kind) {
-          case "user":
-            return [...prev, { id: nextId(), kind: "user", author: "user", text: ev.text, timestamp: new Date().toISOString(), attachments: ev.attachments ?? null, reasoning: ev.reasoning }];
-          case "thinking": {
-            // The backend aggregates every thought part of this model call
-            // into one event: replace the block the deltas opened (or append
-            // one when the provider only returned reasoning in the final
-            // response).
-            const fromStream = thinkingStreamedRef.current === ev.author;
-            thinkingStreamedRef.current = null;
-            thinkingOpenRef.current = null;
-            let idx = prev.length - 1;
-            while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].author === ev.author)) idx--;
-            if (fromStream && idx >= 0) {
-              const copy = [...prev];
-              copy[idx] = { ...copy[idx], text: ev.text || copy[idx].text, streaming: false };
-              return copy;
-            }
-            if (!ev.text) return prev;
-            return insertThinkingBeforeStreamingReply(prev, {
-              id: nextId(), kind: "thinking", author: ev.author, text: ev.text, streaming: false, timestamp: new Date().toISOString(),
-            });
-          }
-          case "message": {
-            const idx = [...prev].reverse().findIndex((m) => m.streaming && m.author === ev.author);
-            if (idx >= 0) {
-              const real = prev.length - 1 - idx;
-              const copy = [...prev];
-              copy[real] = {
-                ...copy[real],
-                text: ev.text,
-                streaming: false,
-                usage: ev.usage ?? null,
-                timestamp: new Date().toISOString(),
-              };
-              return copy;
-            }
-            return [...prev, { id: nextId(), kind: "assistant", author: ev.author, text: ev.text, usage: ev.usage ?? null, timestamp: new Date().toISOString() }];
-          }
-          case "tool_call":
-            return [...prev, { id: nextId(), kind: "tool_call", author: ev.author, text: "", toolName: ev.toolName, toolArgs: ev.toolArgs, timestamp: new Date().toISOString() }];
-          case "tool_result":
-            return [...prev, { id: nextId(), kind: "tool_result", author: ev.author, text: "", toolName: ev.toolName, toolResp: ev.toolResp, timestamp: new Date().toISOString() }];
-          case "confirm_request":
-            return [...prev, {
-              id: nextId(), kind: "confirm", author: ev.author, text: "",
-              toolName: ev.toolName, toolArgs: ev.toolArgs,
-              callId: ev.callId, hint: ev.hint, confirmStatus: "pending",
-              timestamp: new Date().toISOString(),
-            } as UIMessage];
-          case "error":
-            return [...prev, { id: nextId(), kind: "error", author: "system", text: ev.text }];
-          case "done": {
-            thinkingStreamedRef.current = null;
-            thinkingOpenRef.current = null;
-            const completedAt = new Date().toISOString();
-            return prev.map((m) => (m.streaming ? { ...m, streaming: false, timestamp: completedAt } : m));
-          }
-          default:
-            return prev;
-        }
-      });
-      if (ev.kind === "done") {
-        setSessionUsage(ev.sessionUsage ?? null);
-        setWorkspaceRefresh((n) => n + 1);
-        // Read the latest flag through a ref: this subscription is created
-        // once per session and would otherwise capture the startup value.
-        if (autoSpeakRef.current) {
-          const lastAssistant = [...messagesRef.current].reverse().find((m) => m.kind === "assistant" && m.text);
-          if (lastAssistant) speak(lastAssistant.text);
-        }
-      }
+      if (ev) chatStreamHandlerRef.current(ev);
     });
     return off;
-  }, [activeID, reloadSessions, markRunning, speak]);
+  }, []);
 
   // Auto-scroll only when the reader is already at the bottom, and coalesce
   // per animation frame: scrolling smoothly on every token fights the user
@@ -1030,6 +1174,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         ]);
         setFreshInput("");
         setDraftProjectID("");
+        freshSessionsRef.current.add(s.id);
+        pendingActivationRef.current = s.id;
         setActiveID(s.id);
         setMessages([]);
         reloadSessions();
@@ -1118,6 +1264,34 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     const atts = fromComposer ? pendingAtts : [];
     if (fromComposer) setPendingAtts([]);
     turnStartedRef.current = false;
+    if (fromComposer) streamedErrorRef.current = false;
+    let optimisticUserID = "";
+    if (fromComposer && !wasEditing) {
+      // Show the user bubble immediately instead of waiting for the backend's
+      // user event. The event later confirms this exact message in place.
+      const optimistic: UIMessage = {
+        id: nextId(),
+        kind: "user",
+        author: "user",
+        text,
+        timestamp: new Date().toISOString(),
+        attachments: atts.map((a) => ({
+          name: a.name,
+          mime: a.mime,
+          dataUrl: `data:${a.mime};base64,${a.data}`,
+        })),
+        reasoning,
+      };
+      optimisticUserID = optimistic.id;
+      pendingUserRef.current.set(sid, {
+        sessionID: sid,
+        message: optimistic,
+        startedAt: Date.now(),
+      });
+      // A reload while this turn is live must not paint an older snapshot.
+      historyCacheRef.current.delete(sid);
+      setMessages((prev) => [...prev, optimistic]);
+    }
     if (wasEditing) {
       setMessages((prev) => {
         const out = [...prev];
@@ -1135,17 +1309,26 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       }
       // A resolved promise without a started turn means the backend refused
       // the round (e.g. token budget exhausted): restore what the user typed
-      // instead of silently swallowing it. Only the active chat has drafts to
-      // restore — background deliveries carry no UI state.
-      if (!turnStartedRef.current) {
+      // instead of silently swallowing it. If the promise resolved before the
+      // stream events were dispatched, keep the optimistic turn running until
+      // its done/error event arrives.
+      const refused = !turnStartedRef.current && streamedErrorRef.current;
+      if (refused) {
         localRunsRef.current.delete(sid);
         markRunning(sid, false);
+        if (optimisticUserID) {
+          setMessages((prev) => dropMessageByID(prev, optimisticUserID));
+        }
+        if (pendingUserRef.current.get(sid)?.message.id === optimisticUserID) {
+          pendingUserRef.current.delete(sid);
+        }
       }
-      if (fromComposer && !turnStartedRef.current) {
+      if (fromComposer && refused) {
         setInput((cur) => (cur === "" ? text : cur));
         setPendingAtts((prev) => [...atts, ...prev]);
         if (!wasEditing) setTurnReasoning((cur) => (cur === "" ? reasoning : cur));
       }
+      if (fromComposer) streamedErrorRef.current = false;
     } catch (e) {
       // The stream already emitted an inline error bubble for run failures;
       // Chat.Send returns the same error so the promise settles, but only
@@ -1155,6 +1338,12 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       streamedErrorRef.current = false;
       localRunsRef.current.delete(sid);
       markRunning(sid, false);
+      if (!turnStartedRef.current && optimisticUserID) {
+        setMessages((prev) => dropMessageByID(prev, optimisticUserID));
+      }
+      if (pendingUserRef.current.get(sid)?.message.id === optimisticUserID) {
+        pendingUserRef.current.delete(sid);
+      }
       if (fromComposer) {
         // Restore the draft and attachments (merging, not clobbering: the
         // user may have started typing again while the request was in flight).
@@ -2845,7 +3034,11 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         isLastAssistant: item.kind === "message"
                           && item.message.kind === "assistant"
                           && renderIdx === renderItems.length - 1,
-                        liveGroup: false,
+                        // The newest orphan process block belongs to the live
+                        // turn when the user header is temporarily missing
+                        // (stream event not delivered yet). Without this it is
+                        // judged "failed" while the backend is still running.
+                        liveGroup: running && renderIdx === renderItems.length - 1,
                       })
                     )}
                   </Fragment>
