@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { PROJECT_SESSION_LIMIT, buildSidebarProjectGroups, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupToolMessages, groupTurns, insertThinkingBeforeStreamingReply, isAwaitingReply, isDayChange, mdToSpeech, projectSessionWindow, sessionTargetBadgeLabel, shouldExpandProjectForSession, type ChatItem, type UIMessage } from "@/lib/chatUtils";
+import { PROJECT_SESSION_LIMIT, buildSidebarProjectGroups, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools, computeToolDurations, effectiveReasoningLevel, groupToolMessages, groupTurns, insertThinkingBeforeStreamingReply, isAwaitingReply, isDayChange, latestPlanMessage, mdToSpeech, projectSessionWindow, sessionTargetBadgeLabel, shouldExpandProjectForSession, type ChatItem, type UIMessage } from "@/lib/chatUtils";
 import {
   dropMessageByID,
   historySnapshotIsCurrent,
@@ -60,7 +60,7 @@ import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
 import { SessionRowLabel } from "@/components/chat/SessionRowLabel";
 import { ContextRing } from "@/components/chat/ContextRing";
 import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from "@/components/ui/tooltip";
-import { PlanStrip, type TodoItem } from "@/components/chat/TodoCards";
+import { PlanChip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
 import { ReasoningEffortPanel } from "@/components/chat/ReasoningEffortPanel";
 import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
@@ -1221,17 +1221,15 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           return;
         case "/todos": {
           setInput("");
-          for (let i = messages.length - 1; i >= 0; i--) {
-            const m = messages[i];
-            const todos = m.toolResp?.todos;
-            if (m.kind === "tool_result" && m.toolName === "plan_todos" && Array.isArray(todos) && todos.length > 0) {
-              const done = todos.filter((t: TodoItem) => t.status === "completed").length;
-              const lines = todos.map((t: TodoItem) =>
-                `${t.status === "completed" ? "✓" : t.status === "in_progress" ? "▶" : "○"} ${t.content}`,
-              );
-              toast(`${done}/${todos.length} 完成`, { description: lines.join("\n") });
-              return;
-            }
+          const planMessage = latestPlanMessage(messages, false);
+          const todos = planMessage?.toolResp?.todos;
+          if (Array.isArray(todos) && todos.length > 0) {
+            const done = todos.filter((t: TodoItem) => t.status === "completed").length;
+            const lines = todos.map((t: TodoItem) =>
+              `${t.status === "completed" ? "✓" : t.status === "in_progress" ? "▶" : "○"} ${t.content}`,
+            );
+            toast(`${done}/${todos.length} 完成`, { description: lines.join("\n") });
+            return;
           }
           toast.info("当前会话还没有任务计划（Agent 挂载「任务计划」内置工具后可用）");
           return;
@@ -2077,18 +2075,31 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   // Precompute once per message change instead of scanning the tail for every
   // rendered row (that was O(n^2) per token).
   const editFlags = useMemo(() => computeEditFlags(messages), [messages]);
-  // Latest session plan (plan_todos result): pinned above the composer so
-  // multi-step progress stays visible after later messages scroll by.
-  const activePlan = useMemo(() => {
+  // The current turn's latest plan. Scoped to the turn so a finished or
+  // interrupted plan from an older turn cannot remain pinned forever.
+  const activePlanMessage = useMemo(() => latestPlanMessage(messages), [messages]);
+  const activePlan = useMemo(
+    () => (activePlanMessage ? activePlanMessage.toolResp?.todos as TodoItem[] : null),
+    [activePlanMessage],
+  );
+  // The chip is a live progress affordance, not a permanent record. Keep it
+  // while the turn runs or waits for HITL; an interrupted historical turn
+  // keeps its inline card but must not leave a stale header entry.
+  const pendingConfirm = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
-      const todos = m.toolResp?.todos;
-      if (m.kind === "tool_result" && m.toolName === "plan_todos" && Array.isArray(todos) && todos.length > 0) {
-        return todos as TodoItem[];
-      }
+      if (m.kind === "user") break;
+      if (m.kind === "confirm" && (m.confirmStatus ?? "pending") === "pending") return true;
     }
-    return null;
+    return false;
   }, [messages]);
+  const planDone = activePlan?.filter((t) => t.status === "completed").length ?? 0;
+  const planKey = activeID && activePlan ? `${activeID}:${JSON.stringify(activePlan)}` : "";
+  const [dismissedPlanKey, setDismissedPlanKey] = useState("");
+  const showPlanChip = !!activePlan &&
+    planDone < activePlan.length &&
+    (running || pendingConfirm) &&
+    dismissedPlanKey !== planKey;
   // In-conversation message filter (⌘F / the header search icon): shows only
   // the messages matching the query, like the desktop clients' chat search.
   const [filterOpen, setFilterOpen] = useState(false);
@@ -2819,6 +2830,14 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {active && activePlan && showPlanChip && (
+              <PlanChip
+                todos={activePlan}
+                running={running}
+                waiting={pendingConfirm}
+                onDismiss={() => setDismissedPlanKey(planKey)}
+              />
+            )}
             {realContextUsage && realContextUsage.pct >= 80 && (
               <span className="shrink-0 rounded-md bg-danger-soft px-1.5 py-0.5 text-2xs text-danger-text">
                 上下文即将耗尽（{realContextUsage.pct.toFixed(0)}%）
@@ -3075,11 +3094,6 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           {running ? "助手正在回复…" : messages[messages.length - 1]?.kind === "error" ? "本轮回复出错，可点击重试本轮" : ""}
         </div>
         <div className="shrink-0 bg-canvas py-3">
-          {activePlan && (
-            <div className="mx-auto mb-2 chat-col px-3">
-              <PlanStrip todos={activePlan} />
-            </div>
-          )}
           {(queued[activeID] ?? []).map((q, qi) => (
             <div key={qi} className="mx-auto mb-2 flex chat-col items-center gap-2 rounded-lg bg-accent-soft px-3 py-1.5 text-xs">
               <span className="shrink-0 text-muted-foreground">{qi === 0 ? "已排队" : `排队 #${qi + 1}`}</span>

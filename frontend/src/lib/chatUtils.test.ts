@@ -3,7 +3,7 @@ import {
   buildSidebarProjectGroups, buildToolTrace, chatItemEndTs, chatItemStartTs, computeEditFlags, computeRunningTools,
   computeToolDurations, dayLabel, effectiveReasoningLevel, fmtTime, formatWorkDuration, groupSessionsByProject,
   formatToolExecutionBreakdown, groupSessionsByTime, groupToolMessages, groupTurns, insertThinkingBeforeStreamingReply,
-  isAwaitingReply, isDayChange, mdToSpeech,
+  isAwaitingReply, isDayChange, latestPlanMessage, mdToSpeech,
   projectSessionWindow, sessionTargetBadgeLabel, shouldExpandProjectForSession,
   summarizeToolTrace, toolStepDisplay,
   toolGroupDurationMs, toolGroupElapsedMs, toolGroupInvocationCount, toolGroupStatus,
@@ -241,11 +241,11 @@ describe("groupToolMessages", () => {
     ];
     const items = groupToolMessages(msgs);
     // Narration must stay between process runs: a later tool call may not pull
-    // it back into an execution block. plan_todos stays standalone without
-    // splitting a contiguous process run, and the author change at c4 starts
-    // a new block.
+    // it back into an execution block. An empty plan result clears the plan
+    // and must not leave a stale card, and the author change at c4 starts a
+    // new block.
     expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "group:c1", "mid", "todos", "group:c2", "group:c4",
+      "group:c1", "mid", "group:c2", "group:c4",
     ]);
     const first = items.find((i) => i.kind === "tool_group" && i.id === "c1");
     if (!first || first.kind !== "tool_group") throw new Error("expected a tool group");
@@ -255,11 +255,11 @@ describe("groupToolMessages", () => {
     expect(third.author).toBe("sub-agent");
   });
 
-  it("keeps one execution block across repeated plan_todos updates", () => {
-    // The reported render: a long analysis turn that refreshed its plan three
-    // times was shredded into six look-alike failed groups — every plan_todos
-    // call/result used to flush the run. The block must span the whole turn;
-    // the todo cards stay standalone (pinned-plan semantics).
+  it("collapses repeated plan_todos updates to one latest-snapshot card", () => {
+    // A long analysis turn that refreshed its plan repeatedly used to append
+    // two cards per update (a generic call card with raw JSON plus a full
+    // checklist). The plan is a state snapshot: show the latest one once, at
+    // the position where the plan first appeared.
     const msgs: UIMessage[] = [
       msg({ id: "t1", kind: "thinking", text: "先看结构" }),
       msg({ id: "p1c", kind: "tool_call", toolName: "plan_todos" }),
@@ -276,13 +276,55 @@ describe("groupToolMessages", () => {
     ];
     const items = groupToolMessages(msgs);
     const groups = items.filter((i) => i.kind === "tool_group");
-    expect(groups).toHaveLength(1);
-    if (groups[0].kind !== "tool_group") throw new Error("expected a tool group");
-    expect(groups[0].messages.map((m) => m.id)).toEqual(["t1", "c1", "r1", "c2", "r2", "c3", "r3"]);
+    expect(groups).toHaveLength(2);
+    if (groups[0].kind !== "tool_group" || groups[1].kind !== "tool_group") throw new Error("expected tool groups");
+    expect(groups[0].messages.map((m) => m.id)).toEqual(["t1"]);
+    expect(groups[1].messages.map((m) => m.id)).toEqual(["c1", "r1", "c2", "r2", "c3", "r3"]);
     const todoCardIds = items
       .filter((i) => i.kind === "message" && i.message.toolName === "plan_todos")
       .map((i) => (i.kind === "message" ? i.message.id : ""));
-    expect(todoCardIds).toEqual(["p1c", "p1r", "p2c", "p2r"]);
+    expect(todoCardIds).toEqual(["p2r"]);
+    expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "group:t1", "p2r", "group:c1", "a",
+    ]);
+  });
+
+  it("keeps the single plan card at its chronological position", () => {
+    const items = groupToolMessages([
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "p1c", kind: "tool_call", toolName: "plan_todos" }),
+      msg({ id: "p1r", kind: "tool_result", toolName: "plan_todos", toolResp: { todos: [{ content: "下一步", status: "in_progress" }] } }),
+      msg({ id: "c2", kind: "tool_call", toolName: "write" }),
+      msg({ id: "r2", kind: "tool_result", toolName: "write", toolResp: { ok: true } }),
+      msg({ id: "a", kind: "assistant", text: "完成" }),
+    ]);
+    expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
+      "group:c1", "p1r", "group:c2", "a",
+    ]);
+  });
+
+  it("scopes the active plan to the latest turn and honours an explicit clear", () => {
+    const plan = (id: string, content: string, status: string) =>
+      msg({ id, kind: "tool_result", toolName: "plan_todos", toolResp: { todos: [{ content, status }] } });
+    const clear = msg({ id: "clear", kind: "tool_result", toolName: "plan_todos", toolResp: { todos: [] } });
+    const acrossTurns: UIMessage[] = [
+      msg({ id: "u1", kind: "user", author: "user", text: "旧任务" }),
+      plan("p1", "旧步骤", "completed"),
+      msg({ id: "a1", kind: "assistant", text: "旧结果" }),
+      msg({ id: "u2", kind: "user", author: "user", text: "新问题" }),
+      msg({ id: "a2", kind: "assistant", text: "新结果" }),
+    ];
+    expect(latestPlanMessage(acrossTurns)).toBeNull();
+    expect(latestPlanMessage(acrossTurns, false)?.id).toBe("p1");
+
+    const messages: UIMessage[] = [
+      msg({ id: "u", kind: "user", author: "user", text: "任务" }),
+      plan("p1", "步骤", "in_progress"),
+      clear,
+      msg({ id: "a", kind: "assistant", text: "完成" }),
+    ];
+    expect(latestPlanMessage(messages)).toBeNull();
   });
 
   it("drops an empty skeleton and keeps inter-tool narration in place", () => {

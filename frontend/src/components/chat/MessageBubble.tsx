@@ -305,6 +305,11 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   if (m.kind === "tool_result" && m.toolName === "plan_todos") {
     return <TodoListCard resp={m.toolResp ?? null} />;
   }
+  // plan_todos is a state mutation, not a tool step: its result card is the
+  // only plan surface. A generic call card would duplicate the raw JSON args.
+  if (m.kind === "tool_call" && m.toolName === "plan_todos") {
+    return null;
+  }
   if (m.kind === "tool_call" || m.kind === "tool_result") {
     return (
       <ToolCallCard

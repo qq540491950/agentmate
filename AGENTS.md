@@ -57,7 +57,7 @@ frontend/bindings/        # wails3 生成绑定（勿手改）
 - **@ 文件上下文与技能发现**：`@path` / `@"quoted path"` 由 `chat_context.go` 从会话的有效工作区读取，按轮注入（单文件 48KB / 单轮 96KB / ≤8 个，越界与二进制不读）；`/skill` 在 `config.EffectiveSkills`（项目 > 用户 `~/.agents/skills` > 应用）上匹配，`ChatService.EffectiveSkills` 与 `ArtifactService.ListContextPaths` 供前端按会话/草稿项目解析菜单。
 - **任务级工作区**：`NewSession` 与 `NewSessionWithWorkspace` 均创建任务目录；`EffectiveWorkspace` 是文件工具、`{{workspace}}` 与预览的唯一后端解析入口；首轮后锁定，活动任务不能重复占用同一显式目录；发送/确认/改绑共用会话级 workspace 锁。知识库/Skills/导出仍用全局工作区。
 - **任务产物快照**：基线存应用数据目录 `task-snapshots/<sessionID>.json`（版本化、原子写，不进 sessions.db）；按存在性/大小/mtime 算新增、修改、删除；跳过隐藏/VCS/依赖目录与符号链接（5000 文件 / 200 条上限）；删会话清基线但保留任务文件，分叉共享工作区但独立基线。
-- **plan_todos**：状态存 ADK session state 键 `agentmate.todos`，全量替换（省略参数=只读，空数组=清空）；前端从 tool_result 渲染清单卡与置顶条。
+- **plan_todos**：状态存 ADK session state 键 `agentmate.todos`，全量替换（省略参数=只读，空数组=清空）；前端把同一轮更新收敛为一张清单卡（tool_call 不单列），当前轮计划入口在会话头，可展开/关闭。
 - **终端 Shell**：`Settings.Terminal` 经 `internal/terminal` 按平台解析；Windows 首选 `pwsh → Git Bash → Windows PowerShell 5.1 → cmd`，受限沙箱下 Git Bash/WSL 需完全访问并由 `auto` 跳过；当前会话首次使用时冻结 Shell，详见 [docs/terminal-shells.md](docs/terminal-shells.md)。
 - **autoTitle**：默认开启（`Settings.AutoTitle` 显式 false 才关闭）；首轮后异步 30s 侧调用，默认用全局主模型，可用 `Settings.TitleProviderID/TitleModel` 指定；仅替换首轮兜底标题，goroutine 自带 recover。历史会话可经 `ChatService.RefineSessionTitle` 手动重提炼。
 - **单轮不限时与重试**：所有回合默认不设整轮墙钟上限，`MaxTurnSeconds` 已从配置和界面移除；模型流静默由 `agentkit.streamIdleTimeout` 兜底，供应商网络/429/502/503/504 默认最多重试 5 次，均不暴露用户设置；`runTurn` 的 recover 把 panic 转为 `error` + `done`。

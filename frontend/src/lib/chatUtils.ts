@@ -446,9 +446,36 @@ export function formatToolExecutionBreakdown(
     .join(" · ");
 }
 
+/** latestPlanMessage returns the newest non-empty plan_todos result. Callers
+ *  pass currentTurnOnly=false when they need the session plan (the /todos
+ *  command), while the inline timeline and header chip stay scoped to the
+ *  current turn. A plan is a state mutation rather than a tool step, so the
+ *  timeline renders one snapshot instead of a card per update; an explicit
+ *  empty list clears the plan and suppresses older snapshots. */
+export function latestPlanMessage(messages: UIMessage[], currentTurnOnly = true): UIMessage | null {
+  let start = 0;
+  if (currentTurnOnly) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].kind === "user") {
+        start = i + 1;
+        break;
+      }
+    }
+  }
+  for (let i = messages.length - 1; i >= start; i--) {
+    const m = messages[i];
+    if (m.kind !== "tool_result" || m.toolName !== "plan_todos") continue;
+    const todos = m.toolResp?.todos;
+    if (!Array.isArray(todos)) continue;
+    return todos.length > 0 ? m : null;
+  }
+  return null;
+}
+
 /** isProcessEvent reports messages that belong to one turn's execution run:
  *  thinking entries plus tool calls/results and HITL confirmations. plan_todos
- *  results are pinned UI (the todo list card), so they stay outside groups. */
+ *  is a state mutation rendered as a standalone plan card, so it stays outside
+ *  groups. */
 function isProcessEvent(m: UIMessage): boolean {
   if (m.kind === "thinking") return true;
   if (m.kind !== "tool_call" && m.kind !== "tool_result" && m.kind !== "confirm") return false;
@@ -476,8 +503,8 @@ function isToolActivity(m: UIMessage): boolean {
  * execution block. Keeping assistant messages out of groups makes their
  * position independent of future tool events: live streaming and persisted
  * history now agree. Empty settled assistant shells are dropped; plan_todos
- * cards stay standalone without splitting a contiguous process run, and a
- * single invocation still forms its own block.
+ * is collapsed to one latest-snapshot card per turn, and a single invocation
+ * still forms its own block.
  */
 export function groupToolMessages(messages: UIMessage[]): ChatItem[] {
   const out: ChatItem[] = [];
@@ -504,6 +531,32 @@ function messageItem(m: UIMessage): ChatItem {
  *  in-order as stable timeline items. */
 function groupTurn(turn: UIMessage[]): ChatItem[] {
   const out: ChatItem[] = [];
+  // plan_todos updates are state snapshots, not steps. Keep only the latest
+  // non-empty snapshot and insert it where the plan first appeared in this
+  // turn; otherwise every update would append another full checklist and a
+  // generic tool-call card with the raw JSON arguments.
+  const planMessage = latestPlanMessage(turn);
+  let planAnchor = -1;
+  if (planMessage) {
+    planAnchor = turn.findIndex((m) =>
+      m.kind === "tool_result" &&
+      m.toolName === "plan_todos" &&
+      Array.isArray(m.toolResp?.todos) &&
+      m.toolResp.todos.length > 0,
+    );
+    if (planAnchor < 0) {
+      planAnchor = turn.findIndex((m) => m.toolName === "plan_todos");
+    }
+  }
+  const timeline: UIMessage[] = [];
+  for (let i = 0; i < turn.length; i++) {
+    const m = turn[i];
+    if (m.toolName === "plan_todos") {
+      if (planMessage && i === planAnchor) timeline.push(planMessage);
+      continue;
+    }
+    timeline.push(m);
+  }
 
   // The result boundary is the last tool/confirmation activity, not the last
   // thinking event: a final reasoning block can arrive after the streamed
@@ -511,26 +564,26 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
   // behind it). Treating that thought as the boundary hid the answer inside
   // the execution block and turned a completed turn red.
   let lastActivityIdx = -1;
-  for (let i = turn.length - 1; i >= 0; i--) {
-    if (isToolActivity(turn[i])) { lastActivityIdx = i; break; }
+  for (let i = timeline.length - 1; i >= 0; i--) {
+    if (isToolActivity(timeline[i])) { lastActivityIdx = i; break; }
   }
 
   // The result is the last assistant message after the last tool activity.
   // Empty settled shells (a streaming placeholder whose turn ended in a tool
   // call) are skipped so they cannot render as an empty assistant block.
   let resultIdx = -1;
-  for (let i = turn.length - 1; i > lastActivityIdx; i--) {
-    const m = turn[i];
+  for (let i = timeline.length - 1; i > lastActivityIdx; i--) {
+    const m = timeline[i];
     if (m.kind !== "assistant") continue;
     if (!m.text.trim() && !m.streaming) continue;
     resultIdx = i;
     break;
   }
 
-  const hasProcess = turn.some(isProcessEvent);
+  const hasProcess = timeline.some(isProcessEvent);
   if (!hasProcess) {
     // No execution events: render plain messages as before.
-    for (const m of turn) {
+    for (const m of timeline) {
       if (m.kind === "assistant" && !m.text.trim() && !m.streaming) continue;
       out.push(messageItem(m));
     }
@@ -540,18 +593,18 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
   // Late reasoning belongs before the reply it explains. Keep the turn's
   // remaining order intact: only move same-author thinking entries that
   // arrived after the final assistant.
-  let ordered = turn;
+  let ordered = timeline;
   if (resultIdx >= 0) {
-    const result = turn[resultIdx];
-    const lateThinking = turn.slice(resultIdx + 1).filter(
+    const result = timeline[resultIdx];
+    const lateThinking = timeline.slice(resultIdx + 1).filter(
       (m) => m.kind === "thinking" && m.author === result.author,
     );
     if (lateThinking.length > 0) {
-      const rest = turn.slice(resultIdx + 1).filter(
+      const rest = timeline.slice(resultIdx + 1).filter(
         (m) => !(m.kind === "thinking" && m.author === result.author),
       );
       ordered = [
-        ...turn.slice(0, resultIdx),
+        ...timeline.slice(0, resultIdx),
         ...lateThinking,
         result,
         ...rest,
@@ -600,11 +653,12 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
       continue;
     }
     if (!isProcessEvent(m)) {
-      // plan_todos updates render as their own pinned cards but must NOT
-      // split the run: a long turn that refreshes its plan repeatedly used
-      // to shred one execution block into several look-alike groups (each
-      // plan_todos call/result flushed the run). Errors still break the run.
+      // The single plan snapshot is a timeline item. Flush before it so it
+      // keeps its real position instead of jumping above the execution run
+      // that preceded it. Repeated plan updates are already collapsed by the
+      // timeline transform above.
       if (m.toolName === "plan_todos") {
+        flush();
         out.push(messageItem(m));
         continue;
       }
