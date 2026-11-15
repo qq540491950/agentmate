@@ -10,6 +10,7 @@ import {
   Coins, Hand, ShieldCheck, TriangleAlert, SlidersHorizontal,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
+  RotateCcw, History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -219,6 +220,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [renaming, setRenaming] = useState<ChatSession | null>(null);
   const [renameText, setRenameText] = useState("");
   const [sessionUsage, setSessionUsage] = useState<UsageInfo | null>(null);
+  const [resumableTurn, setResumableTurn] = useState<{ id: string; status: string } | null>(null);
+  const [turnList, setTurnList] = useState<any[]>([]);
+  const [turnsOpen, setTurnsOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [autoSpeak, setAutoSpeak] = useState(false);
@@ -2078,6 +2082,50 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     () => (activePlanMessage ? activePlanMessage.toolResp?.todos as TodoItem[] : null),
     [activePlanMessage],
   );
+  useEffect(() => {
+    if (!activeID) {
+      setResumableTurn(null);
+      setTurnList([]);
+      return;
+    }
+    if (typeof (Chat as any).ListTurns !== "function") {
+      setResumableTurn(null);
+      setTurnList([]);
+      return;
+    }
+    let cancelled = false;
+    (Chat as any).ListTurns(activeID)
+      .then((turns: any[]) => {
+        if (cancelled) return;
+        const list = turns ?? [];
+        const latest = list[0];
+        const turn = latest && (
+          latest.status === "interrupted" || latest.status === "failed" || latest.status === "cancelled"
+        ) ? latest : null;
+        setTurnList(list);
+        setResumableTurn(turn ? { id: turn.id ?? turn.ID, status: turn.status } : null);
+      })
+      .catch(() => { if (!cancelled) { setResumableTurn(null); setTurnList([]); } });
+    return () => { cancelled = true; };
+  }, [activeID, running]);
+
+  const resumeLastTurn = useCallback(async () => {
+    if (!activeID) return;
+    if (typeof (Chat as any).ResumeTurn !== "function") {
+      toast.error("当前版本不支持继续任务，请重启应用");
+      return;
+    }
+    localRunsRef.current.add(activeID);
+    markRunning(activeID, true);
+    try {
+      await (Chat as any).ResumeTurn(activeID);
+      setResumableTurn(null);
+    } catch (e) {
+      localRunsRef.current.delete(activeID);
+      markRunning(activeID, false);
+      toast.error(`继续任务失败: ${errText(e)}`);
+    }
+  }, [activeID, markRunning]);
   // 该 chip 是实时进度提示控件，而非永久记录。回合运行或等待 HITL
   // 时应保留它；已中断的历史回合会保留其内联卡片，但不得留下过期的头部条目。
   const pendingConfirm = useMemo(() => {
@@ -2812,6 +2860,17 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {active && resumableTurn && !running && (
+              <TooltipHint content={`上次运行${resumableTurn.status === "interrupted" ? "中断" : "未完成"}，从第一个未完成步骤继续`}>
+                <button
+                  className="inline-flex h-7 items-center gap-1 rounded-md bg-warning-soft px-2 text-xs text-warning-text transition-colors hover:bg-accent"
+                  onClick={resumeLastTurn}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  继续任务
+                </button>
+              </TooltipHint>
+            )}
             {active && activePlan && showPlanChip && (
               <PlanChip
                 todos={activePlan}
@@ -2848,6 +2907,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={openStats}>
                       <BarChart3 className="h-4 w-4" /> 会话统计
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTurnsOpen(true)}>
+                      <History className="h-4 w-4" /> 运行详情
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={async () => {
@@ -3688,6 +3750,33 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             )}
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={turnsOpen} onOpenChange={setTurnsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">运行详情</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-80 space-y-1 overflow-y-auto">
+            {turnList.length === 0 ? (
+              <div className="rounded-lg bg-panel p-3 text-sm text-muted-foreground">暂无运行记录</div>
+            ) : turnList.map((t) => (
+              <div key={t.id ?? t.ID} className="rounded-lg bg-panel p-2.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{t.status ?? "unknown"}</span>
+                  <span className="text-muted-foreground">
+                    {t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}
+                  </span>
+                </div>
+                <div className="mt-1 truncate text-muted-foreground">
+                  {t.model || "默认模型"}{t.reasoningLevel ? ` · ${t.reasoningLevel}` : ""}
+                </div>
+                {t.workspace && <div className="mt-0.5 truncate text-muted-foreground">{t.workspace}</div>}
+                {t.errorMessage && <div className="mt-1 text-danger-text">{t.errorMessage}</div>}
+              </div>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
 

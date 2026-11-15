@@ -118,12 +118,15 @@ export interface ChatMessage {
  * ChatStreamEvent 在一次运行进行期间流式发送到前端。
  */
 export interface ChatStreamEvent {
+    "version"?: number;
     "sessionId": string;
+    "turnId"?: string;
 
     /**
-     * user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|done|error
+     * user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|warning|turn_state|done|error
      */
     "kind": string;
+    "turnStatus"?: string;
     "author": string;
     "text": string;
     "toolName"?: string;
@@ -441,3 +444,25 @@ export enum WorkspaceFileKind {
     FileKindBinary = "binary",
     FileKindUnknown = "unknown",
 };
+
+/**
+ * workflowTurn 是一次运行的最小持久化清单。它不替代 ADK 事件历史，
+ * 只记录这次运行使用的目标、工作区、执行策略和生命周期状态。
+ */
+export interface workflowTurn {
+    "id": string;
+    "sessionId": string;
+    "status": string;
+    "targetType": string;
+    "targetId": string;
+    "workspace": string;
+    "approvalPolicy": string;
+    "sandboxProfile": string;
+    "sandboxNetwork": string;
+    "model": string;
+    "reasoningLevel": string;
+    "parentTurnId": string;
+    "errorMessage"?: string;
+    "createdAt": string;
+    "updatedAt": string;
+}

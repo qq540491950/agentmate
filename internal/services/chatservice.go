@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -246,6 +247,10 @@ func (c *ChatService) SetToolAuditPath(path string) { c.auditPath = path }
 
 // NewChatService 创建服务。db 可以为 nil（禁用 Regenerate 裁剪）。
 func NewChatService(s *Services, sessions session.Service, db *gorm.DB) *ChatService {
+	artifactDir := ""
+	if s != nil && s.Store != nil {
+		artifactDir = filepath.Join(s.Store.Dir(), "tool-results")
+	}
 	c := &ChatService{
 		S:                s,
 		runs:             map[string]*runHandle{},
@@ -253,13 +258,14 @@ func NewChatService(s *Services, sessions session.Service, db *gorm.DB) *ChatSer
 		workspaceLocks:   map[string]*sync.Mutex{},
 		sessionTerminals: map[string]config.TerminalSettings{},
 		sessionTurns:     map[string]string{},
-		sessions:         newRedactingSessionService(sessions),
+		sessions:         newRedactingSessionService(sessions, artifactDir),
 		db:               db,
 		appName:          "agentmate",
 		userID:           "local",
 	}
 	if db != nil {
-		c.workflowErr = db.AutoMigrate(&workflowTurn{}, &workflowApproval{})
+		c.workflowErr = db.AutoMigrate(&workflowTurn{}, &workflowApproval{}, &workflowCheckpoint{})
+		c.recoverInterruptedTurns()
 	}
 	return c
 }

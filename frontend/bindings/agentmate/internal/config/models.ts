@@ -25,7 +25,7 @@ export interface AgentConfig {
     "mcpServerIds": string[] | null;
 
     /**
-     * BuiltinTools 显式收窄内置工具类别（time、files、knowledge、memory、todos、shell）。为空表
+     * BuiltinTools 显式收窄内置工具类别（time、files、knowledge、memory、todos、shell、verify）。为空表
      * 示全集——见 AllBuiltinTools——因此收窄始终是刻意之举。
      */
     "builtinTools": string[] | null;

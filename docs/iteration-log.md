@@ -4,6 +4,25 @@
 
 ## 视觉测试与体验设计
 
+### 第二百九十轮迭代：Agent 工作流 v2 续批（已实施）
+
+依据：继续补齐 #84 的恢复、上下文落盘、团队限流与运行详情能力。
+
+**实现要点**
+
+- 新增 `workflow_checkpoints`；模型消息与工具结果后写检查点；启动时把遗留 `running` 回合标记为 `interrupted`。
+- 新增 `ChatService.ResumeTurn`：从最近失败/中断/取消回合读取上次用户请求，提示模型检查实际工作区与计划，从未完成步骤继续；聊天头部增加“继续任务”入口。
+- 工具结果超过 64KB 时在 session 持久化边界落盘为 `tool-results/<hash>.json`，历史与后续模型上下文只保留摘要、字节数和 artifact 引用。
+- `delegate_task` 增加单回合 8 次、委派深度 2 的限制。
+- 新增 `ChatService.ListTurns` 与“运行详情”对话框，展示状态、模型/推理、工作区、时间和错误。
+
+**测试证据**
+
+- `go test ./internal/... -count=1` 全绿；`go vet ./internal/... .` 通过。
+- 前端 `npx tsc --noEmit`、`npm test -- --run`（43 文件 / 313 例）、`npm run build` 通过。
+- Wails v3.1.0 重新生成绑定，包含 `ListTurns`/`ResumeTurn`。
+- `-race` 未执行：当前容器没有可用的 CGO/gcc。
+
 ### 第二百八十九轮迭代：Agent 工作流 v2 基础批次（已实施，部分能力待续）
 
 依据：用户要求按 [issue #84](https://github.com/qq540491950/agentmate/issues/84) 执行 Agent 工作流 v2 的 16 张 tracer-bullet 票；A2A 发布/鉴权/隔离工作区按用户要求移出本次范围，保持现状。

@@ -3,6 +3,7 @@ package agentkit
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/memory"
@@ -28,6 +29,12 @@ type delegationResult struct {
 	Error     string `json:"error,omitempty"`
 }
 
+const (
+	maxDelegatesPerTurn = 8
+	maxDelegateDepth    = 2
+	delegateDepthKey    = "agentmate.delegate.depth"
+)
+
 // DelegateTool 让协调员在不放弃根节点控制权的情况下运行一个团队成员。
 // 成员在独立的内存会话中执行，最终结果以结构化工具有效载荷返回。
 func DelegateTool(members []agent.Agent) (tool.Tool, error) {
@@ -43,6 +50,8 @@ func DelegateTool(members []agent.Agent) (tool.Tool, error) {
 	if len(byName) == 0 {
 		return nil, fmt.Errorf("团队没有可委派的成员")
 	}
+	var countMu sync.Mutex
+	delegated := 0
 	return functiontool.New(functiontool.Config{
 		Name: "delegate_task",
 		Description: "Delegate a bounded task to one team member and return its result. " +
@@ -61,11 +70,36 @@ func DelegateTool(members []agent.Agent) (tool.Tool, error) {
 		if userID == "" {
 			userID = "local"
 		}
+		depth := 0
+		if ctx.State() != nil {
+			if value, err := ctx.State().Get(delegateDepthKey); err == nil {
+				switch v := value.(type) {
+				case int:
+					depth = v
+				case int64:
+					depth = int(v)
+				case float64:
+					depth = int(v)
+				}
+			}
+		}
+		if depth >= maxDelegateDepth {
+			return delegationResult{}, fmt.Errorf("委派深度超过上限（%d）", maxDelegateDepth)
+		}
+		countMu.Lock()
+		if delegated >= maxDelegatesPerTurn {
+			countMu.Unlock()
+			return delegationResult{}, fmt.Errorf("单回合委派次数超过上限（%d）", maxDelegatesPerTurn)
+		}
+		delegated++
+		countMu.Unlock()
+		state := stateSnapshot(ctx)
+		state[delegateDepthKey] = depth + 1
 		sessions := session.InMemoryService()
 		sess, err := sessions.Create(ctx, &session.CreateRequest{
 			AppName: "delegate_" + member.Name(),
 			UserID:  userID,
-			State:   stateSnapshot(ctx),
+			State:   state,
 		})
 		if err != nil {
 			return delegationResult{}, err

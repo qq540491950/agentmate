@@ -143,6 +143,13 @@ export function ListSessions(): $CancellablePromise<config$0.ChatSession[] | nul
 }
 
 /**
+ * ListTurns 返回会话最近的运行记录，供诊断/恢复 UI 使用。
+ */
+export function ListTurns(sessionID: string): $CancellablePromise<$models.workflowTurn[] | null> {
+    return $Call.ByID(3329915751, sessionID);
+}
+
+/**
  * NewSession 创建一个带有自动隔离工作区的任务会话。
  */
 export function NewSession(targetType: string, targetID: string, title: string): $CancellablePromise<config$0.ChatSession> {
@@ -203,6 +210,14 @@ export function RememberSession(sessionID: string): $CancellablePromise<number> 
  */
 export function RenameSession(id: string, title: string): $CancellablePromise<void> {
     return $Call.ByID(2415089245, id, title);
+}
+
+/**
+ * ResumeTurn 从最近一次失败/中断的回合继续：它不重放旧工具调用，而是把上次
+ * 用户请求与当前计划交回模型，让模型先检查实际状态，再从未完成步骤继续。
+ */
+export function ResumeTurn(sessionID: string): $CancellablePromise<void> {
+    return $Call.ByID(1434813321, sessionID);
 }
 
 /**

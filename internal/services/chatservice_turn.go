@@ -615,6 +615,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	var transferPath []string
 	budgetWarned := false
 	verifySeen := false
+	checkpointSeq := 0
 	// 默认给模型调用一个可诊断的上限；长任务可在 Agent 配置中显式调整。
 	for ev, err := range rn.Run(ctx, c.userID, sessionID, msg, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
@@ -707,6 +708,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			}
 			lastReply = outText
 			emit(ChatStreamEvent{Kind: "message", Author: author, Text: outText, Usage: turnUsage})
+			checkpointSeq++
+			c.recordCheckpoint(turn.ID, sessionID, "", checkpointSeq)
 			turnUsage = nil
 		}
 		for _, p := range ev.Content.Parts {
@@ -757,6 +760,8 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 					mustJSON(p.FunctionResponse.Response), resultErrorOf(p.FunctionResponse.Response))
 				emit(ChatStreamEvent{Kind: "tool_result", Author: author,
 					ToolName: p.FunctionResponse.Name, ToolResp: p.FunctionResponse.Response, CallID: p.FunctionResponse.ID})
+				checkpointSeq++
+				c.recordCheckpoint(turn.ID, sessionID, ev.ID, checkpointSeq)
 			case p.Text != "" && !p.Thought:
 				textBuf.WriteString(p.Text)
 			}
