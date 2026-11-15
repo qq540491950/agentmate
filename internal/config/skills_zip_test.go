@@ -56,8 +56,19 @@ func TestInstallSkillZipWithWrapperAndResources(t *testing.T) {
 		}
 	}
 	discovered := DiscoveredSkills(workspace, "")
-	if len(discovered) != 1 || discovered[0].Name != "diagnosing-bugs" || discovered[0].SourceDir != got.Dir {
+	if len(discovered) != 1 || discovered[0].Name != "diagnosing-bugs" {
 		t.Fatalf("discovered = %+v", discovered)
+	}
+	gotInfo, err := os.Stat(got.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	discoveredInfo, err := os.Stat(discovered[0].SourceDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(gotInfo, discoveredInfo) {
+		t.Fatalf("discovered source = %q, want %q", discovered[0].SourceDir, got.Dir)
 	}
 }
 

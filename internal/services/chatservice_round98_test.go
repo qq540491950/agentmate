@@ -33,7 +33,12 @@ func newRecordingChat(t *testing.T, handler http.HandlerFunc) (*ChatService, *co
 	if err != nil {
 		t.Fatal(err)
 	}
+	workspace := filepath.Join(dir, "workspace")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Update(func(cfg *config.Config) {
+		cfg.Settings.WorkspaceDir = workspace
 		cfg.Providers = append(cfg.Providers, config.ModelProvider{
 			ID: "prov_r", Name: "Fake", Protocol: config.ProtocolOpenAI,
 			BaseURL: srv.URL, Models: []config.ModelInfo{{ID: "fake-mini"}},
