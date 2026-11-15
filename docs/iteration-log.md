@@ -4,6 +4,22 @@
 
 ## 视觉测试与体验设计
 
+### 第二百九十一轮迭代：Agent 工作流 v2 收口（已实施）
+
+依据：继续补齐 #84 的上下文预算、验证门禁与团队委派可读性。
+
+**实现要点**
+
+- session 持久化装饰器增加每回合工具结果累计预算（128KB）：单条超过 64KB 或本回合累计超限时落盘为 `tool-results/<hash>.json`，后续上下文只保留摘要与 artifact 引用。
+- `plan_todos` 拒绝没有 evidence 的 completed 步骤，并在工具描述中明确“完成前必须验证/记录证据”。
+- `delegate_task` 结果新增专用团队委派卡片，展示成员、结果文本和工具调用次数。
+
+**测试证据**
+
+- `go test ./internal/agentkit ./internal/services -count=1` 全绿；`go vet ./internal/... .` 通过。
+- 前端 `npx tsc --noEmit` 通过；`npm test -- --run` 与 `npm run build` 复跑通过。
+- 新增累计工具结果预算、completed evidence 门禁与 delegation 卡片测试。
+
 ### 第二百九十轮迭代：Agent 工作流 v2 续批（已实施）
 
 依据：继续补齐 #84 的恢复、上下文落盘、团队限流与运行详情能力。

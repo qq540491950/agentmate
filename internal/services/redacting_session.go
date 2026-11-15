@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"google.golang.org/adk/v2/session"
 
@@ -19,21 +20,28 @@ import (
 // 因此模型后续看到的历史也不会再次携带已识别的密钥。
 type redactingSessionService struct {
 	session.Service
-	artifactDir string
+	artifactDir  string
+	budgetMu     sync.Mutex
+	sessionBytes map[string]int
 }
 
-const maxInlineToolResponseBytes = 64 * 1024
+const (
+	maxInlineToolResponseBytes   = 64 * 1024
+	maxToolResponseBudgetPerTurn = 128 * 1024
+)
 
 func newRedactingSessionService(inner session.Service, artifactDir string) session.Service {
 	if inner == nil {
 		return nil
 	}
-	return &redactingSessionService{Service: inner, artifactDir: artifactDir}
+	return &redactingSessionService{
+		Service: inner, artifactDir: artifactDir, sessionBytes: map[string]int{},
+	}
 }
 
 func (r *redactingSessionService) AppendEvent(ctx context.Context, sess session.Session, ev *session.Event) error {
 	redactEvent(ev)
-	r.spillLargeToolResponses(ev)
+	r.spillLargeToolResponses(sess, ev)
 	return r.Service.AppendEvent(ctx, sess, ev)
 }
 
@@ -60,29 +68,34 @@ func redactEvent(ev *session.Event) {
 	}
 }
 
-func (r *redactingSessionService) spillLargeToolResponses(ev *session.Event) {
+func (r *redactingSessionService) spillLargeToolResponses(sess session.Session, ev *session.Event) {
 	if ev == nil || ev.Content == nil {
 		return
+	}
+	sessionID := ""
+	if sess != nil {
+		sessionID = sess.ID()
+	}
+	r.budgetMu.Lock()
+	defer r.budgetMu.Unlock()
+	if ev.Author == "user" && !hasFunctionResponse(ev) {
+		delete(r.sessionBytes, sessionID)
 	}
 	for _, part := range ev.Content.Parts {
 		if part == nil || part.FunctionResponse == nil {
 			continue
 		}
 		data, err := json.Marshal(part.FunctionResponse.Response)
-		if err != nil || len(data) <= maxInlineToolResponseBytes {
+		if err != nil {
 			continue
 		}
-		path := ""
-		if r.artifactDir != "" {
-			sum := sha256.Sum256(data)
-			name := hex.EncodeToString(sum[:12]) + ".json"
-			if err := os.MkdirAll(r.artifactDir, 0o755); err == nil {
-				full := filepath.Join(r.artifactDir, name)
-				if err := os.WriteFile(full, data, 0o600); err == nil {
-					path = full
-				}
-			}
+		used := r.sessionBytes[sessionID]
+		if len(data) <= maxInlineToolResponseBytes && used+len(data) <= maxToolResponseBudgetPerTurn {
+			r.sessionBytes[sessionID] = used + len(data)
+			continue
 		}
+		r.sessionBytes[sessionID] = used + len(data)
+		path := r.writeToolArtifact(data)
 		part.FunctionResponse.Response = map[string]any{
 			"ok":        true,
 			"truncated": true,
@@ -92,6 +105,22 @@ func (r *redactingSessionService) spillLargeToolResponses(ev *session.Event) {
 			"note":      "完整工具结果已落盘；如需细节请读取 artifact 或缩小查询范围。",
 		}
 	}
+}
+
+func (r *redactingSessionService) writeToolArtifact(data []byte) string {
+	if r.artifactDir == "" {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	name := hex.EncodeToString(sum[:12]) + ".json"
+	if err := os.MkdirAll(r.artifactDir, 0o755); err != nil {
+		return ""
+	}
+	full := filepath.Join(r.artifactDir, name)
+	if err := os.WriteFile(full, data, 0o600); err != nil {
+		return ""
+	}
+	return full
 }
 
 func summarizeToolResponse(data []byte) string {

@@ -1812,7 +1812,7 @@ type todosResult struct {
 func TodosTool() (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "plan_todos",
-		Description: "Maintain the session's task plan (todo list). Pass the FULL list of steps with status pending/in_progress/completed each time — mark a step in_progress before starting it and completed right after finishing it, creating new steps as work emerges. Omit 'todos' to read the current plan. Use it for any multi-step task so the user can follow progress.",
+		Description: "Maintain the session's task plan (todo list). Pass the FULL list of steps with status pending/in_progress/blocked/completed/failed/skipped each time — mark a step in_progress before starting it and completed only after verification with evidence, creating new steps as work emerges. Omit 'todos' to read the current plan. Use it for any multi-step task so the user can follow progress.",
 	}, func(ctx agent.Context, args todosArgs) (todosResult, error) {
 		if ctx.State() == nil {
 			return todosResult{}, fmt.Errorf("会话状态不可用")
@@ -1853,6 +1853,9 @@ func TodosTool() (tool.Tool, error) {
 			cleaned = append(cleaned, td)
 		}
 		if err := validatePlanSteps(cleaned); err != nil {
+			return todosResult{}, err
+		}
+		if err := validatePlanEvidence(cleaned); err != nil {
 			return todosResult{}, err
 		}
 		if err := ctx.State().Set(todosStateKey, cleaned); err != nil {
@@ -1928,6 +1931,15 @@ func validatePlanSteps(steps []todoItem) error {
 	for _, step := range steps {
 		if err := visit(step.ID); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func validatePlanEvidence(steps []todoItem) error {
+	for _, step := range steps {
+		if step.Status == "completed" && len(step.Evidence) == 0 {
+			return fmt.Errorf("步骤「%s」标记 completed 前必须提供 evidence（例如 verify_work 结果、文件路径或测试输出）", step.Content)
 		}
 	}
 	return nil

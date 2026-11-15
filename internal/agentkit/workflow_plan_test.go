@@ -24,3 +24,14 @@ func TestValidatePlanStepsRejectsMultipleInProgressAndCycles(t *testing.T) {
 		t.Fatalf("missing dependency = %v", err)
 	}
 }
+
+func TestValidatePlanEvidenceRejectsCompletedWithoutEvidence(t *testing.T) {
+	if err := validatePlanEvidence([]todoItem{{ID: "a", Content: "实现", Status: "completed"}}); err == nil {
+		t.Fatal("completed without evidence should fail")
+	}
+	if err := validatePlanEvidence([]todoItem{{
+		ID: "a", Content: "实现", Status: "completed", Evidence: []string{"verify_work: ok"},
+	}}); err != nil {
+		t.Fatalf("completed with evidence failed: %v", err)
+	}
+}

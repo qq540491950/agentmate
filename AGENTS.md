@@ -58,7 +58,7 @@ frontend/bindings/        # wails3 生成绑定（勿手改）
 - **Skill ZIP 导入**：`ConfigService.ImportSkillZip` 解压并校验 `SKILL.md` 后安装到全局 `~/.agents/skills` 或项目 `.agents/skills`，由发现层只读加载；附属文件原样保留，同名目录拒绝覆盖。
 - **任务级工作区**：`NewSession` 与 `NewSessionWithWorkspace` 均创建任务目录；`EffectiveWorkspace` 是文件工具、`{{workspace}}` 与预览的唯一后端解析入口；首轮后锁定，活动任务不能重复占用同一显式目录；发送/确认/改绑共用会话级 workspace 锁。知识库/Skills/导出仍用全局工作区。
 - **任务产物快照**：基线存应用数据目录 `task-snapshots/<sessionID>.json`（版本化、原子写，不进 sessions.db）；按存在性/大小/mtime 算新增、修改、删除；跳过隐藏/VCS/依赖目录与符号链接（5000 文件 / 200 条上限）；删会话清基线但保留任务文件，分叉共享工作区但独立基线。
-- **plan_todos**：状态存 ADK session state 键 `agentmate.todos`，全量替换（省略参数=只读，空数组=清空）；前端把同一轮更新收敛为一张清单卡（tool_call 不单列），当前轮计划入口在会话头，可展开/关闭。
+- **plan_todos**：状态存 ADK session state 键 `agentmate.todos`，全量替换（省略参数=只读，空数组=清空）；completed 步骤必须带 evidence；前端把同一轮更新收敛为一张清单卡（tool_call 不单列），当前轮计划入口在会话头，可展开/关闭。
 - **verify_work**：按项目类型检测测试/类型检查/构建命令，在任务工作区沙箱内运行；代码类任务完成前应调用；计划含 completed 但本轮未验证时会发 warning。
 - **delegate_task**：团队协调员在保留根节点控制权的情况下运行成员并接收结构化结果；单回合最多 8 次、委派深度 2；旧 transfer 团队仍兼容。
 - **运行恢复**：每轮写 `workflow_turns`/`workflow_checkpoints`；失败/中断回合可从聊天头「继续任务」调用 `ResumeTurn`，先检查工作区与计划再继续；工具结果超过 64KB 时落盘到 `tool-results/`。

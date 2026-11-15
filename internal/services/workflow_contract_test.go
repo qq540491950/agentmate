@@ -201,3 +201,47 @@ func TestResumeTurnContinuesAfterInterruptedRecord(t *testing.T) {
 		t.Fatalf("resume turns = %+v", turns)
 	}
 }
+
+func TestCumulativeToolResultBudgetSpillsLaterResults(t *testing.T) {
+	inner := session.InMemoryService()
+	red := newRedactingSessionService(inner, t.TempDir())
+	created, err := red.Create(context.Background(), &session.CreateRequest{
+		AppName: "app", UserID: "user", SessionID: "s",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendEvent := func(author string, response map[string]any) {
+		ev := &session.Event{ID: newID("ev_"), Author: author}
+		if response == nil {
+			ev.Content = genai.NewContentFromText("turn", genai.RoleUser)
+		} else {
+			ev.Content = &genai.Content{Parts: []*genai.Part{{
+				FunctionResponse: &genai.FunctionResponse{ID: newID("c_"), Name: "mcp", Response: response},
+			}}}
+		}
+		if err := red.AppendEvent(context.Background(), created.Session, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	appendEvent("user", nil)
+	payload := strings.Repeat("y", 50*1024)
+	for i := 0; i < 4; i++ {
+		appendEvent("tool", map[string]any{"text": payload})
+	}
+	got, err := inner.Get(context.Background(), &session.GetRequest{AppName: "app", UserID: "user", SessionID: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spilled := 0
+	for e := range got.Session.Events().All() {
+		for _, part := range e.Content.Parts {
+			if part.FunctionResponse != nil && part.FunctionResponse.Response["truncated"] == true {
+				spilled++
+			}
+		}
+	}
+	if spilled < 2 {
+		t.Fatalf("spilled = %d, want >= 2", spilled)
+	}
+}

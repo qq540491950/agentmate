@@ -3,7 +3,7 @@ import {
   Dialog, DialogContent, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Loader2, Pencil, RefreshCw, ShieldAlert, TriangleAlert, Volume2, X,
+  Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Loader2, Pencil, RefreshCw, ShieldAlert, TriangleAlert, Users, Volume2, X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -312,12 +312,16 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   if (m.kind === "tool_result" && m.toolName === "plan_todos") {
     return <TodoListCard resp={m.toolResp ?? null} />;
   }
+  if (m.kind === "tool_result" && m.toolName === "delegate_task") {
+    return <DelegationCard resp={m.toolResp ?? null} />;
+  }
   // plan_todos
   // 是状态变更，而不是工具步骤：其结果卡片是唯一的计划展示面。通用调用卡片会重
   // 复原始 JSON 参数。
   if (m.kind === "tool_call" && m.toolName === "plan_todos") {
     return null;
   }
+
   if (m.kind === "tool_call" || m.kind === "tool_result") {
     return (
       <ToolCallCard
@@ -428,3 +432,26 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
     </div>
   );
 });
+
+function DelegationCard({ resp }: { resp: { [k: string]: any } | null }) {
+  const ok = resp?.ok !== false;
+  const agent = String(resp?.agent ?? "成员");
+  const text = String(resp?.text ?? "");
+  const toolCalls = Number(resp?.toolCalls ?? 0);
+  return (
+    <div className={cn("rounded-xl px-4 py-3", ok ? "bg-panel/70" : "bg-danger-soft")}>
+      <div className="flex items-center gap-2">
+        <Users className={cn("h-4 w-4", ok ? "text-accent-text" : "text-danger-text")} />
+        <span className="text-sm font-medium">团队委派 · {agent}</span>
+        {toolCalls > 0 && (
+          <Badge variant="outline" className="font-normal text-2xs">{toolCalls} 次工具调用</Badge>
+        )}
+      </div>
+      {text ? (
+        <div className="mt-2 whitespace-pre-wrap break-words text-ui leading-[1.55] text-foreground/90">{text}</div>
+      ) : (
+        <div className="mt-2 text-sm text-danger-text">{String(resp?.error ?? "成员未返回结果")}</div>
+      )}
+    </div>
+  );
+}
