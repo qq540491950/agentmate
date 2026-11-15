@@ -63,6 +63,10 @@ function renderGroup(displayMode: "auto" | "concise" | "detailed" | "none" = "de
   );
 }
 
+function openingTag(html: string, slot: string): string {
+  return new RegExp(`<[^>]*data-slot="${slot}"[^>]*>`).exec(html)?.[0] ?? "";
+}
+
 describe("ToolCallGroup", () => {
   it("caps the expanded step list in its own scroll region", () => {
     const html = renderGroup();
@@ -75,5 +79,15 @@ describe("ToolCallGroup", () => {
     const html = renderGroup();
     expect(html).toContain('data-slot="thinking-row"');
     expect(html).not.toContain('data-slot="thinking-body"');
+  });
+
+  it("lets the header summary truncate while the status badge stays fixed", () => {
+    const html = renderGroup();
+    const summary = openingTag(html, "execution-summary");
+    expect(summary).toContain("min-w-0");
+    expect(summary).toContain("flex-1");
+    expect(summary).toContain("truncate");
+    expect(html).toContain('data-slot="execution-badge"');
+    expect(openingTag(html, "execution-badge")).toContain("shrink-0");
   });
 });

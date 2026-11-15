@@ -123,6 +123,20 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
     if (computedMs != null && computedMs > peakMs) setPeakMs(computedMs);
   }, [computedMs, peakMs]);
   const elapsedMs = computedMs == null ? null : Math.max(computedMs, peakMs);
+  const summaryText = [
+    elapsedMs != null ? `已工作 ${formatWorkDuration(elapsedMs)}` : "",
+    summary.total > 0 ? `${summary.total} 个步骤` : "",
+    displayMode === "concise" && status === "running" ? activeToolName : "",
+  ].filter(Boolean).join(" · ");
+  const summaryHint = [
+    elapsedMs != null ? `已工作 ${formatWorkDuration(elapsedMs)}` : "",
+    summary.total > 0
+      ? `本回合执行了 ${summary.total} 个步骤${breakdown ? `：${breakdown}` : ""}`
+      : "",
+    displayMode === "concise" && status === "running" && activeToolName
+      ? `正在运行：${activeToolName}`
+      : "",
+  ].filter(Boolean).join("\n");
 
   // "无" 会隐藏过程块，但待处理的 HITL 确认必须保持可操作；executionHidden
   // 有意豁免 status === "confirm"。
@@ -142,32 +156,24 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
         onClick={() => setUserExpanded(!expanded)}
       >
         <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
-        {meta.icon}
-        <span className="shrink-0 whitespace-nowrap font-medium">执行过程</span>
-        {elapsedMs != null && (
-          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-            已工作 {formatWorkDuration(elapsedMs)}
-          </span>
-        )}
-        {summary.total > 0 && (
-          <TooltipHint content={`本回合执行了 ${summary.total} 个步骤${breakdown ? `：${breakdown}` : ""}`}>
-            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground/70">
-              · {summary.total} 个步骤
+        <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <span className="shrink-0">{meta.icon}</span>
+          <span className="shrink-0 whitespace-nowrap font-medium">执行过程</span>
+          {summaryText && (
+            <span data-slot="execution-summary" className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              <TooltipHint content={summaryHint}>
+                <span className="block truncate">{summaryText}</span>
+              </TooltipHint>
             </span>
-          </TooltipHint>
-        )}
-        {summary.failed > 0 && status !== "failed" && (
-          <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-danger-text">
-            <XCircle className="h-3.5 w-3.5" />
-            {summary.failed} 失败
-          </span>
-        )}
-        {displayMode === "concise" && status === "running" && activeToolName && (
-          <span className="min-w-0 truncate text-xs text-muted-foreground/70">
-            · {activeToolName}
-          </span>
-        )}
-        <Badge variant="outline" className={cn("ml-auto shrink-0 font-normal", meta.cls)}>
+          )}
+          {summary.failed > 0 && status !== "failed" && (
+            <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-danger-text">
+              <XCircle className="h-3.5 w-3.5" />
+              {summary.failed} 失败
+            </span>
+          )}
+        </span>
+        <Badge data-slot="execution-badge" variant="outline" className={cn("ml-auto shrink-0 font-normal", meta.cls)}>
           {meta.label}
         </Badge>
       </button>
