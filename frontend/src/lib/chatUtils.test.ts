@@ -651,6 +651,7 @@ describe("toolGroupStatus", () => {
     messages,
     answered: true,
     errored: false,
+    terminal: true,
     ...over,
   });
 
@@ -756,6 +757,22 @@ describe("toolGroupStatus", () => {
     // 已完成的叙述之后跟着静默，就是批次间隙：回合仍处于活动状态，因此该块会保
     // 持运行状态，直到其结束。
     expect(toolGroupStatus(group([result({ ok: true }), { ...narration, streaming: false }], { answered: false }), new Set(), true)).toBe("running");
+  });
+
+  it("只有回合最后一个执行段继承整轮运行态", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", text: "分析" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({ id: "mid", kind: "assistant", text: "继续检查" }),
+      msg({ id: "c2", kind: "tool_call", toolName: "run_command" }),
+    ];
+    const groups = groupToolMessages(msgs).filter((item): item is ToolGroup => item.kind === "tool_group");
+    expect(groups).toHaveLength(2);
+    expect(groups[0].terminal).toBe(false);
+    expect(groups[1].terminal).toBe(true);
+    expect(toolGroupStatus(groups[0], new Set(), true)).toBe("done");
+    expect(toolGroupStatus(groups[1], new Set(["c2"]), true)).toBe("running");
   });
 });
 

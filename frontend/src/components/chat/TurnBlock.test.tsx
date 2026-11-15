@@ -2,7 +2,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ComponentProps } from "react";
 import { describe, expect, it } from "vitest";
 import { TurnBlock } from "./TurnBlock";
-import type { TurnItem } from "@/lib/chatUtils";
+import { ToolCallGroup } from "./ToolCallGroup";
+import {
+  computeRunningTools,
+  groupToolMessages,
+  groupTurns,
+  type TurnItem,
+  type UIMessage,
+} from "@/lib/chatUtils";
 
 const turn: TurnItem = {
   kind: "turn",
@@ -80,5 +87,45 @@ describe("TurnBlock", () => {
     expect(html).toContain('data-slot="turn-status"');
     expect(html).toContain("正在思考");
     expect(html).not.toContain('data-slot="turn-body"');
+  });
+
+  it("同一轮多个执行段只让最后一个保持运行中", () => {
+    const messages: UIMessage[] = [
+      { id: "u2", kind: "user", author: "user", text: "分析当前项目", timestamp: "2026-11-15T01:00:00Z" },
+      { id: "c1", kind: "tool_call", author: "助手", text: "", toolName: "read_workspace_file", timestamp: "2026-11-15T01:00:01Z" },
+      { id: "r1", kind: "tool_result", author: "助手", text: "", toolName: "read_workspace_file", toolResp: { ok: true }, timestamp: "2026-11-15T01:00:02Z" },
+      { id: "mid1", kind: "assistant", author: "助手", text: "先看项目结构。", timestamp: "2026-11-15T01:00:03Z" },
+      { id: "c2", kind: "tool_call", author: "助手", text: "", toolName: "run_command", timestamp: "2026-11-15T01:00:04Z" },
+    ];
+    const liveTurn = groupTurns(groupToolMessages(messages))[0];
+    if (liveTurn.kind !== "turn") throw new Error("expected a turn");
+    expect(liveTurn.body.filter((item) => item.kind === "tool_group")).toHaveLength(2);
+    const runningTools = computeRunningTools(messages);
+    const html = renderToStaticMarkup(
+      <TurnBlock
+        turn={liveTurn}
+        active={false}
+        live
+        isLastTurn
+        onEdit={() => {}}
+        canEdit={false}
+        filterQ=""
+        renderBodyItem={(item, opts) => item.kind === "tool_group" ? (
+          <ToolCallGroup
+            group={item}
+            live={opts.liveGroup}
+            runningTools={runningTools}
+            durations={new Map()}
+            sessionID="s1"
+            filterQ=""
+            displayMode="auto"
+            onConfirm={() => {}}
+          />
+        ) : <p>{item.message.text}</p>}
+      />,
+    );
+    const states = [...html.matchAll(/data-state="(confirm|running|failed|done)"/g)].map((match) => match[1]);
+    expect(states).toEqual(["done", "running"]);
+    expect(html.match(/>运行中</g)).toHaveLength(1);
   });
 });

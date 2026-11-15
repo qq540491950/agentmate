@@ -186,6 +186,9 @@ export type ToolGroup = {
   answered: boolean;
   /** errored 记录以错误气泡而非回复结束的回合（仅限实时流式——历史记录不会持久化错误事件）。 */
   errored: boolean;
+  /** terminal 标记该回合最后一个执行段。只有它能继承整轮的运行/失败状态；
+   *  之前的执行段已经由后续时间线内容宣告结束。 */
+  terminal: boolean;
 };
 
 /** ChatItem 是消息列表中的一个条目：一条独立消息或一个分组执行块。 */
@@ -644,6 +647,7 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
       endTs,
       answered,
       errored,
+      terminal: false,
     });
     run = [];
   };
@@ -679,6 +683,12 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
     run.push(m);
   }
   flush();
+  for (let i = out.length - 1; i >= 0; i--) {
+    const item = out[i];
+    if (item.kind !== "tool_group") continue;
+    out[i] = { ...item, terminal: true };
+    break;
+  }
   return out;
 }
 
@@ -716,6 +726,7 @@ export function toolGroupStatus(group: ToolGroup, runningTools: Set<string>, liv
   }
   if (pendingConfirm) return "confirm";
   if (running) return "running";
+  if (!group.terminal) return "done";
   if (group.errored) return "failed";
   if (!group.answered) return live ? "running" : "failed";
   return "done";

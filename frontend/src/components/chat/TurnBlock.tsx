@@ -10,7 +10,8 @@ export type TurnBodyOpts = {
    * 致。
    */
   isLastAssistant: boolean;
-  /** liveGroup 标记仍在运行的回合的执行块：其整轮运行时钟会持续计时，直到该回合结束。 */
+  /** liveGroup 标记仍在运行的回合的最后一个执行块：只有它可以持续计时并保持
+   *  运行态，之前的执行块已经结算。 */
   liveGroup: boolean;
 };
 
@@ -32,6 +33,13 @@ export function TurnBlock({ turn, active, live, isLastTurn, waiting = false, onE
   renderBodyItem: (item: ChatItem, opts: TurnBodyOpts) => ReactNode;
 }) {
   const lastBody = turn.body[turn.body.length - 1];
+  let lastGroupIndex = -1;
+  for (let i = turn.body.length - 1; i >= 0; i--) {
+    if (turn.body[i].kind === "tool_group") {
+      lastGroupIndex = i;
+      break;
+    }
+  }
   return (
     <div data-slot="turn-block" className="space-y-3">
       <UserQuote
@@ -44,14 +52,14 @@ export function TurnBlock({ turn, active, live, isLastTurn, waiting = false, onE
       {waiting && turn.body.length === 0 && <TurnStatus />}
       {turn.body.length > 0 && (
         <div data-slot="turn-body" className="space-y-2">
-          {turn.body.map((item) => (
+          {turn.body.map((item, index) => (
             <Fragment key={item.id}>
               {renderBodyItem(item, {
                 isLastAssistant: isLastTurn
                   && item === lastBody
                   && item.kind === "message"
                   && item.message.kind === "assistant",
-                liveGroup: live && item.kind === "tool_group",
+                liveGroup: live && item.kind === "tool_group" && index === lastGroupIndex,
               })}
             </Fragment>
           ))}

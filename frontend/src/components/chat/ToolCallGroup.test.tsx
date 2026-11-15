@@ -48,6 +48,7 @@ function renderGroup(displayMode: "auto" | "concise" | "detailed" | "none" = "de
     messages: processMessages(),
     answered: true,
     errored: false,
+    terminal: true,
   };
   return renderToStaticMarkup(
     <ToolCallGroup
