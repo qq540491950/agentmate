@@ -4,6 +4,32 @@
 
 ## 视觉测试与体验设计
 
+### 第二百八十九轮迭代：Agent 工作流 v2 基础批次（已实施，部分能力待续）
+
+依据：用户要求按 [issue #84](https://github.com/qq540491950/agentmate/issues/84) 执行 Agent 工作流 v2 的 16 张 tracer-bullet 票；A2A 发布/鉴权/隔离工作区按用户要求移出本次范围，保持现状。
+
+**实现要点**
+
+- 回合事件增加 `version`、`turnId`、`warning`、`turn_state`；护栏告警不再被前端当作回合终止，模型 `ErrorCode`/空响应显式上报；新增回合工具调用/模型调用默认上限、transfer 环检测与 80% 预算告警。
+- 新增 `workflow_turns` 与 `workflow_approvals` 持久化：每次发送/确认创建回合清单，HITL 按暂停时的工作区、审批与沙箱策略恢复，确认记录按 `callId` 关联。
+- 文件工具改为原子写并保留已有权限；write/edit 支持 `expectedSha256` 与 `stale_file`；目录列表限制 500 项并跳过依赖/VCS 目录；读取支持截断标记与 offset/maxBytes 分页。
+- 副作用工具按工作区串行；MCP HTTP 传输增加 120 秒超时；工具审计增加 `turnId`/`callId`。
+- `plan_todos` 增加 ID、依赖、验收、证据、状态校验、50 步上限与环检测；新增 `verify_work` 内置工具和计划完成软验证告警；计划卡展示 blocked/failed、依赖与证据。
+- 团队新增 `delegate_task`：协调员在保留控制权的情况下运行成员并拿回结构化结果；旧 transfer 团队保持兼容。
+- 会话事件写入前统一脱敏；AGENTS.md/Skill 增加项目资料信任提示；Fork 复制 session state、模型覆盖、推理级别并拒绝活动运行；Agent/团队名称增加规范化重名校验；取消后排队消息暂停并可手动继续。
+- 新增 `docs/specs/agent-workflow-upgrade.md` 与 `docs/specs/agent-workflow-v2-spec.md`，并同步更新 [issue #84](https://github.com/qq540491950/agentmate/issues/84)。
+
+**测试证据**
+
+- `go test ./internal/... -count=1` 全绿；`go vet ./internal/... .` 通过。
+- 前端 `npx tsc --noEmit`、`npm test -- --run`（43 文件 / 313 例）、`npm run build` 通过。
+- 新增文件安全、计划校验、验证命令检测、团队委派、回合记录、持久化脱敏、Fork 一致性测试。
+- `-race` 未执行：当前容器没有可用的 CGO/gcc。
+
+**待续**
+
+- 完整 checkpoint/ResumeTurn/RetryStep 与崩溃恢复 UI、回合内上下文压缩、MCP 大结果 artifact 落盘、完整 Tool Registry/Guard 强制门禁、前端 reducer/运行详情面板、团队并行扇出限制。
+
 ### 第二百八十八轮迭代：Skill ZIP 包导入与全局/项目安装（已实施）
 
 依据：用户反馈 Skills 页的「导入 Skill」仍在扫描工作区目录，截图报错「工作区中没有 skills/、.claude/skills 或 ~/.claude/skills 目录」；期望直接导入 Skill ZIP 包，解压并校验后安装到全局或项目，且导入区上方先选择「全局 / 项目」。

@@ -356,7 +356,7 @@ func TestGuardrailRedactsUserInput(t *testing.T) {
 	}
 	var redactNotice bool
 	for _, ev := range events {
-		if ev.Kind == "error" && strings.Contains(ev.Text, "已自动遮蔽") {
+		if ev.Kind == "warning" && strings.Contains(ev.Text, "已自动遮蔽") {
 			redactNotice = true
 		}
 	}

@@ -340,6 +340,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const fireQueued = useCallback((sessionID: string) => {
     const list = queuedRef.current[sessionID];
     if (!list || list.length === 0) return;
+    if (pausedQueuesRef.current[sessionID]) return;
     if (runningMapRef.current[sessionID]) return;
     const [first, ...rest] = list;
     setQueued((prev) => ({ ...prev, [sessionID]: rest }));
@@ -864,6 +865,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           } as UIMessage];
         case "error":
           return [...prev, { id: nextId(), kind: "error", author: "system", text: ev.text }];
+        case "warning":
+          return [...prev, { id: nextId(), kind: "warning", author: ev.author || "system", text: ev.text }];
         case "done": {
           thinkingStreamedRef.current = null;
           thinkingOpenRef.current = null;
@@ -898,6 +901,13 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const handleChatStream = useCallback((ev: ChatStreamEvent) => {
     const activeSession = activeIDRef.current;
     const foreground = ev.sessionId === activeSession || ev.sessionId === pendingActivationRef.current;
+    if (ev.kind === "turn_state") {
+      const status = (ev as any).turnStatus as string | undefined;
+      if (status === "running") markRunning(ev.sessionId, true);
+      if (status === "completed" || status === "failed" || status === "cancelled" || status === "interrupted") {
+        markRunning(ev.sessionId, false);
+      }
+    }
     // 完成状态记录会对每一个会话执行：即使用户正处于另一个聊天中，后台运行也必
     // 须清除其 spinner 和 toast。
     if (ev.kind === "done" || ev.kind === "error") {
@@ -1094,6 +1104,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [queued, setQueued] = useState<Record<string, QueuedMessage[]>>({});
   const queuedRef = useRef(queued);
   useEffect(() => { queuedRef.current = queued; }, [queued]);
+  const [pausedQueues, setPausedQueues] = useState<Record<string, boolean>>({});
+  const pausedQueuesRef = useRef(pausedQueues);
+  useEffect(() => { pausedQueuesRef.current = pausedQueues; }, [pausedQueues]);
   // 输入框本地的 effort
   // 状态可驱动滑块的实时反馈。活跃聊天会把已提交的级别持久化到会话；草稿则保留
   // 该级别，直到第一条消息创建会话记录。
@@ -1339,7 +1352,16 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   useEffect(() => { sendRef.current = send; });
 
   const cancel = () => {
-    if (activeID) Chat.Cancel(activeID);
+    if (!activeID) return;
+    setPausedQueues((prev) => ({ ...prev, [activeID]: true }));
+    pausedQueuesRef.current[activeID] = true;
+    Chat.Cancel(activeID);
+  };
+
+  const resumeQueue = (sessionID: string) => {
+    setPausedQueues((prev) => ({ ...prev, [sessionID]: false }));
+    pausedQueuesRef.current[sessionID] = false;
+    setTimeout(() => fireQueued(sessionID), 0);
   };
 
   // answerConfirm 用于完成 HITL
@@ -3054,6 +3076,14 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             <div key={qi} className="mx-auto mb-2 flex chat-col items-center gap-2 rounded-lg bg-accent-soft px-3 py-1.5 text-xs">
               <span className="shrink-0 text-muted-foreground">{qi === 0 ? "已排队" : `排队 #${qi + 1}`}</span>
               <span className="min-w-0 flex-1 truncate">{q.text}</span>
+              {qi === 0 && pausedQueues[activeID] && (
+                <button
+                  className="shrink-0 underline underline-offset-2 hover:text-foreground"
+                  onClick={() => resumeQueue(activeID)}
+                >
+                  继续队列
+                </button>
+              )}
               {q.reasoning && (
                 <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                   思考：{levelLabel(q.reasoning)}

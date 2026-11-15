@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ChevronDown, ChevronRight, ListTodo, Loader2, X } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, ChevronRight, ListTodo, Loader2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Popover, PopoverClose, PopoverContent, PopoverTrigger,
@@ -7,7 +7,14 @@ import {
 import { cn } from "@/lib/utils";
 
 /** TodoItem 与 plan_todos 工具的载荷一一对应。 */
-export type TodoItem = { content: string; status: string };
+export type TodoItem = {
+  id?: string;
+  content: string;
+  status: string;
+  dependsOn?: string[];
+  acceptance?: string[];
+  evidence?: string[];
+};
 
 /**
  * TodoListCard 将模型的会话计划（plan_todos
@@ -75,15 +82,32 @@ export function TodoChecklist({ todos }: { todos: TodoItem[] }) {
             <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
           ) : t.status === "in_progress" ? (
             <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-accent-text" />
+          ) : t.status === "failed" ? (
+            <X className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger-text" />
+          ) : t.status === "blocked" ? (
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
           ) : (
             <span className="mt-0.5 inline-block h-3.5 w-3.5 shrink-0 rounded-full bg-muted" />
           )}
-          <span className={cn(
-            "break-words",
-            t.status === "completed" && "text-muted-foreground line-through",
-            t.status === "in_progress" && "font-medium",
-          )}>
-            {t.content}
+          <span className="min-w-0">
+            <span className={cn(
+              "break-words",
+              t.status === "completed" && "text-muted-foreground line-through",
+              t.status === "in_progress" && "font-medium",
+              (t.status === "failed" || t.status === "blocked") && "text-warning-text",
+            )}>
+              {t.content}
+            </span>
+            {(t.dependsOn?.length ?? 0) > 0 && (
+              <span className="mt-0.5 block text-2xs text-muted-foreground">
+                依赖：{t.dependsOn!.join("、")}
+              </span>
+            )}
+            {t.status === "completed" && (t.evidence?.length ?? 0) > 0 && (
+              <span className="mt-0.5 block text-2xs text-muted-foreground">
+                证据：{t.evidence!.slice(0, 3).join("；")}
+              </span>
+            )}
           </span>
         </li>
       ))}

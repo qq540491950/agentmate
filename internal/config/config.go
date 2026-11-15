@@ -373,7 +373,7 @@ type AgentConfig struct {
 	MaxTokens    int      `json:"maxTokens"`
 	SkillIDs     []string `json:"skillIds"`     // 附加到该 Agent 的技能
 	MCPServerIDs []string `json:"mcpServerIds"` // 工具可用的 MCP 服务器
-	// BuiltinTools 显式收窄内置工具类别（time、files、knowledge、memory、todos、shell）。为空表
+	// BuiltinTools 显式收窄内置工具类别（time、files、knowledge、memory、todos、shell、verify）。为空表
 	// 示全集——见 AllBuiltinTools——因此收窄始终是刻意之举。
 	BuiltinTools []string  `json:"builtinTools"`
 	CreatedAt    time.Time `json:"createdAt"`
@@ -408,7 +408,7 @@ type AgentConfig struct {
 // AllBuiltinTools 是当 Agent 的 BuiltinTools 收窄列表为空时，该 Agent
 // 获得的完整内置工具集。Agent 默认功能齐全；移除某项能力是显式操作。保持
 // AgentsPage.tsx 中的前端 ALL_BUILTIN_TOOLS 列表同步。
-var AllBuiltinTools = []string{"time", "files", "knowledge", "memory", "todos", "shell"}
+var AllBuiltinTools = []string{"time", "files", "knowledge", "memory", "todos", "shell", "verify"}
 
 // EffectiveBuiltinTools 解析 Agent
 // 挂载的工具类别：显式收窄列表优先，空列表则继承完整集合。

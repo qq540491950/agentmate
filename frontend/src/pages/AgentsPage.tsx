@@ -98,7 +98,7 @@ function blankAgent(): AgentConfig {
 
 // ALL_BUILTIN_TOOLS 与 Go 侧的 config.AllBuiltinTools 保持一致。builtinTools
 // 列表为空的 Agent 会继承所有类别。
-const ALL_BUILTIN_TOOLS = ["time", "files", "knowledge", "memory", "todos", "shell"];
+const ALL_BUILTIN_TOOLS = ["time", "files", "knowledge", "memory", "todos", "shell", "verify"];
 
 // MODEL_INHERIT 是“follow the global
 // default”的选择值。它绝不会被持久化；选择它会清空 providerId/model，使 Agent
@@ -732,6 +732,13 @@ export function AgentsPage() {
                       }}
                     />
                     终端命令（run_command）
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={effectiveBuiltinTools(editing).includes("verify")}
+                      onCheckedChange={() => setEditing({ ...editing, builtinTools: toggle(effectiveBuiltinTools(editing), "verify") })}
+                    />
+                    验证与构建（verify_work）
                   </label>
                 </div>
               </div>

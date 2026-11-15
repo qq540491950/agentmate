@@ -59,13 +59,16 @@ type UsageInfo struct {
 
 // ChatStreamEvent 在一次运行进行期间流式发送到前端。
 type ChatStreamEvent struct {
-	SessionID string         `json:"sessionId"`
-	Kind      string         `json:"kind"` // user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|done|error
-	Author    string         `json:"author"`
-	Text      string         `json:"text"`
-	ToolName  string         `json:"toolName,omitempty"`
-	ToolArgs  map[string]any `json:"toolArgs,omitempty"`
-	ToolResp  map[string]any `json:"toolResp,omitempty"`
+	Version    int            `json:"version,omitempty"`
+	SessionID  string         `json:"sessionId"`
+	TurnID     string         `json:"turnId,omitempty"`
+	Kind       string         `json:"kind"` // user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|warning|turn_state|done|error
+	TurnStatus string         `json:"turnStatus,omitempty"`
+	Author     string         `json:"author"`
+	Text       string         `json:"text"`
+	ToolName   string         `json:"toolName,omitempty"`
+	ToolArgs   map[string]any `json:"toolArgs,omitempty"`
+	ToolResp   map[string]any `json:"toolResp,omitempty"`
 	// CallID 标识此事件所指的 ADK 调用：tool_call / tool_result
 	// 对，或一次确认中断。确认答复通过 ConfirmToolCall 回传。
 	CallID string `json:"callId,omitempty"`
@@ -224,6 +227,9 @@ type ChatService struct {
 	// shell。它有意仅存于内存：应用重启后恢复的会话会采用当前的全局设置。
 	terminalMu       sync.Mutex
 	sessionTerminals map[string]config.TerminalSettings
+	turnMu           sync.Mutex
+	sessionTurns     map[string]string
+	workflowErr      error
 }
 
 // runHandle 标识一个进行中的回合。指针身份使一个正在结束的运行仅移除它自己的注册；普通的
@@ -240,17 +246,22 @@ func (c *ChatService) SetToolAuditPath(path string) { c.auditPath = path }
 
 // NewChatService 创建服务。db 可以为 nil（禁用 Regenerate 裁剪）。
 func NewChatService(s *Services, sessions session.Service, db *gorm.DB) *ChatService {
-	return &ChatService{
+	c := &ChatService{
 		S:                s,
 		runs:             map[string]*runHandle{},
 		active:           map[string]map[*runHandle]struct{}{},
 		workspaceLocks:   map[string]*sync.Mutex{},
 		sessionTerminals: map[string]config.TerminalSettings{},
-		sessions:         sessions,
+		sessionTurns:     map[string]string{},
+		sessions:         newRedactingSessionService(sessions),
 		db:               db,
 		appName:          "agentmate",
 		userID:           "local",
 	}
+	if db != nil {
+		c.workflowErr = db.AutoMigrate(&workflowTurn{}, &workflowApproval{})
+	}
+	return c
 }
 
 func (c *ChatService) rememberSessionTerminal(sessionID string, settings config.TerminalSettings) {
@@ -292,14 +303,25 @@ const auditMaxBytes = 10 << 20
 // <path>.old。失败会被静默忽略：审计绝不能中断对话。由互斥锁保护——并行会话
 // 会并发轮转和追加。
 func (c *ChatService) audit(sessionID, phase, author, tool string, payload []byte, errMsg string) {
+	c.auditRecord(sessionID, "", phase, author, tool, payload, errMsg)
+}
+
+func (c *ChatService) auditTool(sessionID, callID, phase, author, tool string, payload []byte, errMsg string) {
+	c.auditRecord(sessionID, callID, phase, author, tool, payload, errMsg)
+}
+
+func (c *ChatService) auditRecord(sessionID, callID, phase, author, tool string, payload []byte, errMsg string) {
 	if c.auditPath == "" || !c.S.Store.Get().Settings.ToolsAudit {
 		return
 	}
 	c.auditMu.Lock()
 	defer c.auditMu.Unlock()
+	c.turnMu.Lock()
+	turnID := c.sessionTurns[sessionID]
+	c.turnMu.Unlock()
 	rec, _ := json.Marshal(map[string]any{
 		"ts": nowUTC(), "sessionId": sessionID, "phase": phase,
-		"author": author, "tool": tool, "error": errMsg,
+		"turnId": turnID, "callId": callID, "author": author, "tool": tool, "error": errMsg,
 		"payload": json.RawMessage(payload),
 	})
 	if st, err := os.Stat(c.auditPath); err == nil && st.Size()+int64(len(rec))+1 >= auditMaxBytes {

@@ -681,6 +681,22 @@ func (c *ChatService) ForkSession(sessionID string) (config.ChatSession, error) 
 	if src == nil {
 		return config.ChatSession{}, fmt.Errorf("会话 %q 不存在", sessionID)
 	}
+	if c.sessionRunning(sessionID) {
+		return config.ChatSession{}, fmt.Errorf("会话正在运行，无法分叉")
+	}
+	srcResp, err := c.sessions.Get(context.Background(), &session.GetRequest{
+		AppName: c.appName, UserID: c.userID, SessionID: sessionID,
+	})
+	if err != nil {
+		return config.ChatSession{}, err
+	}
+	if srcResp.Session == nil {
+		return config.ChatSession{}, fmt.Errorf("会话 %q 不存在", sessionID)
+	}
+	state := map[string]any{}
+	for key, value := range srcResp.Session.State().All() {
+		state[key] = value
+	}
 	id := newID("sess_")
 	workspace := src.EffectiveWorkspaceFor(cfg)
 	if _, err := resetTaskBaseline(c.S.Store, id, workspace); err != nil {
@@ -699,7 +715,7 @@ func (c *ChatService) ForkSession(sessionID string) (config.ChatSession, error) 
 		}
 	}
 	if _, err := c.sessions.Create(context.Background(), &session.CreateRequest{
-		AppName: c.appName, UserID: c.userID, SessionID: id,
+		AppName: c.appName, UserID: c.userID, SessionID: id, State: state,
 	}); err != nil {
 		removeTaskBaseline(c.S.Store, id)
 		return config.ChatSession{}, err
@@ -742,6 +758,8 @@ func (c *ChatService) ForkSession(sessionID string) (config.ChatSession, error) 
 		CreatedAt:      nowUTC(),
 		UpdatedAt:      nowUTC(),
 		ForkedFrom:     sessionID,
+		ModelOverride:  src.ModelOverride,
+		ReasoningLevel: src.ReasoningLevel,
 		WorkspaceDir:   src.WorkspaceDir,
 		ProjectID:      src.ProjectID,
 		ApprovalPolicy: src.EffectiveApprovalPolicy(cfg),
@@ -749,7 +767,7 @@ func (c *ChatService) ForkSession(sessionID string) (config.ChatSession, error) 
 		SandboxMode:    src.EffectiveSandboxMode(cfg),
 		SandboxNetwork: src.PersistedSandboxNetwork(cfg),
 	}
-	err := c.S.Store.Update(func(cfg *config.Config) {
+	err = c.S.Store.Update(func(cfg *config.Config) {
 		cfg.Sessions = append([]config.ChatSession{branch}, cfg.Sessions...)
 	})
 	if err == nil {

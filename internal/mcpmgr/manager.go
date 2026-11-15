@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -20,6 +21,8 @@ import (
 
 	"agentmate/internal/config"
 )
+
+const mcpHTTPTimeout = 120 * time.Second
 
 // ToolInfo 描述已连接的 MCP 服务器所暴露的一个工具。
 type ToolInfo struct {
@@ -138,7 +141,10 @@ func buildTransport(cfg config.MCPServerConfig, tokenStore *config.Store, onAuth
 			// 客户端应用它们。
 			return &mcp.StreamableClientTransport{Endpoint: endpoint, HTTPClient: headersOnlyClient(cfg)}, nil
 		}
-		return &mcp.StreamableClientTransport{Endpoint: endpoint}, nil
+		return &mcp.StreamableClientTransport{
+			Endpoint:   endpoint,
+			HTTPClient: &http.Client{Timeout: mcpHTTPTimeout},
+		}, nil
 	default: // 标准输入输出
 		// 从 UI 粘贴和手工编辑的配置经常带有尾部空格（"npx "）；LookPath
 		// 绝不可能匹配到这类命令，因此在执行前先去除首尾空格。

@@ -117,6 +117,40 @@ func TestForkSession(t *testing.T) {
 	}
 }
 
+func TestForkSessionCopiesRuntimeChoicesAndRejectsActiveRun(t *testing.T) {
+	chat, _, _ := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(sseText("ok") + sseDone))
+	})
+	orig, err := chat.newLegacySession("agent", "agent_r", "配置分支")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := chat.Send(orig.ID, "开始", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := chat.mutateSession(orig.ID, func(s *config.ChatSession) {
+		s.ModelOverride = "fake-mini"
+		s.ReasoningLevel = "high"
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	release := chat.registerRun(orig.ID, func() {})
+	if _, err := chat.ForkSession(orig.ID); err == nil || !strings.Contains(err.Error(), "正在运行") {
+		t.Fatalf("fork during active run = %v, want running error", err)
+	}
+	release()
+
+	branch, err := chat.ForkSession(orig.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if branch.ModelOverride != "fake-mini" || branch.ReasoningLevel != "high" {
+		t.Fatalf("fork lost runtime choices: %+v", branch)
+	}
+}
+
 func joinTexts(msgs []ChatMessage) string {
 	var sb strings.Builder
 	for _, m := range msgs {

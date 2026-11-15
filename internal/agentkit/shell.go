@@ -197,6 +197,8 @@ func newShellTool(workspace string, requireConfirmation bool, provider any, exec
 		RequireConfirmation:         requireConfirmation,
 		RequireConfirmationProvider: provider,
 	}, func(ctx agent.Context, args shellArgs) (shellResult, error) {
+		unlock := lockWorkspaceTool(workspace)
+		defer unlock()
 		timeout := defaultShellTimeout
 		if args.TimeoutSeconds > 0 {
 			timeout = time.Duration(args.TimeoutSeconds) * time.Second

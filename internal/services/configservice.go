@@ -161,8 +161,16 @@ func (c *ConfigService) SaveAgent(a config.AgentConfig) error {
 	if a.BuiltinTools == nil {
 		a.BuiltinTools = []string{}
 	}
+	normalized := agentkit.SanitizeAgentName(a.Name)
+	var conflict error
 	replaced := false
 	err := c.S.Store.Update(func(cfg *config.Config) {
+		for _, other := range cfg.Agents {
+			if other.ID != a.ID && agentkit.SanitizeAgentName(other.Name) == normalized {
+				conflict = fmt.Errorf("Agent 名称「%s」与现有 Agent「%s」规范化后同名，请换个名字", a.Name, other.Name)
+				return
+			}
+		}
 		for i := range cfg.Agents {
 			if cfg.Agents[i].ID == a.ID {
 				a.CreatedAt = cfg.Agents[i].CreatedAt
@@ -175,6 +183,9 @@ func (c *ConfigService) SaveAgent(a config.AgentConfig) error {
 			cfg.Agents = append(cfg.Agents, a)
 		}
 	})
+	if conflict != nil {
+		return conflict
+	}
 	if err == nil && replaced {
 		// 已发布的 A2A 服务器持有在 Start 时构建的 Agent 树；
 		// 编辑之后，远端仍会继续按旧配置提供服务。
@@ -227,7 +238,15 @@ func (c *ConfigService) SaveTeam(t config.TeamConfig) error {
 	if t.MemberAgentIDs == nil {
 		t.MemberAgentIDs = []string{}
 	}
-	return c.S.Store.Update(func(cfg *config.Config) {
+	normalized := agentkit.SanitizeAgentName(t.Name)
+	var conflict error
+	err := c.S.Store.Update(func(cfg *config.Config) {
+		for _, other := range cfg.Teams {
+			if other.ID != t.ID && agentkit.SanitizeAgentName(other.Name) == normalized {
+				conflict = fmt.Errorf("团队名称「%s」与现有团队「%s」规范化后同名，请换个名字", t.Name, other.Name)
+				return
+			}
+		}
 		replaced := false
 		for i := range cfg.Teams {
 			if cfg.Teams[i].ID == t.ID {
@@ -240,7 +259,14 @@ func (c *ConfigService) SaveTeam(t config.TeamConfig) error {
 		if !replaced {
 			cfg.Teams = append(cfg.Teams, t)
 		}
+		if conflict != nil {
+			return
+		}
 	})
+	if conflict != nil {
+		return conflict
+	}
+	return err
 }
 
 // DeleteTeam 按 id 删除一个团队。

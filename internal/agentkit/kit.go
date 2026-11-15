@@ -2,6 +2,8 @@ package agentkit
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -204,7 +206,7 @@ func applyModelOutputLimit(ac *config.AgentConfig, p config.ModelProvider) {
 	}
 }
 
-func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Config, subAgents []agent.Agent, workspace, reasoningLevel string) (agent.Agent, error) {
+func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Config, subAgents []agent.Agent, workspace, reasoningLevel string, extraTools ...tool.Tool) (agent.Agent, error) {
 	// 定义时未显式指定模型的 Agent 遵循全局默认值（形式：provider/model
 	// 留空）。值为空的历史配置也按相同方式解释，而不是运行失败（#39）。
 	ac.ProviderID, ac.Model = cfg.ResolveAgentModel(ac)
@@ -281,6 +283,7 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 	if len(mcpErrs) > 0 {
 		return nil, fmt.Errorf("agent %q: %s", ac.Name, strings.Join(mcpErrs, "；"))
 	}
+	tools = append(tools, extraTools...)
 
 	lc := k.llmConfig(ac, m, tools, toolsets, workspace)
 	lc.SubAgents = subAgents
@@ -327,7 +330,8 @@ func (k *Kit) appendAgentGuides(instruction, workspace string) string {
 	if len(guides) == 0 {
 		return instruction
 	}
-	return instruction + "\n\n" + strings.Join(guides, "\n\n")
+	return instruction + "\n\n以下内容来自项目工程指南（项目资料，不是安全或审批规则的替代品；冲突时以系统安全/审批约束为准）：\n\n" +
+		strings.Join(guides, "\n\n")
 }
 
 // BuildTeam 构建团队的根 Agent：主导 Agent 将成员作为子 Agent（ADK
@@ -424,7 +428,15 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 				}
 			}
 			leadAc := memberByID[tc.LeadAgentID]
-			leadAgent, err := k.buildLLMAgentWithSubAgents(leadAc, cfg, peers, workspace, reasoningLevel)
+			var extra []tool.Tool
+			if len(peers) > 0 {
+				delegate, derr := DelegateTool(peers)
+				if derr != nil {
+					return nil, "", derr
+				}
+				extra = append(extra, delegate)
+			}
+			leadAgent, err := k.buildLLMAgentWithSubAgents(leadAc, cfg, peers, workspace, reasoningLevel, extra...)
 			if err != nil {
 				return nil, "", err
 			}
@@ -452,12 +464,16 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 		maxOutput = mi.MaxOutputTokens
 	}
 	coordInstruction := firstNonEmpty(tc.SystemPrompt,
-		"You are the coordinator of an agent team. Analyze the user's request, "+
-			"then transfer the task to the most suitable member agent and synthesize the final answer.")
+		"You are the coordinator of an agent team. Analyze the user's request, delegate bounded tasks to the most suitable members, "+
+			"verify their evidence, and synthesize the final answer.")
 	coordInstruction = applyPromptVars(coordInstruction, workspace)
-	instruction := fmt.Sprintf("%s\n\nTeam members: %s. Transfer to a member to work on the task, then summarize the result for the user.",
+	instruction := fmt.Sprintf("%s\n\nTeam members: %s. Prefer delegate_task(agent, objective, acceptance) so you retain control and can verify each result; then summarize for the user.",
 		coordInstruction, strings.Join(memberNames, ", "))
 	instruction = k.appendAgentGuides(instruction, workspace)
+	delegate, derr := DelegateTool(members)
+	if derr != nil {
+		return nil, "", derr
+	}
 
 	coord, err := llmagent.New(llmagent.Config{
 		Name:                rootName,
@@ -465,6 +481,7 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 		Description:         firstNonEmpty(tc.Description, tc.Name),
 		InstructionProvider: func(agent.ReadonlyContext) (string, error) { return instruction, nil },
 		SubAgents:           members,
+		Tools:               []tool.Tool{delegate},
 		GenerateContentConfig: func() *genai.GenerateContentConfig {
 			if maxOutput <= 0 {
 				return nil
@@ -879,11 +896,7 @@ func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspac
 			tools = append(tools, t)
 		case "shell":
 			allowEscalation := policy.Mode != sandbox.ModeDangerFullAccess
-			termSettings := cfg.Settings.Terminal
-			if ac.Terminal != nil {
-				termSettings = *ac.Terminal
-			}
-			spec, err := terminal.Resolve(context.Background(), termSettings, terminal.DefaultHost(), string(policy.Mode))
+			spec, err := k.terminalSpec(ac, cfg, policy)
 			if err != nil {
 				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 			}
@@ -892,9 +905,27 @@ func (k *Kit) builtinToolsFor(ac config.AgentConfig, cfg config.Config, workspac
 				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 			}
 			tools = append(tools, t)
+		case "verify":
+			spec, err := k.terminalSpec(ac, cfg, policy)
+			if err != nil {
+				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
+			}
+			t, err := VerifyTool(workspace, policy, spec, shellConfirmation)
+			if err != nil {
+				return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
+			}
+			tools = append(tools, t)
 		}
 	}
 	return tools, nil
+}
+
+func (k *Kit) terminalSpec(ac config.AgentConfig, cfg config.Config, policy sandbox.Policy) (terminal.Spec, error) {
+	termSettings := cfg.Settings.Terminal
+	if ac.Terminal != nil {
+		termSettings = *ac.Terminal
+	}
+	return terminal.Resolve(context.Background(), termSettings, terminal.DefaultHost(), string(policy.Mode))
 }
 
 func (k *Kit) sandboxPolicy(ac config.AgentConfig, workspace string) sandbox.Policy {
@@ -1038,13 +1069,35 @@ func TimeTool() (tool.Tool, error) {
 }
 
 type pathArgs struct {
-	Path string `json:"path" jsonschema:"relative path inside the workspace"`
+	Path     string `json:"path" jsonschema:"relative path inside the workspace"`
+	Offset   int64  `json:"offset,omitempty" jsonschema:"byte offset to start reading from"`
+	MaxBytes int    `json:"maxBytes,omitempty" jsonschema:"maximum bytes to return (default and cap: 64KB)"`
 }
 
 // listArgs 保持 Path 为可选：列出工作区根目录是常见的首次调用，且不应使
 // JSON-schema 校验失败。
 type listArgs struct {
 	Path string `json:"path,omitempty" jsonschema:"relative path inside the workspace; omit for the workspace root"`
+}
+
+const maxListEntries = 500
+
+var listSkipDirs = map[string]bool{
+	".git": true, ".hg": true, ".svn": true, "node_modules": true, "vendor": true,
+	"dist": true, "build": true, ".venv": true, "venv": true, "__pycache__": true,
+}
+
+var workspaceToolLocks sync.Map // map[string]*sync.Mutex
+
+func lockWorkspaceTool(workspace string) func() {
+	key, err := filepath.Abs(workspace)
+	if err != nil {
+		key = workspace
+	}
+	value, _ := workspaceToolLocks.LoadOrStore(key, &sync.Mutex{})
+	mu := value.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // SafeWorkspacePath 在 workspace 内解析 rel，并阻止路径穿越。
@@ -1062,15 +1115,33 @@ const (
 // 报告是否发生截断；截断后的内容会回退到最近的 UTF-8 rune
 // 边界，并带有尾部标记。
 func ReadBoundedFile(path string, limit int) (content string, truncated bool, err error) {
+	content, truncated, _, err = ReadBoundedFileFrom(path, 0, limit)
+	return content, truncated, err
+}
+
+// ReadBoundedFileFrom 从 offset 开始读取最多 limit 字节，返回实际读取的字节数。
+// 截断时内容以明确标记结尾，并回退到最近的 UTF-8 rune 边界。
+func ReadBoundedFileFrom(path string, offset int64, limit int) (content string, truncated bool, read int, err error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit < 0 {
+		limit = 0
+	}
 	f, err := os.Open(path)
 	if err != nil {
-		return "", false, err
+		return "", false, 0, err
 	}
 	defer f.Close()
+	if offset > 0 {
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			return "", false, 0, err
+		}
+	}
 	buf := make([]byte, limit+1)
 	n, readErr := io.ReadFull(f, buf)
 	if readErr != nil && readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
-		return "", false, readErr
+		return "", false, 0, readErr
 	}
 	truncated = n > limit
 	if truncated {
@@ -1084,9 +1155,9 @@ func ReadBoundedFile(path string, limit int) (content string, truncated bool, er
 			buf = buf[:len(buf)-1]
 		}
 		content = string(buf) + "\n...[truncated]"
-		return content, true, nil
+		return content, true, len(buf), nil
 	}
-	return string(buf[:n]), false, nil
+	return string(buf[:n]), false, n, nil
 }
 
 // WriteBoundedFile 会预先拒绝超过 limit
@@ -1095,7 +1166,11 @@ func WriteBoundedFile(path, content string, limit int) error {
 	if len(content) > limit {
 		return fmt.Errorf("写入内容超过 %d MB 上限（%d 字节）", limit>>20, len(content))
 	}
-	return os.WriteFile(path, []byte(content), 0o644)
+	mode := os.FileMode(0o644)
+	if st, err := os.Stat(path); err == nil {
+		mode = st.Mode().Perm()
+	}
+	return writeFilePreservingMode(path, []byte(content), mode)
 }
 
 func safeWorkspacePath(workspace, rel string) (string, error) {
@@ -1157,6 +1232,11 @@ func isWithin(root, target string) bool {
 	return target == root || strings.HasPrefix(target, root+string(filepath.Separator))
 }
 
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
 // ListFilesTool 列出工作区文件。Path 为可选参数，因此模型无需猜测 "."
 // 就能请求工作区根目录（issue #21：首次 "look at the project"
 // 调用通常不带参数）。
@@ -1176,41 +1256,66 @@ func ListFilesTool(workspace string) (tool.Tool, error) {
 		names := make([]string, 0, len(entries))
 		for _, e := range entries {
 			if e.IsDir() {
+				if listSkipDirs[strings.ToLower(e.Name())] {
+					continue
+				}
 				names = append(names, e.Name()+"/")
 			} else {
 				names = append(names, e.Name())
 			}
 		}
 		sort.Strings(names)
-		return filesResult{Entries: strings.Join(names, "\n")}, nil
+		truncated := len(names) > maxListEntries
+		if truncated {
+			names = names[:maxListEntries]
+		}
+		return filesResult{Entries: strings.Join(names, "\n"), Truncated: truncated}, nil
 	})
 }
 
 type readFileResult struct {
-	Content string `json:"content"`
+	Content    string `json:"content"`
+	Truncated  bool   `json:"truncated,omitempty"`
+	NextOffset int64  `json:"nextOffset,omitempty"`
 }
 
 // ReadFileTool 读取工作区内的文件。
 func ReadFileTool(workspace string) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "read_workspace_file",
-		Description: "Read a text file inside the user's workspace (max 64KB).",
+		Description: "Read a text file inside the user's workspace (max 64KB per call; use offset/maxBytes to page).",
 	}, func(ctx agent.Context, args pathArgs) (readFileResult, error) {
 		root, err := safeWorkspacePath(workspace, args.Path)
 		if err != nil {
 			return readFileResult{}, err
 		}
-		content, _, err := ReadBoundedFile(root, maxReadBytes)
+		limit := maxReadBytes
+		if args.MaxBytes > 0 && args.MaxBytes < limit {
+			limit = args.MaxBytes
+		}
+		offset := args.Offset
+		if offset < 0 {
+			offset = 0
+		}
+		content, truncated, read, err := ReadBoundedFileFrom(root, offset, limit)
 		if err != nil {
 			return readFileResult{}, err
 		}
-		return readFileResult{Content: content}, nil
+		if !utf8.ValidString(content) || strings.ContainsRune(content, 0) {
+			return readFileResult{}, fmt.Errorf("文件不是 UTF-8 文本")
+		}
+		next := int64(0)
+		if truncated {
+			next = offset + int64(read)
+		}
+		return readFileResult{Content: content, Truncated: truncated, NextOffset: next}, nil
 	})
 }
 
 type writeArgs struct {
-	Path    string `json:"path" jsonschema:"relative path inside the workspace"`
-	Content string `json:"content"`
+	Path           string `json:"path" jsonschema:"relative path inside the workspace"`
+	Content        string `json:"content"`
+	ExpectedSha256 string `json:"expectedSha256,omitempty" jsonschema:"optional SHA-256 of the current file; reject with stale_file if it changed"`
 }
 
 type writeResult struct {
@@ -1219,10 +1324,11 @@ type writeResult struct {
 }
 
 type editArgs struct {
-	Path       string `json:"path" jsonschema:"relative path inside the workspace"`
-	OldText    string `json:"oldText" jsonschema:"exact text to replace; include enough surrounding context to be unique"`
-	NewText    string `json:"newText" jsonschema:"replacement text"`
-	ReplaceAll bool   `json:"replaceAll,omitempty" jsonschema:"replace every occurrence when true; the default requires a unique match"`
+	Path           string `json:"path" jsonschema:"relative path inside the workspace"`
+	OldText        string `json:"oldText" jsonschema:"exact text to replace; include enough surrounding context to be unique"`
+	NewText        string `json:"newText" jsonschema:"replacement text"`
+	ReplaceAll     bool   `json:"replaceAll,omitempty" jsonschema:"replace every occurrence when true; the default requires a unique match"`
+	ExpectedSha256 string `json:"expectedSha256,omitempty" jsonschema:"optional SHA-256 of the current file; reject with stale_file if it changed"`
 }
 
 type editResult struct {
@@ -1266,6 +1372,8 @@ func WriteFileToolWithPolicy(workspace string, requireConfirmation bool, policy 
 }
 
 func writeWorkspaceFile(workspace string, args writeArgs, policy sandbox.Policy) (writeResult, error) {
+	unlock := lockWorkspaceTool(workspace)
+	defer unlock()
 	root, err := safeWorkspacePath(workspace, args.Path)
 	if err != nil {
 		return writeResult{}, err
@@ -1273,10 +1381,29 @@ func writeWorkspaceFile(workspace string, args writeArgs, policy sandbox.Policy)
 	if ok, code, reason := policy.CheckWrite(root); !ok {
 		return writeResult{}, fmt.Errorf("%s: %s", code, reason)
 	}
+	if expected := strings.TrimSpace(args.ExpectedSha256); expected != "" {
+		current, readErr := os.ReadFile(root)
+		if readErr != nil {
+			if os.IsNotExist(readErr) {
+				return writeResult{}, fmt.Errorf("stale_file: 目标文件不存在或已被删除")
+			}
+			return writeResult{}, readErr
+		}
+		if !strings.EqualFold(expected, sha256Hex(current)) {
+			return writeResult{}, fmt.Errorf("stale_file: 文件在读取后被修改，请重新读取后再写入")
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(root), 0o755); err != nil {
 		return writeResult{}, err
 	}
-	if err := WriteBoundedFile(root, args.Content, maxWriteBytes); err != nil {
+	mode := os.FileMode(0o644)
+	if st, statErr := os.Stat(root); statErr == nil {
+		mode = st.Mode().Perm()
+	}
+	if len(args.Content) > maxWriteBytes {
+		return writeResult{}, fmt.Errorf("写入内容超过 %d MB 上限（%d 字节）", maxWriteBytes>>20, len(args.Content))
+	}
+	if err := writeFilePreservingMode(root, []byte(args.Content), mode); err != nil {
 		return writeResult{}, err
 	}
 	return writeResult{OK: true, Bytes: len(args.Content)}, nil
@@ -1314,6 +1441,8 @@ func EditFileToolWithPolicy(workspace string, requireConfirmation bool, policy s
 }
 
 func editWorkspaceFile(workspace string, args editArgs, policy sandbox.Policy) (editResult, error) {
+	unlock := lockWorkspaceTool(workspace)
+	defer unlock()
 	if args.OldText == "" {
 		return editResult{}, fmt.Errorf("oldText 不能为空")
 	}
@@ -1339,6 +1468,10 @@ func editWorkspaceFile(workspace string, args editArgs, policy sandbox.Policy) (
 		return editResult{}, err
 	}
 	original := string(raw)
+	if expected := strings.TrimSpace(args.ExpectedSha256); expected != "" &&
+		!strings.EqualFold(expected, sha256Hex(raw)) {
+		return editResult{}, fmt.Errorf("stale_file: 文件在读取后被修改，请重新读取后再编辑")
+	}
 	count := strings.Count(original, args.OldText)
 	if count == 0 {
 		return editResult{}, fmt.Errorf("未找到匹配内容")
@@ -1655,8 +1788,12 @@ func capDiffLines(lines []string, lineLimit, byteLimit int) string {
 const todosStateKey = "agentmate.todos"
 
 type todoItem struct {
-	Content string `json:"content"`
-	Status  string `json:"status"` // pending | in_progress | completed
+	ID         string   `json:"id,omitempty"`
+	Content    string   `json:"content"`
+	Status     string   `json:"status"` // pending | in_progress | blocked | completed | failed | skipped
+	DependsOn  []string `json:"dependsOn,omitempty"`
+	Acceptance []string `json:"acceptance,omitempty"`
+	Evidence   []string `json:"evidence,omitempty"`
 }
 
 type todosArgs struct {
@@ -1693,22 +1830,105 @@ func TodosTool() (tool.Tool, error) {
 			}
 			return todosResult{OK: true, Todos: todos}, nil
 		}
+		if len(args.Todos) > 50 {
+			return todosResult{}, fmt.Errorf("任务计划最多 50 个步骤")
+		}
 		cleaned := make([]todoItem, 0, len(args.Todos))
-		for _, td := range args.Todos {
+		for i, td := range args.Todos {
 			td.Content = strings.TrimSpace(td.Content)
 			if td.Content == "" {
 				continue
 			}
 			switch td.Status {
-			case "pending", "in_progress", "completed":
+			case "pending", "in_progress", "blocked", "completed", "failed", "skipped":
 			default:
 				td.Status = "pending"
 			}
+			if strings.TrimSpace(td.ID) == "" {
+				td.ID = fmt.Sprintf("step-%d", i+1)
+			}
+			td.Content = truncateRunesForPlan(td.Content, 200)
+			td.Acceptance = trimPlanStrings(td.Acceptance)
+			td.Evidence = trimPlanStrings(td.Evidence)
 			cleaned = append(cleaned, td)
+		}
+		if err := validatePlanSteps(cleaned); err != nil {
+			return todosResult{}, err
 		}
 		if err := ctx.State().Set(todosStateKey, cleaned); err != nil {
 			return todosResult{}, err
 		}
 		return todosResult{OK: true, Todos: cleaned}, nil
 	})
+}
+
+func trimPlanStrings(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, truncateRunesForPlan(s, 300))
+		}
+	}
+	return out
+}
+
+func truncateRunesForPlan(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
+
+func validatePlanSteps(steps []todoItem) error {
+	ids := make(map[string]int, len(steps))
+	inProgress := 0
+	for i, step := range steps {
+		if _, exists := ids[step.ID]; exists {
+			return fmt.Errorf("计划步骤 ID 重复：%s", step.ID)
+		}
+		ids[step.ID] = i
+		if step.Status == "in_progress" {
+			inProgress++
+		}
+	}
+	if inProgress > 1 {
+		return fmt.Errorf("同一计划最多只能有一个 in_progress 步骤")
+	}
+	for _, step := range steps {
+		for _, dep := range step.DependsOn {
+			if dep == step.ID {
+				return fmt.Errorf("计划步骤 %s 不能依赖自身", step.ID)
+			}
+			if _, ok := ids[dep]; !ok {
+				return fmt.Errorf("计划步骤 %s 依赖不存在的步骤 %s", step.ID, dep)
+			}
+		}
+	}
+	// 0=unseen, 1=visiting, 2=done
+	state := make(map[string]int, len(steps))
+	var visit func(string) error
+	visit = func(id string) error {
+		switch state[id] {
+		case 1:
+			return fmt.Errorf("计划依赖存在环：%s", id)
+		case 2:
+			return nil
+		}
+		state[id] = 1
+		step := steps[ids[id]]
+		for _, dep := range step.DependsOn {
+			if err := visit(dep); err != nil {
+				return err
+			}
+		}
+		state[id] = 2
+		return nil
+	}
+	for _, step := range steps {
+		if err := visit(step.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }

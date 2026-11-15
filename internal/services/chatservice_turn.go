@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
@@ -26,6 +27,11 @@ import (
 // compactionEventRetentionSize 在尾部保留压缩触发时，会将当前回合和最近的一小段尾部保持为原始未压缩状态。只
 // 要启用了 TokenThreshold，ADK 就要求该值为正值。
 const compactionEventRetentionSize = 10
+
+const (
+	defaultMaxToolCalls = 120
+	defaultMaxLLMCalls  = 200
+)
 
 func addUsage(total, u *UsageInfo) *UsageInfo {
 	if u == nil {
@@ -183,6 +189,14 @@ func (c *ChatService) resolveSessionTarget(cfg config.Config, sessionID string) 
 // emitChat 将流式事件投递到测试钩子或 Wails 事件总线。
 func (c *ChatService) emitChat(sessionID string, ev ChatStreamEvent) {
 	ev.SessionID = sessionID
+	if ev.Version == 0 {
+		ev.Version = 2
+	}
+	if ev.TurnID == "" {
+		c.turnMu.Lock()
+		ev.TurnID = c.sessionTurns[sessionID]
+		c.turnMu.Unlock()
+	}
 	if appEventHook != nil {
 		appEventHook(ev)
 		return
@@ -190,6 +204,16 @@ func (c *ChatService) emitChat(sessionID string, ev ChatStreamEvent) {
 	if app := application.Get(); app != nil {
 		app.Event.Emit(EventChatStream, ev)
 	}
+}
+
+func (c *ChatService) setSessionTurn(sessionID, turnID string) {
+	c.turnMu.Lock()
+	defer c.turnMu.Unlock()
+	if turnID == "" {
+		delete(c.sessionTurns, sessionID)
+		return
+	}
+	c.sessionTurns[sessionID] = turnID
 }
 
 // sendTurn 对用户输入做净化处理（护栏），构建消息内容并将该回合交给
@@ -226,11 +250,11 @@ func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentI
 		gr := agentkit.ApplyInputGuardrail(text)
 		userText = gr.Text
 		if gr.InjectRisk {
-			c.emitChat(sessionID, ChatStreamEvent{Kind: "error", Author: "guardrail",
+			c.emitChat(sessionID, ChatStreamEvent{Kind: "warning", Author: "guardrail",
 				Text: "⚠️ 检测到疑似提示注入内容（“" + gr.InjectMatch + "”），已原样发送但请谨慎对待模型输出。"})
 		}
 		if gr.Redacted {
-			c.emitChat(sessionID, ChatStreamEvent{Kind: "error", Author: "guardrail",
+			c.emitChat(sessionID, ChatStreamEvent{Kind: "warning", Author: "guardrail",
 				Text: "🔒 已自动遮蔽消息中的疑似密钥/凭据。"})
 		}
 	}
@@ -239,7 +263,7 @@ func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentI
 	if err != nil {
 		return err
 	}
-	return c.runTurn(turnTarget, guardOn, msg, text, turnContext, turnReasoning)
+	return c.runTurn(turnTarget, guardOn, msg, text, turnContext, turnReasoning, nil)
 }
 
 // ConfirmToolCall 响应待处理的 ADK 工具确认中断（HITL）：approved=true
@@ -334,7 +358,22 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 	)
 	// 按被中断回合所使用的级别恢复：一次 HITL
 	// 往返是一个逻辑回合，因此续跑不得在中途切换思考预算。
-	return c.runTurn(turnTarget, guardOn, msg, "", turnContext, lastUserReasoning)
+	var manifest *workflowTurn
+	if approval := c.approvalByCallID(callID); approval != nil {
+		manifest = c.turnByID(approval.TurnID)
+		if approved {
+			c.setApprovalStatus(callID, "approved")
+		} else {
+			c.setApprovalStatus(callID, "rejected")
+		}
+		if manifest != nil {
+			c.updateTurnStatus(manifest.ID, "resumed")
+		}
+	} else if pending := c.latestWaitingTurn(sessionID); pending != nil {
+		manifest = pending
+		c.updateTurnStatus(pending.ID, "resumed")
+	}
+	return c.runTurn(turnTarget, guardOn, msg, "", turnContext, lastUserReasoning, manifest)
 }
 
 // runTurn 为会话目标构建 Agent
@@ -349,9 +388,11 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 //
 // agent/tool 栈中任何位置的 panic 都会被转换为错误事件：一个行为异常的 MCP
 // 服务器或工具不得让整个桌面进程连同用户未保存的工作一起崩溃。
-func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *genai.Content, titleFromText, turnContext, turnReasoning string) (err error) {
+func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *genai.Content, titleFromText, turnContext, turnReasoning string, manifest *workflowTurn) (err error) {
 	sessionID := target.ID
-	defer c.recoverRun(sessionID, &err)
+	if c.workflowErr != nil {
+		return fmt.Errorf("工作流存储不可用: %w", c.workflowErr)
+	}
 	// 在任何设置之前注册。IsRunning 为前端的会话校准提供支持，并且必须在 Agent
 	// 树构建期间就已报告本回合；如果在高开销设置之后（或在用户事件之后）才注册，就
 	// 会让并发探测看到错误的空闲状态。
@@ -372,7 +413,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	// 每个 Agent 的工具护栏（0 = 不限）。回合没有墙钟截止时间：允许长时间运行的
 	// Agent 任务持续运行，直到完成、失败或被取消。停滞的模型流式由 LLM
 	// 适配器的空闲看门狗单独限界。
-	maxToolCalls := 0
+	maxToolCalls := defaultMaxToolCalls
 	var maxSessionTokens int64
 	if agentCfg := c.targetAgentConfig(cfg, target); agentCfg != nil {
 		maxToolCalls = agentCfg.MaxToolCalls
@@ -393,6 +434,39 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	approvalPolicy := target.EffectiveApprovalPolicy(cfg)
 	sandboxProfile := target.EffectiveSandboxProfile(cfg)
 	sandboxNetwork := target.EffectiveSandboxNetwork(cfg)
+	if manifest != nil {
+		if strings.TrimSpace(manifest.Workspace) != "" {
+			workspace = manifest.Workspace
+		}
+		if manifest.ApprovalPolicy != "" {
+			approvalPolicy = manifest.ApprovalPolicy
+		}
+		if manifest.SandboxProfile != "" {
+			sandboxProfile = manifest.SandboxProfile
+		}
+		if manifest.SandboxNetwork != "" {
+			sandboxNetwork = manifest.SandboxNetwork
+		}
+		if manifest.ReasoningLevel != "" && turnReasoning == "" {
+			turnReasoning = manifest.ReasoningLevel
+			if hasModel {
+				applyLevel, recordedLevel = resolveTurnReasoning(modelInfo, turnReasoning, target.ReasoningLevel)
+			}
+		}
+	}
+	modelID := ""
+	if hasModel {
+		modelID = modelInfo.ID
+	}
+	turn, terr := c.beginTurn(target, workspace, approvalPolicy, sandboxProfile, sandboxNetwork, modelID, recordedLevel, "")
+	if terr != nil {
+		return terr
+	}
+	turnStatus := "running"
+	defer c.finishTurn(turn.ID, &turnStatus, &err)
+	defer c.recoverRun(sessionID, &err)
+	c.setSessionTurn(sessionID, turn.ID)
+	defer c.setSessionTurn(sessionID, "")
 	var protectedDirs []string
 	if c.S != nil && c.S.Store != nil {
 		protectedDirs = append(protectedDirs, c.S.Store.Dir())
@@ -491,12 +565,19 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	}
 
 	emit := func(ev ChatStreamEvent) { c.emitChat(sessionID, ev) }
+	emitTurnState := func(status string) {
+		turnStatus = status
+		c.updateTurnStatus(turn.ID, status)
+		emit(ChatStreamEvent{Kind: "turn_state", TurnStatus: status})
+	}
+	emitTurnState("running")
 
 	if budgetExceeded && titleFromText != "" {
 		// 仅拒绝新的用户回合；待处理的 HITL
 		// 确认恢复仍必须运行，以便进行中的工具往返能够完成。
 		emit(ChatStreamEvent{Kind: "error", Text: fmt.Sprintf("会话 token 预算已满（%d），本轮未执行。", maxSessionTokens)})
 		emit(ChatStreamEvent{Kind: "done"})
+		emitTurnState("failed")
 		return nil
 	}
 	if titleFromText != "" {
@@ -531,17 +612,13 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	var sessionUsage *UsageInfo
 	toolCallsSeen := 0
 	lastReply := ""
-	// MaxLLMCalls 被有意固定为 "no limit"。ADK v2.7.0
-	// 引入了按调用计的模型调用预算，其零值会解析为
-	// 500（当该环境变量可解析时，也会解析为
-	// ADK_MAX_LLM_CALLS），一旦达到该预算，就会以 ErrLLMCallsLimitExceeded
-	// 中止整个运行。这与本应用 "一个回合没有实际耗时限制"
-	// 的约定相矛盾：否则，一个不断产生工具调用（plan_todos 重写、大量 MCP
-	// 工具、团队成员）的长任务，就会终止在一个不可见、由框架选择的阈值上，而用户只
-	// 有撞上该阈值时才能发现它。结束一个回合仍然是模型或用户的决定。
+	var transferPath []string
+	budgetWarned := false
+	verifySeen := false
+	// 默认给模型调用一个可诊断的上限；长任务可在 Agent 配置中显式调整。
 	for ev, err := range rn.Run(ctx, c.userID, sessionID, msg, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
-		MaxLLMCalls:   -1,
+		MaxLLMCalls:   defaultMaxLLMCalls,
 	}, runOpts...) {
 		if ctx.Err() != nil {
 			emit(ChatStreamEvent{Kind: "error", Text: "已取消"})
@@ -555,7 +632,21 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			// 将失败暴露给调用方，而不是报告成功。
 			return fmt.Errorf("run turn: %w", err)
 		}
-		if ev == nil || ev.Content == nil || ev.Author == "user" {
+		if ev == nil {
+			continue
+		}
+		if ev.ErrorCode != "" || ev.ErrorMessage != "" {
+			msg := strings.TrimSpace(ev.ErrorMessage)
+			if msg == "" {
+				msg = ev.ErrorCode
+			}
+			if msg == "" {
+				msg = "模型返回了错误"
+			}
+			c.emitChat(sessionID, ChatStreamEvent{Kind: "error", Text: "模型调用失败：" + msg})
+			return fmt.Errorf("model error: %s", msg)
+		}
+		if ev.Content == nil || ev.Author == "user" {
 			continue
 		}
 		author := displayAuthor(cfg, ev.Author)
@@ -640,13 +731,29 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				}
 				emit(ChatStreamEvent{Kind: "confirm_request", Author: author,
 					ToolName: name, ToolArgs: args, CallID: p.FunctionCall.ID, Hint: hint})
+				c.recordApproval(turn.ID, sessionID, p.FunctionCall.ID, name, args, hint)
+				emitTurnState("waiting_approval")
 			case p.FunctionCall != nil:
 				toolCallsThisTurn++
-				c.audit(sessionID, "call", author, p.FunctionCall.Name, mustJSON(auditToolCallArgs(p.FunctionCall)), "")
+				if p.FunctionCall.Name == "verify_work" {
+					verifySeen = true
+				}
+				c.auditTool(sessionID, p.FunctionCall.ID, "call", author, p.FunctionCall.Name, mustJSON(auditToolCallArgs(p.FunctionCall)), "")
 				emit(ChatStreamEvent{Kind: "tool_call", Author: author,
 					ToolName: p.FunctionCall.Name, ToolArgs: p.FunctionCall.Args, CallID: p.FunctionCall.ID})
+				if p.FunctionCall.Name == "transfer_to_agent" {
+					next, _ := p.FunctionCall.Args["agent_name"].(string)
+					if transferWouldLoop(transferPath, next) {
+						emit(ChatStreamEvent{Kind: "error", Text: "检测到团队转交循环，本轮已停止。"})
+						emitTurnState("failed")
+						emit(ChatStreamEvent{Kind: "done", SessionUsage: sessionUsage})
+						cancel()
+						return nil
+					}
+					transferPath = append(transferPath, next)
+				}
 			case p.FunctionResponse != nil:
-				c.audit(sessionID, "result", author, p.FunctionResponse.Name,
+				c.auditTool(sessionID, p.FunctionResponse.ID, "result", author, p.FunctionResponse.Name,
 					mustJSON(p.FunctionResponse.Response), resultErrorOf(p.FunctionResponse.Response))
 				emit(ChatStreamEvent{Kind: "tool_result", Author: author,
 					ToolName: p.FunctionResponse.Name, ToolResp: p.FunctionResponse.Response, CallID: p.FunctionResponse.ID})
@@ -658,8 +765,13 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		flushText()
 		if maxToolCalls > 0 && toolCallsThisTurn > 0 {
 			toolCallsSeen += toolCallsThisTurn
+			if !budgetWarned && toolCallsSeen >= maxToolCalls*8/10 {
+				budgetWarned = true
+				emit(ChatStreamEvent{Kind: "warning", Text: fmt.Sprintf("已使用 %d/%d 次工具调用，接近单轮上限。", toolCallsSeen, maxToolCalls)})
+			}
 			if toolCallsSeen > maxToolCalls {
 				emit(ChatStreamEvent{Kind: "error", Text: fmt.Sprintf("已达单轮工具调用上限（%d 次），本轮已停止。", maxToolCalls)})
+				emitTurnState("failed")
 				emit(ChatStreamEvent{Kind: "done", SessionUsage: sessionUsage})
 				cancel()
 				return nil
@@ -668,6 +780,12 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	}
 	if budgetExceeded {
 		emit(ChatStreamEvent{Kind: "error", Text: fmt.Sprintf("已达会话 token 预算（%d），后续轮次将被拒绝；请开新会话或调整预算。", maxSessionTokens)})
+		emitTurnState("failed")
+	} else if turnStatus == "running" {
+		if !verifySeen && c.planHasCompleted(sessionID) {
+			emit(ChatStreamEvent{Kind: "warning", Text: "计划中有已完成步骤，但本回合没有调用 verify_work；完成状态缺少验证证据。"})
+		}
+		emitTurnState("completed")
 	}
 	emit(ChatStreamEvent{Kind: "done", SessionUsage: sessionUsage})
 
@@ -1062,3 +1180,47 @@ func truncateRunes(s string, maxRunes int) string {
 }
 
 func ptrFloat32(f float32) *float32 { return &f }
+
+func transferWouldLoop(path []string, next string) bool {
+	if strings.TrimSpace(next) == "" {
+		return false
+	}
+	if len(path) >= 8 {
+		return true
+	}
+	for _, name := range path {
+		if name == next {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *ChatService) planHasCompleted(sessionID string) bool {
+	resp, err := c.sessions.Get(context.Background(), &session.GetRequest{
+		AppName: c.appName, UserID: c.userID, SessionID: sessionID,
+	})
+	if err != nil || resp.Session == nil || resp.Session.State() == nil {
+		return false
+	}
+	value, err := resp.Session.State().Get("agentmate.todos")
+	if err != nil {
+		return false
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return false
+	}
+	var todos []struct {
+		Status string `json:"status"`
+	}
+	if json.Unmarshal(data, &todos) != nil {
+		return false
+	}
+	for _, todo := range todos {
+		if todo.Status == "completed" {
+			return true
+		}
+	}
+	return false
+}

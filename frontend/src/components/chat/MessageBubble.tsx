@@ -299,6 +299,13 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
       </div>
     );
   }
+  if (m.kind === "warning") {
+    return (
+      <div className="rounded-xl bg-warning-soft px-4 py-2.5 text-sm text-warning-text">
+        {highlightText(m.text, filterQ, "bg-warning-soft text-warning-text rounded-sm")}
+      </div>
+    );
+  }
   if (m.kind === "confirm") {
     return <ConfirmCard m={m} onConfirm={onConfirm} />;
   }

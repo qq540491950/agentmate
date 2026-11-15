@@ -47,7 +47,7 @@ func authHTTPClient(cfg config.MCPServerConfig) *http.Client {
 	if headerName == "" {
 		headerName = "X-API-Key"
 	}
-	return &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	return &http.Client{Timeout: mcpHTTPTimeout, Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		for k, v := range cfg.Headers {
 			req.Header.Set(k, v)
 		}
@@ -63,7 +63,7 @@ func authHTTPClient(cfg config.MCPServerConfig) *http.Client {
 
 // headersOnlyClient 仅应用静态配置请求头（不含认证类型）。
 func headersOnlyClient(cfg config.MCPServerConfig) *http.Client {
-	return &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	return &http.Client{Timeout: mcpHTTPTimeout, Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		for k, v := range cfg.Headers {
 			req.Header.Set(k, v)
 		}
@@ -117,7 +117,11 @@ func newOAuthTransport(cfg config.MCPServerConfig, tokenStore *config.Store, onA
 	if err != nil {
 		return nil, err
 	}
-	return &mcp.StreamableClientTransport{Endpoint: cfg.URL, OAuthHandler: handler}, nil
+	return &mcp.StreamableClientTransport{
+		Endpoint:     cfg.URL,
+		OAuthHandler: handler,
+		HTTPClient:   &http.Client{Timeout: mcpHTTPTimeout},
+	}, nil
 }
 
 // newBrowserAuthCodeFetcher 为同意流程提供回环回调服务：它惰性绑定重定向端口（仅在实际流程运行期间），在

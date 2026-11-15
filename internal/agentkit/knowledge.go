@@ -26,8 +26,9 @@ type queryArgs struct {
 // filesResult 是 search_knowledge 的载荷；Refs 携带工作区相对路径，以便 UI
 // 可以提供产物预览。
 type filesResult struct {
-	Entries string   `json:"entries"`
-	Refs    []string `json:"refs,omitempty"`
+	Entries   string   `json:"entries"`
+	Truncated bool     `json:"truncated,omitempty"`
+	Refs      []string `json:"refs,omitempty"`
 }
 
 // SearchKnowledgeTool 搜索工作区知识库：接入嵌入后端时采用语义 +
