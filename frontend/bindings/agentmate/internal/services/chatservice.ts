@@ -41,6 +41,13 @@ export function ConfirmToolCall(sessionID: string, callID: string, approved: boo
 }
 
 /**
+ * CreateGitBranch 从当前 HEAD 创建并检出分支。未提交改动会保留在工作树中。
+ */
+export function CreateGitBranch(projectID: string, name: string): $CancellablePromise<$models.WorkspaceContextInfo> {
+    return $Call.ByID(4225543771, projectID, name);
+}
+
+/**
  * DeleteArchivedSessions 删除所有已归档会话（先取消，包含事件），并返回删除了多少条。
  */
 export function DeleteArchivedSessions(): $CancellablePromise<number> {
@@ -119,6 +126,13 @@ export function ForkSession(sessionID: string): $CancellablePromise<config$0.Cha
  */
 export function GetSessionMessages(sessionID: string): $CancellablePromise<$models.ChatMessage[] | null> {
     return $Call.ByID(2172610353, sessionID);
+}
+
+/**
+ * GitBranches 列出项目仓库的本地分支与当前工作树状态。
+ */
+export function GitBranches(projectID: string): $CancellablePromise<$models.GitBranchesInfo> {
+    return $Call.ByID(3663932179, projectID);
 }
 
 /**
@@ -330,4 +344,19 @@ export function SetSessionWorkspace(sessionID: string, workspaceDir: string): $C
  */
 export function SetToolAuditPath(path: string): $CancellablePromise<void> {
     return $Call.ByID(3549074391, path);
+}
+
+/**
+ * SwitchGitBranch 在干净且空闲的项目工作树上切换到已有本地分支。
+ */
+export function SwitchGitBranch(projectID: string, branch: string): $CancellablePromise<$models.WorkspaceContextInfo> {
+    return $Call.ByID(1431270479, projectID, branch);
+}
+
+/**
+ * WorkspaceContext 解析会话或草稿项目的工作区，并尽力附带 Git 元数据。
+ * Git 不可用绝不能阻断聊天；此时只返回空的分支字段。
+ */
+export function WorkspaceContext(sessionID: string, projectID: string): $CancellablePromise<$models.WorkspaceContextInfo> {
+    return $Call.ByID(3266096385, sessionID, projectID);
 }

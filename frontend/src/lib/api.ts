@@ -41,6 +41,9 @@ export type SessionStats = serviceModels.SessionStats;
 export type SkillImportResult = serviceModels.SkillImportResult;
 export type ChatMessage = serviceModels.ChatMessage;
 export type ChatStreamEvent = serviceModels.ChatStreamEvent;
+export type WorkspaceContextInfo = serviceModels.WorkspaceContextInfo;
+export type GitBranchesInfo = serviceModels.GitBranchesInfo;
+export type GitBranchInfo = serviceModels.GitBranchInfo;
 export type ServerStatus = mcpModels.ServerStatus;
 export type ToolInfo = mcpModels.ToolInfo;
 

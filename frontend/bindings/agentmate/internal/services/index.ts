@@ -36,6 +36,8 @@ export type {
     FileDiffHunk,
     FileDiffLine,
     FileDiffResult,
+    GitBranchInfo,
+    GitBranchesInfo,
     ImportAgentResult,
     KnowledgeFile,
     MemoryInfo,
@@ -48,6 +50,7 @@ export type {
     TaskWorkspaceSnapshot,
     UpdateStatus,
     UsageInfo,
+    WorkspaceContextInfo,
     WorkspaceEntry,
     WorkspaceFileInfo
 } from "./models.js";

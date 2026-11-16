@@ -19,6 +19,21 @@ export function pickedDirectoryValue(picked: unknown): string {
 }
 
 /**
+ * normalizeWorkspacePath 以与侧栏项目分组一致的方式比较目录：
+ * 统一分隔符、去掉尾斜杠，并按 Windows 习惯忽略大小写。
+ */
+export function normalizeWorkspacePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+/** findProjectByRoot 在已注册项目中查找目录对应的项目。 */
+export function findProjectByRoot<T extends { rootDir: string }>(projects: T[], directory: string): T | undefined {
+  const target = normalizeWorkspacePath(directory);
+  if (!target) return undefined;
+  return projects.find((project) => normalizeWorkspacePath(project.rootDir) === target);
+}
+
+/**
  * workspaceLockReason
  * 说明为什么输入区的目录菜单不得重新绑定任务工作区。空字符串表示绑定可以更改。
  * 项目会话始终在项目根目录中运行；已开始的回合会为所有人锁定该目录。

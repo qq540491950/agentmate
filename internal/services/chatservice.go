@@ -224,6 +224,12 @@ type ChatService struct {
 	workspaceMu sync.Mutex
 	// workspaceLocks 串行化同一会话的回合与工作区重新绑定；不同任务仍可并发运行和创建。
 	workspaceLocks map[string]*sync.Mutex
+	// repoLocks 按 Git 仓库根目录串行化分支切换与项目会话回合：分支操作取写锁，
+	// 回合取读锁，避免检出过程中模型继续读写工作树。
+	repoLocksMu sync.Mutex
+	repoLocks   map[string]*sync.RWMutex
+	// repoRoots 缓存工作区到 Git 仓库根的映射，避免每个回合都启动一次 git 探测。
+	repoRoots sync.Map
 	// terminalMu：sessionTerminals 冻结会话启动时所用的
 	// shell。它有意仅存于内存：应用重启后恢复的会话会采用当前的全局设置。
 	terminalMu       sync.Mutex
@@ -256,6 +262,7 @@ func NewChatService(s *Services, sessions session.Service, db *gorm.DB) *ChatSer
 		runs:             map[string]*runHandle{},
 		active:           map[string]map[*runHandle]struct{}{},
 		workspaceLocks:   map[string]*sync.Mutex{},
+		repoLocks:        map[string]*sync.RWMutex{},
 		sessionTerminals: map[string]config.TerminalSettings{},
 		sessionTurns:     map[string]string{},
 		sessions:         newRedactingSessionService(sessions, artifactDir),

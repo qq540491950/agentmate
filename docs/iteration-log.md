@@ -4,6 +4,25 @@
 
 ## 视觉测试与体验设计
 
+### 第二百九十四轮迭代：新对话工作区上下文与 Git 分支选择（已实施）
+
+依据：用户反馈点击「新对话」后没有选择目录入口，也没有像参考界面那样显示/切换 Git 分支。复现确认草稿态只保存 `draftProjectID`，composer 内没有工作区上下文 UI；主按钮新对话使用默认任务目录，后端也没有读取 Git 分支的 RPC。历史实现中的「Codex 式上下文标签」只在 `active && messages.length === 0` 时渲染，在 #30 改为惰性草稿后失效，随后又在界面收敛中删除。
+
+**实现要点**
+
+- 新增 `ChatService.WorkspaceContext`、`GitBranches`、`SwitchGitBranch`、`CreateGitBranch`：按 `projectID` 解析项目根/Git 仓库根，只读接口返回当前分支、分离 HEAD、本地分支与未提交文件数；切换仅允许干净工作树与空闲项目，创建分支允许保留未提交改动。
+- 新增仓库级 `sync.RWMutex`：项目回合持读锁，分支检出/创建持写锁并通过 `TryLock` 拒绝运行中切换；切换后重建同一项目所有会话的任务基线，避免分支差异污染任务结果区。
+- 前端新增 `WorkspaceContextBar`：草稿显示项目/目录选择器、本地标记与分支 chip；项目菜单支持搜索、已有项目复用、选择其他目录自动注册项目、不在项目中工作；分支弹层支持搜索、当前分支 Check、`未提交：N 个文件`、运行中/脏工作区/非 Git 仓库提示，以及「创建并检出分支…」对话框。
+- 分支按项目工作树共享，已有会话可查看并在仓库空闲、干净时切换；分支名、脏工作区和运行中状态均由后端二次校验，不使用 force checkout、reset、clean 或自动 stash。
+- `frontend/stub/main.tsx` 补齐新 RPC 与 `branchMode=busy|subdir` 视觉夹具；`frontend/src/lib/gitBranch.ts` 增加分支过滤与状态文案纯函数。
+
+**测试证据**
+
+- Go：新增真实临时 Git 仓库用例，覆盖当前分支、未提交计数、脏工作区拒绝切换、运行中仓库拒绝切换、脏工作区创建分支保留文件、分离 HEAD、非 Git 目录、子目录项目禁止切分支与 Windows 无窗口 Git 进程；`go test ./internal/... -count=1`、`go test -race ./internal/services -count=1`、`go vet ./internal/... .` 全绿。
+- 前端：`npx tsc --noEmit`、`npm test`（44 文件 / 322 例）、`npm run build` 全绿；新增 `gitBranch.test.ts` 与 `workspace.test.ts` 目录复用用例。
+- `wails3 build` 通过，重新生成绑定并产出 `bin/agentmate.exe`。
+- 浏览器桩走查：新对话出现「选择项目或目录」与「本地」；选择 `agentmate` 后出现 `main` 分支 chip；`cloud/lirt` 显示「未提交：3 个文件」并禁用其他已有分支；创建 `feature/visual` 后 chip 即时更新；选择目录自动注册 `agentmate-picked` 并绑定草稿。
+
 ### 第二百九十三轮迭代：执行过程标题行窄宽不越界（已实施）
 
 依据：用户截图反馈执行过程标题行偶尔超出正文列。浏览器桩在 760px 窗口复现：卡片外框仍等于正文列宽，但“8 个步骤 + 1 失败”的按钮 `clientWidth=330`、`scrollWidth=340`，状态徽标越过卡片右边缘 9.66px；同一宽度下单步骤组正常，确认是动态摘要长度触发的标题行溢出。

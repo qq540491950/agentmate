@@ -315,6 +315,19 @@ let pendingAnswer = 0;
 // 会话级审批模式，合并到 ListSessions
 // 中，以便在桩中切换聊天时恢复每个聊天自身的模式。
 const sessionSandboxModes = new Map<string, string>();
+// Git 分支视觉夹具：alpha 当前在 lirt 且有未提交改动，beta 在 main 且干净。
+const stubProjectBranches = new Map<string, string[]>([
+  ["proj_alpha", ["main", "lirt", "feature/login"]],
+  ["proj_beta", ["main", "release/next"]],
+]);
+const stubProjectCurrentBranch = new Map<string, string>([
+  ["proj_alpha", "lirt"],
+  ["proj_beta", "main"],
+]);
+const stubProjectDirtyFiles = new Map<string, number>([
+  ["proj_alpha", 3],
+  ["proj_beta", 0],
+]);
 type TaskSnapshotMode = "success" | "empty" | "error" | "truncated" | "slow";
 // 浏览器走查可以通过 ?taskMode= 请求 empty/error/truncated/slow 状态。
 const stubParams = new URLSearchParams(window.location.search);
@@ -325,6 +338,7 @@ let taskSnapshotMode: TaskSnapshotMode = (["success", "empty", "error", "truncat
 const workspaceMockMode = stubParams.get("workspaceMode") === "conflict"
   ? "conflict"
   : stubParams.get("workspaceMode") === "error" ? "error" : "success";
+const branchMockMode = stubParams.get("branchMode") ?? "success";
 const dialogMode = stubParams.get("dialogMode") === "cancel" ? "cancel" : "select";
 // 更新流程夹具：?update=hidden|available|downloading|ready|error|notify
 const requestedUpdateMode = stubParams.get("update") ?? "available";
@@ -567,6 +581,103 @@ const handlers: Record<string, (args: any[]) => any> = {
     if (!sess) throw new Error("会话不存在");
     const project = seedConfig.projects.find((p: any) => p.id === (sess as any).projectId);
     return sess.workspaceDir || project?.rootDir || seedConfig.settings.workspaceDir;
+  },
+  // WorkspaceContext(sessionID, projectID)：草稿与已有会话共用的项目/Git 元数据。
+  [svc("ChatService", "WorkspaceContext")]: (args) => {
+    const sess = args[0] ? seedConfig.sessions.find((s: any) => s.id === args[0]) : null;
+    const projectID = sess ? (sess as any).projectId ?? "" : args[1];
+    const project = seedConfig.projects.find((p: any) => p.id === projectID);
+    if (!project) {
+      return {
+        workspaceDir: (sess as any)?.workspaceDir || seedConfig.settings.workspaceDir,
+      };
+    }
+    if (!stubProjectBranches.has(project.id)) {
+      return {
+        projectId: project.id,
+        projectName: project.name,
+        workspaceDir: project.rootDir,
+      };
+    }
+    return {
+      projectId: project.id,
+      projectName: project.name,
+      workspaceDir: project.rootDir,
+      gitRepoRoot: project.rootDir,
+      gitBranch: stubProjectCurrentBranch.get(project.id) ?? "main",
+      gitDirtyFiles: stubProjectDirtyFiles.get(project.id) ?? 0,
+    };
+  },
+  // GitBranches(projectID)：提供搜索、当前分支、脏计数与创建入口所需的夹具。
+  [svc("ChatService", "GitBranches")]: (args) => {
+    const project = seedConfig.projects.find((p: any) => p.id === args[0]);
+    if (!project) throw new Error("项目不存在");
+    if (!stubProjectBranches.has(project.id)) {
+      return {
+        projectId: project.id,
+        branches: [],
+        canSwitch: false,
+        blockedReason: "项目目录不是 Git 仓库",
+      };
+    }
+    const current = stubProjectCurrentBranch.get(project.id) ?? "main";
+    const dirty = stubProjectDirtyFiles.get(project.id) ?? 0;
+    const blockedReason = branchMockMode === "busy"
+      ? "项目内有会话正在运行，暂不能切换分支"
+      : branchMockMode === "subdir" ? "项目目录不是 Git 仓库根目录，不能切换分支" : "";
+    return {
+      projectId: project.id,
+      repoRoot: project.rootDir,
+      current,
+      detached: false,
+      headCommit: "a1b2c3d",
+      dirtyFiles: dirty,
+      dirtyKnown: true,
+      branches: (stubProjectBranches.get(project.id) ?? ["main"]).map((name) => ({
+        name,
+        current: name === current,
+      })),
+      canSwitch: !blockedReason,
+      blockedReason,
+    };
+  },
+  // SwitchGitBranch(projectID, branch)：脏工作区与运行态由后端真实拒绝，这里模拟同一规则。
+  [svc("ChatService", "SwitchGitBranch")]: (args) => {
+    const project = seedConfig.projects.find((p: any) => p.id === args[0]);
+    if (!project) throw new Error("项目不存在");
+    const dirty = stubProjectDirtyFiles.get(project.id) ?? 0;
+    if (dirty > 0) throw new Error(`当前有 ${dirty} 个未提交文件，请先提交或暂存后再切换分支`);
+    if (branchMockMode === "busy") throw new Error("项目内有会话正在运行，暂不能切换分支");
+    const branches = stubProjectBranches.get(project.id) ?? ["main"];
+    if (!branches.includes(args[1])) throw new Error(`分支「${args[1]}」不存在`);
+    stubProjectCurrentBranch.set(project.id, args[1]);
+    return {
+      projectId: project.id,
+      projectName: project.name,
+      workspaceDir: project.rootDir,
+      gitRepoRoot: project.rootDir,
+      gitBranch: args[1],
+      gitDirtyFiles: 0,
+    };
+  },
+  // CreateGitBranch(projectID, name)：创建后立即切换，保留脏文件。
+  [svc("ChatService", "CreateGitBranch")]: (args) => {
+    const project = seedConfig.projects.find((p: any) => p.id === args[0]);
+    if (!project) throw new Error("项目不存在");
+    const name = String(args[1] ?? "").trim();
+    if (!name || name.includes("..")) throw new Error("分支名无效");
+    const branches = stubProjectBranches.get(project.id) ?? ["main"];
+    if (branches.includes(name)) throw new Error(`分支「${name}」已存在`);
+    stubProjectBranches.set(project.id, [...branches, name]);
+    stubProjectCurrentBranch.set(project.id, name);
+    return {
+      projectId: project.id,
+      projectName: project.name,
+      workspaceDir: project.rootDir,
+      gitRepoRoot: project.rootDir,
+      gitBranch: name,
+      gitDirtyFiles: stubProjectDirtyFiles.get(project.id) ?? 0,
+    };
   },
   // ListProjects
   [svc("ChatService", "ListProjects")]: () => seedConfig.projects,

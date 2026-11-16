@@ -227,6 +227,11 @@ func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentI
 	if target == nil {
 		return fmt.Errorf("会话 %q 不存在", sessionID)
 	}
+	releaseRepo := func() {}
+	if strings.TrimSpace(target.ProjectID) != "" {
+		releaseRepo = c.lockRepoForTurn(target.EffectiveWorkspaceFor(cfg))
+	}
+	defer releaseRepo()
 
 	// 开头的 @ 提及仅路由当前回合；护栏遵循该回合的有效目标，因此被 @ 的 Agent
 	// 自身的护栏设置会生效。
@@ -342,6 +347,11 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 	if target == nil {
 		return fmt.Errorf("会话 %q 不存在", sessionID)
 	}
+	releaseRepo := func() {}
+	if strings.TrimSpace(target.ProjectID) != "" {
+		releaseRepo = c.lockRepoForTurn(target.EffectiveWorkspaceFor(cfg))
+	}
+	defer releaseRepo()
 	// HITL 恢复必须重建被中断回合所运行的完全相同的 Agent
 	// 树——包括由原始用户消息中开头的 @mention 路由的回合。
 	turnTarget := turnTargetFor(cfg, target, lastUserText)

@@ -222,6 +222,30 @@ export interface FileDiffResult {
 }
 
 /**
+ * GitBranchInfo 是分支选择器中的一行。
+ */
+export interface GitBranchInfo {
+    "name": string;
+    "current"?: boolean;
+}
+
+/**
+ * GitBranchesInfo 描述一个项目工作树的 Git 分支状态。
+ */
+export interface GitBranchesInfo {
+    "projectId": string;
+    "repoRoot"?: string;
+    "current"?: string;
+    "detached"?: boolean;
+    "headCommit"?: string;
+    "dirtyFiles"?: number;
+    "dirtyKnown"?: boolean;
+    "branches": GitBranchInfo[] | null;
+    "canSwitch": boolean;
+    "blockedReason"?: string;
+}
+
+/**
  * ImportAgentResult 是导入结果：已存储的
  * Agent，以及导入期间应用的任何本机修复（剥离悬空引用），以便 UI
  * 能够展示调整了什么。
@@ -405,6 +429,20 @@ export enum WorkspaceChangeStatus {
     ChangeModified = "modified",
     ChangeDeleted = "deleted",
 };
+
+/**
+ * WorkspaceContextInfo 是 composer 工作区上下文条的数据源。
+ */
+export interface WorkspaceContextInfo {
+    "projectId"?: string;
+    "projectName"?: string;
+    "workspaceDir": string;
+    "gitRepoRoot"?: string;
+    "gitBranch"?: string;
+    "gitDetached"?: boolean;
+    "gitCommit"?: string;
+    "gitDirtyFiles"?: number;
+}
 
 /**
  * WorkspaceEntry 是 composer 的 “@” 选择器可以引用的一个路径。Path

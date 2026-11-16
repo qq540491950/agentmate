@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isDialogCancelError, pickedDirectoryValue, workspaceLockReason } from "./workspace";
+import {
+  findProjectByRoot,
+  isDialogCancelError,
+  pickedDirectoryValue,
+  workspaceLockReason,
+} from "./workspace";
 
 describe("isDialogCancelError", () => {
   it("treats the Wails picker cancellation as no selection", () => {
@@ -44,5 +49,22 @@ describe("workspaceLockReason", () => {
 
   it("allows an explicit directory before the first turn", () => {
     expect(workspaceLockReason({ hasProject: false, started: false })).toBe("");
+  });
+});
+
+describe("findProjectByRoot", () => {
+  const projects = [
+    { id: "p1", name: "agentmate", rootDir: "D:\\Projects\\AgentMate\\" },
+    { id: "p2", name: "cloud", rootDir: "/srv/cloud" },
+  ];
+
+  it("matches separators, trailing slashes and case", () => {
+    expect(findProjectByRoot(projects, "d:/projects/agentmate")?.id).toBe("p1");
+    expect(findProjectByRoot(projects, "/srv/cloud/")?.id).toBe("p2");
+  });
+
+  it("does not pick an unrelated or empty directory", () => {
+    expect(findProjectByRoot(projects, "D:/Projects/agentmate-other")).toBeUndefined();
+    expect(findProjectByRoot(projects, "   ")).toBeUndefined();
   });
 });

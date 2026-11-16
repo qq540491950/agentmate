@@ -50,7 +50,7 @@ import {
   type AssistantCandidate,
   type MentionCandidate,
 } from "@/lib/mentions";
-import { isDialogCancelError } from "@/lib/workspace";
+import { findProjectByRoot, isDialogCancelError } from "@/lib/workspace";
 import { composerReasoningModel, levelLabel, modelLabel, modelPickerLabel, reasoningLevels } from "@/lib/modelLabel";
 import { resolveAgentModel } from "@/lib/agentModel";
 import { MessageBubble, DaySeparator } from "@/components/chat/MessageBubble";
@@ -65,6 +65,7 @@ import { PlanChip, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
 import { ReasoningEffortPanel } from "@/components/chat/ReasoningEffortPanel";
 import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
+import { WorkspaceContextBar } from "@/components/chat/WorkspaceContextBar";
 import { SidebarFooter } from "@/components/SidebarFooter";
 import type { SettingsTab } from "@/pages/SettingsPage";
 import {
@@ -73,7 +74,7 @@ import {
   type AgentConfig, type AttachmentIn, type ChatSession, type TeamConfig,
   type ChatStreamEvent,
   type RemoteAgentConfig, type UsageInfo, type ModelProvider, type ModelInfo, type SessionStats,
-  type Project, type Settings, type SkillConfig, type WorkspaceEntry,
+  type Project, type Settings, type SkillConfig, type WorkspaceEntry, type WorkspaceContextInfo,
 } from "@/lib/api";
 import { contextTooltipLines, estimateContextTokens, resolveContextUsage } from "@/lib/contextUsage";
 import {
@@ -242,6 +243,16 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [workspaceError, setWorkspaceError] = useState("");
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(false);
   const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
+  // composer 上方的项目/本地/分支上下文；草稿与已有会话共用同一份后端解析结果。
+  const [workspaceContext, setWorkspaceContext] = useState<WorkspaceContextInfo | null>(null);
+  const [workspaceContextLoading, setWorkspaceContextLoading] = useState(false);
+  const [branchBusy, setBranchBusy] = useState(false);
+  const [branchRevision, setBranchRevision] = useState(0);
+  const workspaceContextRequest = useRef(0);
+  const branchBusyRef = useRef(false);
+  useEffect(() => {
+    branchBusyRef.current = branchBusy;
+  }, [branchBusy]);
   const [editing, setEditing] = useState(false);
   // 设置保存新会话的默认值；每个会话拥有自己的当前策略。输入区读取/写入该会话中
   // 的这对值，绝不读取/写入默认值。
@@ -364,6 +375,11 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   // 供全局 ⌘N 处理器使用的最新直接会话创建函数；该处理器的监听 effect
   // 在此定义进入渲染作用域之前就已注册。
   const createDirectSessionRef = useRef<() => void>(() => {});
+  const selectDraftProject = useCallback((projectID: string) => {
+    setDraftProjectID(projectID);
+    setWorkspaceContext(null);
+    setWorkspaceContextLoading(true);
+  }, []);
   // 新聊天始终为直接模式（无目标）：回合在默认供应商的模型上运行，且开头的
   // @助手 提及会将各个回合路由到 Agent、团队或远程 A2A
   // Agent。没有对话框，也没有预先配置。
@@ -373,7 +389,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const openNewChatDraft = useCallback((projectID: string) => {
     setActiveID("");
     setNewChatDraft(true);
-    setDraftProjectID(projectID);
+    selectDraftProject(projectID);
     setMessages([]);
     setFreshInput("");
     setEditing(false);
@@ -381,7 +397,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     setDraftModelOverride("");
     setDraftApprovalPolicy("");
     setDraftSandboxProfile("");
-  }, []);
+  }, [selectDraftProject]);
   const createDirectSession = useCallback(() => openNewChatDraft(""), [openNewChatDraft]);
   createDirectSessionRef.current = createDirectSession;
   const createProjectSession = useCallback(
@@ -433,7 +449,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       })
       .catch(() => { /* keep the last known list */ });
     return () => { cancelled = true; };
-  }, [activeID, draftProjectID, resolvedWorkspace]);
+  }, [activeID, draftProjectID, resolvedWorkspace, branchRevision]);
 
   // “@”选择器索引：与斜杠技能的工作区解析相同。
   useEffect(() => {
@@ -446,7 +462,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         if (!cancelled) setContextEntries([]);
       });
     return () => { cancelled = true; };
-  }, [activeID, draftProjectID, resolvedWorkspace]);
+  }, [activeID, draftProjectID, resolvedWorkspace, branchRevision]);
 
   useEffect(() => {
     if (!activeID) {
@@ -471,6 +487,38 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       cancelled = true;
     };
   }, [activeID, active?.workspaceDir, active?.projectId]);
+
+  // 项目/分支上下文与工作区解析分开：草稿没有 session，也必须能显示分支。
+  useEffect(() => {
+    if (!activeID && !newChatDraft) {
+      setWorkspaceContext(null);
+      setWorkspaceContextLoading(false);
+      return;
+    }
+    const request = ++workspaceContextRequest.current;
+    let cancelled = false;
+    setWorkspaceContextLoading(true);
+    Chat.WorkspaceContext(activeID, activeID ? "" : draftProjectID)
+      .then((info) => {
+        if (!cancelled && request === workspaceContextRequest.current) setWorkspaceContext(info);
+      })
+      .catch(() => {
+        if (!cancelled && request === workspaceContextRequest.current) setWorkspaceContext(null);
+      })
+      .finally(() => {
+        if (!cancelled && request === workspaceContextRequest.current) setWorkspaceContextLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeID, draftProjectID, newChatDraft, branchRevision]);
+
+  // 外部 Git 客户端或终端可能在当前应用失焦时切换分支；重新聚焦时刷新上下文。
+  useEffect(() => {
+    const onFocus = () => setBranchRevision((n) => n + 1);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
 
   // 首次加载时打开最新的会话——除非「新聊天」有意让页面停留在未保存的草稿上（iss
   // ue #30）。任何会话变为活动状态都会结束草稿模式。
@@ -885,6 +933,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       if (!streamedErrorRef.current) turnStartedRef.current = true;
       setSessionUsage(ev.sessionUsage ?? null);
       setWorkspaceRefresh((n) => n + 1);
+      setBranchRevision((n) => n + 1);
       // 通过 ref
       // 读取最新的标志：此订阅每个会话只创建一次，否则会捕获启动时的值。
       if (autoSpeakRef.current) {
@@ -1126,6 +1175,15 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     let sid = targetID ?? activeID;
     const text = (override ?? input).trim();
     if (!text) return;
+    if (branchBusyRef.current) {
+      if (targetID) {
+        // 排队消息已经出队，不能在分支检出期间丢弃；等本次切换完成后再投递。
+        setTimeout(() => sendRef.current(override, targetID, reasoningOverride), 250);
+        return;
+      }
+      toast.warning("正在切换分支，请稍候");
+      return;
+    }
     // 本次发送是否源自活跃的输入框（或尚待创建的聊天）：仅在这种情况下，待处理
     // 的图片附件才属于它。
     const fromComposer = !sid || sid === activeID;
@@ -1621,6 +1679,32 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
   };
 
+  // 从草稿的项目菜单直接选择目录：已注册目录复用项目，否则注册后再绑定，
+  // 避免把项目根目录误当成独占任务目录而只能开一个对话。
+  const chooseDraftDirectory = async () => {
+    try {
+      const picked = await pickWorkspace();
+      if (!picked) return;
+      const existing = findProjectByRoot(projects, picked);
+      if (existing) {
+        selectDraftProject(existing.id);
+        return;
+      }
+      const project = await Chat.SaveProject("", "", picked);
+      reloadProjects();
+      selectDraftProject(project.id);
+      toast.success(`已添加项目「${project.name}」`);
+    } catch (e) {
+      toast.error(`选择项目目录失败: ${errText(e)}`);
+    }
+  };
+
+  const handleBranchChanged = (info: WorkspaceContextInfo) => {
+    setWorkspaceContext(info);
+    setBranchRevision((n) => n + 1);
+    setWorkspaceRefresh((n) => n + 1);
+  };
+
   const deleteProject = async (p: Project) => {
     setConfirmRequest({
       title: `删除项目「${p.name}」？`,
@@ -1830,6 +1914,11 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   // 选中状态仅属于会话行。浏览某个项目的会话时，项目行保持中性；
   // 唯一的例外是待定的项目草稿，它会在第一个会话行出现之前标记其目标。
   const draftProjectKey = draftProjectID ? `proj:${draftProjectID}` : "";
+  const composerProjectID = activeID ? (active?.projectId ?? "") : draftProjectID;
+  const composerProject = composerProjectID
+    ? projects.find((project) => project.id === composerProjectID) ?? null
+    : null;
+  const showWorkspaceContext = !!activeID || newChatDraft;
   // 打开位于五行预览之外的聊天时，必须展开其所属项目； 否则活动行将不可见。
   useEffect(() => {
     if (!activeID) return;
@@ -3190,6 +3279,21 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               </div>
             )}
           </div>
+          {showWorkspaceContext && (
+            <div className="mx-auto composer-col px-3">
+              <WorkspaceContextBar
+                mode={activeID ? "locked" : "draft"}
+                projects={projects}
+                project={composerProject}
+                context={workspaceContext}
+                contextLoading={workspaceContextLoading}
+                onSelectProject={selectDraftProject}
+                onChooseDirectory={chooseDraftDirectory}
+                onBranchChanged={handleBranchChanged}
+                onBranchBusyChange={setBranchBusy}
+              />
+            </div>
+          )}
           <div className="mx-auto composer-col px-3">
             <div
               className={cn(
@@ -3648,7 +3752,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         className="h-7 w-7 rounded-full"
                         aria-label={editing ? "重新发送" : "发送"}
                         onClick={() => send()}
-                        disabled={(!active && providerCount === 0) || !input.trim()}
+                        disabled={(!active && providerCount === 0) || !input.trim() || branchBusy}
                       >
                         <ArrowUp className="h-3.5 w-3.5" />
                       </Button>
