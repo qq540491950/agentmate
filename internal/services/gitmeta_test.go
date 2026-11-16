@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -152,7 +153,11 @@ func TestSwitchGitBranchRejectsRunningRepo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock := chat.repoLock(root)
+	repoRoot, err := chat.gitRepoRoot(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock := chat.repoLock(repoRoot)
 	lock.RLock()
 	defer lock.RUnlock()
 	if _, err := chat.SwitchGitBranch(project.ID, "lirt"); err == nil || !strings.Contains(err.Error(), "正在运行") {

@@ -343,6 +343,11 @@ func (c *ChatService) repoLock(path string) *sync.RWMutex {
 
 func repoKey(path string) string {
 	key := filepath.Clean(strings.TrimSpace(path))
+	// Windows 临时目录常以 8.3 短路径出现，而 git 返回长路径；先解析成同一
+	// 物理路径，避免同一个仓库生成两把互不相干的锁。
+	if resolved, err := filepath.EvalSymlinks(key); err == nil {
+		key = resolved
+	}
 	if runtime.GOOS == "windows" {
 		key = strings.ToLower(key)
 	}
