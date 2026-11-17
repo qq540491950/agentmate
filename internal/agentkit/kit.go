@@ -82,6 +82,7 @@ type Kit struct {
 	mcp       *mcpmgr.Manager
 	memory    tool.Tool       // 长期记忆搜索工具（记忆不可用时为 nil）
 	knowledge *KnowledgeIndex // 工作区知识向量索引（nil => 关键词搜索）
+	gateway   *ToolGateway
 	// skillMu 串行化技能物化：同一 agent
 	// 的并行构建（并行会话按回合重建）不得在共享暂存目录上交错执行写入/清理/预加载
 	// 序列。
@@ -93,15 +94,83 @@ type Kit struct {
 	// globalAgentsFile 是用户级工程指南（~/.agents/AGENTS.md）。在构造时捕获，因此测试会在构建 Kit
 	// 之前通过 home-dir 环境预置它。
 	globalAgentsFile string
+	delegateOpts     DelegateOptions
+	anchorsMu        sync.RWMutex
+	workflowAnchors  func(sessionID string) string
 }
 
 // NewKit 创建一个 Kit。
 func NewKit(store *config.Store, mcp *mcpmgr.Manager) *Kit {
-	return &Kit{store: store, mcp: mcp, globalSkillRoot: config.GlobalSkillRoot(), globalAgentsFile: config.GlobalAgentsFile()}
+	artifactDir := ""
+	if store != nil {
+		artifactDir = filepath.Join(store.Dir(), "tool-results")
+	}
+	kit := &Kit{
+		store: store, mcp: mcp, gateway: NewToolGateway(artifactDir),
+		globalSkillRoot: config.GlobalSkillRoot(), globalAgentsFile: config.GlobalAgentsFile(),
+	}
+	kit.registerGatewaySpecs()
+	return kit
+}
+
+// ToolGateway 暴露统一工具网关，供聊天服务注入副作用台账。
+func (k *Kit) ToolGateway() *ToolGateway { return k.gateway }
+
+// SetWorkflowAnchors 注入每次模型调用前重新附加的工作流锚点。锚点独立于
+// 会话历史，因此 ADK 压缩旧事件后当前计划、未决审批和最近证据仍然可见。
+func (k *Kit) SetWorkflowAnchors(provider func(sessionID string) string) {
+	if k == nil {
+		return
+	}
+	k.anchorsMu.Lock()
+	k.workflowAnchors = provider
+	k.anchorsMu.Unlock()
+}
+
+func (k *Kit) currentWorkflowAnchors(sessionID string) string {
+	if k == nil {
+		return ""
+	}
+	k.anchorsMu.RLock()
+	provider := k.workflowAnchors
+	k.anchorsMu.RUnlock()
+	if provider == nil {
+		return ""
+	}
+	return provider(sessionID)
+}
+
+func (k *Kit) registerGatewaySpecs() {
+	if k == nil || k.gateway == nil {
+		return
+	}
+	specs := []ToolSpec{
+		{Name: "get_current_time", Source: "builtin", Timeout: 10 * time.Second, Concurrency: "read", Idempotent: true},
+		{Name: "list_workspace_files", Source: "builtin", Effects: []Effect{EffectReadWorkspace}, Timeout: 30 * time.Second, Concurrency: "read", Idempotent: true, Untrusted: true},
+		{Name: "read_workspace_file", Source: "builtin", Effects: []Effect{EffectReadWorkspace}, Timeout: 30 * time.Second, Concurrency: "read", Idempotent: true, Untrusted: true},
+		{Name: "write_workspace_file", Source: "builtin", Effects: []Effect{EffectWriteWorkspace}, Timeout: 120 * time.Second, Concurrency: "workspace", Idempotent: true},
+		{Name: "edit_workspace_file", Source: "builtin", Effects: []Effect{EffectWriteWorkspace}, Timeout: 120 * time.Second, Concurrency: "workspace", Idempotent: true},
+		{Name: "run_command", Source: "builtin", Effects: []Effect{EffectCommand}, Timeout: 300 * time.Second, Concurrency: "workspace"},
+		{Name: "verify_work", Source: "builtin", Effects: []Effect{EffectCommand}, Timeout: 600 * time.Second, Concurrency: "workspace"},
+		{Name: "plan_todos", Source: "builtin", Effects: []Effect{EffectStateWrite}, Timeout: 30 * time.Second, Concurrency: "session", Idempotent: true},
+		{Name: "search_knowledge", Source: "builtin", Effects: []Effect{EffectReadWorkspace}, Timeout: 120 * time.Second, Concurrency: "read", Idempotent: true, Untrusted: true},
+		{Name: "delegate_task", Source: "builtin", Effects: []Effect{EffectExternal, EffectStateWrite}, Timeout: 300 * time.Second, Concurrency: "mcp"},
+	}
+	for _, spec := range specs {
+		_ = k.gateway.register(spec)
+	}
 }
 
 // SetMemoryTool 挂接长期记忆搜索工具。
 func (k *Kit) SetMemoryTool(t tool.Tool) { k.memory = t }
+
+// SetDelegateOptions 注入团队成员进度回调与独立预算。
+func (k *Kit) SetDelegateOptions(opts DelegateOptions) {
+	if opts.ArtifactDir == "" && k != nil && k.store != nil {
+		opts.ArtifactDir = filepath.Join(k.store.Dir(), "tool-results")
+	}
+	k.delegateOpts = opts
+}
 
 // SetKnowledgeIndex 挂接持久化的知识向量索引；与设置中的嵌入供应商结合后，这会将 search_knowledge
 // 从关键词检索升级为混合语义检索。
@@ -240,7 +309,7 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 	if err != nil {
 		return nil, err
 	}
-	tools = append(tools, builtin...)
+	tools = append(tools, k.gateway.WrapToolsForWorkspace(builtin, "builtin", workspace)...)
 
 	// 技能（通过 ADK 技能工具集进行渐进式披露）。
 	if len(ac.SkillIDs) > 0 {
@@ -249,7 +318,10 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 			return nil, fmt.Errorf("agent %q: %w", ac.Name, err)
 		}
 		if ts != nil {
-			toolsets = append(toolsets, ts)
+			toolsets = append(toolsets, k.gateway.WrapToolsetForWorkspace(ts, ToolSpec{
+				Source: "skill", Effects: []Effect{EffectReadWorkspace}, Timeout: 120 * time.Second,
+				Concurrency: "read", Idempotent: true,
+			}, workspace))
 		}
 	}
 
@@ -272,7 +344,11 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 		if err != nil {
 			mcpErrs = append(mcpErrs, fmt.Sprintf("MCP「%s」不可用: %v", s.Name, err))
 		} else {
-			toolsets = append(toolsets, mcpToolsetForApproval(ts, ac.EffectiveApprovalPolicy()))
+			approved := mcpToolsetForApproval(ts, ac.EffectiveApprovalPolicy())
+			toolsets = append(toolsets, k.gateway.WrapToolsetForWorkspace(approved, ToolSpec{
+				Source: "mcp:" + s.ID, Effects: []Effect{EffectExternal, EffectNetwork},
+				Timeout: 120 * time.Second, Concurrency: "mcp", Confirm: true, Untrusted: true,
+			}, workspace))
 		}
 	}
 	for _, id := range ac.MCPServerIDs {
@@ -283,7 +359,7 @@ func (k *Kit) buildLLMAgentWithSubAgents(ac config.AgentConfig, cfg config.Confi
 	if len(mcpErrs) > 0 {
 		return nil, fmt.Errorf("agent %q: %s", ac.Name, strings.Join(mcpErrs, "；"))
 	}
-	tools = append(tools, extraTools...)
+	tools = appendUniqueTools(tools, k.gateway.WrapToolsForWorkspace(extraTools, "builtin", workspace)...)
 
 	lc := k.llmConfig(ac, m, tools, toolsets, workspace)
 	lc.SubAgents = subAgents
@@ -309,6 +385,7 @@ func (k *Kit) llmConfig(ac config.AgentConfig, m model.LLM, tools []tool.Tool, t
 	if len(ac.StopSequences) > 0 {
 		gcc.StopSequences = ac.StopSequences
 	}
+	beforeModel := []llmagent.BeforeModelCallback{k.workflowAnchorCallback()}
 	return llmagent.Config{
 		Name:                     sanitizeAgentName(ac.Name),
 		Model:                    m,
@@ -317,7 +394,32 @@ func (k *Kit) llmConfig(ac config.AgentConfig, m model.LLM, tools []tool.Tool, t
 		GenerateContentConfig:    gcc,
 		Tools:                    tools,
 		Toolsets:                 toolsets,
+		BeforeModelCallbacks:     beforeModel,
 		DisallowTransferToParent: false,
+	}
+}
+
+func (k *Kit) workflowAnchorCallback() llmagent.BeforeModelCallback {
+	return func(ctx agent.Context, req *model.LLMRequest) (*model.LLMResponse, error) {
+		if req == nil || ctx == nil {
+			return nil, nil
+		}
+		anchors := strings.TrimSpace(k.currentWorkflowAnchors(ctx.SessionID()))
+		if anchors == "" {
+			return nil, nil
+		}
+		if len(req.Contents) > 0 {
+			last := req.Contents[len(req.Contents)-1]
+			if last != nil {
+				for _, part := range last.Parts {
+					if part != nil && strings.Contains(part.Text, "<workflow_anchors>") {
+						return nil, nil
+					}
+				}
+			}
+		}
+		req.Contents = append(req.Contents, genai.NewContentFromText(anchors, genai.RoleUser))
+		return nil, nil
 	}
 }
 
@@ -373,7 +475,9 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 	}
 
 	var members []agent.Agent
+	var remoteMembers []agent.Agent
 	var memberNames []string
+	memberBudgets := map[string]DelegationBudget{}
 	// memberByKey 将 Agent/远程 ID 映射到其构建后的
 	// Agent，因此显式负责人路径无需按位置索引即可组装其同级 Agent（悬空的成员 ID
 	// 过去会导致切片偏移，并造成错误分配或 panic）。
@@ -383,13 +487,27 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 		if !ok {
 			continue
 		}
-		a, err := k.buildLLMAgent(ac, cfg, workspace, "")
+		// 成员不得直接写协调员的计划；它们通过 submit_plan_proposal 提交建议。
+		ac.BuiltinTools = withoutBuiltin(ac.EffectiveBuiltinTools(), "todos")
+		proposal, perr := PlanProposalTool()
+		if perr != nil {
+			return nil, "", perr
+		}
+		a, err := k.buildLLMAgentWithSubAgents(ac, cfg, nil, workspace, "", proposal)
 		if err != nil {
 			return nil, "", err
 		}
 		members = append(members, a)
 		memberNames = append(memberNames, sanitizeAgentName(ac.Name))
 		memberByKey[id] = a
+		budget := DelegationBudget{MaxToolCalls: ac.MaxToolCalls, MaxTokens: ac.MaxSessionTokens}
+		if budget.MaxToolCalls <= 0 {
+			budget.MaxToolCalls = 30
+		}
+		if budget.MaxTokens <= 0 {
+			budget.MaxTokens = 50_000
+		}
+		memberBudgets[sanitizeAgentName(ac.Name)] = budget
 	}
 
 	// 远程 A2A 成员作为协调器可转接到的子 Agent 加入。
@@ -403,8 +521,12 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 				return nil, "", err
 			}
 			members = append(members, ra)
+			remoteMembers = append(remoteMembers, ra)
 			memberNames = append(memberNames, sanitizeAgentName(r.Name))
 			memberByKey[id] = ra
+			memberBudgets[sanitizeAgentName(r.Name)] = DelegationBudget{
+				MaxToolCalls: 30, MaxTokens: 50_000,
+			}
 		}
 	}
 
@@ -428,14 +550,23 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 				}
 			}
 			leadAc := memberByID[tc.LeadAgentID]
-			var extra []tool.Tool
+			extra, err := k.teamCoordinatorTools(tc, cfg, workspace)
+			if err != nil {
+				return nil, "", err
+			}
 			if len(peers) > 0 {
-				delegate, derr := DelegateTool(peers)
+				delegate, derr := DelegateToolWithOptions(peers, DelegateOptions{
+					OnProgress: k.delegateOpts.OnProgress, Budgets: memberBudgets,
+					ArtifactDir: k.delegateOpts.ArtifactDir,
+				})
 				if derr != nil {
 					return nil, "", derr
 				}
 				extra = append(extra, delegate)
 			}
+			leadAc.SystemPrompt = strings.TrimSpace(leadAc.SystemPrompt) +
+				"\n\n团队协调要求：你是团队负责人。使用 plan_todos 维护唯一计划，必要时用 delegate_task 委派成员；" +
+				"成员只提交计划建议。验收成员证据后，代码任务必须调用 verify_work；最终由你汇总答复。"
 			leadAgent, err := k.buildLLMAgentWithSubAgents(leadAc, cfg, peers, workspace, reasoningLevel, extra...)
 			if err != nil {
 				return nil, "", err
@@ -470,18 +601,29 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 	instruction := fmt.Sprintf("%s\n\nTeam members: %s. Prefer delegate_task(agent, objective, acceptance) so you retain control and can verify each result; then summarize for the user.",
 		coordInstruction, strings.Join(memberNames, ", "))
 	instruction = k.appendAgentGuides(instruction, workspace)
-	delegate, derr := DelegateTool(members)
+	delegate, derr := DelegateToolWithOptions(members, DelegateOptions{
+		OnProgress: k.delegateOpts.OnProgress, Budgets: memberBudgets,
+		ArtifactDir: k.delegateOpts.ArtifactDir,
+	})
 	if derr != nil {
 		return nil, "", derr
 	}
+	coordTools, derr := k.teamCoordinatorTools(tc, cfg, workspace)
+	if derr != nil {
+		return nil, "", derr
+	}
+	coordTools = append(coordTools, delegate)
 
 	coord, err := llmagent.New(llmagent.Config{
 		Name:                rootName,
 		Model:               m,
 		Description:         firstNonEmpty(tc.Description, tc.Name),
 		InstructionProvider: func(agent.ReadonlyContext) (string, error) { return instruction, nil },
-		SubAgents:           members,
-		Tools:               []tool.Tool{delegate},
+		// 本地成员只通过 delegate_task 运行，避免自动协调员用 transfer 放弃根节点
+		// 控制权；远程 A2A 成员保留为可转移子代理，维持既有远程调用链路。
+		SubAgents:            remoteMembers,
+		Tools:                k.gateway.WrapToolsForWorkspace(coordTools, "builtin", workspace),
+		BeforeModelCallbacks: []llmagent.BeforeModelCallback{k.workflowAnchorCallback()},
 		GenerateContentConfig: func() *genai.GenerateContentConfig {
 			if maxOutput <= 0 {
 				return nil
@@ -493,6 +635,75 @@ func (k *Kit) buildTeam(tc config.TeamConfig, workspace, reasoningLevel string) 
 		return nil, "", err
 	}
 	return coord, rootName, nil
+}
+
+func withoutBuiltin(tools []string, removed string) []string {
+	out := make([]string, 0, len(tools))
+	for _, name := range tools {
+		if name != removed {
+			out = append(out, name)
+		}
+	}
+	if len(out) == 0 {
+		// BuiltinTools 的空表在配置语义中表示“全集”，因此不能把只含 todos 的
+		// 成员收窄成空表，否则反而会重新获得计划写权限。
+		out = append(out, "time")
+	}
+	return out
+}
+
+// appendUniqueTools 按工具名合并显式附加工具，先到者优先。协调员的内置工具
+// 已经覆盖集合时，附加实现不会重复出现在模型工具表中。
+func appendUniqueTools(base []tool.Tool, extra ...tool.Tool) []tool.Tool {
+	seen := make(map[string]bool, len(base)+len(extra))
+	out := make([]tool.Tool, 0, len(base)+len(extra))
+	for _, item := range base {
+		if item == nil || seen[item.Name()] {
+			continue
+		}
+		seen[item.Name()] = true
+		out = append(out, item)
+	}
+	for _, item := range extra {
+		if item == nil || seen[item.Name()] {
+			continue
+		}
+		seen[item.Name()] = true
+		out = append(out, item)
+	}
+	return out
+}
+
+// teamCoordinatorTools 保留协调员对计划、验证和文件读取的控制权；成员只能
+// 通过 delegate_task 返回 planProposal，不能直接写计划。
+func (k *Kit) teamCoordinatorTools(tc config.TeamConfig, cfg config.Config, workspace string) ([]tool.Tool, error) {
+	policy := SessionPolicy(workspace, tc.SandboxProfile, tc.SandboxNetwork)
+	coordAc := config.AgentConfig{
+		Name: tc.Name, SandboxNetwork: tc.SandboxNetwork,
+		ApprovalPolicy: tc.ApprovalPolicy, SandboxProfile: tc.SandboxProfile,
+		Terminal: tc.Terminal,
+	}
+	spec, err := k.terminalSpec(coordAc, cfg, policy)
+	if err != nil {
+		return nil, err
+	}
+	list, err := ListFilesTool(workspace)
+	if err != nil {
+		return nil, err
+	}
+	read, err := ReadFileTool(workspace)
+	if err != nil {
+		return nil, err
+	}
+	todos, err := TodosTool()
+	if err != nil {
+		return nil, err
+	}
+	verify, err := VerifyTool(workspace, policy, spec, false)
+	if err != nil {
+		return nil, err
+	}
+	return []tool.Tool{list, read, todos, verify}, nil
 }
 
 // searchOptions 根据当前设置组装知识工具选项：工作区加上已配置的嵌入后端（如果有）。
@@ -1277,7 +1488,11 @@ type readFileResult struct {
 	Content    string `json:"content"`
 	Truncated  bool   `json:"truncated,omitempty"`
 	NextOffset int64  `json:"nextOffset,omitempty"`
+	Sha256     string `json:"sha256"`
+	Size       int64  `json:"size"`
 }
+
+var workspaceReadHashes sync.Map // map[string]string，按工作区绝对路径记录最近一次读取哈希
 
 // ReadFileTool 读取工作区内的文件。
 func ReadFileTool(workspace string) (tool.Tool, error) {
@@ -1308,27 +1523,38 @@ func ReadFileTool(workspace string) (tool.Tool, error) {
 		if truncated {
 			next = offset + int64(read)
 		}
-		return readFileResult{Content: content, Truncated: truncated, NextOffset: next}, nil
+		sum, size, err := hashWorkspaceFile(root)
+		if err != nil {
+			return readFileResult{}, err
+		}
+		workspaceReadHashes.Store(filepath.Clean(root), sum)
+		return readFileResult{Content: content, Truncated: truncated, NextOffset: next, Sha256: sum, Size: size}, nil
 	})
 }
 
 type writeArgs struct {
-	Path           string `json:"path" jsonschema:"relative path inside the workspace"`
-	Content        string `json:"content"`
-	ExpectedSha256 string `json:"expectedSha256,omitempty" jsonschema:"optional SHA-256 of the current file; reject with stale_file if it changed"`
+	Path            string `json:"path" jsonschema:"relative path inside the workspace"`
+	Content         string `json:"content"`
+	ExpectedSha256  string `json:"expectedSha256,omitempty" jsonschema:"SHA-256 returned by read_workspace_file; required for existing files unless expectedMtimeMs and expectedSize are supplied"`
+	ExpectedMtimeMs int64  `json:"expectedMtimeMs,omitempty" jsonschema:"fallback optimistic check: file modification time in Unix milliseconds"`
+	ExpectedSize    int64  `json:"expectedSize,omitempty" jsonschema:"fallback optimistic check: file size in bytes"`
 }
 
 type writeResult struct {
-	OK    bool `json:"ok"`
-	Bytes int  `json:"bytes"`
+	OK           bool   `json:"ok"`
+	Bytes        int    `json:"bytes"`
+	BeforeSha256 string `json:"beforeSha256,omitempty"`
+	Sha256       string `json:"sha256"`
 }
 
 type editArgs struct {
-	Path           string `json:"path" jsonschema:"relative path inside the workspace"`
-	OldText        string `json:"oldText" jsonschema:"exact text to replace; include enough surrounding context to be unique"`
-	NewText        string `json:"newText" jsonschema:"replacement text"`
-	ReplaceAll     bool   `json:"replaceAll,omitempty" jsonschema:"replace every occurrence when true; the default requires a unique match"`
-	ExpectedSha256 string `json:"expectedSha256,omitempty" jsonschema:"optional SHA-256 of the current file; reject with stale_file if it changed"`
+	Path            string `json:"path" jsonschema:"relative path inside the workspace"`
+	OldText         string `json:"oldText" jsonschema:"exact text to replace; include enough surrounding context to be unique"`
+	NewText         string `json:"newText" jsonschema:"replacement text"`
+	ReplaceAll      bool   `json:"replaceAll,omitempty" jsonschema:"replace every occurrence when true; the default requires a unique match"`
+	ExpectedSha256  string `json:"expectedSha256,omitempty" jsonschema:"SHA-256 returned by read_workspace_file; required for existing files unless expectedMtimeMs and expectedSize are supplied"`
+	ExpectedMtimeMs int64  `json:"expectedMtimeMs,omitempty" jsonschema:"fallback optimistic check: file modification time in Unix milliseconds"`
+	ExpectedSize    int64  `json:"expectedSize,omitempty" jsonschema:"fallback optimistic check: file size in bytes"`
 }
 
 type editResult struct {
@@ -1337,6 +1563,8 @@ type editResult struct {
 	AddedLines   int    `json:"addedLines"`
 	RemovedLines int    `json:"removedLines"`
 	Diff         string `json:"diff"`
+	BeforeSha256 string `json:"beforeSha256,omitempty"`
+	Sha256       string `json:"sha256"`
 }
 
 // WriteFileTool 写入工作区内的文件。当 requireConfirmation 为 true
@@ -1381,17 +1609,13 @@ func writeWorkspaceFile(workspace string, args writeArgs, policy sandbox.Policy)
 	if ok, code, reason := policy.CheckWrite(root); !ok {
 		return writeResult{}, fmt.Errorf("%s: %s", code, reason)
 	}
-	if expected := strings.TrimSpace(args.ExpectedSha256); expected != "" {
-		current, readErr := os.ReadFile(root)
-		if readErr != nil {
-			if os.IsNotExist(readErr) {
-				return writeResult{}, fmt.Errorf("stale_file: 目标文件不存在或已被删除")
-			}
-			return writeResult{}, readErr
-		}
-		if !strings.EqualFold(expected, sha256Hex(current)) {
-			return writeResult{}, fmt.Errorf("stale_file: 文件在读取后被修改，请重新读取后再写入")
-		}
+	beforeHash, current, existed, err := checkExpectedFile(workspace, root, args.ExpectedSha256, args.ExpectedMtimeMs, args.ExpectedSize)
+	if err != nil {
+		return writeResult{}, err
+	}
+	_ = current
+	if !existed && strings.TrimSpace(args.ExpectedSha256) != "" {
+		return writeResult{}, fmt.Errorf("stale_file: 目标文件不存在或已被删除")
 	}
 	if err := os.MkdirAll(filepath.Dir(root), 0o755); err != nil {
 		return writeResult{}, err
@@ -1406,7 +1630,7 @@ func writeWorkspaceFile(workspace string, args writeArgs, policy sandbox.Policy)
 	if err := writeFilePreservingMode(root, []byte(args.Content), mode); err != nil {
 		return writeResult{}, err
 	}
-	return writeResult{OK: true, Bytes: len(args.Content)}, nil
+	return writeResult{OK: true, Bytes: len(args.Content), BeforeSha256: beforeHash, Sha256: sha256Hex([]byte(args.Content))}, nil
 }
 
 // EditFileTool 通过将 oldText 替换为 newText 来编辑现有工作区文件。它刻意与
@@ -1468,9 +1692,9 @@ func editWorkspaceFile(workspace string, args editArgs, policy sandbox.Policy) (
 		return editResult{}, err
 	}
 	original := string(raw)
-	if expected := strings.TrimSpace(args.ExpectedSha256); expected != "" &&
-		!strings.EqualFold(expected, sha256Hex(raw)) {
-		return editResult{}, fmt.Errorf("stale_file: 文件在读取后被修改，请重新读取后再编辑")
+	beforeHash, _, _, err := checkExpectedFile(workspace, root, args.ExpectedSha256, args.ExpectedMtimeMs, args.ExpectedSize)
+	if err != nil {
+		return editResult{}, err
 	}
 	count := strings.Count(original, args.OldText)
 	if count == 0 {
@@ -1496,7 +1720,61 @@ func editWorkspaceFile(workspace string, args editArgs, policy sandbox.Policy) (
 		AddedLines:   added,
 		RemovedLines: removed,
 		Diff:         diff,
+		BeforeSha256: beforeHash,
+		Sha256:       sha256Hex([]byte(updated)),
 	}, nil
+}
+
+func hashWorkspaceFile(path string) (string, int64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer f.Close()
+	h := sha256.New()
+	size, err := io.Copy(h, f)
+	if err != nil {
+		return "", 0, err
+	}
+	return hex.EncodeToString(h.Sum(nil)), size, nil
+}
+
+func checkExpectedFile(workspace, full, expected string, mtimeMs, size int64) (before string, data []byte, existed bool, err error) {
+	info, statErr := os.Stat(full)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			if strings.TrimSpace(expected) != "" || mtimeMs != 0 || size != 0 {
+				return "", nil, false, fmt.Errorf("stale_file: 目标文件不存在或已被删除")
+			}
+			return "", nil, false, nil
+		}
+		return "", nil, false, statErr
+	}
+	data, err = os.ReadFile(full)
+	if err != nil {
+		return "", nil, true, err
+	}
+	before = sha256Hex(data)
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		if cached, ok := workspaceReadHashes.Load(filepath.Clean(full)); ok {
+			expected, _ = cached.(string)
+		}
+	}
+	if expected == "" && mtimeMs > 0 {
+		if info.ModTime().UnixMilli() != mtimeMs || info.Size() != size {
+			return "", nil, true, fmt.Errorf("stale_file: 文件在读取后被修改，请重新读取后再操作")
+		}
+		return before, data, true, nil
+	}
+	if expected == "" {
+		return "", nil, true, fmt.Errorf("missing_expected_hash: 修改已有文件前请先读取并提供 expectedSha256（或 expectedMtimeMs+expectedSize）")
+	}
+	if !strings.EqualFold(expected, before) {
+		return "", nil, true, fmt.Errorf("stale_file: 文件在读取后被修改，请重新读取后再操作")
+	}
+	_ = workspace
+	return before, data, true, nil
 }
 
 // writeFilePreservingMode 通过同目录的临时文件写入，并将其重命名覆盖目标文件。由于目录相同，重命名在同
@@ -1783,11 +2061,14 @@ func capDiffLines(lines []string, lineLimit, byteLimit int) string {
 // ---------------------------------------------------------------------------
 // 会话计划（待办列表）工具
 
-// todosStateKey 将计划存储在 ADK
+// TodosStateKey 将计划存储在 ADK
 // 会话状态中，使其在重启后仍然存在，并保持在对话范围内。
-const todosStateKey = "agentmate.todos"
+const TodosStateKey = "agentmate.todos"
 
-type todoItem struct {
+const todosStateKey = TodosStateKey
+
+// PlanStep 是计划 v2 的公开契约，供服务层持久化、编辑和重试使用。
+type PlanStep struct {
 	ID         string   `json:"id,omitempty"`
 	Content    string   `json:"content"`
 	Status     string   `json:"status"` // pending | in_progress | blocked | completed | failed | skipped
@@ -1795,6 +2076,8 @@ type todoItem struct {
 	Acceptance []string `json:"acceptance,omitempty"`
 	Evidence   []string `json:"evidence,omitempty"`
 }
+
+type todoItem = PlanStep
 
 type todosArgs struct {
 	// Todos 是完整替换列表。省略 => 读取当前计划但不写入；为空 => 清除它。
@@ -1943,4 +2226,25 @@ func validatePlanEvidence(steps []todoItem) error {
 		}
 	}
 	return nil
+}
+
+// ValidatePlanSteps 导出计划校验，供服务层保存编辑器计划时复用同一套约束。
+func ValidatePlanSteps(steps []PlanStep) error {
+	if len(steps) > 50 {
+		return fmt.Errorf("任务计划最多 50 个步骤")
+	}
+	return validatePlanSteps(steps)
+}
+
+// IsCodeWorkspace 报告工作区是否包含需要验证门禁的代码项目。
+func IsCodeWorkspace(workspace string) bool {
+	if strings.TrimSpace(workspace) == "" {
+		return false
+	}
+	for _, name := range []string{"go.mod", "package.json", "Cargo.toml", "pyproject.toml", "pytest.ini", "tsconfig.json", "pom.xml", "build.gradle"} {
+		if fileExists(filepath.Join(workspace, name)) {
+			return true
+		}
+	}
+	return false
 }

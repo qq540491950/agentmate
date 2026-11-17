@@ -19,6 +19,8 @@ func writeEditFixture(t *testing.T, root, rel, content string) string {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// 夹具代表“模型刚刚读取过该文件”，因此允许安全降级使用最近读取哈希。
+	workspaceReadHashes.Store(filepath.Clean(path), sha256Hex([]byte(content)))
 	return path
 }
 

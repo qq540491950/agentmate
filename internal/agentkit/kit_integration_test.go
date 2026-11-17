@@ -132,8 +132,8 @@ func TestBuildTeamAutoCoordinator(t *testing.T) {
 		t.Fatalf("team name = %q", name)
 	}
 	subs := root.SubAgents()
-	if len(subs) != 2 {
-		t.Fatalf("expected 2 sub-agents, got %d", len(subs))
+	if len(subs) != 0 {
+		t.Fatalf("auto coordinator should keep local members behind delegate_task, got %d sub-agents", len(subs))
 	}
 
 	// 显式 lead 模式：lead 为根，另一成员为对等成员。
@@ -159,6 +159,39 @@ func TestBuildTeamMissingProvider(t *testing.T) {
 		// store 有默认 Agent 列表，供应商缺失 -> 必须报错
 		_ = store
 		t.Fatal("expected error for missing provider")
+	}
+}
+
+func TestTeamCoordinatorToolsKeepPlanVerifyAndFileReadControl(t *testing.T) {
+	kit, store := newTestKit(t)
+	if err := store.Update(func(cfg *config.Config) {
+		cfg.Providers = append(cfg.Providers, config.ModelProvider{
+			ID: "p1", Name: "Fake", Protocol: config.ProtocolOpenAI, Models: []config.ModelInfo{{ID: "m1"}},
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	team := config.TeamConfig{
+		ID: "t1", Name: "协调团队", AutoCoordinate: true,
+		ProviderID: "p1", Model: "m1",
+	}
+	tools, err := kit.teamCoordinatorTools(team, store.Get(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, item := range tools {
+		names[item.Name()] = true
+	}
+	for _, want := range []string{"plan_todos", "verify_work", "read_workspace_file", "list_workspace_files"} {
+		if !names[want] {
+			t.Fatalf("coordinator missing %q: %v", want, names)
+		}
+	}
+	for _, removed := range withoutBuiltin(config.AllBuiltinTools, "todos") {
+		if removed == "todos" {
+			t.Fatal("team members must not retain direct plan write access")
+		}
 	}
 }
 

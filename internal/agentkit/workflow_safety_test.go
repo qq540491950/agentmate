@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"agentmate/internal/sandbox"
@@ -118,6 +119,9 @@ func TestReadWorkspaceFilePaginatesAndRejectsBinary(t *testing.T) {
 	if first["truncated"] != true {
 		t.Fatalf("first read truncated = %v", first["truncated"])
 	}
+	if first["sha256"] != sha256Hex([]byte(content)) {
+		t.Fatalf("read hash = %v, want full-file hash", first["sha256"])
+	}
 	next := int64(100)
 	if got, ok := first["nextOffset"].(int64); ok {
 		next = got
@@ -136,6 +140,65 @@ func TestReadWorkspaceFilePaginatesAndRejectsBinary(t *testing.T) {
 	}
 	if _, err := run.Run(ctx, map[string]any{"path": "binary.bin"}); err == nil {
 		t.Fatal("binary read should fail")
+	}
+}
+
+func TestEditWorkspaceFileRejectsStaleHash(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "notes.txt")
+	if err := os.WriteFile(path, []byte("before"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workspaceReadHashes.Store(filepath.Clean(path), sha256Hex([]byte("before")))
+	if err := os.WriteFile(path, []byte("external"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := editWorkspaceFile(root, editArgs{
+		Path: "notes.txt", OldText: "external", NewText: "agent",
+		ExpectedSha256: sha256Hex([]byte("before")),
+	}, sandbox.DefaultPolicy(root))
+	if err == nil || !strings.Contains(err.Error(), "stale_file") {
+		t.Fatalf("stale edit = %v, want stale_file", err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "external" {
+		t.Fatalf("stale edit changed file: %q", data)
+	}
+}
+
+func TestConcurrentWritesWithSameExpectedHashKeepOneWinner(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "race.txt")
+	if err := os.WriteFile(path, []byte("base"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	expected := sha256Hex([]byte("base"))
+	var wg sync.WaitGroup
+	results := make(chan error, 2)
+	for _, content := range []string{"first", "second"} {
+		wg.Add(1)
+		go func(content string) {
+			defer wg.Done()
+			_, err := writeWorkspaceFile(root, writeArgs{
+				Path: "race.txt", Content: content, ExpectedSha256: expected,
+			}, sandbox.DefaultPolicy(root))
+			results <- err
+		}(content)
+	}
+	wg.Wait()
+	close(results)
+	var success, stale int
+	for err := range results {
+		switch {
+		case err == nil:
+			success++
+		case strings.Contains(err.Error(), "stale_file"):
+			stale++
+		default:
+			t.Fatalf("unexpected concurrent write error: %v", err)
+		}
+	}
+	if success != 1 || stale != 1 {
+		t.Fatalf("success=%d stale=%d, want 1/1", success, stale)
 	}
 }
 

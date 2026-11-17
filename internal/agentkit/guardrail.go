@@ -9,7 +9,7 @@ import (
 
 var secretPatterns = []*regexp.Regexp{
 	// OpenAI / DeepSeek / 通用 "sk-" 密钥
-	regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{16,}\b`),
+	regexp.MustCompile(`sk-[A-Za-z0-9_-]{16,}\b`),
 	// AWS 访问密钥
 	regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
 	// GitHub 令牌
