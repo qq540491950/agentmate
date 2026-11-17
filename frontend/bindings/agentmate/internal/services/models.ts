@@ -88,6 +88,18 @@ export interface AuthorStat {
 }
 
 /**
+ * BudgetPauseInfo 描述触发软暂停的维度与当前用量；它不是失败。
+ */
+export interface BudgetPauseInfo {
+    "reason": string;
+    "limit": number;
+    "used": number;
+    "toolCalls": number;
+    "modelCalls": number;
+    "turnTokens": number;
+}
+
+/**
  * ChatMessage 是渲染后的历史消息。
  */
 export interface ChatMessage {
@@ -104,6 +116,9 @@ export interface ChatMessage {
     "toolResp"?: { [_ in string]?: any } | null;
     "callId"?: string;
     "hint"?: string;
+    "risk"?: string;
+    "diff"?: string;
+    "policy"?: string;
     "attachments"?: AttachmentOut[] | null;
 
     /**
@@ -119,11 +134,12 @@ export interface ChatMessage {
  */
 export interface ChatStreamEvent {
     "version"?: number;
+    "seq"?: number;
     "sessionId": string;
     "turnId"?: string;
 
     /**
-     * user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|warning|turn_state|done|error
+     * user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|warning|turn_state|plan|retry|verification|budget_pause|delegation_progress|done|error
      */
     "kind": string;
     "turnStatus"?: string;
@@ -165,6 +181,33 @@ export interface ChatStreamEvent {
      * SessionUsage 是会话的累计用量，在 done 事件上设置。
      */
     "sessionUsage"?: UsageInfo | null;
+
+    /**
+     * Risk/Diff/Policy 用于确认卡展示暂停时的风险、文件 diff 与策略快照。
+     */
+    "risk"?: string;
+    "diff"?: string;
+    "policy"?: string;
+
+    /**
+     * Budget 随 budget_pause 事件发送。
+     */
+    "budget"?: BudgetPauseInfo | null;
+
+    /**
+     * Verification 随 verification 事件发送。
+     */
+    "verification"?: VerificationInfo | null;
+
+    /**
+     * Retry 随 retry 事件发送。
+     */
+    "retry"?: RetryInfo | null;
+
+    /**
+     * Plan 随 plan 事件发送。
+     */
+    "plan"?: PlanUpdate | null;
 }
 
 /**
@@ -269,6 +312,35 @@ export interface KnowledgeFile {
  */
 export interface MemoryInfo {
     "count": number;
+}
+
+/**
+ * PlanStepView 是事件协议中的计划步骤快照。
+ */
+export interface PlanStepView {
+    "id": string;
+    "content": string;
+    "status": string;
+    "dependsOn"?: string[] | null;
+    "acceptance"?: string[] | null;
+    "evidence"?: string[] | null;
+}
+
+/**
+ * PlanUpdate 是 plan 事件的完整计划快照。
+ */
+export interface PlanUpdate {
+    "version": string;
+    "steps": PlanStepView[] | null;
+}
+
+/**
+ * RetryInfo 报告 RetryStep 的目标与轮次。
+ */
+export interface RetryInfo {
+    "stepId": string;
+    "reason"?: string;
+    "attempt": number;
 }
 
 export interface SandboxStatusInfo {
@@ -417,6 +489,23 @@ export interface UsageInfo {
 }
 
 /**
+ * VerificationInfo 是 verify_work 阶段的结构化状态。
+ */
+export interface VerificationInfo {
+    "ok": boolean;
+
+    /**
+     * running|passed|failed|blocked|exempt
+     */
+    "status": string;
+    "attempts"?: number;
+    "artifact"?: string;
+    "output"?: string;
+    "reason"?: string;
+    "exempt"?: boolean;
+}
+
+/**
  * WorkspaceChangeStatus 是结果窗格中展示的文件级状态。
  */
 export enum WorkspaceChangeStatus {
@@ -483,6 +572,46 @@ export enum WorkspaceFileKind {
     FileKindUnknown = "unknown",
 };
 
+export interface workflowApproval {
+    "ID": string;
+    "TurnID": string;
+    "SessionID": string;
+    "ToolName": string;
+    "ArgsJSON": string;
+    "Hint": string;
+    "risk"?: string;
+    "diff"?: string;
+    "policyJson"?: string;
+    "Status": string;
+    "CreatedAt": string;
+    "ResolvedAt": string | null;
+}
+
+/**
+ * workflowTrace 是默认脱敏的回合 trace，覆盖模型调用、工具、审批、重试、
+ * 验证和状态迁移。
+ */
+export interface workflowTrace {
+    "ID": string;
+    "SessionID": string;
+    "TurnID": string;
+    "Seq": number;
+    "Kind": string;
+    "Status": string;
+    "Name": string;
+    "CallID": string;
+    "Author": string;
+    "ErrorCode": string;
+    "ErrorMessage": string;
+    "DataJSON": string;
+    "DurationMs": number;
+    "PromptTokens": number;
+    "CompletionTokens": number;
+    "TotalTokens": number;
+    "Cost": number;
+    "CreatedAt": string;
+}
+
 /**
  * workflowTurn 是一次运行的最小持久化清单。它不替代 ADK 事件历史，
  * 只记录这次运行使用的目标、工作区、执行策略和生命周期状态。
@@ -500,7 +629,14 @@ export interface workflowTurn {
     "model": string;
     "reasoningLevel": string;
     "parentTurnId": string;
+    "agentSnapshotJson"?: string;
+    "planVersion"?: string;
+    "budgetOverride"?: boolean;
+    "verificationExempt"?: boolean;
+    "finishReason"?: string;
     "errorMessage"?: string;
+    "usageJson"?: string;
     "createdAt": string;
+    "endedAt"?: string | null;
     "updatedAt": string;
 }

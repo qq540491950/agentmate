@@ -13,6 +13,8 @@ export type TurnBodyOpts = {
   /** liveGroup 标记仍在运行的回合的最后一个执行块：只有它可以持续计时并保持
    *  运行态，之前的执行块已经结算。 */
   liveGroup: boolean;
+  /** hidePlanCard 用于当前活动计划已固定在输入区上方时，避免时间线重复展示。 */
+  hidePlanCard: boolean;
 };
 
 /**
@@ -20,7 +22,7 @@ export type TurnBodyOpts = {
  * 将一个会话回合渲染为两个独立块：用户输入为右对齐气泡，本次运行的输出为单独的
  * 左对齐主体。输入与回复绝不共用外层卡片；读者当前所在的回合仅高亮用户气泡。
  */
-export function TurnBlock({ turn, active, live, isLastTurn, waiting = false, onEdit, canEdit, filterQ, renderBodyItem }: {
+export function TurnBlock({ turn, active, live, isLastTurn, waiting = false, onEdit, canEdit, filterQ, hideCurrentPlan = false, renderBodyItem }: {
   turn: TurnItem;
   active: boolean;
   live: boolean;
@@ -30,6 +32,7 @@ export function TurnBlock({ turn, active, live, isLastTurn, waiting = false, onE
   onEdit: (text: string) => void;
   canEdit: boolean;
   filterQ: string;
+  hideCurrentPlan?: boolean;
   renderBodyItem: (item: ChatItem, opts: TurnBodyOpts) => ReactNode;
 }) {
   const lastBody = turn.body[turn.body.length - 1];
@@ -60,6 +63,7 @@ export function TurnBlock({ turn, active, live, isLastTurn, waiting = false, onE
                   && item.kind === "message"
                   && item.message.kind === "assistant",
                 liveGroup: live && item.kind === "tool_group" && index === lastGroupIndex,
+                hidePlanCard: hideCurrentPlan,
               })}
             </Fragment>
           ))}

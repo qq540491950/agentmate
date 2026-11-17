@@ -12,11 +12,21 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as agentkit$0 from "../agentkit/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as config$0 from "../config/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+/**
+ * AbandonTurn 放弃恢复半完成回合，但保留工作区文件与副作用台账供查看。
+ */
+export function AbandonTurn(sessionID: string): $CancellablePromise<void> {
+    return $Call.ByID(3835642989, sessionID);
+}
 
 /**
  * ArchiveSession 切换会话的归档标志（已归档会话会从默认侧边栏列表中隐藏，但绝不会被删除）。
@@ -26,10 +36,25 @@ export function ArchiveSession(id: string, archived: boolean): $CancellablePromi
 }
 
 /**
+ * BeginToolInvocation 写入执行前台账，并在恢复回合中消费父回合的副作用摘要。
+ */
+export function BeginToolInvocation(req: agentkit$0.ToolInvocationBegin): $CancellablePromise<agentkit$0.ToolInvocationDecision> {
+    return $Call.ByID(735274910, req);
+}
+
+/**
  * Cancel 中止会话当前正在进行的运行（如果有）。
  */
 export function Cancel(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(3127246171, sessionID);
+}
+
+/**
+ * ConfirmApprovals 批量批准/拒绝同一批待处理请求。实现按项调用 ConfirmToolCall：
+ * 每个确认恢复一次 ADK 运行，未处理项保持 pending。
+ */
+export function ConfirmApprovals(sessionID: string, callIDs: string[] | null, approved: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3471097933, sessionID, callIDs, approved);
 }
 
 /**
@@ -90,6 +115,13 @@ export function EffectiveSkills(sessionID: string, projectID: string): $Cancella
 }
 
 /**
+ * ExemptVerification 记录用户显式豁免；只允许对验证门禁阻塞的最新回合使用。
+ */
+export function ExemptVerification(sessionID: string, reason: string): $CancellablePromise<void> {
+    return $Call.ByID(2179725629, sessionID, reason);
+}
+
+/**
  * ExportAllSessions 将每个对话以 Markdown
  * 写入工作区导出目录，并返回已导出会话的数量。
  */
@@ -110,6 +142,13 @@ export function ExportSession(sessionID: string): $CancellablePromise<string> {
  */
 export function ExportSessionHTML(sessionID: string): $CancellablePromise<string> {
     return $Call.ByID(1201604376, sessionID);
+}
+
+/**
+ * FinishToolInvocation 持久化执行结果；超长结果只保存摘要，完整结果由网关落盘。
+ */
+export function FinishToolInvocation(res: agentkit$0.ToolInvocationResult): $CancellablePromise<void> {
+    return $Call.ByID(1214335698, res);
 }
 
 /**
@@ -136,10 +175,25 @@ export function GitBranches(projectID: string): $CancellablePromise<$models.GitB
 }
 
 /**
+ * GrantApprovalScope 是有作用域的批量授权：只匹配同一会话、同一工具和同一风险
+ * 等级，24 小时有效。高危调用始终逐次确认，不允许被批量授权覆盖。
+ */
+export function GrantApprovalScope(sessionID: string, callID: string): $CancellablePromise<void> {
+    return $Call.ByID(1574329898, sessionID, callID);
+}
+
+/**
  * IsRunning 报告会话当前是否有正在进行的运行。
  */
 export function IsRunning(sessionID: string): $CancellablePromise<boolean> {
     return $Call.ByID(4072370396, sessionID);
+}
+
+/**
+ * ListApprovals 返回会话中仍未处理的确认请求，供审批队列逐项处理。
+ */
+export function ListApprovals(sessionID: string): $CancellablePromise<$models.workflowApproval[] | null> {
+    return $Call.ByID(1779641979, sessionID);
 }
 
 /**
@@ -154,6 +208,13 @@ export function ListProjects(): $CancellablePromise<config$0.Project[] | null> {
  */
 export function ListSessions(): $CancellablePromise<config$0.ChatSession[] | null> {
     return $Call.ByID(488268720);
+}
+
+/**
+ * ListTurnTraces 返回单回合 trace 时间线，供运行详情面板使用。
+ */
+export function ListTurnTraces(sessionID: string, turnID: string): $CancellablePromise<$models.workflowTrace[] | null> {
+    return $Call.ByID(3659966976, sessionID, turnID);
 }
 
 /**
@@ -227,11 +288,34 @@ export function RenameSession(id: string, title: string): $CancellablePromise<vo
 }
 
 /**
- * ResumeTurn 从最近一次失败/中断的回合继续：它不重放旧工具调用，而是把上次
- * 用户请求与当前计划交回模型，让模型先检查实际状态，再从未完成步骤继续。
+ * ResolveBudgetPause 处理软预算暂停：continue 从检查点继续，stop 标记取消。
+ * 两条路径都不会把预算暂停直接当成 failed。
+ */
+export function ResolveBudgetPause(sessionID: string, decision: string): $CancellablePromise<void> {
+    return $Call.ByID(741670984, sessionID, decision);
+}
+
+/**
+ * ResumeTurn 从最近一次失败/中断/取消/预算暂停的检查点继续：它带着事件游标、
+ * 计划版本、未决审批和副作用摘要重新进入模型，不裁剪整轮历史。
  */
 export function ResumeTurn(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(1434813321, sessionID);
+}
+
+/**
+ * RetryStep 只重试失败或 blocked 的计划步骤，不裁剪历史。已完成步骤与其
+ * 副作用由台账和计划状态保护。
+ */
+export function RetryStep(sessionID: string, stepID: string): $CancellablePromise<void> {
+    return $Call.ByID(4163113795, sessionID, stepID);
+}
+
+/**
+ * SavePlan 允许用户在计划编辑器中修改依赖、验收标准和证据。
+ */
+export function SavePlan(sessionID: string, steps: $models.PlanStepView[] | null): $CancellablePromise<string> {
+    return $Call.ByID(3764896603, sessionID, steps);
 }
 
 /**

@@ -1153,6 +1153,12 @@ export function SettingsPage({
                 onCheckedChange={(v) => update({ toolsAudit: v })}
               />
             </SettingRow>
+            <SettingRow label="运行 Trace" description="记录每个回合的模型、工具、审批、验证、耗时与 token/费用；trace 默认脱敏。">
+              <Switch
+                checked={settings.traceEnabled !== false}
+                onCheckedChange={(v) => update({ traceEnabled: v })}
+              />
+            </SettingRow>
             <Button
               variant="outline"
               onClick={async () => {

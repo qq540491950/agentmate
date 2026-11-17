@@ -36,14 +36,22 @@ export function ConfirmCard({ m, onConfirm }: {
       <div className="flex items-center gap-2">
         <ShieldAlert className={cn(
           "h-4 w-4 shrink-0",
-          status === "pending" && "text-warning",
-          status === "approved" && "text-success",
+          status === "pending" && "text-warning-text",
+          status === "approved" && "text-success-text",
         status === "rejected" && "text-danger-text",
         )} />
         <span className="text-sm font-medium">
           {status === "pending" ? "工具执行确认" : status === "approved" ? "已批准执行" : "已拒绝"}
         </span>
-        <Badge variant="outline" className="font-mono text-2xs">{m.toolName}</Badge>
+        <Badge variant="outline" className="font-mono text-xs">{m.toolName}</Badge>
+        {m.risk && (
+          <span className={cn(
+            "rounded-md px-1.5 py-0.5 text-xs",
+            m.risk === "high" ? "bg-danger-soft text-danger-text" : "bg-warning-soft text-warning-text",
+          )}>
+            风险 {m.risk}
+          </span>
+        )}
       </div>
       <div className={cn(
         "mt-1.5 flex items-start gap-1.5 rounded-md px-2 py-1.5 text-xs",
@@ -53,8 +61,18 @@ export function ConfirmCard({ m, onConfirm }: {
         <span>{hint || "该工具调用需要你的确认。"}</span>
       </div>
       {m.toolArgs && Object.keys(m.toolArgs).length > 0 && (
-        <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-control p-2 font-mono text-2xs leading-relaxed text-muted-foreground">
+        <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-control p-2 font-mono text-xs leading-relaxed text-muted-foreground">
           {JSON.stringify(m.toolArgs, null, 2)}
+        </pre>
+      )}
+      {m.policy && (
+        <div className="mt-1.5 break-all rounded-md bg-control/70 px-2 py-1.5 text-xs text-muted-foreground">
+          暂停时策略：{m.policy}
+        </div>
+      )}
+      {m.diff && (
+        <pre className="mt-2 max-h-52 overflow-auto rounded-md bg-control p-2 font-mono text-xs leading-relaxed text-foreground">
+          {m.diff}
         </pre>
       )}
       {status === "pending" ? (
@@ -255,7 +273,7 @@ export function UserQuote({ m, active, onEdit, canEdit, filterQ }: {
 // token，都会为最后一个气泡追加一个新的消息对象，而其他每个气泡都必须保持相同的
 // props，才能跳过重新渲染。因此，调用方传入稳定的回调和预先计算好的标志，而不是
 // 每行闭包。
-export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, onRegenerate, canRegenerate, toolRunning, onSpeak, costOf, onEdit, canEdit, onConfirm, durationMs, sessionID, filterQ }: {
+export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, onRegenerate, canRegenerate, toolRunning, onSpeak, costOf, onEdit, canEdit, onConfirm, durationMs, sessionID, filterQ, hidePlanCard = false }: {
   m: UIMessage;
   isLastAssistant: boolean;
   filterQ: string;
@@ -269,6 +287,7 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
   onConfirm: (msgId: string, callId: string | undefined, approved: boolean) => void;
   durationMs?: number;
   sessionID: string;
+  hidePlanCard?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const copyMsg = async () => {
@@ -310,6 +329,7 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
     return <ConfirmCard m={m} onConfirm={onConfirm} />;
   }
   if (m.kind === "tool_result" && m.toolName === "plan_todos") {
+    if (hidePlanCard) return null;
     return <TodoListCard resp={m.toolResp ?? null} />;
   }
   if (m.kind === "tool_result" && m.toolName === "delegate_task") {

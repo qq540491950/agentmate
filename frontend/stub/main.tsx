@@ -231,6 +231,9 @@ const histories: Record<string, any[]> = {
       id: "m3", kind: "confirm_request", author: "写手助手", text: "",
       toolName: "write_workspace_file", toolArgs: { path: "notes/weekly.md", content: "# 周报" },
       callId: "call-confirm-1", hint: "即将写入工作区文件 notes/weekly.md，请确认。",
+      risk: "medium",
+      diff: "--- a/notes/weekly.md\n+++ b/notes/weekly.md\n@@ -0,0 +1,2 @@\n+# 周报\n+本周完成：工作流 v2 收口。",
+      policy: "工作区=/tmp/agentmate-workspace/tasks/sess_confirm · 审批=request-approval · 沙箱=workspace-write · 网络=off",
       timestamp: "2026-09-18T01:01:20Z",
     },
   ],
@@ -312,6 +315,9 @@ const histories: Record<string, any[]> = {
 };
 
 let pendingAnswer = 0;
+let confirmResolved = false;
+let streamSeq = 0;
+const nextStreamSeq = () => ++streamSeq;
 // 会话级审批模式，合并到 ListSessions
 // 中，以便在桩中切换聊天时恢复每个聊天自身的模式。
 const sessionSandboxModes = new Map<string, string>();
@@ -541,11 +547,47 @@ const handlers: Record<string, (args: any[]) => any> = {
       userMsg,
       { id: `m-ans-${pendingAnswer}`, kind: "assistant", author: "助手", text: answer, timestamp: stamp },
     ];
-    // 镜像后端流式：用户气泡（带该回合的级别）、回复、完成。
+    const turnId = `turn_stub_${pendingAnswer}`;
+    const stream = (kind: string, extra: Record<string, unknown> = {}) =>
+      window.__emit("chat:stream", { version: 2, seq: nextStreamSeq(), sessionId: sid, turnId, kind, ...extra });
+    // 镜像后端流式：完整 turn_state 生命周期、用户气泡、回复。
+    if (text.includes("预算")) {
+      queueMicrotask(() => {
+        stream("turn_state", { turnStatus: "queued" });
+        stream("turn_state", { turnStatus: "preparing" });
+        stream("turn_state", { turnStatus: "running" });
+        stream("user", { text, ...(reasoning ? { reasoning } : {}) });
+        stream("budget_pause", { budget: { reason: "tool_calls", limit: 120, used: 120, toolCalls: 120, modelCalls: 20, turnTokens: 48200 } });
+        stream("turn_state", { turnStatus: "budget_paused" });
+        stream("done");
+      });
+      return null;
+    }
+    if (text.includes("验证失败")) {
+      queueMicrotask(() => {
+        stream("turn_state", { turnStatus: "queued" });
+        stream("turn_state", { turnStatus: "preparing" });
+        stream("turn_state", { turnStatus: "running" });
+        stream("user", { text, ...(reasoning ? { reasoning } : {}) });
+        stream("verification", { verification: {
+          ok: false, status: "blocked", attempts: 2,
+          artifact: "/tmp/agentmate-workspace/tool-results/verify-demo.log",
+          reason: "自动修复 2 轮后验证仍失败，计划已标为 blocked。",
+        } });
+        stream("error", { text: "代码任务未通过验证，不能标记 completed。" });
+        stream("turn_state", { turnStatus: "failed" });
+        stream("done");
+      });
+      return null;
+    }
     queueMicrotask(() => {
-      window.__emit("chat:stream", { sessionId: sid, kind: "user", text, ...(reasoning ? { reasoning } : {}) });
-      window.__emit("chat:stream", { sessionId: sid, kind: "message", author: "助手", text: answer });
-      window.__emit("chat:stream", { sessionId: sid, kind: "done" });
+      stream("turn_state", { turnStatus: "queued" });
+      stream("turn_state", { turnStatus: "preparing" });
+      stream("turn_state", { turnStatus: "running" });
+      stream("user", { text, ...(reasoning ? { reasoning } : {}) });
+      stream("message", { author: "助手", text: answer });
+      stream("turn_state", { turnStatus: "completed" });
+      stream("done");
     });
     return null;
   },
@@ -910,6 +952,7 @@ const handlers: Record<string, (args: any[]) => any> = {
   // ConfirmToolCall(sessionID, callID, approved)
   [svc("ChatService", "ConfirmToolCall")]: (args) => {
     pendingAnswer++;
+    confirmResolved = true;
     const approved = args[2] === true;
     histories[args[0]] = [
       ...(histories[args[0]] ?? []),
@@ -919,14 +962,85 @@ const handlers: Record<string, (args: any[]) => any> = {
            { id: `m-final-${pendingAnswer}`, kind: "assistant", author: "写手助手", text: "已确认并写入 notes/weekly.md。", timestamp: "2026-09-18T01:06:02Z" }]
         : [{ id: `m-reject-${pendingAnswer}`, kind: "assistant", author: "写手助手", text: "好的，已取消写入。", timestamp: "2026-09-18T01:06:02Z" }]),
     ];
+    const turnId = `turn_confirm_${pendingAnswer}`;
     // 将确认恢复流程流式回传到 UI。
     queueMicrotask(() => {
-      window.__emit("chat:stream", { sessionId: args[0], kind: "tool_result", author: "写手助手", toolName: "write_workspace_file", toolResp: { ok: true, bytes: 6 } });
-      window.__emit("chat:stream", { sessionId: args[0], kind: "message", author: "写手助手", text: approved ? "已确认并写入 notes/weekly.md。" : "好的，已取消写入。" });
-      window.__emit("chat:stream", { sessionId: args[0], kind: "done" });
+      const stream = (kind: string, extra: Record<string, unknown> = {}) =>
+        window.__emit("chat:stream", { version: 2, seq: nextStreamSeq(), sessionId: args[0], turnId, kind, ...extra });
+      stream("turn_state", { turnStatus: "preparing" });
+      stream("turn_state", { turnStatus: "running" });
+      if (approved) {
+        stream("tool_result", { author: "写手助手", toolName: "write_workspace_file", toolResp: { ok: true, bytes: 6 } });
+      }
+      stream("message", { author: "写手助手", text: approved ? "已确认并写入 notes/weekly.md。" : "好的，已取消写入。" });
+      stream("turn_state", { turnStatus: "completed" });
+      stream("done");
     });
     return null;
   },
+  [svc("ChatService", "ListApprovals")]: (args) => (args[0] === "sess_confirm" && !confirmResolved ? [{
+    ID: "call-confirm-1",
+    TurnID: "turn_demo_approval",
+    SessionID: "sess_confirm",
+    ToolName: "write_workspace_file",
+    ArgsJSON: "{\"path\":\"notes/weekly.md\"}",
+    Hint: "即将写入工作区文件 notes/weekly.md，请确认。",
+    risk: "medium",
+    diff: "--- a/notes/weekly.md\n+++ b/notes/weekly.md\n@@ -0,0 +1,2 @@\n+# 周报\n+本周完成：工作流 v2 收口。",
+    policyJson: "工作区=/tmp/agentmate-workspace/tasks/sess_confirm · 审批=request-approval · 沙箱=workspace-write · 网络=off",
+    Status: "pending",
+    CreatedAt: "2026-09-18T01:01:20Z",
+  }] : []),
+  [svc("ChatService", "ConfirmApprovals")]: (args) => {
+    confirmResolved = true;
+    return handlers[svc("ChatService", "ConfirmToolCall")]([args[0], args[1]?.[0], args[2]]);
+  },
+  [svc("ChatService", "GrantApprovalScope")]: () => null,
+  [svc("ChatService", "ListTurns")]: (args) => (args[0] === "sess_confirm" ? [{
+    id: "turn_demo_approval",
+    sessionId: "sess_confirm",
+    status: "completed",
+    finishReason: "completed",
+    model: "gpt-5-mini",
+    reasoningLevel: "medium",
+    createdAt: "2026-09-18T01:01:00Z",
+    endedAt: "2026-09-18T01:02:10Z",
+    usageJson: "{\"totalTokens\":2080,\"cost\":0.024}",
+  }] : []),
+  [svc("ChatService", "ListTurnTraces")]: (args) => (args[0] === "sess_confirm" ? [{
+    id: "trace_model", turnId: "turn_demo_approval", kind: "model", status: "succeeded",
+    name: "gpt-5-mini", durationMs: 840, promptTokens: 1200, completionTokens: 320,
+    totalTokens: 1520, cost: 0.018, createdAt: "2026-09-18T01:01:01Z",
+  }, {
+    id: "trace_tool_call", turnId: "turn_demo_approval", kind: "tool", status: "started",
+    name: "write_workspace_file", callId: "call-confirm-1", durationMs: 0,
+    createdAt: "2026-09-18T01:01:20Z",
+  }, {
+    id: "trace_approval", turnId: "turn_demo_approval", kind: "approval", status: "pending",
+    name: "write_workspace_file", callId: "call-confirm-1", createdAt: "2026-09-18T01:01:21Z",
+  }, {
+    id: "trace_verify", turnId: "turn_demo_approval", kind: "verification", status: "passed",
+    name: "verify_work", durationMs: 2210, totalTokens: 560, cost: 0.006,
+    createdAt: "2026-09-18T01:02:05Z",
+  }, {
+    id: "trace_state", turnId: "turn_demo_approval", kind: "state", status: "completed",
+    durationMs: 0, createdAt: "2026-09-18T01:02:10Z",
+  }] : []),
+  [svc("ChatService", "ResolveBudgetPause")]: (args) => {
+    const turnId = "turn_stub_budget";
+    queueMicrotask(() => {
+      window.__emit("chat:stream", {
+        version: 2, seq: nextStreamSeq(), sessionId: args[0], turnId, kind: "turn_state",
+        turnStatus: args[1] === "stop" ? "cancelled" : "running",
+      });
+      window.__emit("chat:stream", { version: 2, seq: nextStreamSeq(), sessionId: args[0], turnId, kind: "done" });
+    });
+    return null;
+  },
+  [svc("ChatService", "RetryStep")]: () => null,
+  [svc("ChatService", "ExemptVerification")]: () => null,
+  [svc("ChatService", "AbandonTurn")]: () => null,
+  [svc("ChatService", "SavePlan")]: () => "step-v2",
   // ChatService.SessionSandboxMode(sessionID) / SetSessionSandboxMode。这些 RPC
   // 按名称调用，因此 stub 也会根据 methodName 进行路由。
   "agentmate/internal/services.ChatService.SessionSandboxMode": (args) => {

@@ -125,7 +125,10 @@ export function PlanChip({ todos, running, waiting = false, onDismiss }: {
   const done = todos.filter((t) => t.status === "completed").length;
   const allDone = todos.length > 0 && done === todos.length;
   const active = todos.filter((t) => t.status === "in_progress");
-  const statusText = running ? "进行中" : waiting ? "等待确认" : allDone ? "已完成" : "未完成";
+  const blocked = todos.filter((t) => t.status === "blocked" || t.status === "failed").length;
+  const statusText = blocked > 0
+    ? `${blocked} 项阻塞`
+    : running ? "进行中" : waiting ? "等待确认" : allDone ? "已完成" : "未完成";
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -143,6 +146,11 @@ export function PlanChip({ todos, running, waiting = false, onDismiss }: {
           )}
           <span className="hidden shrink-0 sm:inline">任务计划</span>
           <span className="shrink-0 tabular-nums">{done}/{todos.length}</span>
+          {!allDone && blocked > 0 && (
+            <span className="hidden shrink-0 text-xs text-warning-text sm:inline">
+              · {blocked} 项阻塞
+            </span>
+          )}
           {!allDone && active.length > 0 && (
             <span className="hidden min-w-0 truncate text-xs text-muted-foreground md:inline">
               · {active.length > 1 ? `${active.length} 个进行中` : active[0].content}
@@ -175,5 +183,70 @@ export function PlanChip({ todos, running, waiting = false, onDismiss }: {
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * PlanDock 把当前活动计划固定在输入框上方。它与历史消息里的计划卡共用清单主体，
+ * 但不会把进行中的计划混入消息时间线。
+ */
+export function PlanDock({ todos, running, waiting = false }: {
+  todos: TodoItem[];
+  running: boolean;
+  waiting?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const done = todos.filter((t) => t.status === "completed").length;
+  const blocked = todos.filter((t) => t.status === "blocked" || t.status === "failed").length;
+  const active = todos.filter((t) => t.status === "in_progress");
+  const statusText = blocked > 0
+    ? `${blocked} 项阻塞`
+    : waiting ? "等待确认" : running ? "执行中" : "待继续";
+  const current = active.length > 1
+    ? `${active.length} 个进行中`
+    : active[0]?.content ?? "";
+  if (todos.length === 0) return null;
+  return (
+    <section data-slot="plan-dock" className="mb-2 rounded-xl bg-panel px-3 py-2.5" aria-label="当前任务计划">
+      <div className="flex items-center gap-2">
+        {blocked > 0
+          ? <AlertCircle className="h-4 w-4 shrink-0 text-warning-text" />
+          : running || waiting
+            ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent-text" />
+            : <ListTodo className="h-4 w-4 shrink-0 text-accent-text" />}
+        <span className="shrink-0 text-sm font-medium">任务计划</span>
+        <Badge variant="outline" className="shrink-0 font-normal text-xs">
+          {done}/{todos.length} 完成
+        </Badge>
+        <span className={cn(
+          "shrink-0 text-xs",
+          blocked > 0 ? "text-warning-text" : "text-muted-foreground",
+        )}>
+          {statusText}
+        </span>
+        {current && (
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            · {current}
+          </span>
+        )}
+        <button
+          type="button"
+          className="ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          aria-label={expanded ? "收起任务计划" : "展开任务计划"}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <ChevronDown className={cn(
+            "h-3.5 w-3.5 transition-transform",
+            expanded && "rotate-180",
+          )} />
+        </button>
+      </div>
+      {expanded && (
+        <div className="mt-2 max-h-40 overflow-y-auto pr-1">
+          <TodoChecklist todos={todos} />
+        </div>
+      )}
+    </section>
   );
 }

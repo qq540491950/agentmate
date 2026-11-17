@@ -11,6 +11,9 @@ export type UIMessage = {
   toolResp?: { [k: string]: any } | null;
   callId?: string;
   hint?: string;
+  risk?: string;
+  diff?: string;
+  policy?: string;
   confirmStatus?: "pending" | "approved" | "rejected";
   timestamp?: string;
   durationMs?: number;

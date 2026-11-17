@@ -57,6 +57,12 @@ export interface AgentConfig {
     "maxSessionTokens"?: number;
 
     /**
+     * MaxTurnTokens 是单回合 token 软阈值。达到时回合进入 budget_paused，
+     * 由用户选择继续或停止，而不是直接失败。0 = 使用运行时默认值。
+     */
+    "maxTurnTokens"?: number;
+
+    /**
      * StopSequences 在模型输出其中任意一个时停止生成（OpenAI "stop" / Anthropic
      * "stop_sequences"）。空 = 供应商默认值。
      */
@@ -440,6 +446,11 @@ export interface Settings {
      * ToolsAudit 将每次工具调用/结果的 JSONL 审计记录写入应用日志目录。
      */
     "toolsAudit"?: boolean;
+
+    /**
+     * TraceEnabled 控制 turn_traces 持久化，默认开启；trace 始终脱敏。
+     */
+    "traceEnabled"?: boolean | null;
 
     /**
      * ApprovalPolicy 和 SandboxProfile

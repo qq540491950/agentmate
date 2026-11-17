@@ -10,7 +10,7 @@ import {
   Coins, Hand, ShieldCheck, TriangleAlert, SlidersHorizontal,
   PanelLeftClose, PanelLeftOpen,
   FolderPlus, MoreHorizontal, SquarePen,
-  RotateCcw, History,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,6 @@ import {
   dropMessageByID,
   historySnapshotIsCurrent,
   reconcilePendingUser,
-  replaceMessageByID,
   type PendingUserTurn,
 } from "@/lib/chatTimeline";
 import { SESSION_ROW_ACTIONS_CLASS } from "@/lib/sessionRowActions";
@@ -61,9 +60,13 @@ import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
 import { SessionRowLabel } from "@/components/chat/SessionRowLabel";
 import { ContextRing } from "@/components/chat/ContextRing";
 import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from "@/components/ui/tooltip";
-import { PlanChip, type TodoItem } from "@/components/chat/TodoCards";
+import { PlanDock, type TodoItem } from "@/components/chat/TodoCards";
 import { Onboarding } from "@/components/chat/Onboarding";
 import { ReasoningEffortPanel } from "@/components/chat/ReasoningEffortPanel";
+import {
+  ApprovalQueueDialog, BudgetPauseCard, PlanEditorDialog, RecoveryBanner,
+  VerificationCard, type ApprovalItem,
+} from "@/components/chat/WorkflowCards";
 import { TaskWorkspacePanel } from "@/components/TaskWorkspacePanel";
 import { WorkspaceContextBar } from "@/components/chat/WorkspaceContextBar";
 import { SidebarFooter } from "@/components/SidebarFooter";
@@ -98,6 +101,13 @@ import {
 import {
   normalizeExecutionDisplayMode, type ExecutionDisplayMode,
 } from "@/lib/executionDisplay";
+import {
+  initialChatRunState,
+  reduceChatStreamEvent,
+  reduceChatMessages,
+  shouldFireQueued,
+  type ChatRunState,
+} from "@/lib/chatStreamReducer";
 
 let mid = 0;
 const nextId = () => `m${++mid}`;
@@ -203,6 +213,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   );
   const [runningMap, setRunningMap] = useState<Record<string, boolean>>({});
   const running = !!activeID && !!runningMap[activeID];
+  const [runStates, setRunStates] = useState<Record<string, ChatRunState>>({});
+  const runStatesRef = useRef<Record<string, ChatRunState>>({});
+  const activeRun = activeID ? runStates[activeID] : undefined;
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [teams, setTeams] = useState<TeamConfig[]>([]);
   const [remotes, setRemotes] = useState<RemoteAgentConfig[]>([]);
@@ -223,7 +236,12 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const [sessionUsage, setSessionUsage] = useState<UsageInfo | null>(null);
   const [resumableTurn, setResumableTurn] = useState<{ id: string; status: string } | null>(null);
   const [turnList, setTurnList] = useState<any[]>([]);
+  const [turnTraces, setTurnTraces] = useState<any[]>([]);
   const [turnsOpen, setTurnsOpen] = useState(false);
+  const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+  const [approvalQueueOpen, setApprovalQueueOpen] = useState(false);
+  const [planEditorOpen, setPlanEditorOpen] = useState(false);
+  const [workflowBusy, setWorkflowBusy] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [autoSpeak, setAutoSpeak] = useState(false);
@@ -307,6 +325,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const pendingActivationRef = useRef("");
   const pendingStreamRef = useRef<Map<string, ChatStreamEvent[]>>(new Map());
   const flushPendingStreamEventsRef = useRef<(sessionID: string) => void>(() => {});
+  // 消息时间线也按 turnId + seq 去重：重放或乱序的旧事件不得重复追加
+  // 用户气泡、工具对或确认卡。生命周期状态由 chatStreamReducer 单独维护。
+  const appliedEventSeqRef = useRef<Record<string, number>>({});
   // 本地用户气泡在 Chat.Send 到达后端之前渲染。
   // 其事件会确认/替换此条目，而不是追加重复项。
   const pendingUserRef = useRef<Map<string, PendingUserTurn>>(new Map());
@@ -321,6 +342,16 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       else delete next[id];
       return next;
     });
+  }, []);
+
+  const dispatchRunEvent = useCallback((ev: ChatStreamEvent): ChatRunState => {
+    const previous = runStatesRef.current[ev.sessionId] ?? initialChatRunState(ev.sessionId);
+    const next = reduceChatStreamEvent(previous, ev);
+    if (next !== previous) {
+      runStatesRef.current = { ...runStatesRef.current, [ev.sessionId]: next };
+      setRunStates((current) => ({ ...current, [ev.sessionId]: next }));
+    }
+    return next;
   }, []);
 
   const active = sessions.find((s) => s.id === activeID);
@@ -620,6 +651,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               toolResp: m.toolResp,
               callId: m.callId,
               hint: m.hint,
+              risk: m.risk,
+              diff: m.diff,
+              policy: m.policy,
               confirmStatus: m.kind === "confirm_request" ? (answered.has(m.callId!) ? (answered.get(m.callId!) ? "approved" : "rejected") : "pending") as UIMessage["confirmStatus"] : undefined,
               timestamp: m.timestamp,
               attachments: m.attachments ?? null,
@@ -795,6 +829,13 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
 
   const applyChatStreamEvent = useCallback((ev: ChatStreamEvent, sessionID: string) => {
     if (ev.sessionId !== sessionID) return;
+    const eventVersion = ev.version ?? 0;
+    const eventSeq = ev.seq ?? 0;
+    if (eventVersion >= 2 && ev.turnId && eventSeq > 0) {
+      const seen = appliedEventSeqRef.current[ev.turnId] ?? 0;
+      if (eventSeq <= seen) return;
+      appliedEventSeqRef.current[ev.turnId] = eventSeq;
+    }
     // 重放事件会绕过网络封装，因此保证顺序的刷新应放在这里：排队的 delta
     // 必须在其最终的 message/tool 事件之前落地。
     if (ev.kind !== "delta") flushStreamBuf();
@@ -854,81 +895,18 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       : "";
     if (pendingUser && pendingUserID) pendingUser.confirmed = true;
     if (ev.kind === "done") pendingUserRef.current.delete(ev.sessionId);
-    setMessages((prev) => {
-      switch (ev.kind) {
-        case "user": {
-          if (pendingUser) {
-            if (!pendingUserID) return prev;
-            const next = replaceMessageByID(prev, pendingUserID, {
-              text: ev.text,
-              attachments: ev.attachments ?? null,
-              reasoning: ev.reasoning,
-            });
-            return next === prev
-              ? [...prev, { ...pendingUser.message, text: ev.text, attachments: ev.attachments ?? null, reasoning: ev.reasoning }]
-              : next;
-          }
-          return [...prev, { id: nextId(), kind: "user", author: "user", text: ev.text, timestamp: new Date().toISOString(), attachments: ev.attachments ?? null, reasoning: ev.reasoning }];
-        }
-        case "thinking": {
-          // 后端会将本次模型调用的每个 thought 部分聚合成一个事件：替换 delta
-          // 打开的块（或在供应商仅在最终响应中返回推理时追加一个块）。
-          const fromStream = thinkingStreamedRef.current === ev.author;
-          thinkingStreamedRef.current = null;
-          thinkingOpenRef.current = null;
-          let idx = prev.length - 1;
-          while (idx >= 0 && !(prev[idx].kind === "thinking" && prev[idx].author === ev.author)) idx--;
-          if (fromStream && idx >= 0) {
-            const copy = [...prev];
-            copy[idx] = { ...copy[idx], text: ev.text || copy[idx].text, streaming: false };
-            return copy;
-          }
-          if (!ev.text) return prev;
-          return insertThinkingBeforeStreamingReply(prev, {
-            id: nextId(), kind: "thinking", author: ev.author, text: ev.text, streaming: false, timestamp: new Date().toISOString(),
-          });
-        }
-        case "message": {
-          const idx = [...prev].reverse().findIndex((m) => m.streaming && m.author === ev.author);
-          if (idx >= 0) {
-            const real = prev.length - 1 - idx;
-            const copy = [...prev];
-            copy[real] = {
-              ...copy[real],
-              text: ev.text,
-              streaming: false,
-              usage: ev.usage ?? null,
-              timestamp: new Date().toISOString(),
-            };
-            return copy;
-          }
-          return [...prev, { id: nextId(), kind: "assistant", author: ev.author, text: ev.text, usage: ev.usage ?? null, timestamp: new Date().toISOString() }];
-        }
-        case "tool_call":
-            return [...prev, { id: nextId(), kind: "tool_call", author: ev.author, text: "", toolName: ev.toolName, toolArgs: ev.toolArgs, callId: ev.callId, timestamp: new Date().toISOString() }];
-        case "tool_result":
-            return [...prev, { id: nextId(), kind: "tool_result", author: ev.author, text: "", toolName: ev.toolName, toolResp: ev.toolResp, callId: ev.callId, timestamp: new Date().toISOString() }];
-        case "confirm_request":
-          return [...prev, {
-            id: nextId(), kind: "confirm", author: ev.author, text: "",
-            toolName: ev.toolName, toolArgs: ev.toolArgs,
-            callId: ev.callId, hint: ev.hint, confirmStatus: "pending",
-            timestamp: new Date().toISOString(),
-          } as UIMessage];
-        case "error":
-          return [...prev, { id: nextId(), kind: "error", author: "system", text: ev.text }];
-        case "warning":
-          return [...prev, { id: nextId(), kind: "warning", author: ev.author || "system", text: ev.text }];
-        case "done": {
-          thinkingStreamedRef.current = null;
-          thinkingOpenRef.current = null;
-          const completedAt = new Date().toISOString();
-          return prev.map((m) => (m.streaming ? { ...m, streaming: false, timestamp: completedAt } : m));
-        }
-        default:
-          return prev;
-      }
-    });
+    const fromStream = ev.kind === "thinking" && thinkingStreamedRef.current === ev.author;
+    if (ev.kind === "thinking" || ev.kind === "done") {
+      thinkingStreamedRef.current = null;
+      thinkingOpenRef.current = null;
+    }
+    setMessages((prev) => reduceChatMessages(prev, ev, {
+      pendingUser,
+      pendingUserID,
+      thinkingStreamed: fromStream,
+      createID: nextId,
+      timestamp: new Date().toISOString(),
+    }));
     if (ev.kind === "done") {
       if (!streamedErrorRef.current) turnStartedRef.current = true;
       setSessionUsage(ev.sessionUsage ?? null);
@@ -954,20 +932,14 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
   const handleChatStream = useCallback((ev: ChatStreamEvent) => {
     const activeSession = activeIDRef.current;
     const foreground = ev.sessionId === activeSession || ev.sessionId === pendingActivationRef.current;
+    const run = dispatchRunEvent(ev);
+    const legacy = !ev.version || ev.version < 2;
     if (ev.kind === "turn_state") {
-      const status = (ev as any).turnStatus as string | undefined;
-      if (status === "running") markRunning(ev.sessionId, true);
-      if (status === "completed" || status === "failed" || status === "cancelled" || status === "interrupted") {
-        markRunning(ev.sessionId, false);
-      }
+      markRunning(ev.sessionId, run.running);
     }
-    // 完成状态记录会对每一个会话执行：即使用户正处于另一个聊天中，后台运行也必
-    // 须清除其 spinner 和 toast。
+    // done/error 只负责展示与清理，不推断生命周期；v2 终止只由 turn_state 决定。
     if (ev.kind === "done" || ev.kind === "error") {
       if (ev.kind === "error" && foreground) streamedErrorRef.current = true;
-      // 排在历史记录加载之后的 done 事件，不得在排队的 user
-      // 事件有机会确认它之前清除乐观用户；重放的 done
-      // 分支会在所有事件落地后清除它。
       const keepPendingForReplay = foreground && (
         ev.sessionId === pendingActivationRef.current
         || historyLoadingSessionRef.current === ev.sessionId
@@ -975,21 +947,24 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       if (ev.kind === "done" && !keepPendingForReplay) {
         pendingUserRef.current.delete(ev.sessionId);
       }
+    }
+    const terminalNow = (ev.kind === "turn_state" && run.terminal)
+      || (legacy && ev.kind === "done");
+    if (terminalNow) {
+      const outcome = run.terminalStatus ?? (legacy ? "completed" : "failed");
       localRunsRef.current.delete(ev.sessionId);
       markRunning(ev.sessionId, false);
       reloadSessions();
-      // 排队消息会在回合一结束就触发——包括在出错之后，因此用户的后续消息绝不会
-      // 被搁置。
-      if ((queuedRef.current[ev.sessionId]?.length ?? 0) > 0 && foreground) {
+      if (shouldFireQueued(run) && (queuedRef.current[ev.sessionId]?.length ?? 0) > 0 && foreground) {
         fireQueued(ev.sessionId);
       }
       if (!foreground) {
         const title = sessionsRef.current.find((x: { id: string; title: string }) => x.id === ev.sessionId)?.title ?? "后台会话";
-        // 点击 toast 会直接跳转到已完成的后台聊天。
         const open = () => setActiveID(ev.sessionId);
         const action = { label: "查看", onClick: open };
-        if (ev.kind === "done") toast.success(`「${title}」已完成回复`, { action });
-        else toast.error(`「${title}」本轮出错`, { action });
+        if (outcome === "completed") toast.success(`「${title}」已完成回复`, { action });
+        else if (outcome === "cancelled") toast.info(`「${title}」已停止`, { action });
+        else toast.error(`「${title}」本轮失败`, { action });
         setUnread((prev) => ({ ...prev, [ev.sessionId]: true }));
       }
     }
@@ -1008,7 +983,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       return;
     }
     applyChatStreamEvent(ev, ev.sessionId);
-  }, [applyChatStreamEvent, fireQueued, markRunning, reloadSessions]);
+  }, [applyChatStreamEvent, dispatchRunEvent, fireQueued, markRunning, reloadSessions]);
 
   // 只订阅一次。旧的 effect 会在每次 activeID
   // 变化时重新订阅，从而留下一个后端事件没有监听器的窗口。最新的处理函数通过
@@ -2171,6 +2146,20 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     () => (activePlanMessage ? activePlanMessage.toolResp?.todos as TodoItem[] : null),
     [activePlanMessage],
   );
+  const effectivePlan = useMemo<TodoItem[] | null>(() => {
+    const fromEvent = activeRun?.plan?.steps;
+    if (fromEvent && fromEvent.length > 0) {
+      return fromEvent.map((step) => ({
+        id: step.id,
+        content: step.content,
+        status: step.status,
+        dependsOn: step.dependsOn ?? undefined,
+        acceptance: step.acceptance ?? undefined,
+        evidence: step.evidence ?? undefined,
+      }));
+    }
+    return activePlan;
+  }, [activePlan, activeRun?.plan]);
   useEffect(() => {
     if (!activeID) {
       setResumableTurn(null);
@@ -2189,7 +2178,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         const list = turns ?? [];
         const latest = list[0];
         const turn = latest && (
-          latest.status === "interrupted" || latest.status === "failed" || latest.status === "cancelled"
+          latest.status === "interrupted" || latest.status === "failed" || latest.status === "cancelled" || latest.status === "budget_paused"
         ) ? latest : null;
         setTurnList(list);
         setResumableTurn(turn ? { id: turn.id ?? turn.ID, status: turn.status } : null);
@@ -2197,6 +2186,40 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       .catch(() => { if (!cancelled) { setResumableTurn(null); setTurnList([]); } });
     return () => { cancelled = true; };
   }, [activeID, running]);
+
+  useEffect(() => {
+    if (!turnsOpen || !activeID) {
+      setTurnTraces([]);
+      return;
+    }
+    if (typeof (Chat as any).ListTurnTraces !== "function") {
+      setTurnTraces([]);
+      return;
+    }
+    let cancelled = false;
+    (Chat as any).ListTurnTraces(activeID, "")
+      .then((traces: any[]) => {
+        if (cancelled) return;
+        setTurnTraces((traces ?? []).map((trace: any) => ({
+          ...trace,
+          id: trace.id ?? trace.ID,
+          turnId: trace.turnId ?? trace.TurnID,
+          kind: trace.kind ?? trace.Kind,
+          status: trace.status ?? trace.Status,
+          name: trace.name ?? trace.Name,
+          errorCode: trace.errorCode ?? trace.ErrorCode,
+          errorMessage: trace.errorMessage ?? trace.ErrorMessage,
+          durationMs: trace.durationMs ?? trace.DurationMs,
+          promptTokens: trace.promptTokens ?? trace.PromptTokens,
+          completionTokens: trace.completionTokens ?? trace.CompletionTokens,
+          totalTokens: trace.totalTokens ?? trace.TotalTokens,
+          cost: trace.cost ?? trace.Cost,
+          createdAt: trace.createdAt ?? trace.CreatedAt,
+        })));
+      })
+      .catch(() => { if (!cancelled) setTurnTraces([]); });
+    return () => { cancelled = true; };
+  }, [activeID, turnsOpen, running]);
 
   const resumeLastTurn = useCallback(async () => {
     if (!activeID) return;
@@ -2215,6 +2238,156 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       toast.error(`继续任务失败: ${errText(e)}`);
     }
   }, [activeID, markRunning]);
+
+  const reloadApprovals = useCallback(async (sessionID: string) => {
+    if (!sessionID || typeof (Chat as any).ListApprovals !== "function") {
+      setApprovals([]);
+      return;
+    }
+    try {
+      const list = await (Chat as any).ListApprovals(sessionID);
+      setApprovals(Array.isArray(list)
+        ? list.map((item: any) => ({
+            ...item,
+            id: item.id ?? item.ID,
+            turnId: item.turnId ?? item.TurnID,
+            toolName: item.toolName ?? item.ToolName,
+            hint: item.hint ?? item.Hint,
+            risk: item.risk ?? item.Risk,
+            diff: item.diff ?? item.Diff,
+            policyJson: item.policyJson ?? item.PolicyJSON,
+            argsJson: item.argsJson ?? item.ArgsJSON,
+          }))
+        : []);
+    } catch {
+      setApprovals([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeID) {
+      setApprovals([]);
+      return;
+    }
+    void reloadApprovals(activeID);
+  }, [activeID, running, activeRun?.waitingApproval, reloadApprovals]);
+
+  const resolveBudget = useCallback(async (decision: "continue" | "stop") => {
+    if (!activeID || typeof (Chat as any).ResolveBudgetPause !== "function") {
+      toast.error("当前版本不支持预算暂停处理，请重启应用");
+      return;
+    }
+    setWorkflowBusy(true);
+    try {
+      if (decision === "continue") {
+        localRunsRef.current.add(activeID);
+        markRunning(activeID, true);
+      }
+      await (Chat as any).ResolveBudgetPause(activeID, decision);
+      if (decision === "stop") {
+        localRunsRef.current.delete(activeID);
+        markRunning(activeID, false);
+      }
+    } catch (e) {
+      toast.error(`预算暂停处理失败: ${errText(e)}`);
+      localRunsRef.current.delete(activeID);
+      markRunning(activeID, false);
+    } finally {
+      setWorkflowBusy(false);
+    }
+  }, [activeID, markRunning]);
+
+  const exemptVerification = useCallback(async () => {
+    if (!activeID) return;
+    setWorkflowBusy(true);
+    try {
+      await (Chat as any).ExemptVerification(activeID, "用户显式豁免验证门禁");
+      toast.success("已记录验证豁免");
+    } catch (e) {
+      toast.error(`验证豁免失败: ${errText(e)}`);
+    } finally {
+      setWorkflowBusy(false);
+    }
+  }, [activeID]);
+
+  const retryFailedStep = useCallback(async () => {
+    if (!activeID) return;
+    const step = (effectivePlan ?? []).find((item) => item.status === "failed" || item.status === "blocked");
+    if (!step?.id) {
+      toast.error("没有可重试的失败步骤");
+      return;
+    }
+    setWorkflowBusy(true);
+    localRunsRef.current.add(activeID);
+    markRunning(activeID, true);
+    try {
+      await (Chat as any).RetryStep(activeID, step.id);
+    } catch (e) {
+      toast.error(`重试步骤失败: ${errText(e)}`);
+      localRunsRef.current.delete(activeID);
+      markRunning(activeID, false);
+    } finally {
+      setWorkflowBusy(false);
+    }
+  }, [activeID, effectivePlan, markRunning]);
+
+  const abandonTurn = useCallback(async () => {
+    if (!activeID) return;
+    setWorkflowBusy(true);
+    try {
+      await (Chat as any).AbandonTurn(activeID);
+      setResumableTurn(null);
+    } catch (e) {
+      toast.error(`放弃恢复失败: ${errText(e)}`);
+    } finally {
+      setWorkflowBusy(false);
+    }
+  }, [activeID]);
+
+  const confirmApprovals = useCallback(async (callIDs: string[], approved: boolean) => {
+    if (!activeID || callIDs.length === 0) return;
+    setWorkflowBusy(true);
+    localRunsRef.current.add(activeID);
+    markRunning(activeID, true);
+    try {
+      await (Chat as any).ConfirmApprovals(activeID, callIDs, approved);
+      await reloadApprovals(activeID);
+    } catch (e) {
+      toast.error(`处理审批失败: ${errText(e)}`);
+      localRunsRef.current.delete(activeID);
+      markRunning(activeID, false);
+    } finally {
+      setWorkflowBusy(false);
+    }
+  }, [activeID, markRunning, reloadApprovals]);
+
+  const grantApprovalScope = useCallback(async (callID: string) => {
+    if (!activeID) return;
+    setWorkflowBusy(true);
+    try {
+      await (Chat as any).GrantApprovalScope(activeID, callID);
+      toast.success("已授权本会话自动批准同类低风险调用");
+      await reloadApprovals(activeID);
+    } catch (e) {
+      toast.error(`批量授权失败: ${errText(e)}`);
+    } finally {
+      setWorkflowBusy(false);
+    }
+  }, [activeID, reloadApprovals]);
+
+  const savePlan = useCallback(async (steps: TodoItem[]) => {
+    if (!activeID) return;
+    setWorkflowBusy(true);
+    try {
+      await (Chat as any).SavePlan(activeID, steps);
+      setPlanEditorOpen(false);
+      toast.success("计划已保存");
+    } catch (e) {
+      toast.error(`保存计划失败: ${errText(e)}`);
+    } finally {
+      setWorkflowBusy(false);
+    }
+  }, [activeID]);
   // 该 chip 是实时进度提示控件，而非永久记录。回合运行或等待 HITL
   // 时应保留它；已中断的历史回合会保留其内联卡片，但不得留下过期的头部条目。
   const pendingConfirm = useMemo(() => {
@@ -2225,13 +2398,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
     }
     return false;
   }, [messages]);
-  const planDone = activePlan?.filter((t) => t.status === "completed").length ?? 0;
-  const planKey = activeID && activePlan ? `${activeID}:${JSON.stringify(activePlan)}` : "";
-  const [dismissedPlanKey, setDismissedPlanKey] = useState("");
-  const showPlanChip = !!activePlan &&
-    planDone < activePlan.length &&
-    (running || pendingConfirm) &&
-    dismissedPlanKey !== planKey;
+  const planDone = effectivePlan?.filter((t) => t.status === "completed").length ?? 0;
+  const planKey = activeID && effectivePlan ? `${activeID}:${JSON.stringify(effectivePlan)}` : "";
+  const showPlanDock = !!effectivePlan && planDone < effectivePlan.length;
   // 会话内消息筛选器（⌘F /
   // 头部搜索图标）：仅显示与查询匹配的消息，类似桌面客户端的聊天搜索。
   const [filterOpen, setFilterOpen] = useState(false);
@@ -2347,6 +2516,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         onConfirm={answerConfirm}
         sessionID={activeID}
         filterQ={filterQ}
+        hidePlanCard={opts.hidePlanCard}
       />
     );
   };
@@ -2949,24 +3119,16 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {active && resumableTurn && !running && (
-              <TooltipHint content={`上次运行${resumableTurn.status === "interrupted" ? "中断" : "未完成"}，从第一个未完成步骤继续`}>
+            {active && approvals.length > 0 && (
+              <TooltipHint content="打开审批队列">
                 <button
                   className="inline-flex h-7 items-center gap-1 rounded-md bg-warning-soft px-2 text-xs text-warning-text transition-colors hover:bg-accent"
-                  onClick={resumeLastTurn}
+                  onClick={() => setApprovalQueueOpen(true)}
                 >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  继续任务
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  待审批 {approvals.length}
                 </button>
               </TooltipHint>
-            )}
-            {active && activePlan && showPlanChip && (
-              <PlanChip
-                todos={activePlan}
-                running={running}
-                waiting={pendingConfirm}
-                onDismiss={() => setDismissedPlanKey(planKey)}
-              />
             )}
             {realContextUsage && realContextUsage.pct >= 80 && (
               <span className="shrink-0 rounded-md bg-danger-soft px-1.5 py-0.5 text-2xs text-danger-text">
@@ -2999,6 +3161,9 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setTurnsOpen(true)}>
                       <History className="h-4 w-4" /> 运行详情
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setPlanEditorOpen(true)}>
+                      <Pencil className="h-4 w-4" /> 编辑计划
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={async () => {
@@ -3126,6 +3291,32 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                   </div>
                 </div>
               )}
+              {active && resumableTurn && !running && !activeRun?.budgetPaused && (
+                <RecoveryBanner
+                  status={resumableTurn.status}
+                  busy={workflowBusy}
+                  onResume={resumeLastTurn}
+                  onViewChanges={() => setWorkspacePanelOpen(true)}
+                  onAbandon={abandonTurn}
+                />
+              )}
+              {activeRun?.budgetPaused && activeRun.budget && (
+                <BudgetPauseCard
+                  budget={activeRun.budget}
+                  busy={workflowBusy}
+                  onContinue={() => resolveBudget("continue")}
+                  onStop={() => resolveBudget("stop")}
+                />
+              )}
+              {activeRun?.verification
+                && ["blocked", "failed", "exempt"].includes(activeRun.verification.status) && (
+                <VerificationCard
+                  verification={activeRun.verification}
+                  busy={workflowBusy}
+                  onRetry={activeRun.verification.status === "blocked" ? retryFailedStep : undefined}
+                  onExempt={activeRun.verification.status === "blocked" ? exemptVerification : undefined}
+                />
+              )}
               {messages.length === 0 && !active && providerCount === 0 && <Onboarding onOpenSettings={onOpenSettings} />}
               {messages.length === 0 && !active && providerCount > 0 && (
                 // 已有供应商但未选择会话：此前这里会渲染一个空面板，且不提示该
@@ -3175,6 +3366,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         onEdit={startEdit}
                         canEdit={editFlags.get(item.header.id) === true && !running && !!activeID}
                         filterQ={filterQ}
+                        hideCurrentPlan={showPlanDock && renderIdx === lastTurnIdx}
                         renderBodyItem={renderBodyItem}
                       />
                     ) : (
@@ -3188,6 +3380,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         // 儿进程块属于进行中的回合。若没有这一处理，它会在后端
                         // 仍在运行时被判定为 "failed"。
                         liveGroup: running && renderIdx === renderItems.length - 1,
+                        hidePlanCard: showPlanDock && renderIdx === renderItems.length - 1,
                       })
                     )}
                   </Fragment>
@@ -3223,6 +3416,15 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           {running ? "助手正在回复…" : messages[messages.length - 1]?.kind === "error" ? "本轮回复出错，可点击重试本轮" : ""}
         </div>
         <div className="shrink-0 bg-canvas py-3">
+          {active && effectivePlan && showPlanDock && (
+            <div className="mx-auto composer-col px-3">
+              <PlanDock
+                todos={effectivePlan}
+                running={running}
+                waiting={pendingConfirm}
+              />
+            </div>
+          )}
           {(queued[activeID] ?? []).map((q, qi) => (
             <div key={qi} className="mx-auto mb-2 flex chat-col items-center gap-2 rounded-lg bg-accent-soft px-3 py-1.5 text-xs">
               <span className="shrink-0 text-muted-foreground">{qi === 0 ? "已排队" : `排队 #${qi + 1}`}</span>
@@ -3858,31 +4060,97 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       </Dialog>
 
       <Dialog open={turnsOpen} onOpenChange={setTurnsOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle className="text-base">运行详情</DialogTitle>
+            <DialogTitle className="text-base">运行详情 · Trace 时间线</DialogTitle>
           </DialogHeader>
-          <div className="max-h-80 space-y-1 overflow-y-auto">
+          <div className="max-h-[70vh] space-y-2 overflow-y-auto">
             {turnList.length === 0 ? (
               <div className="rounded-lg bg-panel p-3 text-sm text-muted-foreground">暂无运行记录</div>
-            ) : turnList.map((t) => (
-              <div key={t.id ?? t.ID} className="rounded-lg bg-panel p-2.5 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{t.status ?? "unknown"}</span>
-                  <span className="text-muted-foreground">
-                    {t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}
-                  </span>
+            ) : turnList.map((t) => {
+              const turnID = t.id ?? t.ID ?? "";
+              const traces = turnTraces.filter((trace) => (trace.turnId ?? trace.TurnID ?? "") === turnID);
+              return (
+                <div key={turnID} className="rounded-xl bg-panel p-3 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "rounded-md px-1.5 py-0.5 font-medium",
+                        t.status === "completed"
+                          ? "bg-success-soft text-success-text"
+                          : t.status === "running" || t.status === "verifying"
+                            ? "bg-accent-soft text-accent-text"
+                            : t.status === "waiting_approval" || t.status === "budget_paused"
+                              ? "bg-warning-soft text-warning-text"
+                              : "bg-danger-soft text-danger-text",
+                      )}>{t.status ?? "unknown"}</span>
+                      {t.finishReason && <span className="text-muted-foreground">{t.finishReason}</span>}
+                    </div>
+                    <span className="text-muted-foreground">
+                      {t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}
+                    </span>
+                  </div>
+                  <div className="mt-1 truncate text-muted-foreground">
+                    {t.model || "默认模型"}{t.reasoningLevel ? ` · ${t.reasoningLevel}` : ""}
+                  </div>
+                  {t.workspace && <div className="mt-0.5 truncate text-muted-foreground">{t.workspace}</div>}
+                  {t.errorMessage && <div className="mt-1 text-danger-text">{t.errorMessage}</div>}
+                  <div className="mt-2 space-y-1">
+                    {traces.length === 0 ? (
+                      <div className="rounded-lg bg-canvas p-2 text-muted-foreground">该回合未记录 trace（可能已关闭 trace 开关）。</div>
+                    ) : traces.map((trace, index) => (
+                      <div key={trace.id ?? trace.ID ?? index} className="flex items-start gap-2 rounded-lg bg-canvas px-2 py-1.5">
+                        <span className={cn(
+                          "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+                          trace.status === "failed" || trace.errorCode ? "bg-danger" : trace.status === "blocked" ? "bg-warning" : "bg-accent",
+                        )} aria-hidden="true" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span className="font-medium">{trace.kind ?? "event"}</span>
+                            {trace.name && <span className="text-muted-foreground">{trace.name}</span>}
+                            {trace.status && <span className="text-muted-foreground">{trace.status}</span>}
+                            {trace.durationMs > 0 && <span className="text-muted-foreground">{trace.durationMs} ms</span>}
+                            {trace.totalTokens > 0 && <span className="text-muted-foreground">{trace.totalTokens.toLocaleString()} tok</span>}
+                            {trace.cost > 0 && <span className="text-muted-foreground">¥{Number(trace.cost).toFixed(4)}</span>}
+                          </div>
+                          {trace.errorCode && (
+                            <div className="mt-0.5 break-all text-danger-text">
+                              {trace.errorCode}{trace.errorMessage ? `: ${trace.errorMessage}` : ""}
+                            </div>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {trace.createdAt ? new Date(trace.createdAt).toLocaleTimeString("zh-CN") : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="mt-1 truncate text-muted-foreground">
-                  {t.model || "默认模型"}{t.reasoningLevel ? ` · ${t.reasoningLevel}` : ""}
-                </div>
-                {t.workspace && <div className="mt-0.5 truncate text-muted-foreground">{t.workspace}</div>}
-                {t.errorMessage && <div className="mt-1 text-danger-text">{t.errorMessage}</div>}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </DialogContent>
       </Dialog>
+
+      <ApprovalQueueDialog
+        open={approvalQueueOpen}
+        onOpenChange={setApprovalQueueOpen}
+        approvals={approvals}
+        busy={workflowBusy}
+        onConfirm={confirmApprovals}
+        onGrantScope={grantApprovalScope}
+      />
+
+      {planEditorOpen && (
+        <PlanEditorDialog
+          key={planKey || activeID || "plan"}
+          open={planEditorOpen}
+          onOpenChange={setPlanEditorOpen}
+          steps={effectivePlan ?? []}
+          busy={workflowBusy}
+          onSave={savePlan}
+        />
+      )}
 
       {/* 重命名对话框 */}
       <Dialog open={!!renaming} onOpenChange={(v) => !v && setRenaming(null)}>

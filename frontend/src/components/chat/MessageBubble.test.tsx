@@ -11,7 +11,7 @@ const assistant: UIMessage = {
   timestamp: "2026-11-11T10:01:00Z",
 };
 
-function render(message: UIMessage = assistant) {
+function render(message: UIMessage = assistant, hidePlanCard = false) {
   return renderToStaticMarkup(
     <MessageBubble
       m={message}
@@ -26,6 +26,7 @@ function render(message: UIMessage = assistant) {
       canEdit={false}
       onConfirm={vi.fn()}
       sessionID="s1"
+      hidePlanCard={hidePlanCard}
     />,
   );
 }
@@ -59,6 +60,16 @@ describe("MessageBubble", () => {
   it("keeps the author label for named agents and team members", () => {
     const html = render({ ...assistant, author: "代码审查员" });
     expect(html).toContain("代码审查员");
+  });
+
+  it("can hide an active plan result when the composer plan dock owns it", () => {
+    const plan: UIMessage = {
+      id: "p1", kind: "tool_result", author: "助手", text: "",
+      toolName: "plan_todos",
+      toolResp: { todos: [{ content: "起草", status: "in_progress" }] },
+    };
+    expect(render(plan)).toContain("任务计划");
+    expect(render(plan, true)).toBe("");
   });
 
   it("shows the backend hint and highlights boundary reasons", () => {
