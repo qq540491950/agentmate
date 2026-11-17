@@ -50,7 +50,9 @@ func TestWriteWorkspaceFilePreservesExistingMode(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writeWorkspaceFile(root, writeArgs{Path: "run.sh", Content: "#!/bin/sh\necho hi\n"}, sandbox.DefaultPolicy(root)); err != nil {
+	if _, err := writeWorkspaceFile(root, writeArgs{
+		Path: "run.sh", Content: "#!/bin/sh\necho hi\n", ExpectedSha256: sha256Hex([]byte("#!/bin/sh\n")),
+	}, sandbox.DefaultPolicy(root)); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(path)

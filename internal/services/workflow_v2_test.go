@@ -18,6 +18,7 @@ import (
 
 	"agentmate/internal/agentkit"
 	"agentmate/internal/config"
+	"agentmate/internal/sandbox"
 )
 
 func eventStatuses(events []ChatStreamEvent) []string {
@@ -890,6 +891,9 @@ func TestApprovalArgsDiffAndHintAreSanitizedAtPersistence(t *testing.T) {
 }
 
 func TestVerifyWorkSuccessMarksVerifyingAndCompletes(t *testing.T) {
+	if !sandbox.Available() {
+		t.Skipf("OS sandbox unavailable: %s", sandbox.BackendStatus().Error)
+	}
 	turn := 0
 	chat, store, workspace, _ := newConfirmTestChat(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
