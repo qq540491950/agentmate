@@ -102,6 +102,7 @@ import {
   normalizeExecutionDisplayMode, type ExecutionDisplayMode,
 } from "@/lib/executionDisplay";
 import {
+  asMessagePhase,
   initialChatRunState,
   reduceChatStreamEvent,
   reduceChatMessages,
@@ -644,6 +645,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             .map((m) => ({
               id: m.id,
               kind: (m.kind === "user" ? "user" : m.kind === "thinking" ? "thinking" : m.kind === "tool_call" ? "tool_call" : m.kind === "tool_result" ? "tool_result" : m.kind === "confirm_request" ? "confirm" : "assistant") as UIMessage["kind"],
+              phase: asMessagePhase(m.phase),
               author: m.author,
               text: m.text,
               toolName: m.toolName,

@@ -89,7 +89,7 @@ describe("TurnBlock", () => {
     expect(html).not.toContain('data-slot="turn-body"');
   });
 
-  it("同一轮多个执行段只让最后一个保持运行中", () => {
+  it("同一轮只渲染一个执行容器并保持运行中", () => {
     const messages: UIMessage[] = [
       { id: "u2", kind: "user", author: "user", text: "分析当前项目", timestamp: "2026-11-15T01:00:00Z" },
       { id: "c1", kind: "tool_call", author: "助手", text: "", toolName: "read_workspace_file", timestamp: "2026-11-15T01:00:01Z" },
@@ -99,7 +99,7 @@ describe("TurnBlock", () => {
     ];
     const liveTurn = groupTurns(groupToolMessages(messages))[0];
     if (liveTurn.kind !== "turn") throw new Error("expected a turn");
-    expect(liveTurn.body.filter((item) => item.kind === "tool_group")).toHaveLength(2);
+    expect(liveTurn.body.filter((item) => item.kind === "tool_group")).toHaveLength(1);
     const runningTools = computeRunningTools(messages);
     const html = renderToStaticMarkup(
       <TurnBlock
@@ -125,7 +125,7 @@ describe("TurnBlock", () => {
       />,
     );
     const states = [...html.matchAll(/data-state="(confirm|running|failed|done)"/g)].map((match) => match[1]);
-    expect(states).toEqual(["done", "running"]);
+    expect(states).toEqual(["running"]);
     expect(html.match(/>运行中</g)).toHaveLength(1);
   });
 });

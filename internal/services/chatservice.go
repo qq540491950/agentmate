@@ -62,11 +62,13 @@ type UsageInfo struct {
 
 // ChatStreamEvent 在一次运行进行期间流式发送到前端。
 type ChatStreamEvent struct {
-	Version    int            `json:"version,omitempty"`
-	Seq        int64          `json:"seq,omitempty"`
-	SessionID  string         `json:"sessionId"`
-	TurnID     string         `json:"turnId,omitempty"`
-	Kind       string         `json:"kind"` // user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|warning|turn_state|plan|retry|verification|budget_pause|delegation_progress|done|error
+	Version   int    `json:"version,omitempty"`
+	Seq       int64  `json:"seq,omitempty"`
+	SessionID string `json:"sessionId"`
+	TurnID    string `json:"turnId,omitempty"`
+	Kind      string `json:"kind"` // user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|warning|turn_state|plan|retry|verification|budget_pause|delegation_progress|done|error
+	// Phase 区分过程旁白与最终答复。仅 message 事件使用；旧客户端可忽略。
+	Phase      string         `json:"phase,omitempty"`
 	TurnStatus string         `json:"turnStatus,omitempty"`
 	Author     string         `json:"author"`
 	Text       string         `json:"text"`
@@ -163,8 +165,11 @@ func usageOf(ev *session.Event) *UsageInfo {
 
 // ChatMessage 是渲染后的历史消息。
 type ChatMessage struct {
-	ID          string          `json:"id"`
-	Kind        string          `json:"kind"` // user|assistant|thinking|tool_call|tool_result|confirm_request|confirm_result
+	ID   string `json:"id"`
+	Kind string `json:"kind"` // user|assistant|thinking|tool_call|tool_result|confirm_request|confirm_result
+	// Phase 在历史回放时推导：同一次模型响应含工具调用时，其文本是过程旁白；
+	// 不含工具调用时为最终答复。旧历史没有该字段，前端会按位置回退。
+	Phase       string          `json:"phase,omitempty"`
 	Author      string          `json:"author"`
 	Text        string          `json:"text"`
 	ToolName    string          `json:"toolName,omitempty"`
@@ -192,6 +197,22 @@ const (
 	maxAttachmentBytes = 6 << 20 // 每个文件解码后 6 MB
 	maxAttachments     = 4
 )
+
+const (
+	messagePhaseCommentary = "commentary"
+	messagePhaseFinal      = "final"
+)
+
+// responseMessagePhase 以同一次模型响应是否包含工具调用为边界：含工具调用时，
+// 文本是在为后续动作做铺垫，属于过程旁白；不含工具调用时，文本才是最终答复。
+func responseMessagePhase(parts []*genai.Part) string {
+	for _, part := range parts {
+		if part != nil && part.FunctionCall != nil {
+			return messagePhaseCommentary
+		}
+	}
+	return messagePhaseFinal
+}
 
 // directAssistantName 是隐式直聊 Agent 的显示名称。
 const directAssistantName = "助手"

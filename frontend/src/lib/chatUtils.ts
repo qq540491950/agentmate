@@ -4,6 +4,8 @@ import type { AttachmentOut, ChatSession, Project, ReasoningLevel, UsageInfo } f
 export type UIMessage = {
   id: string;
   kind: "user" | "assistant" | "thinking" | "tool_call" | "tool_result" | "confirm" | "error" | "warning";
+  /** phase 区分过程旁白与最终答复；旧历史没有该字段时按位置回退。 */
+  phase?: "commentary" | "final";
   author: string;
   text: string;
   toolName?: string;
@@ -168,8 +170,8 @@ export function toolResultFailed(resp?: { [k: string]: any } | null): boolean {
 }
 
 /**
- * ToolGroup 是同一作者的一段连续过程事件（思考条目、工具调用、结果和 HITL
- * 确认）构成的可折叠执行块。助手正文留在主时间线上，绝不进入该分组。
+ * ToolGroup 是一个回合的执行过程容器：思考、过程旁白、工具调用/结果、HITL
+ * 确认与计划快照按时间顺序放在同一个可折叠块里。最终答复留在容器之外。
  */
 export type ToolGroup = {
   kind: "tool_group";
@@ -177,6 +179,8 @@ export type ToolGroup = {
   id: string;
   author: string;
   messages: UIMessage[];
+  /** startedAt 是整轮开始时间，通常取用户消息时间，用于统一整轮计时。 */
+  startedAt?: string;
   /**
    * endTs
    * 是该回合最终回复的时间戳：摘要统计的是整个回合，包括撰写答案所花的时间，而
@@ -189,8 +193,8 @@ export type ToolGroup = {
   answered: boolean;
   /** errored 记录以错误气泡而非回复结束的回合（仅限实时流式——历史记录不会持久化错误事件）。 */
   errored: boolean;
-  /** terminal 标记该回合最后一个执行段。只有它能继承整轮的运行/失败状态；
-   *  之前的执行段已经由后续时间线内容宣告结束。 */
+  /** terminal 保留为兼容字段；每回合唯一的执行容器始终为 true，并继承整轮
+   *  运行/失败状态。 */
   terminal: boolean;
 };
 
@@ -316,6 +320,11 @@ export function buildToolTrace(messages: UIMessage[]): ToolTraceItem[] {
   const out: ToolTraceItem[] = [];
   const pending: ToolStep[] = [];
   for (const m of messages) {
+    // plan_todos 是状态快照，不是工具步骤；它由计划卡单独渲染。
+    if (m.toolName === "plan_todos") {
+      out.push({ kind: "message", message: m });
+      continue;
+    }
     if (m.kind === "tool_call") {
       const step: ToolStep = {
         kind: "tool",
@@ -495,17 +504,6 @@ export function latestPlanMessage(messages: UIMessage[], currentTurnOnly = true)
 }
 
 /**
- * isProcessEvent 报告属于一个回合执行过程的消息：思考条目，以及工具调用/结果和
- * HITL 确认。plan_todos
- * 是状态变更，会渲染为独立的计划卡片，因此保留在分组之外。
- */
-function isProcessEvent(m: UIMessage): boolean {
-  if (m.kind === "thinking") return true;
-  if (m.kind !== "tool_call" && m.kind !== "tool_result" && m.kind !== "confirm") return false;
-  return m.toolName !== "plan_todos";
-}
-
-/**
  * isToolActivity
  * 报告一个回合中实际完成工作的事件。这里刻意排除思考：最终聚合的推理事件可能会
  * 在流式回答之后到达，且不得隐藏该回复。
@@ -517,28 +515,27 @@ function isToolActivity(m: UIMessage): boolean {
 }
 
 /**
- * groupToolMessages 仅将连续的过程事件（思考、工具调用/结果和 HITL
- * 确认）折叠为执行块。助手正文始终保留在回合时间线上。
+ * groupToolMessages 将一个回合内的过程事件折叠为唯一执行容器：思考、过程旁白、
+ * 工具调用/结果、HITL 确认和计划快照按时间顺序放在一起；最终答复留在容器之外。
  *
- * 这确保的是显示状态，而不只是布局偏好。模型可以在同一响应中流式输出一段简短叙
- * 述，然后调用更多工具。旧的分组会在下一个 tool_call
- * 到达后吸收那段叙述，因此一段已经作为回答绘制出来的段落会跳入执行块。将助手消
- * 息排除在分组之外，使其位置不受未来工具事件影响：实时流式输出与持久化历史现在
- * 保持一致。已结束的空助手外壳会被丢弃；plan_todos
- * 会按回合折叠为一张最新快照卡片，且单次调用仍会形成自己的块。
+ * 容器的 id 取自首个过程事件，因此流式追加不会改变 React key 或用户展开状态。
+ * 这与旧实现的关键区别是：助手叙述不再作为顶层分隔符，而属于过程容器；最终答复
+ * 由 phase 明确标记，不再依赖“最后一个 assistant”这种会被后续工具推翻的位置推断。
  */
 export function groupToolMessages(messages: UIMessage[]): ChatItem[] {
   const out: ChatItem[] = [];
   let start = 0;
+  let turnStartedAt: string | undefined;
   while (start < messages.length) {
     if (messages[start].kind === "user") {
       out.push(messageItem(messages[start]));
+      turnStartedAt = messages[start].timestamp;
       start++;
       continue;
     }
     let end = start + 1;
     while (end < messages.length && messages[end].kind !== "user") end++;
-    out.push(...groupTurn(messages.slice(start, end)));
+    out.push(...groupTurn(messages.slice(start, end), turnStartedAt));
     start = end;
   }
   return out;
@@ -548,9 +545,8 @@ function messageItem(m: UIMessage): ChatItem {
   return { kind: "message", id: m.id, message: m };
 }
 
-/** groupTurn 折叠连续的过程事件，并按顺序将助手消息作为稳定的时间线项追加。 */
-function groupTurn(turn: UIMessage[]): ChatItem[] {
-  const out: ChatItem[] = [];
+/** groupTurn 将整个回合折叠为一个执行容器，并把最终答复独立放在容器之后。 */
+function groupTurn(turn: UIMessage[], turnStartedAt?: string): ChatItem[] {
   // plan_todos
   // 更新是状态快照，而不是步骤。仅保留最新的非空快照，并将其插入到本轮中计划首
   // 次出现的位置；否则每次更新都会追加另一份完整清单，以及一张带有原始 JSON
@@ -578,120 +574,70 @@ function groupTurn(turn: UIMessage[]): ChatItem[] {
     timeline.push(m);
   }
 
+  // 空 assistant 外壳只是流式占位，不应参与最终答复判定或过程计数。
+  const meaningful = timeline.filter(
+    (m) => !(m.kind === "assistant" && !m.text.trim() && !m.streaming),
+  );
+
   // 结果边界是最后一次工具/确认活动，而不是最后一次思考事件：最终推理块可能在流
   // 式回答之后到达（回答气泡已经存在，因此思考会追加在它后面）。将该思考视为边
   // 界会把回答藏在执行块内，并使已完成的回合变红。
   let lastActivityIdx = -1;
-  for (let i = timeline.length - 1; i >= 0; i--) {
-    if (isToolActivity(timeline[i])) { lastActivityIdx = i; break; }
+  for (let i = meaningful.length - 1; i >= 0; i--) {
+    if (isToolActivity(meaningful[i])) { lastActivityIdx = i; break; }
   }
 
-  // 结果是最后一次工具活动之后的最后一条助手消息。已结束的空助手外壳（一个流式
-  // 占位符，其回合以工具调用结束）会被跳过，因此它们不会渲染为空助手块。
-  let resultIdx = -1;
-  for (let i = timeline.length - 1; i > lastActivityIdx; i--) {
-    const m = timeline[i];
-    if (m.kind !== "assistant") continue;
-    if (!m.text.trim() && !m.streaming) continue;
-    resultIdx = i;
+  // 后端标记为 final 的文本是最终答复。旧历史没有 phase，则回退到“最后一次工具
+  // 活动之后的最后一条 assistant”；仍在流式输出且已经发生工具活动时先留在过程
+  // 中，等聚合事件补上 phase 或回合结束再提升，避免每个 token 都移动位置。
+  let finalIdx = -1;
+  for (let i = meaningful.length - 1; i >= 0; i--) {
+    const m = meaningful[i];
+    if (m.kind !== "assistant" || m.phase !== "final" || !m.text.trim()) continue;
+    finalIdx = i;
     break;
   }
-
-  const hasProcess = timeline.some(isProcessEvent);
-  if (!hasProcess) {
-    // 没有执行事件：像以前一样渲染普通消息。
-    for (const m of timeline) {
-      if (m.kind === "assistant" && !m.text.trim() && !m.streaming) continue;
-      out.push(messageItem(m));
+  if (finalIdx < 0) {
+    for (let i = meaningful.length - 1; i > lastActivityIdx; i--) {
+      const m = meaningful[i];
+      if (m.kind !== "assistant") continue;
+      if (!m.text.trim() && !m.streaming) continue;
+      if (m.phase === "commentary") continue;
+      if (m.streaming && lastActivityIdx >= 0 && !m.phase) continue;
+      finalIdx = i;
+      break;
     }
-    return out;
   }
 
-  // 迟到的推理应放在它所解释的回复之前。保持该回合的 其余顺序不变：仅移动在最终
-  // assistant 之后到达的同一作者的 思考条目。
-  let ordered = timeline;
-  if (resultIdx >= 0) {
-    const result = timeline[resultIdx];
-    const lateThinking = timeline.slice(resultIdx + 1).filter(
-      (m) => m.kind === "thinking" && m.author === result.author,
-    );
-    if (lateThinking.length > 0) {
-      const rest = timeline.slice(resultIdx + 1).filter(
-        (m) => !(m.kind === "thinking" && m.author === result.author),
-      );
-      ordered = [
-        ...timeline.slice(0, resultIdx),
-        ...lateThinking,
-        result,
-        ...rest,
-      ];
-      resultIdx += lateThinking.length;
-    }
+  const final = finalIdx >= 0 ? meaningful[finalIdx] : undefined;
+  const errors = meaningful.filter((m, i) => i !== finalIdx && m.kind === "error");
+  const processEvents = meaningful.filter((m, i) => i !== finalIdx && m.kind !== "error");
+
+  // 没有过程事件时保持普通消息：直聊回答不需要为了显示结构凭空生成执行块。
+  if (processEvents.length === 0) {
+    return meaningful.map(messageItem);
   }
 
   // 以回合结果为准，而非步骤结果：模型绕过的一个失败工具只是
   // 过程细节。只有以错误结束且从未写出
   // 其回复的回合才算失败——后续用户消息之前的护栏警告，以及
   // 回复之后的预算警告，两者仍然都有/留下答案。
-  const answered = resultIdx >= 0;
-  const errored = !answered && ordered.some((m) => m.kind === "error");
-  const endTs = resultIdx >= 0 ? ordered[resultIdx].timestamp : undefined;
-  let run: UIMessage[] = [];
-  const flush = () => {
-    if (run.length === 0) return;
-    // 即使只有一次调用，也应归入这里：其调用和结果是两个事件，但
-    // 属于一个逻辑步骤，而将它们渲染为两张独立卡片会使
-    // 每个简单的工具调用重复显示。仅包含思考的运行也仍会分组。
-    out.push({
-      kind: "tool_group",
-      id: run[0].id,
-      author: run[0].author,
-      messages: run,
-      endTs,
-      answered,
-      errored,
-      terminal: false,
-    });
-    run = [];
-  };
-
-  for (let i = 0; i < ordered.length; i++) {
-    const m = ordered[i];
-    if (m.kind === "assistant") {
-      // 在最终工具响应之前创建的流式占位符
-      // 不含文本；过程标题才是实时指示器。已落定的
-      // 空壳是噪声，在两种情况下都会被丢弃。
-      if (!m.text.trim()) continue;
-      // 叙述是一等时间线项，绝不是
-      // 执行块的成员。后续工具调用到来时，不要重新考虑这个决定：
-      // 该消息的位置必须保持稳定。
-      flush();
-      out.push(messageItem(m));
-      continue;
-    }
-    if (!isProcessEvent(m)) {
-      // 单个计划快照是一个时间线项。在它之前进行刷新，以便它
-      // 保留真实位置，而不是跳到位于其前面的执行运行
-      // 上方。重复的计划更新已由上述 时间线转换折叠。
-      if (m.toolName === "plan_todos") {
-        flush();
-        out.push(messageItem(m));
-        continue;
-      }
-      flush();
-      out.push(messageItem(m));
-      continue;
-    }
-    if (run.length > 0 && run[0].author !== m.author) flush();
-    run.push(m);
-  }
-  flush();
-  for (let i = out.length - 1; i >= 0; i--) {
-    const item = out[i];
-    if (item.kind !== "tool_group") continue;
-    out[i] = { ...item, terminal: true };
-    break;
-  }
+  const answered = !!final;
+  const errored = !answered && errors.length > 0;
+  const startedAt = turnStartedAt || processEvents.find((m) => !!m.timestamp)?.timestamp;
+  const out: ChatItem[] = [{
+    kind: "tool_group",
+    id: processEvents[0].id,
+    author: processEvents[0].author,
+    messages: processEvents,
+    startedAt,
+    endTs: final?.timestamp,
+    answered,
+    errored,
+    terminal: true,
+  }];
+  if (final) out.push(messageItem(final));
+  out.push(...errors.map(messageItem));
   return out;
 }
 
@@ -763,9 +709,9 @@ export function toolGroupDurationMs(messages: UIMessage[], durations: Map<string
 }
 
 /**
- * toolGroupElapsedMs 是整个回合的墙钟时间跨度：从首个 process
- * 事件到最终回复（endTs），或在回合仍进行中时到当前时刻。无时间戳的历史记录回退
- * 到累加的工具运行时长。
+ * toolGroupElapsedMs 是整个回合的墙钟时间跨度：优先从用户消息时间开始，到最终回复
+ * （endTs）或当前时刻。旧调用没有 startedAt 时回退到首个 process 事件；无时间戳的
+ * 历史记录回退到累加的工具运行时长。
  */
 export function toolGroupElapsedMs(
   messages: UIMessage[],
@@ -773,8 +719,9 @@ export function toolGroupElapsedMs(
   nowMs: number,
   live: boolean,
   durations: Map<string, number>,
+  startedAt?: string,
 ): number | null {
-  const startTs = messages.find((m) => !!m.timestamp)?.timestamp;
+  const startTs = startedAt ?? messages.find((m) => !!m.timestamp)?.timestamp;
   const start = startTs ? Date.parse(startTs) : NaN;
   if (isNaN(start)) return toolGroupDurationMs(messages, durations);
   let end = NaN;

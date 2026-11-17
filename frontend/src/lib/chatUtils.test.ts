@@ -211,6 +211,62 @@ describe("groupToolMessages", () => {
     expect(items[0]).toMatchObject({ kind: "tool_group", id: "c1" });
   });
 
+  it("renders an interleaved Codex-style turn as one process and one final answer", () => {
+    const msgs: UIMessage[] = [
+      msg({ id: "u", kind: "user", author: "user", text: "修复显示问题", timestamp: "2026-11-17T01:00:00Z" }),
+      msg({ id: "t1", kind: "thinking", text: "先定位", timestamp: "2026-11-17T01:00:01Z" }),
+      msg({
+        id: "mid1", kind: "assistant", phase: "commentary",
+        text: "我先定位 Skills 页面里的拼接逻辑。", timestamp: "2026-11-17T01:00:05Z",
+      }),
+      msg({ id: "c1", kind: "tool_call", toolName: "read_workspace_file", timestamp: "2026-11-17T01:00:08Z" }),
+      msg({
+        id: "r1", kind: "tool_result", toolName: "read_workspace_file",
+        toolResp: { ok: true }, timestamp: "2026-11-17T01:00:09Z",
+      }),
+      msg({
+        id: "mid2", kind: "assistant", phase: "commentary",
+        text: "已找到拼接位置，继续确认路径格式。", timestamp: "2026-11-17T01:00:40Z",
+      }),
+      msg({ id: "c2", kind: "tool_call", toolName: "run_command", timestamp: "2026-11-17T01:01:00Z" }),
+      msg({
+        id: "r2", kind: "tool_result", toolName: "run_command",
+        toolResp: { exitCode: 1, error: "分隔符不一致" }, timestamp: "2026-11-17T01:01:20Z",
+      }),
+      msg({
+        id: "mid3", kind: "assistant", phase: "commentary",
+        text: "测试确认了原因，接下来修改并验证。", timestamp: "2026-11-17T01:01:30Z",
+      }),
+      msg({ id: "c3", kind: "tool_call", toolName: "run_command", timestamp: "2026-11-17T01:02:40Z" }),
+      msg({
+        id: "r3", kind: "tool_result", toolName: "run_command",
+        toolResp: { exitCode: 0 }, timestamp: "2026-11-17T01:02:50Z",
+      }),
+      msg({
+        id: "final", kind: "assistant", phase: "final",
+        text: "结论：已统一路径分隔符。", timestamp: "2026-11-17T01:03:29Z",
+      }),
+    ];
+    const items = groupToolMessages(msgs);
+    const groups = items.filter((item): item is ToolGroup => item.kind === "tool_group");
+    expect(groups).toHaveLength(1);
+    expect(groups[0].id).toBe("t1");
+    expect(groups[0].messages.map((m) => m.id)).toEqual([
+      "t1", "mid1", "c1", "r1", "mid2", "c2", "r2", "mid3", "c3", "r3",
+    ]);
+    expect(groups[0].answered).toBe(true);
+    expect(groups[0].startedAt).toBe("2026-11-17T01:00:00Z");
+    expect(groups[0].endTs).toBe("2026-11-17T01:03:29Z");
+    expect(toolGroupInvocationCount(groups[0].messages)).toBe(3);
+    expect(summarizeToolTrace(buildToolTrace(groups[0].messages)).failed).toBe(1);
+    expect(toolGroupElapsedMs(
+      groups[0].messages, groups[0].endTs, 0, false, new Map(), groups[0].startedAt,
+    )).toBe(209_000);
+    expect(items.filter((item) => item.kind === "message" && item.message.kind === "assistant"))
+      .toHaveLength(1);
+    expect(items[items.length - 1]).toMatchObject({ kind: "message", id: "final" });
+  });
+
   it("folds a single invocation into one execution block", () => {
     const msgs: UIMessage[] = [
       msg({ id: "c1", kind: "tool_call", toolName: "read" }),
@@ -223,7 +279,24 @@ describe("groupToolMessages", () => {
     expect(toolGroupInvocationCount(group.messages)).toBe(1);
   });
 
-  it("keeps narration on the timeline and splits process runs at author changes", () => {
+  it("does not promote explicit commentary to the final answer", () => {
+    const items = groupToolMessages([
+      msg({ id: "u", kind: "user", text: "继续", timestamp: "2026-11-17T01:00:00Z" }),
+      msg({ id: "c1", kind: "tool_call", toolName: "read" }),
+      msg({ id: "r1", kind: "tool_result", toolName: "read", toolResp: { ok: true } }),
+      msg({
+        id: "mid", kind: "assistant", phase: "commentary",
+        text: "还需要继续检查。", timestamp: "2026-11-17T01:00:05Z",
+      }),
+    ]);
+    const group = items.find((item) => item.kind === "tool_group");
+    if (!group || group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(group.answered).toBe(false);
+    expect(group.messages.map((m) => m.id)).toContain("mid");
+    expect(items.some((item) => item.kind === "message" && item.id === "mid")).toBe(false);
+  });
+
+  it("keeps narration and author changes inside one turn process", () => {
     const msgs: UIMessage[] = [
       msg({ id: "c1", kind: "tool_call", toolName: "read" }),
       msg({ id: "r1", kind: "tool_result", toolName: "read" }),
@@ -239,18 +312,16 @@ describe("groupToolMessages", () => {
       msg({ id: "r5", kind: "tool_result", toolName: "grep", author: "sub-agent" }),
     ];
     const items = groupToolMessages(msgs);
-    // 叙述必须保持在各次进程运行之间：后续的工具调用不得将它重新拉回某个执行块
-    // 。空的计划结果会清除计划，且不得留下过期卡片；c4 处的 author
-    // 变化会开启新的块。
+    // 叙述与作者变化都属于过程细节，不再把顶层执行容器切成多段。空的计划结果会
+    // 清除计划，且不得留下过期卡片。
     expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "group:c1", "mid", "group:c2", "group:c4",
+      "group:c1",
     ]);
     const first = items.find((i) => i.kind === "tool_group" && i.id === "c1");
     if (!first || first.kind !== "tool_group") throw new Error("expected a tool group");
-    expect(first.messages.map((m) => m.id)).toEqual(["c1", "r1"]);
-    const third = items.find((i) => i.kind === "tool_group" && i.author === "sub-agent");
-    if (!third || third.kind !== "tool_group") throw new Error("expected a tool group");
-    expect(third.author).toBe("sub-agent");
+    expect(first.messages.map((m) => m.id)).toEqual([
+      "c1", "r1", "mid", "c2", "r2", "c3", "r3", "c4", "r4", "c5", "r5",
+    ]);
   });
 
   it("collapses repeated plan_todos updates to one latest-snapshot card", () => {
@@ -274,16 +345,13 @@ describe("groupToolMessages", () => {
     ];
     const items = groupToolMessages(msgs);
     const groups = items.filter((i) => i.kind === "tool_group");
-    expect(groups).toHaveLength(2);
-    if (groups[0].kind !== "tool_group" || groups[1].kind !== "tool_group") throw new Error("expected tool groups");
-    expect(groups[0].messages.map((m) => m.id)).toEqual(["t1"]);
-    expect(groups[1].messages.map((m) => m.id)).toEqual(["c1", "r1", "c2", "r2", "c3", "r3"]);
-    const todoCardIds = items
-      .filter((i) => i.kind === "message" && i.message.toolName === "plan_todos")
-      .map((i) => (i.kind === "message" ? i.message.id : ""));
-    expect(todoCardIds).toEqual(["p2r"]);
+    expect(groups).toHaveLength(1);
+    if (groups[0].kind !== "tool_group") throw new Error("expected a tool group");
+    expect(groups[0].messages.map((m) => m.id)).toEqual([
+      "t1", "p2r", "c1", "r1", "c2", "r2", "c3", "r3",
+    ]);
     expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "group:t1", "p2r", "group:c1", "a",
+      "group:t1", "a",
     ]);
   });
 
@@ -298,8 +366,11 @@ describe("groupToolMessages", () => {
       msg({ id: "a", kind: "assistant", text: "完成" }),
     ]);
     expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "group:c1", "p1r", "group:c2", "a",
+      "group:c1", "a",
     ]);
+    const group = items[0];
+    if (group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(group.messages.map((m) => m.id)).toEqual(["c1", "r1", "p1r", "c2", "r2"]);
   });
 
   it("scopes the active plan to the latest turn and honours an explicit clear", () => {
@@ -341,16 +412,16 @@ describe("groupToolMessages", () => {
     ];
     const items = groupToolMessages(msgs);
     expect(items.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "u", "group:t1", "mid", "group:c2", "a",
+      "u", "group:t1", "a",
     ]);
     const group = items[1];
     if (group.kind !== "tool_group") throw new Error("expected a tool group");
-    expect(group.messages.map((m) => m.id)).toEqual(["t1", "c1", "r1"]);
+    expect(group.messages.map((m) => m.id)).toEqual(["t1", "c1", "r1", "mid", "c2", "r2"]);
     // endTs 为整个回合的「已工作」摘要提供输入。
     expect(group.endTs).toBe("2026-10-30T01:02:04Z");
   });
 
-  it("keeps streamed narration in the same position when another tool arrives", () => {
+  it("keeps streamed narration inside the same process when another tool arrives", () => {
     const base: UIMessage[] = [
       msg({ id: "u", kind: "user", text: "分析" }),
       msg({ id: "c1", kind: "tool_call", toolName: "run_command" }),
@@ -359,7 +430,7 @@ describe("groupToolMessages", () => {
     ];
     const before = groupToolMessages(base);
     expect(before.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "u", "group:c1", "mid",
+      "u", "group:c1",
     ]);
 
     const after = groupToolMessages([
@@ -368,10 +439,12 @@ describe("groupToolMessages", () => {
       msg({ id: "r2", kind: "tool_result", toolName: "run_command", toolResp: { exitCode: 0 } }),
     ]);
     expect(after.map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "u", "group:c1", "mid", "group:c2",
+      "u", "group:c1",
     ]);
-    const narration = after.find((i) => i.kind === "message" && i.id === "mid");
-    expect(narration?.kind).toBe("message");
+    const group = after.find((i) => i.kind === "tool_group");
+    if (!group || group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(group.id).toBe("c1");
+    expect(group.messages.map((m) => m.id)).toEqual(["c1", "r1", "mid", "c2", "r2"]);
   });
 
   it("drops a settled empty assistant shell that ends a tool turn", () => {
@@ -484,7 +557,7 @@ describe("groupToolMessages", () => {
     ]);
   });
 
-  it("splits thinking runs at an author change", () => {
+  it("keeps thinking runs of different authors in one process", () => {
     const msgs: UIMessage[] = [
       msg({ id: "t1", kind: "thinking", text: "main" }),
       msg({ id: "c1", kind: "tool_call", toolName: "read" }),
@@ -492,8 +565,11 @@ describe("groupToolMessages", () => {
       msg({ id: "c2", kind: "tool_call", toolName: "read", author: "sub-agent" }),
     ];
     expect(groupToolMessages(msgs).map((i) => (i.kind === "tool_group" ? `group:${i.id}` : i.id))).toEqual([
-      "group:t1", "group:t2",
+      "group:t1",
     ]);
+    const group = groupToolMessages(msgs)[0];
+    if (group.kind !== "tool_group") throw new Error("expected a tool group");
+    expect(group.messages.map((m) => m.id)).toEqual(["t1", "c1", "t2", "c2"]);
   });
 });
 
@@ -759,7 +835,7 @@ describe("toolGroupStatus", () => {
     expect(toolGroupStatus(group([result({ ok: true }), { ...narration, streaming: false }], { answered: false }), new Set(), true)).toBe("running");
   });
 
-  it("只有回合最后一个执行段继承整轮运行态", () => {
+  it("将整轮运行态集中到唯一执行容器", () => {
     const msgs: UIMessage[] = [
       msg({ id: "u", kind: "user", text: "分析" }),
       msg({ id: "c1", kind: "tool_call", toolName: "read" }),
@@ -768,11 +844,9 @@ describe("toolGroupStatus", () => {
       msg({ id: "c2", kind: "tool_call", toolName: "run_command" }),
     ];
     const groups = groupToolMessages(msgs).filter((item): item is ToolGroup => item.kind === "tool_group");
-    expect(groups).toHaveLength(2);
-    expect(groups[0].terminal).toBe(false);
-    expect(groups[1].terminal).toBe(true);
-    expect(toolGroupStatus(groups[0], new Set(), true)).toBe("done");
-    expect(toolGroupStatus(groups[1], new Set(["c2"]), true)).toBe("running");
+    expect(groups).toHaveLength(1);
+    expect(groups[0].terminal).toBe(true);
+    expect(toolGroupStatus(groups[0], new Set(["c2"]), true)).toBe("running");
   });
 });
 

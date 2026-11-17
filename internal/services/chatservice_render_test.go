@@ -65,3 +65,51 @@ func TestRenderEventAttachmentOnlyUserTurn(t *testing.T) {
 		t.Fatalf("unexpected attachment-only turn: %+v", out[0])
 	}
 }
+
+func TestRenderEventMarksToolNarrationAsCommentary(t *testing.T) {
+	ev := &session.Event{
+		ID:     "ev3",
+		Author: "assistant",
+		LLMResponse: adkmodel.LLMResponse{
+			Content: &genai.Content{
+				Role: genai.RoleModel,
+				Parts: []*genai.Part{
+					{Text: "我先读取文件。"},
+					{FunctionCall: &genai.FunctionCall{Name: "read_workspace_file", Args: map[string]any{"path": "a.txt"}}},
+				},
+			},
+		},
+	}
+
+	out := renderEvent(config.Config{}, ev, 3)
+	if len(out) != 2 {
+		t.Fatalf("want narration + tool call, got %d: %+v", len(out), out)
+	}
+	if out[0].Kind != "assistant" || out[0].Phase != messagePhaseCommentary {
+		t.Fatalf("tool narration phase = %q, want commentary: %+v", out[0].Phase, out[0])
+	}
+	if out[1].Kind != "tool_call" || out[1].ToolName != "read_workspace_file" {
+		t.Fatalf("unexpected tool call: %+v", out[1])
+	}
+}
+
+func TestRenderEventMarksTextOnlyResponseAsFinal(t *testing.T) {
+	ev := &session.Event{
+		ID:     "ev4",
+		Author: "assistant",
+		LLMResponse: adkmodel.LLMResponse{
+			Content: &genai.Content{
+				Role:  genai.RoleModel,
+				Parts: []*genai.Part{{Text: "已经完成。"}},
+			},
+		},
+	}
+
+	out := renderEvent(config.Config{}, ev, 4)
+	if len(out) != 1 {
+		t.Fatalf("want one assistant message, got %d: %+v", len(out), out)
+	}
+	if out[0].Kind != "assistant" || out[0].Phase != messagePhaseFinal {
+		t.Fatalf("text-only phase = %q, want final: %+v", out[0].Phase, out[0])
+	}
+}

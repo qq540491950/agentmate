@@ -81,6 +81,13 @@ describe("ToolCallGroup", () => {
     expect(html).not.toContain('data-slot="thinking-body"');
   });
 
+  it("collapses a finished turn to one time line without a duplicate done badge", () => {
+    const html = renderGroup("auto");
+    expect(html).toContain("用时");
+    expect(html).not.toContain("个步骤");
+    expect(html).not.toContain('data-slot="execution-badge"');
+  });
+
   it("lets the header summary truncate while the status badge stays fixed", () => {
     const html = renderGroup();
     const summary = openingTag(html, "execution-summary");

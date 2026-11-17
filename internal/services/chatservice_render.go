@@ -30,6 +30,7 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 		Author:    displayAuthor(cfg, ev.Author),
 		Timestamp: ev.Timestamp,
 	}
+	responsePhase := responseMessagePhase(ev.Content.Parts)
 	var textBuf strings.Builder
 	var thoughtBuf strings.Builder
 	var attachments []AttachmentOut
@@ -40,6 +41,9 @@ func renderEvent(cfg config.Config, ev *session.Event, seq int) []ChatMessage {
 		m := base
 		m.Kind = role
 		m.Text = textBuf.String()
+		if role == "assistant" {
+			m.Phase = responsePhase
+		}
 		if role == "user" {
 			// 该级别承载于用户消息的状态增量上；较早的回合未记录任何级别，因此直接不显示
 			// 。

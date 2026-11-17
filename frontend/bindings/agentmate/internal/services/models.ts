@@ -109,6 +109,12 @@ export interface ChatMessage {
      * user|assistant|thinking|tool_call|tool_result|confirm_request|confirm_result
      */
     "kind": string;
+
+    /**
+     * Phase 在历史回放时推导：同一次模型响应含工具调用时，其文本是过程旁白；
+     * 不含工具调用时为最终答复。旧历史没有该字段，前端会按位置回退。
+     */
+    "phase"?: string;
     "author": string;
     "text": string;
     "toolName"?: string;
@@ -142,6 +148,11 @@ export interface ChatStreamEvent {
      * user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|warning|turn_state|plan|retry|verification|budget_pause|delegation_progress|done|error
      */
     "kind": string;
+
+    /**
+     * Phase 区分过程旁白与最终答复。仅 message 事件使用；旧客户端可忽略。
+     */
+    "phase"?: string;
     "turnStatus"?: string;
     "author": string;
     "text": string;

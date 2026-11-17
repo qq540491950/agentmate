@@ -90,7 +90,7 @@ Nord 使用官方 Polar Night / Snow Storm / Frost / Aurora 作为身份基础�
 | 设置分组 | 标题在面板外或面板内均可，但面板用 `panel` 底、无 ring；设置行无 border，靠 12–16px 垂直内距 |
 | 管理列表 | 一个 `panel` 容器包住连续行；行 hover 用 `overlay`，不要每项一张描边卡 |
 | 对话正文 | 助手无气泡全宽正文；用户 `accent-soft` 气泡、无 ring；当前轮只加底纹浓度 |
-| 执行组 | 单块 `panel`；组头、内容、工具行用底纹/留白/缩进分层，不再逐层套框 |
+| 执行组 | 每回合单块 `panel`；折叠态用“用时/失败摘要”一行收束，展开后按时间顺序显示旁白、思考与工具行；用底纹/留白/缩进分层，不再逐层套框 |
 | 确认卡 | `warning-soft` / `success-soft` / `danger-soft` 底 + 状态图标 + 文字；无 border/左色条 |
 | 思考过程 | 低对比底纹 + 图标 + 缩进；无左竖线 |
 | Composer | `panel` 底、16px 圆角、无 border；聚焦不显示整块包边/ring，靠文本光标与内部控件自身焦点提示；拖拽用 `accent-soft` |

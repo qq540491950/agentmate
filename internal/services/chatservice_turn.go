@@ -904,7 +904,9 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		var textBuf strings.Builder
 		var thoughtBuf strings.Builder
 		toolCallsThisTurn := 0
-		toolCallInThisResponse := false
+		// 同一次模型响应内，文本是过程旁白还是最终答复，由该响应是否还包含工具
+		// 调用决定。提前扫描比依赖循环顺序更可靠：文本部件通常先于工具调用到达。
+		responsePhase := responseMessagePhase(ev.Content.Parts)
 		// flushThought/flushText 保持聚合部分的事件顺序：
 		// 推理先于答案到达，因此其块必须在助手气泡开始之前关闭。
 		flushThought := func() {
@@ -927,12 +929,12 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			if guardOn {
 				outText = agentkit.ApplyOutputGuardrail(outText)
 			}
-			if toolCallInThisResponse {
+			if responsePhase == messagePhaseCommentary {
 				lastReply = ""
 			} else {
 				lastReply = outText
 			}
-			emit(ChatStreamEvent{Kind: "message", Author: author, Text: outText, Usage: turnUsage})
+			emit(ChatStreamEvent{Kind: "message", Phase: responsePhase, Author: author, Text: outText, Usage: turnUsage})
 			checkpointSeq++
 			c.recordCheckpoint(turn.ID, sessionID, "", checkpointSeq)
 			turnUsage = nil
@@ -949,6 +951,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			flushThought()
 			switch {
 			case p.FunctionCall != nil && isConfirmationInterrupt(ev, p.FunctionCall):
+				lastReply = ""
 				// HITL 暂停点：呈现可操作的确认请求，并让回合就此结束；答案通过
 				// ConfirmToolCall 以 FunctionResponse 恢复的形式到达。
 				name, args := p.FunctionCall.Name, p.FunctionCall.Args
@@ -967,7 +970,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				emitTurnState(turnStatusWaitingApproval)
 			case p.FunctionCall != nil:
 				toolCallsThisTurn++
-				toolCallInThisResponse = true
+				lastReply = ""
 				callKey := p.FunctionCall.Name + ":" + hashBytes([]byte(mustJSON(p.FunctionCall.Args)))
 				if callKey == loopToolCallKey {
 					loopToolCallCount++

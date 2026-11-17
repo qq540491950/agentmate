@@ -143,7 +143,7 @@
 | 选择控件 | 未选中 `control` 面；选中使用 `choice-selected` / `choice-selected-danger` + `foreground` 文字 + Check 图标；无布局边框 |
 | 管理列表 | 一个 `panel` 容器包住连续行；行 hover 用 overlay；不要每项一张描边卡 |
 | 对话正文 | 助手无气泡全宽；用户 `accent-soft` 气泡无 ring；当前轮只加底纹浓度 |
-| 执行组 | 单块 `panel`；组头、内容、工具行用底纹/留白/缩进分层；不逐层套框 |
+| 执行组 | 每回合单块 `panel`；折叠态用“用时/失败摘要”一行收束，展开后按时间顺序显示旁白、思考与工具行；用底纹/留白/缩进分层，不逐层套框 |
 | 确认卡 | `*-soft` 底 + 状态图标 + 文字；无 border/左色条 |
 | 思考过程 | 低对比底纹 + 图标 + 缩进；无左竖线 |
 | Composer | `panel` 底、16px 圆角、无 border；聚焦不显示整块包边/ring，靠文本光标与内部控件自身焦点提示；拖拽用 `accent-soft` |

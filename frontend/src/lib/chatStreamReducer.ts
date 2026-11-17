@@ -84,6 +84,7 @@ export type ChatStreamEventLike = {
   sessionId: string;
   turnId?: string;
   kind: string;
+  phase?: string;
   turnStatus?: string;
   text?: string;
   plan?: PlanUpdate | null;
@@ -261,6 +262,11 @@ export type ChatMessageReduceContext = {
   timestamp: string;
 };
 
+/** asMessagePhase 只接受协议定义的两种值，兼容旧客户端传入的空值/未知值。 */
+export function asMessagePhase(phase?: string): "commentary" | "final" | undefined {
+  return phase === "commentary" || phase === "final" ? phase : undefined;
+}
+
 /**
  * reduceChatMessages 是消息时间线的纯 reducer。ChatPage 只负责流式缓冲和
  * refs 的生命周期，所有最终消息、工具对、确认卡、错误和重试提示都从这里追加，
@@ -324,6 +330,7 @@ export function reduceChatMessages(
         copy[real] = {
           ...copy[real],
           text: event.text ?? "",
+          phase: asMessagePhase(event.phase),
           streaming: false,
           usage: event.usage ?? null,
           timestamp: ctx.timestamp,
@@ -332,6 +339,7 @@ export function reduceChatMessages(
       }
       return [...prev, {
         id: id(), kind: "assistant", author, text: event.text ?? "",
+        phase: asMessagePhase(event.phase),
         usage: event.usage ?? null, timestamp: ctx.timestamp,
       }];
     }

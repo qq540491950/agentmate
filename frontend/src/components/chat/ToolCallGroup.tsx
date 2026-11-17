@@ -5,7 +5,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { TooltipHint } from "@/components/ui/tooltip";
 import { ToolCallCard } from "@/components/ToolCallCard";
+import { MessageMarkdown } from "@/components/MessageMarkdown";
 import { ConfirmCard, ThinkingBlock } from "@/components/chat/MessageBubble";
+import { TodoListCard } from "@/components/chat/TodoCards";
 import {
   buildToolTrace, formatToolExecutionBreakdown, formatWorkDuration, summarizeToolTrace,
   toolGroupElapsedMs, toolGroupStatus, toolStepDisplay,
@@ -26,18 +28,15 @@ const STATUS_META: Record<ToolGroupStatus, { label: string; icon: ReactNode; cls
 };
 
 /**
- * ToolCallGroup 将一段连续执行过程——思考条目、工具调用/结果以及 HITL
- * 确认——折叠为一行摘要。助手叙述有意不属于该分组：后续工具调用不得吸收已经显示
- * 在会话时间线上的文本。显示模式决定其默认展开状态：auto 跟随运行状态，concise
- * 保持折叠（HITL 除外），detailed 保持展开，none
- * 则隐藏该块。对于该块，用户点击始终优先。展开后会显示思考行以及每次调用一行紧
- * 凑记录；点击某行会保留其输入/输出详情和产物预览。
+ * ToolCallGroup 是一个回合的完整执行过程容器：过程旁白、思考、工具调用/结果、
+ * HITL 确认和计划快照按时间顺序排列，最终答复由调用方放在容器之外。显示模式决定
+ * 默认展开状态：auto 跟随运行状态，concise 保持折叠（HITL 除外），detailed 保持
+ * 展开，none 则隐藏该块。用户点击始终优先。
  */
 export function ToolCallGroup({ group, live, runningTools, durations, sessionID, filterQ, displayMode, onConfirm }: {
   /**
-   * group
-   * 携带该回合的消息、其最终回复的时间戳和结果（answered/errored），以便头部报
-   * 告整个运行，而不是单个步骤。
+   * group 携带整轮的过程事件、开始/结束时间与结果，以便头部报告整个运行，而不是
+   * 单个步骤。
    */
   group: ToolGroup;
   /** 在当前回合仍流式输出期间，live 使摘要持续计时。 */
@@ -114,7 +113,9 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [ticking]);
-  const computedMs = toolGroupElapsedMs(messages, group.endTs, now, !!live, durations);
+  const computedMs = toolGroupElapsedMs(
+    messages, group.endTs, now, !!live, durations, group.startedAt,
+  );
   // 实时时间戳为
   // "now"，但已稳定的回合会回退到最终回复的创建时间；保留峰值，以确保摘要绝不缩
   // 短。
@@ -123,13 +124,15 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
     if (computedMs != null && computedMs > peakMs) setPeakMs(computedMs);
   }, [computedMs, peakMs]);
   const elapsedMs = computedMs == null ? null : Math.max(computedMs, peakMs);
-  const summaryText = [
-    elapsedMs != null ? `已工作 ${formatWorkDuration(elapsedMs)}` : "",
-    summary.total > 0 ? `${summary.total} 个步骤` : "",
+  const elapsedLabel = status === "running" || status === "confirm" ? "已工作" : "用时";
+  const summaryParts = [
+    elapsedMs != null ? `${elapsedLabel} ${formatWorkDuration(elapsedMs)}` : "",
+    expanded && summary.total > 0 ? `${summary.total} 个步骤` : "",
     displayMode === "concise" && status === "running" ? activeToolName : "",
-  ].filter(Boolean).join(" · ");
+  ];
+  const summaryText = summaryParts.filter(Boolean).join(" · ");
   const summaryHint = [
-    elapsedMs != null ? `已工作 ${formatWorkDuration(elapsedMs)}` : "",
+    elapsedMs != null ? `${elapsedLabel} ${formatWorkDuration(elapsedMs)}` : "",
     summary.total > 0
       ? `本回合执行了 ${summary.total} 个步骤${breakdown ? `：${breakdown}` : ""}`
       : "",
@@ -157,8 +160,8 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
       >
         <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
         <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <span className="sr-only">执行过程</span>
           <span className="shrink-0">{meta.icon}</span>
-          <span className="shrink-0 whitespace-nowrap font-medium">执行过程</span>
           {summaryText && (
             <span data-slot="execution-summary" className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
               <TooltipHint content={summaryHint}>
@@ -173,9 +176,11 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
             </span>
           )}
         </span>
-        <Badge data-slot="execution-badge" variant="outline" className={cn("ml-auto shrink-0 font-normal", meta.cls)}>
-          {meta.label}
-        </Badge>
+        {(status !== "done" || expanded) && (
+          <Badge data-slot="execution-badge" variant="outline" className={cn("ml-auto shrink-0 font-normal", meta.cls)}>
+            {meta.label}
+          </Badge>
+        )}
       </button>
       {/* 折叠动画使用 grid-rows 0fr→1fr 技巧：内容保持挂载，因此流式追加不会导致其重新挂载，高度由 CSS 负责。 */}
       <div
@@ -216,6 +221,18 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
                 <ConfirmCard key={m.id} m={m} onConfirm={onConfirm} />
               ) : m.kind === "thinking" ? (
                 <ThinkingBlock key={m.id} m={m} inline />
+              ) : m.kind === "assistant" ? (
+                <MessageMarkdown
+                  key={m.id}
+                  content={m.text}
+                  className="px-2 py-1 text-ui leading-[1.7] text-muted-foreground"
+                />
+              ) : m.kind === "tool_result" && m.toolName === "plan_todos" ? (
+                <TodoListCard key={m.id} resp={m.toolResp ?? null} />
+              ) : m.kind === "warning" ? (
+                <div key={m.id} className="rounded-lg bg-warning-soft px-2 py-1.5 text-xs text-warning-text">
+                  {m.text}
+                </div>
               ) : null;
             })}
           </div>

@@ -87,6 +87,23 @@ describe("chatStreamReducer", () => {
     expect(shouldFireQueued(state)).toBe(false);
   });
 
+  it("carries commentary/final phase onto assistant messages", () => {
+    const ctx = {
+      pendingUser: null,
+      thinkingStreamed: false,
+      createID: () => "m1",
+      timestamp: "2026-11-17T00:00:00Z",
+    };
+    let messages = reduceChatMessages([], base({
+      kind: "message", author: "助手", text: "我先检查。", phase: "commentary",
+    }), ctx);
+    expect(messages[0]).toMatchObject({ kind: "assistant", phase: "commentary" });
+    messages = reduceChatMessages(messages, base({
+      kind: "message", author: "助手", text: "已修复。", phase: "final",
+    }), { ...ctx, createID: () => "m2" });
+    expect(messages[messages.length - 1]).toMatchObject({ kind: "assistant", phase: "final" });
+  });
+
   it("reduces optimistic users, tool pairs, confirmations and retries in one message reducer", () => {
     let seq = 0;
     const ctx = {
