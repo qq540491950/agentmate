@@ -4,6 +4,46 @@
 
 ## 视觉测试与体验设计
 
+### 第二百九十六轮迭代：活动计划迁移到输入区上方（已实施）
+
+依据：浏览器走查反馈计划卡夹在消息时间线中，既打断执行过程阅读，也与输入区当前任务脱节。
+
+**实现要点**
+
+- 新增 `PlanDock`：当前未完成计划固定在 composer 上方，展示完成数、运行/等待/阻塞状态、当前步骤，并支持展开/收起。
+- 当前回合的 `plan_todos` 内联卡在活动计划 dock 存在时隐藏；历史回合与计划完成后的卡仍保留在时间线中作为记录。
+- 移除会话头的重复 `PlanChip` 入口，避免同一计划出现多处。
+
+**测试证据**
+
+- 新增 `PlanDock` 与 `MessageBubble` 计划可见性测试；`npx tsc --noEmit`、`npm test -- --run`（47 文件 / 335 例）、`npm run build` 通过。
+- 浏览器桩确认计划卡位于输入框上方，消息流中不再重复；展开/收起状态和 `1/3 完成 · 等待确认` 摘要正常。
+
+### 第二百九十五轮迭代：Agent 工作流 #84 收口与安全门禁（已实施）
+
+依据：继续收口 #84 的 44 条用户故事，补齐回合生命周期、预算暂停、检查点恢复、工具网关、审批队列、验证门禁、团队编排、上下文锚点、持久化脱敏、trace 与前端工作流面板；A2A 发布、鉴权、隔离工作区和远程调用链路保持不变。
+
+**实现要点**
+
+- 回合生命周期统一为 `queued → preparing → running → waiting_approval/verifying → completed|failed|cancelled/interrupted`，增加 `budget_paused`；等待审批/预算暂停不直接 failed，所有终止路径写 `turn_state`，配置变更不影响已暂停回合的 Agent 快照。
+- 新增 `ToolSpec/Registry/ToolGateway`：内置、MCP、Skill 工具统一 effect、deadline、工作区/session/MCP 并发门、熔断、稳定错误码、审计、64KB 结果落盘与 `untrusted_data`；MCP 单次调用默认 120 秒、连续失败熔断；read 并行、写/shell/verify 工作区串行、`plan_todos` session 单写者。
+- write/edit 使用同目录临时文件、fsync、rename 与权限保留；`read_workspace_file` 返回全文 SHA-256，write/edit 支持 `expectedSha256` 或 mtime+size 降级检查；`tool_invocations` 记录前后哈希，恢复时已应用跳过、未应用重跑、外部修改/ shell /MCP 重放要求人工确认。
+- 新增审批队列 `ListApprovals` / `ConfirmApprovals` / `GrantApprovalScope`；确认绑定 turnID/callID，跨回合拒绝；确认卡与队列展示 diff、风险、暂停策略；批量授权仅匹配同工具同风险且拒绝 high risk，新用户回合会废弃旧 pending 并发送终止状态。
+- `workflow_checkpoints` 消耗事件游标、plan version、未决审批摘要和副作用摘要；副作用摘要限制为 12KB、审批摘要限制为 8KB，避免完整工具结果进入检查点。`ResumeTurn` / `RetryStep` / `AbandonTurn` 复用暂停时清单，不裁剪整轮历史。
+- `verify_work` 成为代码任务硬门禁：无成功验证证据不可 completed；失败保留输出 artifact，计划标 blocked；用户显式豁免会同时把 blocked 步骤标记 completed 并写入豁免证据。
+- 每次模型请求前重新附加 `<workflow_anchors>`，保留当前计划、未决审批、最近副作用与已配对工具调用/结果，避免 ADK 实际压缩后丢失安全上下文或产生孤立工具对。
+- 团队自动协调员保留 `plan_todos`、`verify_work`、文件读取和 `delegate_task`；本地成员只能通过 `submit_plan_proposal` 提交建议，委派支持成员预算、进度转发、深度 2 和单回合 8 次；远程 A2A 成员仍保留原有 transfer 链路。
+- 新增 `turn_traces` 和前端 `chatStreamReducer`：模型/工具/审批/验证/重试/状态、token、费用、耗时、错误码默认脱敏并可关闭；ChatPage 的最终消息 switch 迁入纯 reducer，按 turnID+seq 去重重放/乱序事件，终止判断只看 `turn_state`。
+- 前端新增预算暂停卡、验证阻塞/豁免卡、恢复横幅、审批队列、计划编辑器、trace 时间线；浏览器桩补齐审批、预算、验证、计划与 trace fixtures。
+
+**测试证据**
+
+- Go：`go test ./internal/agentkit`（7.2s）、`go test ./internal/services`（49.6s）通过；新增状态迁移、预算继续/停止、检查点摘要、真实 ADK 压缩锚点与工具对、恢复哈希冲突、审批风险作用域、团队预算/深度/扇出、大结果脱敏落盘、重复工具调用环等回归。
+- `go test -race ./internal/...` 通过（agentkit 26.3s、services 82.5s 等）；`go vet ./internal/... .` 通过。
+- 前端 `npx tsc --noEmit` 通过；`npm test -- --run` 46 个文件 / 332 个用例通过；`npm run build` 通过（2341 modules）。
+- `bash ./scripts/verify.sh` 输出 `VERIFY: ALL GREEN`；Wails Windows 生产构建成功。
+- 浏览器桩走查：确认卡风险/diff/策略、审批队列、计划编辑器、预算暂停卡、验证失败卡、trace 时间线；Nord 深色、Nord 浅色与纸墨主题均正常。
+
 ### 第二百九十四轮迭代：新对话工作区上下文与 Git 分支选择（已实施）
 
 依据：用户反馈点击「新对话」后没有选择目录入口，也没有像参考界面那样显示/切换 Git 分支。复现确认草稿态只保存 `draftProjectID`，composer 内没有工作区上下文 UI；主按钮新对话使用默认任务目录，后端也没有读取 Git 分支的 RPC。历史实现中的「Codex 式上下文标签」只在 `active && messages.length === 0` 时渲染，在 #30 改为惰性草稿后失效，随后又在界面收敛中删除。

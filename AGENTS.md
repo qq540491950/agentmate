@@ -58,10 +58,14 @@ frontend/bindings/        # wails3 生成绑定（勿手改）
 - **Skill ZIP 导入**：`ConfigService.ImportSkillZip` 解压并校验 `SKILL.md` 后安装到全局 `~/.agents/skills` 或项目 `.agents/skills`，由发现层只读加载；附属文件原样保留，同名目录拒绝覆盖。
 - **任务级工作区**：`NewSession` 与 `NewSessionWithWorkspace` 均创建任务目录；`EffectiveWorkspace` 是文件工具、`{{workspace}}` 与预览的唯一后端解析入口；首轮后锁定，活动任务不能重复占用同一显式目录；发送/确认/改绑共用会话级 workspace 锁。知识库/Skills/导出仍用全局工作区。
 - **任务产物快照**：基线存应用数据目录 `task-snapshots/<sessionID>.json`（版本化、原子写，不进 sessions.db）；按存在性/大小/mtime 算新增、修改、删除；跳过隐藏/VCS/依赖目录与符号链接（5000 文件 / 200 条上限）；删会话清基线但保留任务文件，分叉共享工作区但独立基线。
-- **plan_todos**：状态存 ADK session state 键 `agentmate.todos`，全量替换（省略参数=只读，空数组=清空）；completed 步骤必须带 evidence；前端把同一轮更新收敛为一张清单卡（tool_call 不单列），当前轮计划入口在会话头，可展开/关闭。
-- **verify_work**：按项目类型检测测试/类型检查/构建命令，在任务工作区沙箱内运行；代码类任务完成前应调用；计划含 completed 但本轮未验证时会发 warning。
+- **plan_todos**：状态存 ADK session state 键 `agentmate.todos`，全量替换（省略参数=只读，空数组=清空）；completed 步骤必须带 evidence；前端把同一轮更新收敛为一张清单卡，计划编辑器可改依赖/验收/证据，持久化仍回到同一状态键。
+- **verify_work**：按项目类型检测测试/类型检查/构建命令，在任务工作区沙箱内运行；代码任务改动后无成功验证证据不得 completed，失败最多自动修复 2 轮，仍失败标记 blocked 并保留输出 artifact；用户可显式豁免。
 - **delegate_task**：团队协调员在保留根节点控制权的情况下运行成员并接收结构化结果；单回合最多 8 次、委派深度 2；旧 transfer 团队仍兼容。
-- **运行恢复**：每轮写 `workflow_turns`/`workflow_checkpoints`；失败/中断回合可从聊天头「继续任务」调用 `ResumeTurn`，先检查工作区与计划再继续；工具结果超过 64KB 时落盘到 `tool-results/`。
+- **回合状态与预算**：`queued → preparing → running → waiting_approval/verifying → completed|failed|cancelled`；另有 `budget_paused` 软暂停。单回合默认软上限 120 次工具、200 次模型调用与 token/上下文阈值，达到后发 `budget_pause` 与 `turn_state`，由用户继续或停止，不得直接 failed。
+- **工具网关与副作用台账**：内置、MCP、Skill 工具统一经 `ToolSpec/Registry/Guard/Executor` 包装；统一 effect、deadline、并发门、熔断、结果预算、untrusted 标记与审计。write/edit 记录前后 SHA-256 和 planned-after hash；`tool_invocations` 用于恢复时跳过已应用写入、重跑未应用写入、冲突人工确认；shell/MCP 恢复强制确认。
+- **运行恢复**：每轮写 `workflow_turns`/`workflow_checkpoints`，检查点含事件游标、plan version、未决审批与副作用摘要；失败/中断/预算暂停回合经 `ResumeTurn`/`RetryStep` 从检查点继续，只重试 failed/blocked 步骤且不裁剪历史；工具结果超过 64KB 落盘到 `tool-results/`。
+- **审批队列**：`workflow_approvals` 绑定 turnID/callID，跨回合拒绝；确认卡展示 diff、风险与暂停时策略快照；`ListApprovals` / `ConfirmApprovals` / `GrantApprovalScope` 支持队列、批量与有作用域授权。
+- **Trace 与前端事件**：`turn_traces` 持久化模型/工具/审批/验证/重试/状态与 token/费用，默认脱敏并有开关；`chatStreamReducer` 处理 v2 事件、序号去重、乱序/重放/旧版本兼容，终止判断只看 `turn_state`。
 - **终端 Shell**：`Settings.Terminal` 经 `internal/terminal` 按平台解析；Windows 首选 `pwsh → Git Bash → Windows PowerShell 5.1 → cmd`，受限沙箱下 Git Bash/WSL 需完全访问并由 `auto` 跳过；当前会话首次使用时冻结 Shell，详见 [docs/terminal-shells.md](docs/terminal-shells.md)。
 - **autoTitle**：默认开启（`Settings.AutoTitle` 显式 false 才关闭）；首轮后异步 30s 侧调用，默认用全局主模型，可用 `Settings.TitleProviderID/TitleModel` 指定；仅替换首轮兜底标题，goroutine 自带 recover。历史会话可经 `ChatService.RefineSessionTitle` 手动重提炼。
 - **单轮不限时与重试**：所有回合默认不设整轮墙钟上限，`MaxTurnSeconds` 已从配置和界面移除；模型流静默由 `agentkit.streamIdleTimeout` 兜底，供应商网络/429/502/503/504 默认最多重试 5 次，均不暴露用户设置；`runTurn` 的 recover 把 panic 转为 `error` + `done`。
