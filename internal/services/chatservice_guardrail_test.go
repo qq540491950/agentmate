@@ -54,7 +54,8 @@ func newGuardrailTestChat(t *testing.T, maxToolCalls int, handler http.HandlerFu
 	return chat, &events, dir
 }
 
-// TestGuardrailMaxToolCalls 在达到配置的工具调用次数后停止回合，而不是让模型无限循环。
+// TestGuardrailMaxToolCalls 在达到配置的工具调用软阈值后暂停，而不是把回合
+// 直接标成 failed。
 func TestGuardrailMaxToolCalls(t *testing.T) {
 	var calls atomic.Int64
 	chat, events, _ := newGuardrailTestChat(t, 2, func(w http.ResponseWriter, r *http.Request) {
@@ -76,17 +77,24 @@ func TestGuardrailMaxToolCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var sawGuardrail, sawDone bool
+	var sawPause, sawPausedState, sawDone, sawFailed bool
 	for _, ev := range *events {
-		if ev.Kind == "error" && strings.Contains(ev.Text, "工具调用上限（2") {
-			sawGuardrail = true
+		if ev.Kind == "budget_pause" && ev.Budget != nil && ev.Budget.Reason == "tool_calls" {
+			sawPause = true
+		}
+		if ev.Kind == "turn_state" && ev.TurnStatus == turnStatusBudgetPaused {
+			sawPausedState = true
+		}
+		if ev.Kind == "turn_state" && ev.TurnStatus == turnStatusFailed {
+			sawFailed = true
 		}
 		if ev.Kind == "done" {
 			sawDone = true
 		}
 	}
-	if !sawGuardrail || !sawDone {
-		t.Fatalf("guardrail stop incomplete: guardrail=%v done=%v events=%+v", sawGuardrail, sawDone, *events)
+	if !sawPause || !sawPausedState || !sawDone || sawFailed {
+		t.Fatalf("budget pause incomplete: pause=%v state=%v done=%v failed=%v events=%+v",
+			sawPause, sawPausedState, sawDone, sawFailed, *events)
 	}
 }
 
@@ -120,8 +128,8 @@ func TestGuardrailUnlimitedKeepsOldBehavior(t *testing.T) {
 	}
 }
 
-// TestGuardrailSessionTokenBudget：会话累计消耗超出预算时，允许完成跨过预算的那
-// 个回合，之后拒绝新的用户回合。
+// TestGuardrailSessionTokenBudget：会话累计消耗超出预算后，新回合进入预算暂停，
+// 由用户决定继续或停止。
 func TestGuardrailSessionTokenBudget(t *testing.T) {
 	var modelCalls atomic.Int64
 	chat, events, _ := newGuardrailTestChat(t, 0, func(w http.ResponseWriter, r *http.Request) {
@@ -148,36 +156,31 @@ func TestGuardrailSessionTokenBudget(t *testing.T) {
 		t.Fatalf("turn 1 model calls = %d", modelCalls.Load())
 	}
 
-	// 第 2 回合在回合中途超出预算：该回合会完成，随后发出警告。
+	// 第 2 回合在回合中途超出预算；最终回答仍然保留。
 	if err := chat.Send(sess.ID, "第二轮", nil); err != nil {
 		t.Fatal(err)
 	}
-	var sawWarn bool
-	for _, ev := range *events {
-		if ev.Kind == "error" && strings.Contains(ev.Text, "已达会话 token 预算") {
-			sawWarn = true
-		}
-	}
-	if !sawWarn {
-		t.Fatalf("crossing-turn warning missing: %+v", *events)
-	}
 
-	// 第 3 回合在调用模型之前就被拒绝。
+	// 第 3 回合在调用模型之前进入预算暂停，而不是直接 failed。
 	before := modelCalls.Load()
+	*events = nil
 	if err := chat.Send(sess.ID, "第三轮", nil); err != nil {
 		t.Fatal(err)
 	}
 	if modelCalls.Load() != before {
 		t.Fatal("refused turn must not call the model")
 	}
-	var sawRefusal bool
+	var sawPause bool
 	for _, ev := range *events {
-		if ev.Kind == "error" && strings.Contains(ev.Text, "本轮未执行") {
-			sawRefusal = true
+		if ev.Kind == "budget_pause" && ev.Budget != nil && ev.Budget.Reason == "session_tokens" {
+			sawPause = true
+		}
+		if ev.Kind == "turn_state" && ev.TurnStatus == turnStatusFailed {
+			t.Fatalf("soft budget pause must not fail: %+v", *events)
 		}
 	}
-	if !sawRefusal {
-		t.Fatalf("refusal message missing: %+v", *events)
+	if !sawPause {
+		t.Fatalf("soft budget pause missing: %+v", *events)
 	}
 }
 

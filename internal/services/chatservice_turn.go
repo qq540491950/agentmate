@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -29,8 +30,10 @@ import (
 const compactionEventRetentionSize = 10
 
 const (
-	defaultMaxToolCalls = 120
-	defaultMaxLLMCalls  = 200
+	defaultMaxToolCalls   = 120
+	defaultMaxLLMCalls    = 200
+	defaultMaxTurnTokens  = int64(200_000)
+	repeatedToolCallLimit = 5
 )
 
 func addUsage(total, u *UsageInfo) *UsageInfo {
@@ -192,6 +195,9 @@ func (c *ChatService) emitChat(sessionID string, ev ChatStreamEvent) {
 	if ev.Version == 0 {
 		ev.Version = 2
 	}
+	if ev.Seq == 0 {
+		ev.Seq = c.eventSeq.Add(1)
+	}
 	if ev.TurnID == "" {
 		c.turnMu.Lock()
 		ev.TurnID = c.sessionTurns[sessionID]
@@ -219,6 +225,10 @@ func (c *ChatService) setSessionTurn(sessionID, turnID string) {
 // sendTurn 对用户输入做净化处理（护栏），构建消息内容并将该回合交给
 // runTurn。turnReasoning 是按回合覆盖的思考级别（为空则保留会话默认值）。
 func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentIn, turnReasoning string) error {
+	return c.sendTurnWithManifest(sessionID, text, attachments, turnReasoning, nil)
+}
+
+func (c *ChatService) sendTurnWithManifest(sessionID, text string, attachments []AttachmentIn, turnReasoning string, manifest *workflowTurn) error {
 	lock := c.sessionWorkspaceLock(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -226,6 +236,9 @@ func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentI
 	target := c.resolveSessionTarget(cfg, sessionID)
 	if target == nil {
 		return fmt.Errorf("会话 %q 不存在", sessionID)
+	}
+	if manifest == nil {
+		c.supersedePendingApprovals(sessionID)
 	}
 	releaseRepo := func() {}
 	if strings.TrimSpace(target.ProjectID) != "" {
@@ -268,7 +281,12 @@ func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentI
 	if err != nil {
 		return err
 	}
-	return c.runTurn(turnTarget, guardOn, msg, text, turnContext, turnReasoning, nil)
+	return c.runTurn(turnTarget, guardOn, msg, agentkit.SanitizeSecrets(text), turnContext, turnReasoning, manifest)
+}
+
+// resumeTurnPrompt 以检查点继续一个逻辑回合：不裁剪历史，复用暂停时的运行清单。
+func (c *ChatService) resumeTurnPrompt(sessionID, prompt string, manifest *workflowTurn) error {
+	return c.sendTurnWithManifest(sessionID, prompt, nil, manifest.ReasoningLevel, manifest)
 }
 
 // ConfirmToolCall 响应待处理的 ADK 工具确认中断（HITL）：approved=true
@@ -276,6 +294,10 @@ func (c *ChatService) sendTurn(sessionID, text string, attachments []AttachmentI
 func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) error {
 	if strings.TrimSpace(callID) == "" {
 		return fmt.Errorf("缺少确认请求 ID")
+	}
+	approval, approvalErr := c.validateApproval(sessionID, callID)
+	if approvalErr != nil && c.approvalByCallID(callID) != nil {
+		return approvalErr
 	}
 	resp, err := c.sessions.Get(context.Background(), &session.GetRequest{
 		AppName: c.appName, UserID: c.userID, SessionID: sessionID,
@@ -369,19 +391,25 @@ func (c *ChatService) ConfirmToolCall(sessionID, callID string, approved bool) e
 	// 按被中断回合所使用的级别恢复：一次 HITL
 	// 往返是一个逻辑回合，因此续跑不得在中途切换思考预算。
 	var manifest *workflowTurn
-	if approval := c.approvalByCallID(callID); approval != nil {
+	if approval != nil {
 		manifest = c.turnByID(approval.TurnID)
 		if approved {
 			c.setApprovalStatus(callID, "approved")
+			c.approveToolInvocation(callID)
 		} else {
 			c.setApprovalStatus(callID, "rejected")
 		}
 		if manifest != nil {
-			c.updateTurnStatus(manifest.ID, "resumed")
+			c.recordTrace(workflowTrace{
+				SessionID: sessionID, TurnID: manifest.ID, Kind: "approval",
+				Status: map[bool]string{true: "approved", false: "rejected"}[approved],
+				Name:   approval.ToolName, CallID: callID,
+				DurationMs: time.Since(approval.CreatedAt).Milliseconds(),
+				DataJSON:   sanitizedJSON(map[string]any{"callId": callID}),
+			})
 		}
 	} else if pending := c.latestWaitingTurn(sessionID); pending != nil {
 		manifest = pending
-		c.updateTurnStatus(pending.ID, "resumed")
 	}
 	return c.runTurn(turnTarget, guardOn, msg, "", turnContext, lastUserReasoning, manifest)
 }
@@ -403,6 +431,9 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	if c.workflowErr != nil {
 		return fmt.Errorf("工作流存储不可用: %w", c.workflowErr)
 	}
+	if c.S != nil && c.S.Kit != nil {
+		c.S.Kit.SetWorkflowAnchors(c.buildWorkflowAnchors)
+	}
 	// 在任何设置之前注册。IsRunning 为前端的会话校准提供支持，并且必须在 Agent
 	// 树构建期间就已报告本回合；如果在高开销设置之后（或在用户事件之后）才注册，就
 	// 会让并发探测看到错误的空闲状态。
@@ -411,6 +442,14 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	release := c.registerRun(sessionID, cancel)
 	defer release()
 	cfg := c.S.Store.Get()
+	var savedSnapshot *turnAgentSnapshot
+	if manifest != nil && strings.TrimSpace(manifest.AgentSnapshotJSON) != "" {
+		var serr error
+		cfg, savedSnapshot, serr = applyAgentSnapshot(cfg, manifest.AgentSnapshotJSON)
+		if serr != nil {
+			return serr
+		}
+	}
 	sessionTerminal := c.terminalSettingsFor(sessionID, cfg.Settings.Terminal)
 	workspace := target.EffectiveWorkspaceFor(cfg)
 	// 每回合选择 > 会话默认 >
@@ -424,10 +463,25 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	// Agent 任务持续运行，直到完成、失败或被取消。停滞的模型流式由 LLM
 	// 适配器的空闲看门狗单独限界。
 	maxToolCalls := defaultMaxToolCalls
+	maxModelCalls := defaultMaxLLMCalls
+	maxTurnTokens := defaultMaxTurnTokens
 	var maxSessionTokens int64
 	if agentCfg := c.targetAgentConfig(cfg, target); agentCfg != nil {
-		maxToolCalls = agentCfg.MaxToolCalls
+		if agentCfg.MaxToolCalls > 0 {
+			maxToolCalls = agentCfg.MaxToolCalls
+		} else if agentCfg.MaxToolCalls < 0 {
+			maxToolCalls = 0
+		}
 		maxSessionTokens = agentCfg.MaxSessionTokens
+		if agentCfg.MaxTurnTokens > 0 {
+			maxTurnTokens = agentCfg.MaxTurnTokens
+		}
+	}
+	if hasModel && modelInfo.ContextWindow > 0 {
+		contextCap := int64(modelInfo.ContextWindow) * 4 / 5
+		if maxTurnTokens == defaultMaxTurnTokens || maxTurnTokens > contextCap {
+			maxTurnTokens = contextCap
+		}
 	}
 	var budgetBaseline int64
 	budgetExceeded := false
@@ -468,15 +522,101 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	if hasModel {
 		modelID = modelInfo.ID
 	}
-	turn, terr := c.beginTurn(target, workspace, approvalPolicy, sandboxProfile, sandboxNetwork, modelID, recordedLevel, "")
+	snapshot := ""
+	parentTurnID := ""
+	budgetOverride := false
+	if manifest != nil {
+		snapshot = manifest.AgentSnapshotJSON
+		parentTurnID = manifest.ID
+		budgetOverride = manifest.Status == turnStatusBudgetPaused
+	}
+	if snapshot == "" {
+		snapshot, _ = snapshotForTurn(cfg, target)
+	}
+	turn, terr := c.beginTurn(target, workspace, approvalPolicy, sandboxProfile, sandboxNetwork, modelID, recordedLevel, parentTurnID, snapshot, budgetOverride)
 	if terr != nil {
 		return terr
 	}
-	turnStatus := "running"
-	defer c.finishTurn(turn.ID, &turnStatus, &err)
-	defer c.recoverRun(sessionID, &err)
 	c.setSessionTurn(sessionID, turn.ID)
 	defer c.setSessionTurn(sessionID, "")
+	emit := func(ev ChatStreamEvent) { c.emitChat(sessionID, ev) }
+	doneEmitted := false
+	errorSent := false
+	stateEmitted := false
+	var sessionUsage *UsageInfo
+	var turnUsage *UsageInfo
+	finishReason := ""
+	turnStatus := turnStatusQueued
+	emitDone := func() {
+		if doneEmitted {
+			return
+		}
+		doneEmitted = true
+		emit(ChatStreamEvent{Kind: "done", SessionUsage: sessionUsage})
+	}
+	emitError := func(text string) {
+		text = agentkit.SanitizeSecrets(text)
+		if text == "" {
+			return
+		}
+		errorSent = true
+		emit(ChatStreamEvent{Kind: "error", Text: text})
+	}
+	emitTurnState := func(status string) {
+		if turnStatus == status && stateEmitted {
+			return
+		}
+		turnStatus = status
+		stateEmitted = true
+		c.updateTurnStatus(turn.ID, status)
+		ev := ChatStreamEvent{Kind: "turn_state", TurnStatus: status}
+		if isTerminalTurnStatus(status) {
+			ev.SessionUsage = sessionUsage
+		}
+		emit(ev)
+		c.recordTrace(workflowTrace{
+			SessionID: sessionID, TurnID: turn.ID, Kind: "state", Status: status,
+			DataJSON: sanitizedJSON(map[string]any{"reason": finishReason}),
+		})
+	}
+	// 先注册最终态兜底，再注册 panic 恢复：panic 恢复会先设置 failed，最终态
+	// 兜底只负责持久化与补齐 done/turn_state。
+	defer func() {
+		if !isTerminalTurnStatus(turnStatus) && turnStatus != turnStatusWaitingApproval && turnStatus != turnStatusBudgetPaused {
+			switch {
+			case err != nil && errors.Is(err, context.Canceled):
+				emitTurnState(turnStatusCancelled)
+			case err != nil:
+				emitTurnState(turnStatusFailed)
+			default:
+				emitTurnState(turnStatusCompleted)
+			}
+		} else if !stateEmitted {
+			emitTurnState(turnStatus)
+		}
+		if err != nil && !errorSent {
+			emitError(err.Error())
+		}
+		if err != nil || finishReason == "verification_blocked" {
+			code := finishReason
+			if code == "" {
+				code = "turn_failed"
+			}
+			message := ""
+			if err != nil {
+				message = err.Error()
+			}
+			c.recordTrace(workflowTrace{
+				SessionID: sessionID, TurnID: turn.ID, Kind: "error", Status: "failed",
+				ErrorCode: code, ErrorMessage: message,
+			})
+		}
+		emitDone()
+		c.finishTurn(turn.ID, &turnStatus, &err, finishReason, sessionUsage)
+	}()
+	defer c.recoverTurnRun(sessionID, turn.ID, &turnStatus, &err)
+	emitTurnState(turnStatusQueued)
+	emitTurnState(turnStatusPreparing)
 	var protectedDirs []string
 	if c.S != nil && c.S.Store != nil {
 		protectedDirs = append(protectedDirs, c.S.Store.Dir())
@@ -487,9 +627,15 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	case "":
 		// 直接聊天：没有配置目标时，使用通用提示词运行默认供应商的模型。按会话的模型
 		// 覆盖仍然生效，因此头部选择器的工作方式与 Agent 会话相同。
-		ac, derr := directAgentConfig(cfg)
-		if derr != nil {
-			return derr
+		ac := config.AgentConfig{}
+		if savedSnapshot != nil && savedSnapshot.Direct != nil {
+			ac = *savedSnapshot.Direct
+		} else {
+			var derr error
+			ac, derr = directAgentConfig(cfg)
+			if derr != nil {
+				return derr
+			}
 		}
 		ac.SandboxNetwork = sandboxNetwork
 		ac.ApplyExecutionPolicy(approvalPolicy, sandboxProfile)
@@ -574,24 +720,36 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		return err
 	}
 
-	emit := func(ev ChatStreamEvent) { c.emitChat(sessionID, ev) }
-	emitTurnState := func(status string) {
-		turnStatus = status
-		c.updateTurnStatus(turn.ID, status)
-		emit(ChatStreamEvent{Kind: "turn_state", TurnStatus: status})
-	}
-	emitTurnState("running")
+	emitTurnState(turnStatusRunning)
 
-	if budgetExceeded && titleFromText != "" {
-		// 仅拒绝新的用户回合；待处理的 HITL
-		// 确认恢复仍必须运行，以便进行中的工具往返能够完成。
-		emit(ChatStreamEvent{Kind: "error", Text: fmt.Sprintf("会话 token 预算已满（%d），本轮未执行。", maxSessionTokens)})
-		emit(ChatStreamEvent{Kind: "done"})
-		emitTurnState("failed")
-		return nil
+	toolCallsSeen := 0
+	modelCallsSeen := 0
+	turnTokens := int64(0)
+	budgetWarned := false
+	pauseBudget := func(reason string, limit, used int64) {
+		finishReason = "budget_" + reason
+		emit(ChatStreamEvent{Kind: "budget_pause", Budget: &BudgetPauseInfo{
+			Reason: reason, Limit: limit, Used: used,
+			ToolCalls: toolCallsSeen, ModelCalls: modelCallsSeen, TurnTokens: turnTokens,
+		}})
+		c.recordTrace(workflowTrace{
+			SessionID: sessionID, TurnID: turn.ID, Kind: "budget", Status: "paused",
+			DataJSON: sanitizedJSON(map[string]any{
+				"reason": reason, "limit": limit, "used": used,
+				"toolCalls": toolCallsSeen, "modelCalls": modelCallsSeen, "turnTokens": turnTokens,
+			}),
+		})
+		emitTurnState(turnStatusBudgetPaused)
+		emitDone()
+		cancel()
 	}
 	if titleFromText != "" {
 		emit(ChatStreamEvent{Kind: "user", Text: titleFromText, Attachments: attachmentsOut(msg), Reasoning: recordedLevel})
+	}
+	if budgetExceeded && titleFromText != "" && !budgetOverride {
+		// 软预算不硬杀：用户可继续一次或停止。
+		pauseBudget("session_tokens", maxSessionTokens, budgetBaseline)
+		return nil
 	}
 
 	// 将级别记录在用户消息事件本身，以便历史渲染、导出以及 Regenerate/confirm
@@ -601,6 +759,10 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 	// map。技能键带有 "temp:" 前缀：ADK
 	// 会在本次调用中应用它，但在持久化用户事件之前会将其裁剪掉。
 	stateDelta := map[string]any{}
+	// 临时状态把当前回合/工作区带给工具网关；ADK 会在持久化事件前剥离
+	// temp: 前缀，因此不会污染会话历史。
+	stateDelta[agentkit.TurnIDStateKey] = turn.ID
+	stateDelta[agentkit.WorkspaceStateKey] = workspace
 	if titleFromText != "" && recordedLevel != "" {
 		stateDelta[turnReasoningStateKey] = recordedLevel
 	}
@@ -618,28 +780,57 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 		msg.Parts = append([]*genai.Part{genai.NewPartFromText(turnContext + "\n\n用户输入：")}, msg.Parts...)
 	}
 
-	var turnUsage *UsageInfo
-	var sessionUsage *UsageInfo
-	toolCallsSeen := 0
 	lastReply := ""
 	var transferPath []string
-	budgetWarned := false
-	verifySeen := false
+	verifyFailures := 0
+	verifyOK := false
+	verifyCallIDs := map[string]bool{}
+	lastVerifyOutput := ""
+	mutatingSeen := false
+	toolStarts := map[string]time.Time{}
+	budgetPendingReason := ""
+	var budgetPendingLimit, budgetPendingUsed int64
+	budgetPendingCalls := 0
+	budgetPendingResponses := 0
+	requestBudgetPause := func(reason string, limit, used int64, calls int) {
+		if calls <= 0 {
+			return
+		}
+		budgetPendingReason = reason
+		budgetPendingLimit = limit
+		budgetPendingUsed = used
+		budgetPendingCalls = calls
+		budgetPendingResponses = 0
+	}
 	checkpointSeq := 0
+	lastModelAt := time.Now()
+	loopToolCallKey := ""
+	loopToolCallCount := 0
 	// 默认给模型调用一个可诊断的上限；长任务可在 Agent 配置中显式调整。
+	adkMaxLLMCalls := maxModelCalls + 2
+	if maxModelCalls <= 0 {
+		adkMaxLLMCalls = -1
+	}
 	for ev, err := range rn.Run(ctx, c.userID, sessionID, msg, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
-		MaxLLMCalls:   defaultMaxLLMCalls,
+		MaxLLMCalls:   adkMaxLLMCalls,
 	}, runOpts...) {
 		if ctx.Err() != nil {
-			emit(ChatStreamEvent{Kind: "error", Text: "已取消"})
+			if turnStatus == turnStatusBudgetPaused {
+				return nil
+			}
+			emitError("已取消")
 			return context.Canceled
 		}
 		if err != nil {
 			// 失败仅会流式发送到 UI；没有这一行，磁盘上不会留下任何痕迹（供应商 429 /
 			// 配额错误此前在事后无法诊断）。
 			log.Printf("会话 %s 轮次失败: %v", sessionID, err)
-			emit(ChatStreamEvent{Kind: "error", Text: err.Error()})
+			if errors.Is(err, agent.ErrLLMCallsLimitExceeded) {
+				pauseBudget("model_calls", int64(maxModelCalls), int64(modelCallsSeen))
+				return nil
+			}
+			emitError(err.Error())
 			// 将失败暴露给调用方，而不是报告成功。
 			return fmt.Errorf("run turn: %w", err)
 		}
@@ -654,7 +845,7 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			if msg == "" {
 				msg = "模型返回了错误"
 			}
-			c.emitChat(sessionID, ChatStreamEvent{Kind: "error", Text: "模型调用失败：" + msg})
+			emitError("模型调用失败：" + msg)
 			return fmt.Errorf("model error: %s", msg)
 		}
 		if ev.Content == nil || ev.Author == "user" {
@@ -681,19 +872,39 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			continue
 		}
 		// 本次模型回合的最终事件。
+		modelCallsSeen++
+		modelDuration := time.Since(lastModelAt)
+		lastModelAt = time.Now()
 		if u := usageOf(ev); u != nil {
 			// 一个带工具循环 /
 			// 团队转交的回合会进行多次模型调用；应累加，而不是仅保留最后一次调用的数字（
 			// 这会少报多步骤回合）。
 			turnUsage = addUsage(turnUsage, u)
 			sessionUsage = addUsage(sessionUsage, u)
+			turnTokens += u.TotalTokens
 		}
+		modelTrace := workflowTrace{
+			SessionID: sessionID, TurnID: turn.ID, Kind: "model", Status: "succeeded",
+			Name: author, DurationMs: modelDuration.Milliseconds(),
+		}
+		if usage := usageOf(ev); usage != nil {
+			modelTrace.PromptTokens = usage.PromptTokens
+			modelTrace.CompletionTokens = usage.CompletionTokens
+			modelTrace.TotalTokens = usage.TotalTokens
+			if hasModel {
+				modelTrace.Cost = float64(usage.PromptTokens)*modelInfo.PriceIn/1_000_000 +
+					float64(usage.CompletionTokens)*modelInfo.PriceOut/1_000_000
+			}
+			modelTrace.DataJSON = sanitizedJSON(usage)
+		}
+		c.recordTrace(modelTrace)
 		if maxSessionTokens > 0 && !budgetExceeded && budgetBaseline+sessionUsageTotal(sessionUsage) > maxSessionTokens {
 			budgetExceeded = true
 		}
 		var textBuf strings.Builder
 		var thoughtBuf strings.Builder
 		toolCallsThisTurn := 0
+		toolCallInThisResponse := false
 		// flushThought/flushText 保持聚合部分的事件顺序：
 		// 推理先于答案到达，因此其块必须在助手气泡开始之前关闭。
 		flushThought := func() {
@@ -716,7 +927,11 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 			if guardOn {
 				outText = agentkit.ApplyOutputGuardrail(outText)
 			}
-			lastReply = outText
+			if toolCallInThisResponse {
+				lastReply = ""
+			} else {
+				lastReply = outText
+			}
 			emit(ChatStreamEvent{Kind: "message", Author: author, Text: outText, Usage: turnUsage})
 			checkpointSeq++
 			c.recordCheckpoint(turn.ID, sessionID, "", checkpointSeq)
@@ -742,34 +957,132 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 					name, args, hint = orig.Name, orig.Args, h
 					hint = confirmRequestReason(previewGuard, orig, hint)
 				}
+				risk, diff := agentkit.ReviewToolCall(workspace, sandboxProfile, sandboxNetwork, name, args)
+				diff = agentkit.SanitizeSecrets(diff)
+				policy := agentkit.FormatPolicySnapshot(workspace, approvalPolicy, sandboxProfile, sandboxNetwork, modelID, recordedLevel)
 				emit(ChatStreamEvent{Kind: "confirm_request", Author: author,
-					ToolName: name, ToolArgs: args, CallID: p.FunctionCall.ID, Hint: hint})
+					ToolName: name, ToolArgs: redactMapCopy(args), CallID: p.FunctionCall.ID, Hint: hint,
+					Risk: risk, Diff: diff, Policy: policy})
 				c.recordApproval(turn.ID, sessionID, p.FunctionCall.ID, name, args, hint)
-				emitTurnState("waiting_approval")
+				emitTurnState(turnStatusWaitingApproval)
 			case p.FunctionCall != nil:
 				toolCallsThisTurn++
-				if p.FunctionCall.Name == "verify_work" {
-					verifySeen = true
+				toolCallInThisResponse = true
+				callKey := p.FunctionCall.Name + ":" + hashBytes([]byte(mustJSON(p.FunctionCall.Args)))
+				if callKey == loopToolCallKey {
+					loopToolCallCount++
+				} else {
+					loopToolCallKey = callKey
+					loopToolCallCount = 1
 				}
+				if loopToolCallCount >= repeatedToolCallLimit {
+					emitError(fmt.Sprintf("检测到重复工具调用环（%s 连续 %d 次），本轮已停止。", p.FunctionCall.Name, loopToolCallCount))
+					emitTurnState(turnStatusFailed)
+					emitDone()
+					cancel()
+					return nil
+				}
+				if p.FunctionCall.Name == "verify_work" && verifyFailures >= 2 {
+					reason := "自动修复 2 轮后验证仍失败，计划已标为 blocked。"
+					artifact := c.writeVerificationArtifact(turn.ID, "gate", lastVerifyOutput)
+					emit(ChatStreamEvent{Kind: "verification", Verification: &VerificationInfo{
+						OK: false, Status: "blocked", Attempts: verifyFailures,
+						Artifact: artifact, Output: truncateRunes(lastVerifyOutput, 4000), Reason: reason,
+					}})
+					c.markVerificationBlocked(sessionID, turn.ID, reason, lastVerifyOutput)
+					finishReason = "verification_blocked"
+					emitError(reason)
+					emitTurnState(turnStatusFailed)
+					emitDone()
+					cancel()
+					return nil
+				}
+				if p.FunctionCall.Name == "verify_work" {
+					verifyCallIDs[p.FunctionCall.ID] = true
+					emitTurnState(turnStatusVerifying)
+				}
+				switch p.FunctionCall.Name {
+				case "write_workspace_file", "edit_workspace_file", "run_command", "verify_work", "delegate_task":
+					mutatingSeen = true
+				}
+				toolStarts[p.FunctionCall.ID] = time.Now()
 				c.auditTool(sessionID, p.FunctionCall.ID, "call", author, p.FunctionCall.Name, mustJSON(auditToolCallArgs(p.FunctionCall)), "")
+				c.recordTrace(workflowTrace{
+					SessionID: sessionID, TurnID: turn.ID, Kind: "tool", Status: "started",
+					Name: p.FunctionCall.Name, CallID: p.FunctionCall.ID, Author: author,
+					DataJSON: sanitizedJSON(map[string]any{"args": p.FunctionCall.Args}),
+				})
 				emit(ChatStreamEvent{Kind: "tool_call", Author: author,
-					ToolName: p.FunctionCall.Name, ToolArgs: p.FunctionCall.Args, CallID: p.FunctionCall.ID})
+					ToolName: p.FunctionCall.Name, ToolArgs: redactMapCopy(p.FunctionCall.Args), CallID: p.FunctionCall.ID})
 				if p.FunctionCall.Name == "transfer_to_agent" {
 					next, _ := p.FunctionCall.Args["agent_name"].(string)
 					if transferWouldLoop(transferPath, next) {
-						emit(ChatStreamEvent{Kind: "error", Text: "检测到团队转交循环，本轮已停止。"})
-						emitTurnState("failed")
-						emit(ChatStreamEvent{Kind: "done", SessionUsage: sessionUsage})
+						emitError("检测到团队转交循环，本轮已停止。")
+						emitTurnState(turnStatusFailed)
+						emitDone()
 						cancel()
 						return nil
 					}
 					transferPath = append(transferPath, next)
 				}
 			case p.FunctionResponse != nil:
+				if budgetPendingReason != "" {
+					budgetPendingResponses++
+				}
+				started := toolStarts[p.FunctionResponse.ID]
+				delete(toolStarts, p.FunctionResponse.ID)
 				c.auditTool(sessionID, p.FunctionResponse.ID, "result", author, p.FunctionResponse.Name,
 					mustJSON(p.FunctionResponse.Response), resultErrorOf(p.FunctionResponse.Response))
+				toolStatus := "succeeded"
+				toolCode := ""
+				if errText := resultErrorOf(p.FunctionResponse.Response); errText != "" {
+					toolStatus = "failed"
+					toolCode = "tool_failed"
+				}
+				duration := time.Duration(0)
+				if !started.IsZero() {
+					duration = time.Since(started)
+				}
+				c.recordTrace(workflowTrace{
+					SessionID: sessionID, TurnID: turn.ID, Kind: "tool", Status: toolStatus,
+					Name: p.FunctionResponse.Name, CallID: p.FunctionResponse.ID, Author: author,
+					ErrorCode: toolCode, DurationMs: duration.Milliseconds(),
+					DataJSON: sanitizedJSON(map[string]any{"result": p.FunctionResponse.Response}),
+				})
 				emit(ChatStreamEvent{Kind: "tool_result", Author: author,
 					ToolName: p.FunctionResponse.Name, ToolResp: p.FunctionResponse.Response, CallID: p.FunctionResponse.ID})
+				if p.FunctionResponse.Name == "plan_todos" {
+					if update := planUpdateFromResponse(p.FunctionResponse.Response); update != nil {
+						emit(ChatStreamEvent{Kind: "plan", Plan: update})
+					}
+				}
+				if verifyCallIDs[p.FunctionResponse.ID] {
+					delete(verifyCallIDs, p.FunctionResponse.ID)
+					ok, _ := p.FunctionResponse.Response["ok"].(bool)
+					verifyOK = ok
+					if !ok {
+						verifyFailures++
+					}
+					lastVerifyOutput = verificationOutput(p.FunctionResponse.Response)
+					artifact := ""
+					if !ok {
+						artifact = c.writeVerificationArtifact(turn.ID, p.FunctionResponse.ID, lastVerifyOutput)
+					}
+					status := "passed"
+					if !ok {
+						status = "failed"
+					}
+					emit(ChatStreamEvent{Kind: "verification", Verification: &VerificationInfo{
+						OK: ok, Status: status, Attempts: verifyFailures, Artifact: artifact,
+						Output: truncateRunes(lastVerifyOutput, 4000),
+					}})
+					c.recordTrace(workflowTrace{
+						SessionID: sessionID, TurnID: turn.ID, Kind: "verification", Status: status,
+						Name: "verify_work", ErrorCode: map[bool]string{true: "", false: "verification_failed"}[ok],
+						DataJSON: sanitizedJSON(map[string]any{"output": lastVerifyOutput, "artifact": artifact}),
+					})
+					emitTurnState(turnStatusRunning)
+				}
 				checkpointSeq++
 				c.recordCheckpoint(turn.ID, sessionID, ev.ID, checkpointSeq)
 			case p.Text != "" && !p.Thought:
@@ -784,25 +1097,53 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				budgetWarned = true
 				emit(ChatStreamEvent{Kind: "warning", Text: fmt.Sprintf("已使用 %d/%d 次工具调用，接近单轮上限。", toolCallsSeen, maxToolCalls)})
 			}
-			if toolCallsSeen > maxToolCalls {
-				emit(ChatStreamEvent{Kind: "error", Text: fmt.Sprintf("已达单轮工具调用上限（%d 次），本轮已停止。", maxToolCalls)})
-				emitTurnState("failed")
-				emit(ChatStreamEvent{Kind: "done", SessionUsage: sessionUsage})
-				cancel()
-				return nil
+			if toolCallsSeen >= maxToolCalls {
+				requestBudgetPause("tool_calls", int64(maxToolCalls), int64(toolCallsSeen), toolCallsThisTurn)
 			}
 		}
-	}
-	if budgetExceeded {
-		emit(ChatStreamEvent{Kind: "error", Text: fmt.Sprintf("已达会话 token 预算（%d），后续轮次将被拒绝；请开新会话或调整预算。", maxSessionTokens)})
-		emitTurnState("failed")
-	} else if turnStatus == "running" {
-		if !verifySeen && c.planHasCompleted(sessionID) {
-			emit(ChatStreamEvent{Kind: "warning", Text: "计划中有已完成步骤，但本回合没有调用 verify_work；完成状态缺少验证证据。"})
+		if maxModelCalls > 0 && modelCallsSeen >= maxModelCalls && lastReply == "" {
+			requestBudgetPause("model_calls", int64(maxModelCalls), int64(modelCallsSeen), toolCallsThisTurn)
 		}
-		emitTurnState("completed")
+		if maxTurnTokens > 0 && turnTokens >= maxTurnTokens && lastReply == "" {
+			requestBudgetPause("turn_tokens", maxTurnTokens, turnTokens, toolCallsThisTurn)
+		}
+		if maxSessionTokens > 0 && !budgetOverride && budgetExceeded && lastReply == "" {
+			requestBudgetPause("session_tokens", maxSessionTokens, budgetBaseline+sessionUsageTotal(sessionUsage), toolCallsThisTurn)
+		}
+		if budgetPendingReason != "" && turnStatus == turnStatusRunning && budgetPendingResponses >= budgetPendingCalls {
+			pauseBudget(budgetPendingReason, budgetPendingLimit, budgetPendingUsed)
+			return nil
+		}
 	}
-	emit(ChatStreamEvent{Kind: "done", SessionUsage: sessionUsage})
+	if turnStatus == turnStatusRunning && strings.TrimSpace(lastReply) == "" {
+		finishReason = "empty_response"
+		emitError("模型没有返回最终回答，本轮已失败。")
+		emitTurnState(turnStatusFailed)
+	} else if turnStatus == turnStatusRunning {
+		if codeTaskNeedsVerification(workspace, mutatingSeen, c.planHasCompleted(sessionID), verifyOK, verifyFailures, c.verificationExempt(turn.ID)) {
+			artifact := c.writeVerificationArtifact(turn.ID, "gate", lastVerifyOutput)
+			reason := "代码任务未通过验证，不能标记 completed。"
+			if verifyFailures >= 2 {
+				reason = "自动修复 2 轮后验证仍失败，计划已标为 blocked。"
+			}
+			emit(ChatStreamEvent{Kind: "verification", Verification: &VerificationInfo{
+				OK: false, Status: "blocked", Attempts: verifyFailures,
+				Artifact: artifact, Output: truncateRunes(lastVerifyOutput, 4000),
+				Reason: reason,
+			}})
+			c.markVerificationBlocked(sessionID, turn.ID, reason, lastVerifyOutput)
+			finishReason = "verification_blocked"
+			emitError(reason)
+			emitTurnState(turnStatusFailed)
+		} else {
+			if !verifyOK && verifyFailures > 0 {
+				emit(ChatStreamEvent{Kind: "warning", Text: "验证命令失败；若任务仍需完成，请修复后重新运行 verify_work。"})
+			}
+			finishReason = "completed"
+			emitTurnState(turnStatusCompleted)
+		}
+	}
+	emitDone()
 
 	// 自动记忆：按需选择将已完成的回合写入长期
 	// 记忆。尽力而为——失败不得导致回合失败。
@@ -824,10 +1165,10 @@ func (c *ChatService) runTurn(target *config.ChatSession, guardOn bool, msg *gen
 				}
 				cfg.Sessions[i].UpdatedAt = nowUTC()
 				if lastReply != "" {
-					cfg.Sessions[i].Preview = truncateRunes(lastReply, 80)
+					cfg.Sessions[i].Preview = truncateRunes(agentkit.SanitizeSecrets(lastReply), 80)
 				}
 				if titleFromText != "" && cfg.Sessions[i].Title == "新对话" {
-					cfg.Sessions[i].Title = truncateRunes(titleFromText, 30)
+					cfg.Sessions[i].Title = truncateRunes(agentkit.SanitizeSecrets(titleFromText), 30)
 					autoFallback = cfg.Sessions[i].Title
 				}
 			}

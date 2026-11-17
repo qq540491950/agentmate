@@ -97,12 +97,13 @@ func (r *redactingSessionService) spillLargeToolResponses(sess session.Session, 
 		r.sessionBytes[sessionID] = used + len(data)
 		path := r.writeToolArtifact(data)
 		part.FunctionResponse.Response = map[string]any{
-			"ok":        true,
-			"truncated": true,
-			"bytes":     len(data),
-			"artifact":  path,
-			"summary":   summarizeToolResponse(data),
-			"note":      "完整工具结果已落盘；如需细节请读取 artifact 或缩小查询范围。",
+			"ok":             true,
+			"truncated":      true,
+			"bytes":          len(data),
+			"artifact":       path,
+			"summary":        summarizeToolResponse(data),
+			"note":           "完整工具结果已落盘；如需细节请读取 artifact 或缩小查询范围。",
+			"untrusted_data": true,
 		}
 	}
 }
@@ -139,6 +140,21 @@ func redactMap(in map[string]any) map[string]any {
 		in[key] = redactValue(value)
 	}
 	return in
+}
+
+func redactMapCopy(in map[string]any) map[string]any {
+	if in == nil {
+		return nil
+	}
+	data, err := json.Marshal(in)
+	if err != nil {
+		return nil
+	}
+	var out map[string]any
+	if json.Unmarshal(data, &out) != nil {
+		return nil
+	}
+	return redactMap(out)
 }
 
 func redactValue(value any) any {

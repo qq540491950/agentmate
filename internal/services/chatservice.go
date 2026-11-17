@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/adk/v2/session"
@@ -61,9 +63,10 @@ type UsageInfo struct {
 // ChatStreamEvent 在一次运行进行期间流式发送到前端。
 type ChatStreamEvent struct {
 	Version    int            `json:"version,omitempty"`
+	Seq        int64          `json:"seq,omitempty"`
 	SessionID  string         `json:"sessionId"`
 	TurnID     string         `json:"turnId,omitempty"`
-	Kind       string         `json:"kind"` // user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|warning|turn_state|done|error
+	Kind       string         `json:"kind"` // user|delta|thinking_delta|thinking|message|tool_call|tool_result|confirm_request|warning|turn_state|plan|retry|verification|budget_pause|delegation_progress|done|error
 	TurnStatus string         `json:"turnStatus,omitempty"`
 	Author     string         `json:"author"`
 	Text       string         `json:"text"`
@@ -85,6 +88,62 @@ type ChatStreamEvent struct {
 	Reasoning string `json:"reasoning,omitempty"`
 	// SessionUsage 是会话的累计用量，在 done 事件上设置。
 	SessionUsage *UsageInfo `json:"sessionUsage,omitempty"`
+	// Risk/Diff/Policy 用于确认卡展示暂停时的风险、文件 diff 与策略快照。
+	Risk   string `json:"risk,omitempty"`
+	Diff   string `json:"diff,omitempty"`
+	Policy string `json:"policy,omitempty"`
+	// Budget 随 budget_pause 事件发送。
+	Budget *BudgetPauseInfo `json:"budget,omitempty"`
+	// Verification 随 verification 事件发送。
+	Verification *VerificationInfo `json:"verification,omitempty"`
+	// Retry 随 retry 事件发送。
+	Retry *RetryInfo `json:"retry,omitempty"`
+	// Plan 随 plan 事件发送。
+	Plan *PlanUpdate `json:"plan,omitempty"`
+}
+
+// BudgetPauseInfo 描述触发软暂停的维度与当前用量；它不是失败。
+type BudgetPauseInfo struct {
+	Reason     string `json:"reason"`
+	Limit      int64  `json:"limit"`
+	Used       int64  `json:"used"`
+	ToolCalls  int    `json:"toolCalls"`
+	ModelCalls int    `json:"modelCalls"`
+	TurnTokens int64  `json:"turnTokens"`
+}
+
+// VerificationInfo 是 verify_work 阶段的结构化状态。
+type VerificationInfo struct {
+	OK       bool   `json:"ok"`
+	Status   string `json:"status"` // running|passed|failed|blocked|exempt
+	Attempts int    `json:"attempts,omitempty"`
+	Artifact string `json:"artifact,omitempty"`
+	Output   string `json:"output,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	Exempt   bool   `json:"exempt,omitempty"`
+}
+
+// RetryInfo 报告 RetryStep 的目标与轮次。
+type RetryInfo struct {
+	StepID  string `json:"stepId"`
+	Reason  string `json:"reason,omitempty"`
+	Attempt int    `json:"attempt"`
+}
+
+// PlanStepView 是事件协议中的计划步骤快照。
+type PlanStepView struct {
+	ID         string   `json:"id"`
+	Content    string   `json:"content"`
+	Status     string   `json:"status"`
+	DependsOn  []string `json:"dependsOn,omitempty"`
+	Acceptance []string `json:"acceptance,omitempty"`
+	Evidence   []string `json:"evidence,omitempty"`
+}
+
+// PlanUpdate 是 plan 事件的完整计划快照。
+type PlanUpdate struct {
+	Version string         `json:"version"`
+	Steps   []PlanStepView `json:"steps"`
 }
 
 // usageOf 从 ADK 事件中提取 token 用量（如果存在）。
@@ -113,6 +172,9 @@ type ChatMessage struct {
 	ToolResp    map[string]any  `json:"toolResp,omitempty"`
 	CallID      string          `json:"callId,omitempty"`
 	Hint        string          `json:"hint,omitempty"`
+	Risk        string          `json:"risk,omitempty"`
+	Diff        string          `json:"diff,omitempty"`
+	Policy      string          `json:"policy,omitempty"`
 	Attachments []AttachmentOut `json:"attachments,omitempty"`
 	// Reasoning 是这一回合发送时使用的思考级别；记录在用户消息的状态增量上，以便历史记录和导
 	// 出可以显示它。
@@ -220,6 +282,7 @@ type ChatService struct {
 	userID    string
 	auditPath string // JSONL 工具审计轨迹；为空 = 禁用
 	auditMu   sync.Mutex
+	eventSeq  atomic.Int64
 	// workspaceMu 串行化任务工作区的分配/重新绑定，使两个并发创建不能都占用同一物理目录。
 	workspaceMu sync.Mutex
 	// workspaceLocks 串行化同一会话的回合与工作区重新绑定；不同任务仍可并发运行和创建。
@@ -271,8 +334,37 @@ func NewChatService(s *Services, sessions session.Service, db *gorm.DB) *ChatSer
 		userID:           "local",
 	}
 	if db != nil {
-		c.workflowErr = db.AutoMigrate(&workflowTurn{}, &workflowApproval{}, &workflowCheckpoint{})
+		c.workflowErr = c.autoMigrateWorkflow()
 		c.recoverInterruptedTurns()
+	}
+	if c.S != nil && c.S.Kit != nil && c.S.Kit.ToolGateway() != nil {
+		c.S.Kit.SetWorkflowAnchors(c.buildWorkflowAnchors)
+		c.S.Kit.ToolGateway().SetInvocationStore(c)
+		c.S.Kit.SetDelegateOptions(agentkit.DelegateOptions{
+			OnProgress: func(progress agentkit.DelegationProgress) {
+				if strings.TrimSpace(progress.SessionID) == "" {
+					return
+				}
+				event := ChatStreamEvent{
+					TurnID: progress.TurnID, Author: progress.Member,
+					ToolName: progress.ToolName, CallID: progress.CallID,
+				}
+				switch progress.Phase {
+				case "tool_call":
+					event.Kind = "tool_call"
+					if event.ToolArgs == nil {
+						event.ToolArgs = map[string]any{"delegated": true}
+					}
+				case "tool_result":
+					event.Kind = "tool_result"
+					event.ToolResp = map[string]any{"ok": true, "summary": progress.Text}
+				default:
+					event.Kind = "delegation_progress"
+					event.Text = progress.Text
+				}
+				c.emitChat(progress.SessionID, event)
+			},
+		})
 	}
 	return c
 }
@@ -332,10 +424,12 @@ func (c *ChatService) auditRecord(sessionID, callID, phase, author, tool string,
 	c.turnMu.Lock()
 	turnID := c.sessionTurns[sessionID]
 	c.turnMu.Unlock()
+	cleanPayload := agentkit.SanitizeSecrets(string(payload))
+	errMsg = agentkit.SanitizeSecrets(errMsg)
 	rec, _ := json.Marshal(map[string]any{
 		"ts": nowUTC(), "sessionId": sessionID, "phase": phase,
 		"turnId": turnID, "callId": callID, "author": author, "tool": tool, "error": errMsg,
-		"payload": json.RawMessage(payload),
+		"payload": json.RawMessage(cleanPayload),
 	})
 	if st, err := os.Stat(c.auditPath); err == nil && st.Size()+int64(len(rec))+1 >= auditMaxBytes {
 		_ = os.Rename(c.auditPath, c.auditPath+".old")
@@ -374,13 +468,27 @@ func mustJSON(v any) []byte {
 // recoverRun 将 agent/tool 栈中的 panic 转换为流式错误以及一个 done 事件，使 UI
 // 始终离开运行状态。作为 runTurn 的延迟辅助函数使用。
 func (c *ChatService) recoverRun(sessionID string, err *error) {
-	r := recover()
-	if r == nil {
-		return
+	if r := recover(); r != nil {
+		c.handlePanic(sessionID, "", nil, err, r, true)
 	}
-	c.emitChat(sessionID, ChatStreamEvent{Kind: "error", Text: fmt.Sprintf("运行出错：%v", r)})
-	c.emitChat(sessionID, ChatStreamEvent{Kind: "done"})
-	*err = fmt.Errorf("run turn panicked: %v", r)
+}
+
+func (c *ChatService) recoverTurnRun(sessionID, turnID string, status *string, err *error) {
+	if r := recover(); r != nil {
+		c.handlePanic(sessionID, turnID, status, err, r, false)
+	}
+}
+
+func (c *ChatService) handlePanic(sessionID, turnID string, status *string, err *error, r any, emitEvents bool) {
+	if status != nil && !isTerminalTurnStatus(*status) {
+		*status = turnStatusFailed
+		c.updateTurnStatus(turnID, turnStatusFailed)
+	}
+	if emitEvents {
+		c.emitChat(sessionID, ChatStreamEvent{Kind: "error", Text: fmt.Sprintf("运行出错：%v", r)})
+		c.emitChat(sessionID, ChatStreamEvent{Kind: "done"})
+	}
+	*err = fmt.Errorf("运行出错：%v", r)
 }
 
 // Cancel 中止会话当前正在进行的运行（如果有）。

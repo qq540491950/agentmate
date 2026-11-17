@@ -92,7 +92,7 @@ func buildFileMentionContext(workspace, text string) string {
 		if count > 0 {
 			loaded.WriteString("\n")
 		}
-		fmt.Fprintf(&loaded, "<workspace_file path=%q truncated=%q>\n%s\n</workspace_file>\n",
+		fmt.Fprintf(&loaded, "<untrusted_data source=\"workspace_file\" path=%q truncated=%q>\n%s\n</untrusted_data>\n",
 			p, strconv.FormatBool(truncated), content)
 		used += len(content)
 		count++

@@ -400,6 +400,9 @@ type AgentConfig struct {
 	// MaxSessionTokens 限制整个会话的累计 token 数（0 =
 	// 不限）。跨越该预算的那个回合仍会完成，下一个回合会被拒绝。
 	MaxSessionTokens int64 `json:"maxSessionTokens,omitempty"`
+	// MaxTurnTokens 是单回合 token 软阈值。达到时回合进入 budget_paused，
+	// 由用户选择继续或停止，而不是直接失败。0 = 使用运行时默认值。
+	MaxTurnTokens int64 `json:"maxTurnTokens,omitempty"`
 	// StopSequences 在模型输出其中任意一个时停止生成（OpenAI "stop" / Anthropic
 	// "stop_sequences"）。空 = 供应商默认值。
 	StopSequences []string `json:"stopSequences,omitempty"`
@@ -602,6 +605,8 @@ type Settings struct {
 	A2APort      int    `json:"a2aPort,omitempty"`
 	// ToolsAudit 将每次工具调用/结果的 JSONL 审计记录写入应用日志目录。
 	ToolsAudit bool `json:"toolsAudit,omitempty"`
+	// TraceEnabled 控制 turn_traces 持久化，默认开启；trace 始终脱敏。
+	TraceEnabled *bool `json:"traceEnabled,omitempty"`
 	// ApprovalPolicy 和 SandboxProfile
 	// 是默认执行策略，会复制到每个新建聊天中。现有聊天保留各自的快照。
 	ApprovalPolicy string `json:"approvalPolicy,omitempty"`
@@ -656,6 +661,11 @@ type Settings struct {
 // 一行标题；在意额外附带调用的用户可以显式将其关闭。
 func (s Settings) AutoTitleEnabled() bool {
 	return s.AutoTitle == nil || *s.AutoTitle
+}
+
+// TraceEnabledValue 报告是否记录运行 trace。未设置表示开启。
+func (s Settings) TraceEnabledValue() bool {
+	return s.TraceEnabled == nil || *s.TraceEnabled
 }
 
 // CompactionPercent 返回生效的尾部保留阈值。nil
@@ -945,6 +955,10 @@ func (c Config) Clone() Config {
 	if c.Settings.AutoTitle != nil {
 		v := *c.Settings.AutoTitle
 		out.Settings.AutoTitle = &v
+	}
+	if c.Settings.TraceEnabled != nil {
+		v := *c.Settings.TraceEnabled
+		out.Settings.TraceEnabled = &v
 	}
 	if c.Settings.AutoCheckUpdate != nil {
 		v := *c.Settings.AutoCheckUpdate

@@ -9,6 +9,9 @@ import (
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/adk/v2/session"
 	"google.golang.org/genai"
+
+	"agentmate/internal/config"
+	"agentmate/internal/memory"
 )
 
 func TestGuardrailWarningDoesNotTerminateTurn(t *testing.T) {
@@ -72,6 +75,41 @@ func TestSecretsAreRedactedBeforeSessionPersistence(t *testing.T) {
 				t.Fatalf("secret survived persistence: %q", part.Text)
 			}
 		}
+	}
+}
+
+func TestAutoMemoryStoresRedactedContent(t *testing.T) {
+	secret := "sk-" + strings.Repeat("m", 28)
+	chat, store, _ := newRecordingChat(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(sseText("请记住 "+secret) + sseDone))
+	})
+	hookEvents(t)
+	memSvc, err := memory.NewSQLiteService(chat.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat.S.Memory = memSvc
+	disabled := false
+	if err := store.Update(func(cfg *config.Config) {
+		cfg.Settings.AutoRemember = true
+		cfg.Settings.AutoTitle = &disabled
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := chat.newLegacySession("agent", "agent_r", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := chat.Send(sess.ID, "记下这个值 "+secret, nil); err != nil {
+		t.Fatal(err)
+	}
+	var count int64
+	if err := chat.db.Table("memories").Where("content LIKE ?", "%"+secret+"%").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("auto memory persisted an unredacted secret (%d entries)", count)
 	}
 }
 

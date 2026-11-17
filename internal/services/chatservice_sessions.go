@@ -664,6 +664,27 @@ func (c *ChatService) GetSessionMessages(sessionID string) ([]ChatMessage, error
 		msgs := renderEvent(cfg, ev, i)
 		out = append(out, msgs...)
 	}
+	if c.db != nil && len(out) > 0 {
+		var approvals []workflowApproval
+		_ = c.db.Where("session_id = ?", sessionID).Find(&approvals).Error
+		byCall := make(map[string]workflowApproval, len(approvals))
+		for _, approval := range approvals {
+			byCall[approval.ID] = approval
+		}
+		for i := range out {
+			if out[i].Kind != "confirm_request" || out[i].CallID == "" {
+				continue
+			}
+			if approval, ok := byCall[out[i].CallID]; ok {
+				out[i].Risk = approval.Risk
+				out[i].Diff = approval.Diff
+				out[i].Policy = approval.PolicyJSON
+				if out[i].Hint == "" {
+					out[i].Hint = approval.Hint
+				}
+			}
+		}
+	}
 	return out, nil
 }
 
