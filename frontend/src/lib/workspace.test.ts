@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   findProjectByRoot,
   isDialogCancelError,
+  joinDisplayPath,
   pickedDirectoryValue,
   workspaceLockReason,
 } from "./workspace";
@@ -34,6 +35,24 @@ describe("pickedDirectoryValue", () => {
     expect(pickedDirectoryValue(null)).toBe("");
     expect(pickedDirectoryValue(undefined)).toBe("");
     expect(pickedDirectoryValue({ path: "/tmp" })).toBe("");
+  });
+});
+
+describe("joinDisplayPath", () => {
+  it("keeps the separator style of the workspace root", () => {
+    expect(joinDisplayPath("D:\\project\\agentmate", ".agents", "skills"))
+      .toBe("D:\\project\\agentmate\\.agents\\skills");
+    expect(joinDisplayPath("D:/project/agentmate/", ".agents", "skills"))
+      .toBe("D:/project/agentmate/.agents/skills");
+  });
+
+  it("handles POSIX roots and terminal separators", () => {
+    expect(joinDisplayPath("/srv/cloud/", ".agents", "skills"))
+      .toBe("/srv/cloud/.agents/skills");
+    expect(joinDisplayPath("C:\\", ".agents", "skills"))
+      .toBe("C:\\.agents\\skills");
+    expect(joinDisplayPath("/srv/cloud\\data", ".agents", "skills"))
+      .toBe("/srv/cloud\\data/.agents/skills");
   });
 });
 

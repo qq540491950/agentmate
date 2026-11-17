@@ -4,6 +4,21 @@
 
 ## 视觉测试与体验设计
 
+### 第二百九十七轮迭代：Skills 安装路径分隔符统一（已实施）
+
+依据：用户截图反馈项目 Skills 的「安装目录」显示为 `D:\project\agentmate/.agents/skills`，Windows 原生反斜杠根目录后接了 POSIX 正斜杠。
+
+**实现要点**
+
+- 根因是 `SkillsPage` 在项目根目录后直接拼接字面量 `/.agents/skills`；页面提示与导入对话框两处都有同样问题。
+- 新增 `joinDisplayPath`：沿用根目录首个分隔符的风格拼接子目录，去掉根目录尾部分隔符，同时兼容 Windows 盘符/UNC、POSIX 根目录和 `C:\` 这类终止分隔符。
+- Skills 顶部安装目录与导入对话框目标路径统一改用该函数，Windows 显示 `D:\project\agentmate\.agents\skills`，POSIX 保持 `/srv/cloud/.agents/skills`。
+
+**测试证据**
+
+- 先以回归用例复现 `D:\project\agentmate/.agents/skills` 并在缺少 `joinDisplayPath` 时确认失败；修复后 `npx vitest run src/lib/workspace.test.ts` 11 例通过。
+- `npx tsc --noEmit`、`npm test`（47 文件 / 337 例）、`npm run build` 均通过。
+
 ### 第二百九十六轮迭代：活动计划迁移到输入区上方（已实施）
 
 依据：浏览器走查反馈计划卡夹在消息时间线中，既打断执行过程阅读，也与输入区当前任务脱节。

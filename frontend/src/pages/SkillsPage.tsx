@@ -19,7 +19,7 @@ import { SegmentedControl } from "@/components/ui/choice";
 import { Badge } from "@/components/ui/badge";
 import { Chat, Config, type AppConfig, type Project, type SkillConfig, errText } from "@/lib/api";
 import { isReadOnlySkill, skillSource, skillSourceLabel } from "@/lib/skills";
-import { isDialogCancelError, pickedDirectoryValue } from "@/lib/workspace";
+import { isDialogCancelError, joinDisplayPath, pickedDirectoryValue } from "@/lib/workspace";
 import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 type SkillScope = "global" | "project";
@@ -235,7 +235,7 @@ export function SkillsPage() {
           {scope === "global"
             ? "应用内 Skill 与 ~/.agents/skills（全局只读）"
             : activeProjectRoot
-              ? `安装目录：${activeProjectRoot}/.agents/skills`
+              ? `安装目录：${joinDisplayPath(activeProjectRoot, ".agents", "skills")}`
               : "尚未配置工作区或项目"}
         </span>
       </div>
@@ -340,7 +340,9 @@ export function SkillsPage() {
                   </SelectContent>
                 </Select>
                 <p className="truncate text-xs text-muted-foreground">
-                  {importProjectRoot ? `${importProjectRoot}/.agents/skills` : "请先在设置中配置工作区或添加项目"}
+                  {importProjectRoot
+                    ? joinDisplayPath(importProjectRoot, ".agents", "skills")
+                    : "请先在设置中配置工作区或添加项目"}
                 </p>
               </div>
             )}

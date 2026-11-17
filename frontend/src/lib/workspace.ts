@@ -19,6 +19,17 @@ export function pickedDirectoryValue(picked: unknown): string {
 }
 
 /**
+ * joinDisplayPath 为界面拼接绝对路径时沿用根目录的分隔符风格，
+ * 避免 Windows 反斜杠根目录后接出 POSIX 斜杠。
+ */
+export function joinDisplayPath(root: string, ...segments: string[]): string {
+  const separator = root.match(/[\\/]/)?.[0] === "\\" ? "\\" : "/";
+  const base = root.replace(/[\\/]+$/, "");
+  return [base, ...segments.map((segment) => segment.replace(/^[\\/]+|[\\/]+$/g, ""))]
+    .join(separator);
+}
+
+/**
  * normalizeWorkspacePath 以与侧栏项目分组一致的方式比较目录：
  * 统一分隔符、去掉尾斜杠，并按 Windows 习惯忽略大小写。
  */
