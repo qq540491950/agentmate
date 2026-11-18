@@ -222,7 +222,7 @@ export function TeamsPage() {
                   >
                     编辑
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => remove(t)}>
+                  <Button variant="ghost" size="icon" aria-label="删除团队" onClick={() => remove(t)}>
                     <Trash2 className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </div>

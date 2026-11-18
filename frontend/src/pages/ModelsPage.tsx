@@ -21,6 +21,7 @@ import { modelLabel, validateModelReasoning } from "@/lib/modelLabel";
 import {
   PROVIDER_EDITOR_BODY_CLASS,
   PROVIDER_EDITOR_DIALOG_CLASS,
+  PROVIDER_EDITOR_FOOTER_CLASS,
 } from "@/lib/providerEditorLayout";
 import { cn } from "@/lib/utils";
 import { PageHeader, PageShell } from "@/components/layout/PageShell";
@@ -67,7 +68,7 @@ function Section({ title, description, actions, children }: {
 export function ModelsPage() {
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [editing, setEditing] = useState<ModelProvider | null>(null);
-  const [testing, setTesting] = useState(false);
+  const [testingId, setTestingId] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [openModel, setOpenModel] = useState<number | null>(null);
@@ -268,14 +269,14 @@ export function ModelsPage() {
       toast.error("请先在供应商里配置至少一个模型 ID");
       return;
     }
-    setTesting(true);
+    setTestingId(p.id);
     try {
       const ms = await Config.TestProvider(p, model);
       toast.success(`连接成功 (${modelLabel(first)}) · ${ms}ms`);
     } catch (e) {
       toast.error(`连接失败: ${errText(e)}`);
     } finally {
-      setTesting(false);
+      setTestingId(null);
     }
   };
 
@@ -337,8 +338,10 @@ export function ModelsPage() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <Button variant="outline" size="sm" disabled={testing} onClick={() => test(p)}>
-                {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlugZap className="h-3.5 w-3.5" />}
+              <Button variant="outline" size="sm" disabled={testingId !== null} onClick={() => test(p)}>
+                {testingId === p.id
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <PlugZap className="h-3.5 w-3.5" />}
                 测试
               </Button>
               <Button variant="outline" size="sm" onClick={() => openEditor(p)}>编辑</Button>
@@ -354,7 +357,7 @@ export function ModelsPage() {
 
       <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
         <DialogContent className={PROVIDER_EDITOR_DIALOG_CLASS}>
-          <DialogHeader className="px-6 py-4">
+          <DialogHeader className="shrink-0 px-6 py-4">
             <DialogTitle>{editing?.id ? "编辑供应商" : "新增供应商"}</DialogTitle>
             <DialogDescription className="text-xs">
               连接信息决定请求发往哪里；模型列表决定可选用哪些模型及其能力。
@@ -553,7 +556,7 @@ export function ModelsPage() {
               </Section>
             </div>
           )}
-          <DialogFooter className="mx-0 mb-0 gap-2 rounded-none bg-transparent px-6 py-4">
+          <DialogFooter className={PROVIDER_EDITOR_FOOTER_CLASS}>
             <Button variant="outline" onClick={() => setEditing(null)} disabled={saving}>取消</Button>
             <Button onClick={save} disabled={saving}>
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}

@@ -239,7 +239,7 @@ export function MCPPage() {
                     >
                       编辑
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => remove(s)}>
+                    <Button variant="ghost" size="icon" aria-label="删除 MCP 服务" onClick={() => remove(s)}>
                       <Trash2 className="h-4 w-4 text-muted-foreground" />
                     </Button>
                   </div>

@@ -32,7 +32,15 @@ function blankSkill(): SkillConfig {
 }
 
 function skillPreview(content: string): string {
-  return content.length > 200 ? content.slice(0, 200) + "…" : content;
+  const plain = content
+    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "• ")
+    .replace(/[*_`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return plain.length > 180 ? plain.slice(0, 180) + "…" : plain;
 }
 
 export function SkillsPage() {
@@ -273,9 +281,9 @@ export function SkillsPage() {
                   <Badge variant="secondary" className="font-normal">{skillSourceLabel(source)}</Badge>
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground">{s.description}</div>
-                <pre className="mt-2 max-h-20 overflow-hidden whitespace-pre-wrap text-xs text-muted-foreground">
+                <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                   {skillPreview(s.content)}
-                </pre>
+                </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {readOnly ? (

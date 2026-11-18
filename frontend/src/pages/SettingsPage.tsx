@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft, BookOpen, Bot, Boxes, Database, FolderOpen, Info,
-  MessageSquare, Network, Palette, Plug, RefreshCw, ShieldCheck, Sparkles, TriangleAlert,
-  Users, type LucideIcon,
+  ArrowLeft, BookOpen, Bot, Boxes, Database, FileText, FolderOpen, Info,
+  MessageSquare, Network, Palette, Plug, Plus, RefreshCw, Search, ShieldCheck, Sparkles,
+  Trash2, TriangleAlert, Users, type LucideIcon,
 } from "lucide-react";
 import { Browser, Dialogs } from "@wailsio/runtime";
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { NumericField } from "@/components/ui/numeric-field";
 import { SegmentedControl } from "@/components/ui/choice";
 import { PolicyChoiceGroup } from "@/components/PolicyChoiceGroup";
@@ -325,7 +326,8 @@ export function SettingsPage({
 
   // Esc 会离开
   // hub，但已打开的对话框（日志查看器、产物预览、离开确认）会优先获得处理它的机
-  // 会。
+  // 会。监听必须在捕获阶段先看一眼：Radix 关闭弹窗后会立刻把 data-state 改成
+  // closed，冒泡阶段再检查就会误判为“没有弹窗”，从而把设置页也一起关掉。
   useEffect(() => {
     if (!onClose) return;
     const onKey = (e: KeyboardEvent) => {
@@ -333,8 +335,8 @@ export function SettingsPage({
       if (document.querySelector("[role='dialog'][data-state='open']")) return;
       requestLeave(onClose);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose, requestLeave]);
 
   // 反馈入口：版本和平台由应用自动带上，测试机不需要手填。
@@ -928,134 +930,186 @@ export function SettingsPage({
         </>
         )}
         {tab === "knowledge" && (
+        <>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">知识库语义检索</CardTitle>
+            <CardTitle className="text-base">语义检索</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
-            <div className="grid gap-1.5">
-              <Label>Embedding 供应商</Label>
-              <Select
-                value={settings.embeddingProviderId || "none"}
-                onValueChange={(v) => update({ embeddingProviderId: v === "none" ? "" : v })}
-              >
-                <SelectTrigger className="w-72"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">关闭（仅关键词检索）</SelectItem>
-                  {providers.filter((p) => (p.protocol ?? Protocol.ProtocolOpenAI) === Protocol.ProtocolOpenAI).map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Embedding 模型</Label>
-              <Input
-                value={settings.embeddingModel ?? ""}
-                onChange={(e) => update({ embeddingModel: e.target.value })}
-                placeholder="text-embedding-3-small / BAAI/bge-large-zh-v1.5"
-              />
-            </div>
-            <div className="grid gap-1.5 rounded-lg bg-recess/60 p-2.5">
-              <div className="grid grid-cols-2 gap-2">
-                <Input value={kbNewName} onChange={(e) => setKbNewName(e.target.value)} placeholder="文件名（如 meeting-notes.md）" />
-                <Input value={kbNewContent} onChange={(e) => setKbNewContent(e.target.value)} placeholder="初始内容（必填）" />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  disabled={!kbNewName.trim() || !kbNewContent.trim()}
-                  onClick={async () => {
-                    if (!kbNewName.trim() || !kbNewContent.trim()) {
-                      toast.error("文件名与初始内容均为必填");
-                      return;
-                    }
-                    try {
-                      await Config.CreateKnowledgeFile(kbNewName.trim(), kbNewContent);
-                      setKbNewName("");
-                      setKbNewContent("");
-                      const files = await Config.ListKnowledgeFiles();
-                      setKbFiles(files ?? []);
-                      toast.success("已创建");
-                    } catch (e) {
-                      toast.error(`创建失败: ${errText(e)}`);
-                    }
-                  }}
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="embedding-provider">Embedding 供应商</Label>
+                <Select
+                  value={settings.embeddingProviderId || "none"}
+                  onValueChange={(v) => update({ embeddingProviderId: v === "none" ? "" : v })}
                 >
-                  新建知识文件
-                </Button>
-                {kbFiles.map((f) => (
-                  <TooltipHint key={f.name} content="预览文件">
-                    <Button variant="ghost" size="sm" onClick={() => setKbPreviewPath(`knowledge/${f.name}`)}>
-                      {f.name}
-                    </Button>
-                  </TooltipHint>
-                ))}
+                  <SelectTrigger id="embedding-provider" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">关闭（仅关键词检索）</SelectItem>
+                    {providers.filter((p) => (p.protocol ?? Protocol.ProtocolOpenAI) === Protocol.ProtocolOpenAI).map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-1.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    value={kbTestQuery}
-                    onChange={(e) => setKbTestQuery(e.target.value)}
-                    placeholder="试一条检索词，验证检索效果…"
-                  />
-                  <Button variant="outline" className="shrink-0" onClick={async () => {
+                <Label htmlFor="embedding-model">Embedding 模型</Label>
+                <Input
+                  id="embedding-model"
+                  value={settings.embeddingModel ?? ""}
+                  onChange={(e) => update({ embeddingModel: e.target.value })}
+                  placeholder="text-embedding-3-small / BAAI/bge-large-zh-v1.5"
+                />
+              </div>
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              配置后，知识库检索（search_knowledge）升级为「向量语义 + 关键词」混合检索；向量索引自动增量构建于本地 SQLite。留空则保持关键词检索。
+              {indexStats && indexStats.files > 0 && ` 已索引 ${indexStats.files} 个文件 / ${indexStats.chunks} 个分块${indexStats.model ? `（模型 ${indexStats.model}）` : ""}。`}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">知识文件</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]">
+              <div className="grid content-start gap-1.5">
+                <Label htmlFor="kb-new-name">文件名</Label>
+                <Input
+                  id="kb-new-name"
+                  value={kbNewName}
+                  onChange={(e) => setKbNewName(e.target.value)}
+                  placeholder="meeting-notes.md"
+                />
+                <p className="text-xs text-muted-foreground">相对 knowledge/ 目录，例如 meeting-notes.md。</p>
+              </div>
+              <div className="grid content-start gap-1.5">
+                <Label htmlFor="kb-new-content">
+                  初始内容 <span className="text-danger-text">*</span>
+                </Label>
+                <Textarea
+                  id="kb-new-content"
+                  rows={3}
+                  value={kbNewContent}
+                  onChange={(e) => setKbNewContent(e.target.value)}
+                  placeholder="输入知识文件内容…"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                disabled={!kbNewName.trim() || !kbNewContent.trim()}
+                onClick={async () => {
+                  if (!kbNewName.trim() || !kbNewContent.trim()) {
+                    toast.error("文件名与初始内容均为必填");
+                    return;
+                  }
+                  try {
+                    await Config.CreateKnowledgeFile(kbNewName.trim(), kbNewContent);
+                    setKbNewName("");
+                    setKbNewContent("");
+                    const files = await Config.ListKnowledgeFiles();
+                    setKbFiles(files ?? []);
+                    toast.success("已创建");
+                  } catch (e) {
+                    toast.error(`创建失败: ${errText(e)}`);
+                  }
+                }}
+              >
+                <Plus className="h-4 w-4" /> 新建知识文件
+              </Button>
+            </div>
+            <div className="surface-inset grid gap-1 rounded-xl p-1.5">
+              {kbFiles.length === 0 && (
+                <div className="flex flex-col items-center gap-1 px-4 py-6 text-center">
+                  <FileText className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                  <div className="text-sm font-medium">还没有知识文件</div>
+                  <p className="text-xs text-muted-foreground">在上方填写文件名与内容，创建后会写入 knowledge/ 并自动建立索引。</p>
+                </div>
+              )}
+              {kbFiles.map((f) => (
+                <div key={f.name} className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-control">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <TooltipHint content="预览文件">
+                      <button
+                        className="max-w-full truncate text-left text-sm font-medium underline-offset-2 hover:underline"
+                        onClick={() => setKbPreviewPath(`knowledge/${f.name}`)}
+                      >
+                        {f.name}
+                      </button>
+                    </TooltipHint>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {(f.sizeBytes / 1024).toFixed(1)} KB · {f.modTime}
+                    </div>
+                  </div>
+                  <TooltipHint content={`删除 ${f.name}`}>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`删除 ${f.name}`}
+                      onClick={async () => {
+                        if (!window.confirm(`删除知识文件「${f.name}」？索引将同步移除该文件。`)) return;
+                        try {
+                          await Config.DeleteKnowledgeFile(f.name);
+                          setKbFiles((prev) => (prev ?? []).filter((x) => x.name !== f.name));
+                          toast.success("已删除（下次检索自动从索引移除）");
+                        } catch (e) {
+                          toast.error(`删除失败: ${errText(e)}`);
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </TooltipHint>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">检索测试</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="kb-test-query">检索词</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  id="kb-test-query"
+                  className="min-w-48 flex-1"
+                  value={kbTestQuery}
+                  onChange={(e) => setKbTestQuery(e.target.value)}
+                  placeholder="输入一个检索词，验证当前配置…"
+                />
+                <Button
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={!kbTestQuery.trim()}
+                  onClick={async () => {
                     try {
                       setKbTestResult(await Config.TestKnowledgeSearch(kbTestQuery));
                     } catch (e) {
                       toast.error(`检索失败: ${errText(e)}`);
                     }
-                  }}>
-                    测试检索
-                  </Button>
-                </div>
-                {kbTestResult && (
-                  <pre className="max-h-40 overflow-auto rounded bg-muted/60 p-2 text-2xs leading-relaxed text-muted-foreground">{kbTestResult}</pre>
-                )}
+                  }}
+                >
+                  <Search className="h-4 w-4" /> 测试检索
+                </Button>
               </div>
-              {kbFiles.length > 0 && (
-                <div className="grid gap-1 rounded-lg bg-recess/60 p-2">
-                  {kbFiles.map((f) => (
-                    <div key={f.name} className="flex items-center justify-between gap-2 text-xs">
-                      <TooltipHint content="预览文件">
-                        <button
-                          className="truncate font-mono text-left underline-offset-2 hover:underline"
-                          onClick={() => setKbPreviewPath(`knowledge/${f.name}`)}
-                        >
-                          {f.name}
-                        </button>
-                      </TooltipHint>
-                      <span className="shrink-0 text-muted-foreground">
-                        {(f.sizeBytes / 1024).toFixed(1)} KB · {f.modTime}
-                      </span>
-                      <TooltipHint content={`删除 ${f.name}`}>
-                        <button
-                          className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-danger-text"
-                          onClick={async () => {
-                            if (!window.confirm(`删除知识文件「${f.name}」？索引将同步移除该文件。`)) return;
-                            try {
-                              await Config.DeleteKnowledgeFile(f.name);
-                              setKbFiles((prev) => (prev ?? []).filter((x) => x.name !== f.name));
-                              toast.success("已删除（下次检索自动从索引移除）");
-                            } catch (e) {
-                              toast.error(`删除失败: ${errText(e)}`);
-                            }
-                          }}
-                        >
-                          删除
-                        </button>
-                      </TooltipHint>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground">
-                配置后，知识库检索（search_knowledge）升级为「向量语义 + 关键词」混合检索；向量索引自动增量构建于本地 SQLite。留空则保持关键词检索。
-                {indexStats && indexStats.files > 0 && ` 已索引 ${indexStats.files} 个文件 / ${indexStats.chunks} 个分块${indexStats.model ? `（模型 ${indexStats.model}）` : ""}。`}
-              </p>
             </div>
+            {kbTestResult ? (
+              <pre className="surface-inset max-h-40 overflow-auto rounded-lg p-3 text-xs leading-relaxed text-muted-foreground">{kbTestResult}</pre>
+            ) : (
+              <p className="text-xs text-muted-foreground">使用当前 Embedding 配置与已索引文件执行一次只读检索。</p>
+            )}
           </CardContent>
         </Card>
+        </>
         )}
         {tab === "conversation" && (
         <Card>
@@ -1159,55 +1213,57 @@ export function SettingsPage({
                 onCheckedChange={(v) => update({ traceEnabled: v })}
               />
             </SettingRow>
-            <Button
-              variant="outline"
-              onClick={async () => {
-                try {
-                  const n = await Chat.ExportAllSessions();
-                  toast.success(`已导出 ${n} 个会话到工作区 exports/`);
-                } catch (e) {
-                  toast.error(`导出失败: ${errText(e)}`);
-                }
-              }}
-            >
-              批量导出全部会话
-            </Button>
-            <Button
-              variant="outline"
-              onClick={async () => {
-                try {
-                  const lines = (await App.RecentToolAudit(200)) ?? [];
-                  setLogText(lines.join("\n"));
-                  setLogTitle("工具审计日志（最近 200 行）");
-                  setLogOpen(true);
-                } catch (e) {
-                  toast.error(`读取审计失败: ${errText(e)}`);
-                }
-              }}
-            >
-              查看工具审计日志
-            </Button>
-            <Button
-              variant="outline"
-              onClick={async () => {
-                try {
-                  const lines = (await App.RecentLogs(200)) ?? [];
-                  setLogText(lines.join("\n"));
-                  setLogTitle("应用日志（最近 200 行）");
-                  setLogOpen(true);
-                } catch (e) {
-                  toast.error(`读取日志失败: ${errText(e)}`);
-                }
-              }}
-            >
-              查看最近日志（200 行）
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const n = await Chat.ExportAllSessions();
+                    toast.success(`已导出 ${n} 个会话到工作区 exports/`);
+                  } catch (e) {
+                    toast.error(`导出失败: ${errText(e)}`);
+                  }
+                }}
+              >
+                批量导出全部会话
+              </Button>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const lines = (await App.RecentToolAudit(200)) ?? [];
+                    setLogText(lines.join("\n"));
+                    setLogTitle("工具审计日志（最近 200 行）");
+                    setLogOpen(true);
+                  } catch (e) {
+                    toast.error(`读取审计失败: ${errText(e)}`);
+                  }
+                }}
+              >
+                查看工具审计日志
+              </Button>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const lines = (await App.RecentLogs(200)) ?? [];
+                    setLogText(lines.join("\n"));
+                    setLogTitle("应用日志（最近 200 行）");
+                    setLogOpen(true);
+                  } catch (e) {
+                    toast.error(`读取日志失败: ${errText(e)}`);
+                  }
+                }}
+              >
+                查看最近日志（200 行）
+              </Button>
+            </div>
             <Dialog open={logOpen} onOpenChange={setLogOpen}>
               <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
                   <DialogTitle>{logTitle}</DialogTitle>
                 </DialogHeader>
-                <pre className="max-h-[50vh] overflow-auto rounded bg-muted/60 p-3 font-mono text-2xs leading-relaxed">{logText}</pre>
+                <pre className="surface-inset max-h-[50vh] overflow-auto rounded-lg p-3 font-mono text-xs leading-relaxed">{logText}</pre>
               </DialogContent>
             </Dialog>
             <div className="flex items-center justify-between gap-2">

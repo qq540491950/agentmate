@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PROVIDER_EDITOR_BODY_CLASS,
   PROVIDER_EDITOR_DIALOG_CLASS,
+  PROVIDER_EDITOR_FOOTER_CLASS,
 } from "./providerEditorLayout";
 
 // #32 回归防护：模型较多时，供应商编辑器曾超出视口，导致「保存」/「取消」
@@ -11,6 +12,10 @@ describe("provider editor dialog layout", () => {
     expect(PROVIDER_EDITOR_DIALOG_CLASS).toContain("max-h-[85vh]");
     expect(PROVIDER_EDITOR_DIALOG_CLASS).toContain("flex");
     expect(PROVIDER_EDITOR_DIALOG_CLASS).toContain("flex-col");
+  });
+
+  it("keeps long model identifiers readable on desktop", () => {
+    expect(PROVIDER_EDITOR_DIALOG_CLASS).toContain("sm:max-w-5xl");
   });
 
   it("scrolls only the body so the footer stays visible", () => {
@@ -24,5 +29,10 @@ describe("provider editor dialog layout", () => {
     // 是滚动列表。
     expect(PROVIDER_EDITOR_BODY_CLASS).toContain("min-h-0");
     expect(PROVIDER_EDITOR_BODY_CLASS).toContain("flex-1");
+  });
+
+  it("keeps the action footer docked outside the scrollable body", () => {
+    expect(PROVIDER_EDITOR_FOOTER_CLASS).toContain("shrink-0");
+    expect(PROVIDER_EDITOR_FOOTER_CLASS).not.toContain("bg-transparent");
   });
 });
