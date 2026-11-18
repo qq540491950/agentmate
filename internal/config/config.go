@@ -718,13 +718,13 @@ func (s *Settings) normalize() {
 		s.ThemeMode = "dark"
 	}
 	if s.ThemePreset == "" {
-		s.ThemePreset = "nord"
+		s.ThemePreset = "graphite"
 	}
 	switch strings.ToLower(strings.TrimSpace(s.ThemePreset)) {
 	case "nord", "graphite", "paper", "contrast":
 		s.ThemePreset = strings.ToLower(strings.TrimSpace(s.ThemePreset))
 	default:
-		s.ThemePreset = "nord"
+		s.ThemePreset = "graphite"
 	}
 	if s.Accent == "" {
 		s.Accent = "blue"
@@ -1059,7 +1059,7 @@ func Default() Config {
 			WorkspaceDir:             defaultWorkspace(),
 			Language:                 "zh-CN",
 			ThemeMode:                "dark",
-			ThemePreset:              "nord",
+			ThemePreset:              "graphite",
 			Accent:                   "blue",
 			FontScale:                "md",
 			ChatWidth:                ChatWidthMedium,

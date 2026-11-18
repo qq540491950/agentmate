@@ -172,7 +172,7 @@ export function ApprovalQueueDialog({
           <DialogTitle className="text-base">审批队列 · {approvals.length} 项待处理</DialogTitle>
         </DialogHeader>
         {approvals.length === 0 ? (
-          <div className="rounded-xl bg-panel p-3 text-sm text-muted-foreground">当前没有待批准的调用。</div>
+          <div className="rounded-xl bg-recess/60 p-3 text-sm text-muted-foreground">当前没有待批准的调用。</div>
         ) : (
           <>
             <div className="flex flex-wrap gap-2">
@@ -187,7 +187,7 @@ export function ApprovalQueueDialog({
                 const hint = item.hint ?? item.Hint ?? "";
                 const policy = item.policyJson ?? item.PolicyJSON ?? "";
                 return (
-                  <div key={id} className="rounded-xl bg-overlay p-3 text-sm">
+                  <div key={id} className="surface-inset rounded-xl p-3 text-sm">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{approvalTool(item)}</span>
                       <span className={cn("rounded-md px-1.5 py-0.5 text-xs", risk === "high" ? "bg-danger-soft text-danger-text" : "bg-warning-soft text-warning-text")}>
@@ -198,7 +198,7 @@ export function ApprovalQueueDialog({
                     {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
                     {policy && <p className="mt-1 break-all text-xs text-muted-foreground">{policy}</p>}
                     {diff && (
-                      <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-canvas p-2 text-xs leading-relaxed text-foreground">
+                      <pre className="surface-inset mt-2 max-h-48 overflow-auto rounded-lg p-2 text-xs leading-relaxed text-foreground">
                         {diff}
                       </pre>
                     )}
@@ -253,9 +253,9 @@ export function PlanEditorDialog({
           <DialogTitle className="text-base">编辑计划</DialogTitle>
         </DialogHeader>
         <div className="max-h-[62vh] space-y-2 overflow-y-auto">
-          {draft.length === 0 && <div className="rounded-xl bg-panel p-3 text-sm text-muted-foreground">还没有计划步骤。</div>}
+          {draft.length === 0 && <div className="rounded-xl bg-recess/60 p-3 text-sm text-muted-foreground">还没有计划步骤。</div>}
           {draft.map((step, index) => (
-            <div key={step.id || index} className="rounded-xl bg-panel p-3">
+            <div key={step.id || index} className="surface-raised rounded-xl bg-panel p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   value={step.id}

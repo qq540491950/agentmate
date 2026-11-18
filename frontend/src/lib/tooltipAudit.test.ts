@@ -62,9 +62,8 @@ describe("tooltip contract", () => {
   });
 
   it("uses the shared overlay surface without a native-looking border", () => {
-    expect(tooltipCardClassName).toContain("bg-overlay");
+    expect(tooltipCardClassName).toContain("surface-float");
     expect(tooltipCardClassName).toContain("text-popover-foreground");
-    expect(tooltipCardClassName).toContain("shadow-pop");
     expect(tooltipCardClassName).not.toMatch(/\bbg-foreground\b|\bborder\b|\bring-1\b/);
   });
 });

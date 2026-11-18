@@ -50,6 +50,9 @@
     --color-panel: var(--panel);
     --color-overlay: var(--overlay);
     --color-control: var(--control);
+    --color-selected: var(--selected);
+    --color-bubble: var(--bubble);
+    --color-recess: var(--recess);
     --color-accent-soft: var(--accent-soft);
     --color-choice-selected: var(--choice-selected);
     --color-choice-selected-danger: var(--choice-selected-danger);
@@ -118,12 +121,60 @@
 @utility shadow-dialog {
     box-shadow: var(--shadow-dialog);
 }
+/* 轻材质：顶部高光 + 底部暗边 + 柔和环境阴影。布局仍不得用 border 分区。 */
+@utility surface-raised {
+    background-image: var(--sheen);
+    box-shadow: var(--edge-top), var(--edge-bottom), var(--shadow-raised);
+}
+@utility surface-raised-strong {
+    background-image: var(--sheen);
+    box-shadow: var(--edge-top), var(--edge-bottom), var(--shadow-raised-strong);
+}
+@utility surface-control {
+    background-color: var(--control);
+    box-shadow: var(--edge-top), var(--shadow-control);
+}
+@utility surface-inset {
+    background-color: var(--recess);
+    box-shadow: var(--shadow-inset);
+}
+@utility surface-bubble {
+    background-color: var(--bubble);
+    box-shadow: var(--edge-top), var(--shadow-bubble);
+}
+@utility surface-composer {
+    background-color: var(--panel);
+    background-image: var(--sheen);
+    box-shadow: var(--edge-top), var(--edge-bottom), var(--shadow-raised-strong);
+}
+@utility surface-float {
+    background-color: var(--overlay);
+    background-image: var(--sheen);
+    box-shadow: var(--edge-top), var(--shadow-pop);
+}
+@utility surface-selected {
+    background-color: var(--selected);
+    box-shadow: var(--edge-top);
+}
+@utility surface-row {
+    background-color: var(--panel);
+    box-shadow: var(--edge-top);
+}
+@utility shadow-edge {
+    box-shadow: var(--edge-top);
+}
+@utility shadow-inset {
+    box-shadow: var(--shadow-inset);
+}
+@utility shadow-control {
+    box-shadow: var(--shadow-control);
+}
 
-/* Nord 浅色是启动缓存应用预设之前的默认主题。 */
+/* 无 data-theme 时使用 Nord 浅色作为最后回退；启动脚本会先写入石墨。 */
 :root,
 [data-theme="nord"] {
     --canvas: #ECEFF4;
-    --chrome: #E5E9F0;
+    --chrome: #E4E8EF;
     --panel: #FFFFFF;
     --overlay: #FFFFFF;
     --background: var(--canvas);
@@ -131,7 +182,10 @@
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: #EBEFF4;
+    --control: #E9EDF3;
+    --selected: #DCE3ED;
+    --bubble: #E4E9F1;
+    --recess: #E7EBF1;
     --foreground: #2E3440;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
@@ -141,8 +195,8 @@
     --secondary-foreground: #2E3440;
     --accent: #DDE4EC;
     --accent-foreground: #2E3440;
-    --accent-soft: color-mix(in oklab, var(--brand) 12%, transparent);
-    --choice-selected: #D2DCE8;
+    --accent-soft: color-mix(in oklab, var(--brand) 8%, var(--panel));
+    --choice-selected: #CFDAE8;
     --choice-selected-danger: #EDD8DB;
     --accent-text: #4C6A91;
     --brand: #5E81AC;
@@ -172,11 +226,19 @@
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
     --scrim: rgb(15 23 42 / 24%);
-    --shadow-card: 0 0 #0000;
-    --shadow-panel: 0 0 #0000;
+    --shadow-card: var(--shadow-raised);
+    --shadow-panel: var(--shadow-raised);
     --shadow-composer: 0 12px 32px rgb(15 23 42 / 10%), 0 2px 8px rgb(15 23 42 / 5%);
     --shadow-pop: 0 12px 32px rgb(15 23 42 / 12%), 0 2px 8px rgb(15 23 42 / 6%);
     --shadow-dialog: 0 24px 64px rgb(15 23 42 / 18%), 0 6px 18px rgb(15 23 42 / 8%);
+    --edge-top: inset 0 1px 0 rgb(255 255 255 / 82%);
+    --edge-bottom: inset 0 -1px 0 rgb(15 23 42 / 6%);
+    --shadow-raised: 0 1px 2px rgb(15 23 42 / 7%), 0 8px 24px rgb(15 23 42 / 7%);
+    --shadow-raised-strong: 0 2px 6px rgb(15 23 42 / 8%), 0 16px 40px rgb(15 23 42 / 9%);
+    --shadow-control: 0 1px 1px rgb(15 23 42 / 5%);
+    --shadow-bubble: 0 1px 2px rgb(15 23 42 / 5%), 0 8px 20px rgb(15 23 42 / 4%);
+    --shadow-inset: inset 0 1px 2px rgb(15 23 42 / 7%), inset 0 -1px 0 rgb(255 255 255 / 70%);
+    --sheen: linear-gradient(180deg, rgb(255 255 255 / 0%), rgb(15 23 42 / 2%));
     --tok-kw: #7C4D91;
     --tok-str: #3F6B3F;
     --tok-num: #3D5A80;
@@ -191,29 +253,44 @@
     --composer-col-max: 60rem;
 }
 
+/* 深色材质对所有主题一致：顶部微亮、底部微暗，阴影比浅色更克制。 */
+:root.dark {
+    --edge-top: inset 0 1px 0 rgb(255 255 255 / 6%);
+    --edge-bottom: inset 0 -1px 0 rgb(0 0 0 / 22%);
+    --shadow-raised: 0 1px 2px rgb(0 0 0 / 24%), 0 10px 28px rgb(0 0 0 / 14%);
+    --shadow-raised-strong: 0 2px 6px rgb(0 0 0 / 26%), 0 16px 40px rgb(0 0 0 / 16%);
+    --shadow-control: 0 1px 1px rgb(0 0 0 / 16%);
+    --shadow-bubble: 0 1px 2px rgb(0 0 0 / 18%), 0 8px 20px rgb(0 0 0 / 8%);
+    --shadow-inset: inset 0 1px 2px rgb(0 0 0 / 30%), inset 0 -1px 0 rgb(255 255 255 / 3%);
+    --sheen: linear-gradient(180deg, rgb(255 255 255 / 3.5%), transparent 52%);
+}
+
 :root.dark,
 [data-theme="nord"].dark {
     --canvas: #2E3440;
-    --chrome: #3B4252;
-    --panel: #434C5E;
-    --overlay: #4C566A;
+    --chrome: #323845;
+    --panel: #373E4B;
+    --overlay: #3E4655;
     --background: var(--canvas);
     --surface-1: var(--chrome);
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: #485265;
+    --control: #3B4351;
+    --selected: #3F4755;
+    --bubble: #353C48;
+    --recess: #2A303A;
     --foreground: #ECEFF4;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
-    --muted: #3B4252;
+    --muted: #323845;
     --muted-foreground: #D8DEE9;
-    --secondary: #434C5E;
+    --secondary: #3B4351;
     --secondary-foreground: #ECEFF4;
-    --accent: #4C566A;
+    --accent: #3F4755;
     --accent-foreground: #ECEFF4;
-    --accent-soft: color-mix(in oklab, var(--brand) 14%, transparent);
-    --choice-selected: #4F6173;
+    --accent-soft: color-mix(in oklab, var(--brand) 10%, var(--panel));
+    --choice-selected: #4A5464;
     --choice-selected-danger: #5C5D6D;
     --accent-text: #9BD3E0;
     --brand: #88C0D0;
@@ -243,8 +320,8 @@
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
     --scrim: rgb(0 0 0 / 58%);
-    --shadow-card: 0 0 #0000;
-    --shadow-panel: 0 0 #0000;
+    --shadow-card: var(--shadow-raised);
+    --shadow-panel: var(--shadow-raised);
     --shadow-composer: 0 14px 36px rgb(0 0 0 / 24%), 0 2px 8px rgb(0 0 0 / 20%);
     --shadow-pop: 0 18px 48px rgb(0 0 0 / 38%), 0 2px 10px rgb(0 0 0 / 28%);
     --shadow-dialog: 0 28px 80px rgb(0 0 0 / 48%), 0 6px 20px rgb(0 0 0 / 28%);
@@ -260,7 +337,7 @@
 }
 
 [data-theme="graphite"] {
-    --canvas: #F7F8FA;
+    --canvas: #F6F7F9;
     --chrome: #EFF1F4;
     --panel: #FFFFFF;
     --overlay: #FFFFFF;
@@ -269,24 +346,27 @@
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: #EFF2F7;
-    --foreground: #1F232B;
+    --control: #EDF0F4;
+    --selected: #E6EAF0;
+    --bubble: #EBEFF5;
+    --recess: #F0F2F5;
+    --foreground: #1D2229;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
     --muted: #E8ECF1;
-    --muted-foreground: #5B6472;
+    --muted-foreground: #5A636F;
     --secondary: #E9EDF3;
-    --secondary-foreground: #1F232B;
+    --secondary-foreground: #1D2229;
     --accent: #E5EAF1;
-    --accent-foreground: #1F232B;
-    --accent-soft: color-mix(in oklab, var(--brand) 12%, transparent);
-    --choice-selected: #CBDBFA;
+    --accent-foreground: #1D2229;
+    --accent-soft: color-mix(in oklab, var(--brand) 8%, var(--panel));
+    --choice-selected: #D2DCE8;
     --choice-selected-danger: #EFDCDE;
-    --accent-text: #3E6FA8;
+    --accent-text: #3A6EA5;
     --brand: #5B8DEF;
     --brand-foreground: #FFFFFF;
-    --primary: #1F232B;
-    --primary-foreground: #F7F8FA;
+    --primary: #1D2229;
+    --primary-foreground: #F6F7F9;
     --danger: #A63D4A;
     --danger-text: #A63D4A;
     --danger-soft: color-mix(in oklab, var(--danger) 10%, transparent);
@@ -327,33 +407,36 @@
 }
 
 [data-theme="graphite"].dark {
-    --canvas: #1B1F27;
-    --chrome: #161A21;
-    --panel: #252A34;
-    --overlay: #2E3440;
+    --canvas: #17191D;
+    --chrome: #1B1E24;
+    --panel: #21252C;
+    --overlay: #282D36;
     --background: var(--canvas);
     --surface-1: var(--chrome);
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: #2C323F;
-    --foreground: #F2F4F7;
+    --control: #252A33;
+    --selected: #2A303A;
+    --bubble: #23282F;
+    --recess: #131519;
+    --foreground: #ECEEF2;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
-    --muted: #222833;
-    --muted-foreground: #AAB3C0;
-    --secondary: #2B313C;
-    --secondary-foreground: #F2F4F7;
-    --accent: #303846;
-    --accent-foreground: #F2F4F7;
-    --accent-soft: color-mix(in oklab, var(--brand) 14%, transparent);
-    --choice-selected: #344157;
+    --muted: #1B1E24;
+    --muted-foreground: #A6ADB8;
+    --secondary: #252A33;
+    --secondary-foreground: #ECEEF2;
+    --accent: #2A303A;
+    --accent-foreground: #ECEEF2;
+    --accent-soft: color-mix(in oklab, var(--brand) 10%, var(--panel));
+    --choice-selected: #333B48;
     --choice-selected-danger: #423F49;
     --accent-text: #9CC2FF;
     --brand: #79A9F5;
-    --brand-foreground: #1B1F27;
-    --primary: #F2F4F7;
-    --primary-foreground: #1B1F27;
+    --brand-foreground: #17191D;
+    --primary: #F2F3F5;
+    --primary-foreground: #17191D;
     --danger: #F5C2C7;
     --danger-text: #F5C2C7;
     --danger-soft: color-mix(in oklab, var(--danger) 12%, transparent);
@@ -395,7 +478,7 @@
 
 [data-theme="paper"] {
     --canvas: #F4F0E8;
-    --chrome: #EAE3D7;
+    --chrome: #ECE6DB;
     --panel: #FFFDF8;
     --overlay: #FFFFFF;
     --background: var(--canvas);
@@ -403,7 +486,10 @@
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: #F4EFE6;
+    --control: #F1ECE3;
+    --selected: #E6E0D4;
+    --bubble: #EBE5DA;
+    --recess: #F0EAE0;
     --foreground: #2C2823;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
@@ -413,9 +499,9 @@
     --secondary-foreground: #2C2823;
     --accent: #EDE6DA;
     --accent-foreground: #2C2823;
-    --accent-soft: color-mix(in oklab, var(--brand) 12%, transparent);
-    --choice-selected: #E3D6C7;
-    --choice-selected-danger: #EFDAD9;
+    --accent-soft: color-mix(in oklab, var(--brand) 8%, var(--panel));
+    --choice-selected: #DDD2C2;
+    --choice-selected-danger: #EBD2D5;
     --accent-text: #7A4A20;
     --brand: #8A5A2B;
     --brand-foreground: #FFFDF8;
@@ -461,27 +547,30 @@
 }
 
 [data-theme="paper"].dark {
-    --canvas: #1C1B19;
-    --chrome: #24221F;
-    --panel: #2C2925;
-    --overlay: #36312B;
+    --canvas: #1B1A18;
+    --chrome: #211F1C;
+    --panel: #262420;
+    --overlay: #2C2925;
     --background: var(--canvas);
     --surface-1: var(--chrome);
     --card: var(--panel);
     --popover: var(--overlay);
     --elevated: var(--overlay);
-    --control: #342F2A;
+    --control: #2B2822;
+    --selected: #2E2A24;
+    --bubble: #221F1B;
+    --recess: #171614;
     --foreground: #F2EDE6;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
-    --muted: #2A2722;
+    --muted: #211F1C;
     --muted-foreground: #B8AFA3;
-    --secondary: #332F2A;
+    --secondary: #2B2822;
     --secondary-foreground: #F2EDE6;
-    --accent: #39332D;
+    --accent: #332E27;
     --accent-foreground: #F2EDE6;
-    --accent-soft: color-mix(in oklab, var(--brand) 14%, transparent);
-    --choice-selected: #483D30;
+    --accent-soft: color-mix(in oklab, var(--brand) 10%, var(--panel));
+    --choice-selected: #3B352D;
     --choice-selected-danger: #483E3C;
     --accent-text: #E8BE8C;
     --brand: #D9A46A;
@@ -538,6 +627,9 @@
     --popover: var(--overlay);
     --elevated: var(--overlay);
     --control: #F0F0F0;
+    --selected: #E0E0E0;
+    --bubble: #F2F2F2;
+    --recess: #F7F7F7;
     --foreground: #000000;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);
@@ -605,6 +697,9 @@
     --popover: var(--overlay);
     --elevated: var(--overlay);
     --control: #1F1F1F;
+    --selected: #242424;
+    --bubble: #1A1A1A;
+    --recess: #050505;
     --foreground: #FFFFFF;
     --card-foreground: var(--foreground);
     --popover-foreground: var(--foreground);

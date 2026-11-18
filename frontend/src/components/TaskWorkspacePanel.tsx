@@ -88,7 +88,7 @@ function FileRow({ file, sessionID, onPreview }: {
   return (
     <div
       className={cn(
-        "flex items-stretch rounded-lg bg-panel/60",
+        "surface-row flex items-stretch rounded-lg bg-panel",
         canPreview && "transition-colors hover:bg-accent",
       )}
       data-file-path={file.path}
@@ -151,7 +151,7 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 bg-panel/40 px-3 py-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 bg-recess/40 px-3 py-3 text-xs text-muted-foreground">
         <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在计算 diff…
       </div>
     );
@@ -162,12 +162,12 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
   if (!result) return null;
   if (result.unsupported) {
     return (
-      <div className="bg-panel/40 px-3 py-2 text-2xs text-muted-foreground">{result.unsupported}</div>
+      <div className="bg-recess/40 px-3 py-2 text-2xs text-muted-foreground">{result.unsupported}</div>
     );
   }
   if (!result.hunks?.length) {
     return (
-      <div className="bg-panel/40 px-3 py-2 text-2xs text-muted-foreground">与任务基线一致，无行级变更。</div>
+      <div className="bg-recess/40 px-3 py-2 text-2xs text-muted-foreground">与任务基线一致，无行级变更。</div>
     );
   }
   // 用于「复制 Patch」的统一补丁文本——与 git diff 显示的内容一致。
@@ -182,11 +182,11 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
     .join("\n");
 
   return (
-    <div className="bg-panel/40">
+    <div className="bg-recess/40">
       <div className="max-h-80 overflow-auto font-mono text-2xs leading-4">
         {result.hunks.map((h, hi) => (
           <div key={hi}>
-            <div className="sticky top-0 z-10 bg-panel/90 px-2 py-0.5 text-3xs text-muted-foreground">
+            <div className="sticky top-0 z-10 bg-recess/90 px-2 py-0.5 text-3xs text-muted-foreground">
               @@ -{h.oldStart},{h.oldLines} +{h.newStart},{h.newLines} @@
             </div>
             {(h.lines ?? []).map((l, li) => (
@@ -214,7 +214,7 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-3 bg-panel/50 px-3 py-1.5 font-mono text-3xs text-muted-foreground">
+      <div className="flex items-center gap-3 bg-recess/50 px-3 py-1.5 font-mono text-3xs text-muted-foreground">
         <span className="text-success">+{result.addedLines}</span>
         <span className="text-danger-text">-{result.removedLines}</span>
         {result.truncated && <span className="font-sans">内容过长已截断</span>}
@@ -234,7 +234,7 @@ function ChangeRow({ file, sessionID, onPreview }: {
   const [diffOpen, setDiffOpen] = useState(false);
   const canPreview = file.previewable && file.status !== WorkspaceChangeStatus.ChangeDeleted;
   return (
-    <div className={cn("rounded-lg bg-panel/60", diffOpen && "bg-accent-soft")} data-file-path={file.path}>
+    <div className={cn("surface-row rounded-lg bg-panel", diffOpen && "bg-selected")} data-file-path={file.path}>
       <div className="flex items-stretch">
         <TooltipHint content={canPreview ? `预览 ${file.path}` : `${file.path}（不支持内嵌预览）`}>
           <button
@@ -388,7 +388,7 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
           </Button>
         </div>
 
-        <div className="grid grid-cols-3 gap-1 bg-chrome px-2 py-1" role="tablist" aria-label="任务结果视图">
+        <div className="mx-2 my-1 grid grid-cols-3 gap-1 rounded-lg bg-recess p-1 shadow-inset" role="tablist" aria-label="任务结果视图">
           {([
             ["files", "全部文件", files.length],
             ["artifacts", "产物", artifacts.length],
@@ -404,7 +404,7 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
               tabIndex={tab === value ? 0 : -1}
               className={cn(
                 "rounded-md px-1 py-2 text-xs transition-colors",
-                tab === value ? "bg-accent-soft font-medium text-accent-text" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                tab === value ? "surface-raised bg-selected font-medium text-foreground" : "text-muted-foreground hover:bg-control hover:text-foreground",
               )}
               onClick={() => setTab(value)}
               onKeyDown={(e) => onTabKeyDown(e, value)}
@@ -457,7 +457,7 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
                   aria-pressed={changeFilter === value}
                   className={cn(
                     "rounded-full px-2 py-0.5 text-3xs transition-colors",
-                    changeFilter === value ? "bg-accent-soft text-accent-text" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    changeFilter === value ? "bg-selected text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                   onClick={() => setChangeFilter(value)}
                 >
@@ -497,7 +497,7 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
           </ScrollArea>
 
           {activeSnapshot && (
-            <div className="bg-panel/40 px-3 py-1.5 text-3xs text-muted-foreground">
+            <div className="bg-recess/40 px-3 py-1.5 text-3xs text-muted-foreground">
               已发现 {activeSnapshot.discovered} 个文件 · 基线 {fmtTime(activeSnapshot.baselineAt)} · 刷新于 {fmtTime(activeSnapshot.refreshedAt)}
             </div>
           )}

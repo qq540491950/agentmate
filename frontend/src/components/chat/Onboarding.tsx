@@ -7,7 +7,7 @@ export function Onboarding({ onOpenSettings }: { onOpenSettings: (tab?: Settings
     { n: 2, title: "直接开聊", desc: "输入消息立即对话；@ 可指定助手、团队或远程 Agent" },
   ];
   return (
-    <div className="mx-auto mt-12 max-w-md rounded-2xl bg-panel p-6">
+    <div className="surface-raised-strong mx-auto mt-12 max-w-md rounded-2xl bg-panel p-6">
       <div className="flex items-center gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-text">
           <Sparkles className="h-5 w-5" />
@@ -22,7 +22,7 @@ export function Onboarding({ onOpenSettings }: { onOpenSettings: (tab?: Settings
           <button
             key={s.n}
             onClick={s.n === 1 ? () => onOpenSettings("models") : undefined}
-            className="flex w-full items-center gap-3 rounded-lg bg-panel/60 p-3 text-left transition-colors hover:bg-accent"
+            className="surface-control flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors hover:bg-accent"
           >
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent-text">
               {s.n}

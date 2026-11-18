@@ -85,7 +85,7 @@ function CopyButton({ text, className, iconOnly = false, label: accessibleLabel 
     <TooltipHint content={tooltip}>
       <button
         className={cn(
-          "inline-flex items-center gap-1 rounded-md bg-panel/80 px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+          "inline-flex items-center gap-1 rounded-md bg-control px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
           className,
         )}
         aria-label={tooltip}
@@ -126,7 +126,7 @@ function CodeBlock({ children, className, node, ...rest }: any) {
     );
   }
   return (
-    <div className="group/code relative my-3 overflow-hidden rounded-lg bg-panel/60">
+    <div className="surface-inset group/code relative my-3 overflow-hidden rounded-lg">
       <div className="flex items-center justify-between px-3 py-1.5">
         <span className="font-mono text-2xs text-muted-foreground">{match?.[1] ?? "text"}</span>
         <CopyButton text={raw} className="border-0 bg-transparent opacity-0 transition-opacity group-hover/code:opacity-100" />

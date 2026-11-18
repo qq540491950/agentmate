@@ -257,7 +257,7 @@ export function MCPPage() {
           </DialogHeader>
           {editing && (
             <div className="grid gap-4 py-2">
-              <div className="flex items-center justify-between rounded-lg bg-panel/60 p-3">
+              <div className="flex items-center justify-between rounded-lg bg-recess/60 p-3">
                 <div>
                   <div className="text-sm font-medium">启用</div>
                   <div className="text-xs text-muted-foreground">

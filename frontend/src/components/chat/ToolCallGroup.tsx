@@ -147,7 +147,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
 
   return (
     <div
-      className="rounded-xl bg-panel/70 text-sm"
+      className="surface-raised rounded-xl bg-panel text-sm"
       data-toolgroup
       data-state={status}
       data-display-mode={displayMode}
@@ -198,7 +198,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
             tabIndex={expanded ? 0 : -1}
             aria-label="执行过程步骤"
             onScroll={onExecutionScroll}
-            className="max-h-64 space-y-1 overflow-y-auto overscroll-contain bg-panel/40 px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
+            className="max-h-64 space-y-1 overflow-y-auto overscroll-contain bg-recess/60 px-2 py-2 shadow-inset focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring/70"
           >
             {trace.map((item) => {
               if (item.kind === "tool") {

@@ -27,7 +27,7 @@ const svc = (service: string, method: string) =>
 const query = new URLSearchParams(window.location.search);
 const queryTheme = ["nord", "graphite", "paper", "contrast"].includes(query.get("theme") ?? "")
   ? query.get("theme")!
-  : "nord";
+  : "graphite";
 const queryMode = ["light", "dark", "system"].includes(query.get("mode") ?? "")
   ? query.get("mode")!
   : "dark";

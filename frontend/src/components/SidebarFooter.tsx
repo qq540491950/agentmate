@@ -481,7 +481,7 @@ export function SidebarFooter({
             )}
           </div>
 
-          <div className="flex items-center justify-between bg-panel/60 px-3.5 py-2 text-3xs text-muted-foreground">
+          <div className="flex items-center justify-between bg-recess/60 px-3.5 py-2 text-3xs text-muted-foreground">
             {status.state === "available" && status.canAutoInstall ? (
               <button type="button" className="hover:text-foreground" onClick={skip}>
                 跳过此版本

@@ -46,7 +46,7 @@ describe("theme token contract", () => {
     for (const mode of modes) {
       it(`${theme}/${mode} keeps text, statuses and focus readable`, () => {
         const tokens = declarationsFor(theme, mode);
-        for (const background of ["canvas", "chrome", "panel", "overlay"]) {
+        for (const background of ["canvas", "chrome", "panel", "overlay", "bubble", "selected"]) {
           expect(contrast(tokens.foreground, tokens[background]), `foreground/${background}`).toBeGreaterThanOrEqual(4.5);
           expect(contrast(tokens["muted-foreground"], tokens[background]), `muted/${background}`).toBeGreaterThanOrEqual(4.5);
         }
@@ -54,7 +54,7 @@ describe("theme token contract", () => {
           expect(contrast(tokens[status], tokens.panel), `${status}/panel`).toBeGreaterThanOrEqual(4.5);
         }
         expect(contrast(tokens.primary, tokens["primary-foreground"]), "primary pair").toBeGreaterThanOrEqual(4.5);
-        for (const background of ["canvas", "chrome", "panel"]) {
+        for (const background of ["canvas", "chrome", "panel", "bubble", "selected"]) {
           expect(contrast(tokens.ring, tokens[background]), `ring/${background}`).toBeGreaterThanOrEqual(3);
         }
       });
@@ -84,7 +84,12 @@ describe("theme token contract", () => {
 
       it(`${theme}/${mode} keeps layout surfaces perceptible but calm`, () => {
         const tokens = declarationsFor(theme, mode);
-        for (const [a, b] of [["canvas", "chrome"], ["chrome", "panel"]] as const) {
+        for (const [a, b] of [
+          ["canvas", "chrome"],
+          ["chrome", "panel"],
+          ["selected", "chrome"],
+          ["bubble", "canvas"],
+        ] as const) {
           const ratio = contrast(tokens[a], tokens[b]);
           expect(ratio, `${a}/${b}`).toBeGreaterThanOrEqual(1.05);
           expect(ratio, `${a}/${b}`).toBeLessThanOrEqual(1.3);

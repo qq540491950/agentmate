@@ -8,9 +8,9 @@ import {
 import type { Settings } from "@/lib/api";
 
 describe("theme resolution", () => {
-  it("falls back to Nord and dark for unknown or missing values", () => {
-    expect(normalizeThemePreset("")).toBe("nord");
-    expect(normalizeThemePreset("unknown")).toBe("nord");
+  it("falls back to Graphite and dark for unknown or missing values", () => {
+    expect(normalizeThemePreset("")).toBe("graphite");
+    expect(normalizeThemePreset("unknown")).toBe("graphite");
     expect(normalizeThemeMode("")).toBe("dark");
     expect(normalizeThemeMode("sepia")).toBe("dark");
   });
@@ -41,14 +41,14 @@ describe("theme resolution", () => {
     });
   });
 
-  it("migrates old settings to Nord while preserving unrelated appearance prefs", () => {
+  it("migrates old settings to Graphite while preserving unrelated appearance prefs", () => {
     const prefs = prefsFromSettings({
       themeMode: "system",
       fontScale: "lg",
       chatWidth: "wide",
     } as Settings);
     expect(prefs).toEqual({
-      themePreset: "nord",
+      themePreset: "graphite",
       themeMode: "system",
       fontScale: "lg",
       chatWidth: "wide",

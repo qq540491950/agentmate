@@ -23,8 +23,8 @@ export const THEME_OPTIONS: ReadonlyArray<{
   label: string;
   description: string;
 }> = [
-  { value: "nord", label: "Nord", description: "极夜蓝灰与雪原浅色，默认主题" },
-  { value: "graphite", label: "石墨", description: "中性石墨与冷静蓝，接近旧版专业观感" },
+  { value: "graphite", label: "石墨", description: "碳灰近单色与柔和材质，默认主题" },
+  { value: "nord", label: "Nord", description: "极夜蓝灰与雪原浅色，保留北欧冷调" },
   { value: "paper", label: "纸墨", description: "暖象牙、深墨与琥珀强调，适合白天" },
   { value: "contrast", label: "高对比", description: "可访问性优先，保留明确控件边界" },
 ];
@@ -59,7 +59,7 @@ const media =
 
 export function normalizeThemePreset(value: string | undefined | null): ThemePreset {
   const normalized = (value ?? "").trim().toLowerCase() as ThemePreset;
-  return THEME_PRESETS.has(normalized) ? normalized : "nord";
+  return THEME_PRESETS.has(normalized) ? normalized : "graphite";
 }
 
 export function normalizeThemeMode(value: string | undefined | null): ThemeMode {
@@ -131,7 +131,7 @@ export function cachedTheme(): ThemePrefs {
       }
     }
   } catch { /* ignore */ }
-  return { themePreset: "nord", themeMode: "dark", fontScale: "md", chatWidth: "medium" };
+  return { themePreset: "graphite", themeMode: "dark", fontScale: "md", chatWidth: "medium" };
 }
 
 /** syncThemeFromBackend 从后端加载设置，缓存并应用它们。 */

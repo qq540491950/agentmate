@@ -28,7 +28,7 @@ export function ConfirmCard({ m, onConfirm }: {
   const riskyHint = /脱离沙箱|工作区外|受保护路径|只读模式|预检失败/.test(hint);
   return (
     <div className={cn(
-      "rounded-xl px-4 py-3",
+      "shadow-edge rounded-xl px-4 py-3",
       status === "pending" && "bg-warning-soft",
       status === "approved" && "bg-success-soft",
       status === "rejected" && "bg-danger-soft",
@@ -61,17 +61,17 @@ export function ConfirmCard({ m, onConfirm }: {
         <span>{hint || "该工具调用需要你的确认。"}</span>
       </div>
       {m.toolArgs && Object.keys(m.toolArgs).length > 0 && (
-        <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-control p-2 font-mono text-xs leading-relaxed text-muted-foreground">
+        <pre className="surface-inset mt-2 max-h-32 overflow-auto rounded-md p-2 font-mono text-xs leading-relaxed text-muted-foreground">
           {JSON.stringify(m.toolArgs, null, 2)}
         </pre>
       )}
       {m.policy && (
-        <div className="mt-1.5 break-all rounded-md bg-control/70 px-2 py-1.5 text-xs text-muted-foreground">
+        <div className="mt-1.5 break-all rounded-md bg-recess/70 px-2 py-1.5 text-xs text-muted-foreground">
           暂停时策略：{m.policy}
         </div>
       )}
       {m.diff && (
-        <pre className="mt-2 max-h-52 overflow-auto rounded-md bg-control p-2 font-mono text-xs leading-relaxed text-foreground">
+        <pre className="surface-inset mt-2 max-h-52 overflow-auto rounded-md p-2 font-mono text-xs leading-relaxed text-foreground">
           {m.diff}
         </pre>
       )}
@@ -120,7 +120,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
       <div data-slot="thinking-row" className="rounded-lg">
         <button
           type="button"
-          className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent-soft focus-visible:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-control focus-visible:bg-control focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring/70"
           aria-expanded={open}
           aria-label={open ? "收起思考过程" : "展开思考过程"}
           onClick={() => setOpen((v) => !v)}
@@ -136,7 +136,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
         {open && (
           <div
             data-slot="thinking-body"
-            className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-control/70 px-2 py-1.5 text-xs leading-[1.7] text-muted-foreground"
+            className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-recess/70 px-2 py-1.5 text-xs leading-[1.7] text-muted-foreground shadow-inset"
           >
             {m.text || (m.streaming ? "思考中…" : "")}
           </div>
@@ -145,7 +145,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
     );
   }
   return (
-    <div className="rounded-lg bg-panel/60 px-3 py-2">
+    <div className="surface-raised rounded-lg bg-panel px-3 py-2">
       <button
         type="button"
         className="flex w-full items-center gap-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
@@ -228,8 +228,8 @@ export function UserQuote({ m, active, onEdit, canEdit, filterQ }: {
             <div
               data-slot="user-bubble-body"
               className={cn(
-                "whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl rounded-br-md px-4 py-2.5 text-md leading-[1.65] text-foreground transition-colors",
-                active ? "bg-accent-soft" : "bg-accent-soft/70",
+                "whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl rounded-br-md px-4 py-2.5 text-md leading-[1.65] text-foreground transition-[background-color,box-shadow]",
+                active ? "surface-selected" : "surface-bubble",
               )}
             >
               {highlightText(m.text, filterQ, "bg-accent-soft text-foreground rounded-sm")}
@@ -459,7 +459,7 @@ function DelegationCard({ resp }: { resp: { [k: string]: any } | null }) {
   const text = String(resp?.text ?? "");
   const toolCalls = Number(resp?.toolCalls ?? 0);
   return (
-    <div className={cn("rounded-xl px-4 py-3", ok ? "bg-panel/70" : "bg-danger-soft")}>
+    <div className={cn("shadow-edge rounded-xl px-4 py-3", ok ? "surface-raised bg-panel" : "bg-danger-soft")}>
       <div className="flex items-center gap-2">
         <Users className={cn("h-4 w-4", ok ? "text-accent-text" : "text-danger-text")} />
         <span className="text-sm font-medium">团队委派 · {agent}</span>

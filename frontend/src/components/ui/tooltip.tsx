@@ -4,7 +4,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 
-const tooltipCardClassName = "max-w-[min(24rem,calc(100vw-2rem))] rounded-md bg-overlay px-3 py-2 text-xs leading-relaxed text-popover-foreground shadow-pop"
+const tooltipCardClassName = "surface-float max-w-[min(24rem,calc(100vw-2rem))] rounded-md px-3 py-2 text-xs leading-relaxed text-popover-foreground"
 const TooltipProviderPresence = React.createContext(false)
 
 function TooltipProvider({

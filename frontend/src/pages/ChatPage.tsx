@@ -2669,10 +2669,10 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       aria-current={s.id === activeID ? "page" : undefined}
       data-session-id={s.id}
       className={cn(
-        "group relative flex cursor-pointer items-center gap-1.5 rounded-md py-[3px] text-md leading-5 transition-colors",
+        "group relative flex cursor-pointer items-center gap-1.5 rounded-md py-[3px] text-md leading-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring/70",
         indented ? "pl-7 pr-1.5" : "px-2.5",
         s.id === activeID
-          ? "bg-accent-soft font-medium text-foreground"
+          ? "surface-selected font-medium text-foreground"
           : "text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
       onClick={() => setActiveID(s.id)}
@@ -2688,7 +2688,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           aria-hidden="true"
           className={cn(
             "pointer-events-none absolute left-[13px] top-1/2 h-[3px] w-[3px] -translate-y-1/2 rounded-full",
-            s.id === activeID ? "bg-accent-text" : "bg-muted-foreground/40 group-hover:bg-foreground/50",
+            s.id === activeID ? "bg-foreground/55" : "bg-muted-foreground/40 group-hover:bg-foreground/50",
           )}
         />
       )}
@@ -2784,7 +2784,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               <button
                 aria-label="新建对话"
                 onClick={createDirectSession}
-                className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-panel/60 px-2 text-sm leading-5 font-medium text-foreground transition-colors hover:bg-accent"
+                className="surface-control inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-sm leading-5 font-medium text-foreground transition-colors hover:bg-accent"
               >
                 <SquarePen className="h-3 w-3" />
                 新对话
@@ -2841,7 +2841,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         className={cn(
                           "group flex items-center rounded-md pr-1 text-muted-foreground transition-colors",
                           draftProjectKey === g.key
-                            ? "bg-accent-soft text-foreground"
+                            ? "surface-selected text-foreground"
                             : "hover:bg-accent hover:text-foreground",
                         )}
                       >
@@ -3099,7 +3099,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 <button
                   className={cn(
                     "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                    filterOpen && "bg-accent-soft text-accent-text",
+                    filterOpen && "bg-selected text-foreground",
                   )}
                   aria-label="在会话内搜索消息"
                   onClick={toggleFilter}
@@ -3231,7 +3231,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 aria-label="回到底部"
                 onClick={() => bottomRef.current?.scrollIntoView({ block: "end" })}
               className={cn(
-                "group absolute bottom-4 left-1/2 z-20 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full bg-overlay text-muted-foreground shadow-pop transition-all duration-200 hover:scale-105 hover:bg-accent hover:text-foreground active:scale-95",
+                "surface-float group absolute bottom-4 left-1/2 z-20 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full text-muted-foreground transition-all duration-200 hover:scale-105 hover:bg-accent hover:text-foreground active:scale-95",
                 running && "bg-warning-soft text-warning",
               )}
             >
@@ -3267,7 +3267,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               {(() => {
                 if (omittedItems <= 0) return null;
                 return (
-                  <div className="rounded-lg bg-panel/60 px-3 py-2 text-center text-xs text-muted-foreground">
+                  <div className="rounded-lg bg-recess/60 px-3 py-2 text-center text-xs text-muted-foreground">
                     <div className="flex items-center justify-center gap-2">
                       <span>
                         已省略较早的 {omittedMessages} 条{filterQ ? "匹配" : ""}消息（完整历史已保存，可导出查看）
@@ -3428,7 +3428,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             </div>
           )}
           {(queued[activeID] ?? []).map((q, qi) => (
-            <div key={qi} className="mx-auto mb-2 flex chat-col items-center gap-2 rounded-lg bg-accent-soft px-3 py-1.5 text-xs">
+            <div key={qi} className="mx-auto mb-2 flex chat-col items-center gap-2 rounded-lg bg-selected px-3 py-1.5 text-xs">
               <span className="shrink-0 text-muted-foreground">{qi === 0 ? "已排队" : `排队 #${qi + 1}`}</span>
               <span className="min-w-0 flex-1 truncate">{q.text}</span>
               {qi === 0 && pausedQueues[activeID] && (
@@ -3457,7 +3457,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           ))}
           <div className="mx-auto composer-col px-3">
             {editing && (
-              <div className="mb-2 flex items-center justify-between rounded-md bg-accent-soft px-3 py-1.5 text-xs text-muted-foreground">
+              <div className="mb-2 flex items-center justify-between rounded-md bg-selected px-3 py-1.5 text-xs text-muted-foreground">
                 <span>正在编辑最后一条消息，发送后将替换该轮对话</span>
                 <button className="underline underline-offset-2 hover:text-foreground" onClick={cancelEdit}>
                   取消编辑
@@ -3469,7 +3469,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             {pendingAtts.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
                 {pendingAtts.map((a, i) => (
-                  <span key={i} className="group/att relative flex items-center gap-1.5 rounded-md bg-panel/80 py-1 pl-1 pr-5 text-xs">
+                  <span key={i} className="surface-control group/att relative flex items-center gap-1.5 rounded-md py-1 pl-1 pr-5 text-xs">
                     <img src={`data:${a.mime};base64,${a.data}`} alt={a.name} className="h-8 w-8 rounded object-cover" />
                     <span className="max-w-[120px] truncate">{a.name}</span>
                     <button
@@ -3501,8 +3501,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           <div className="mx-auto composer-col px-3">
             <div
               className={cn(
-                "rounded-2xl bg-panel shadow-composer transition-colors",
-                dragOver && "bg-accent-soft",
+                "surface-composer rounded-2xl transition-[background-color,box-shadow]",
+                dragOver && "bg-selected",
               )}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -3521,7 +3521,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             >
               <div className="relative">
               {mentionOpen && (
-                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-xl bg-overlay p-1 shadow-pop" role="listbox" aria-label="@ 引用候选">
+                <div className="surface-float absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-xl p-1" role="listbox" aria-label="@ 引用候选">
                   {mentionCandidates.map((c, i) => {
                     const key = isAssistantCandidate(c) ? `${c.kind}-${c.id}` : `${c.kind}-${c.path}`;
                     const label = isAssistantCandidate(c) ? `@${c.name}` : `@${c.path}${c.kind === "directory" ? "/" : ""}`;
@@ -3535,7 +3535,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         aria-selected={i === mentionIdx}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs",
-                          i === mentionIdx ? "bg-accent-soft text-accent-text" : "hover:bg-accent",
+                          i === mentionIdx ? "bg-selected text-foreground" : "hover:bg-accent",
                         )}
                         onMouseEnter={() => setMentionIdx(i)}
                         onMouseDown={(e) => { e.preventDefault(); applyMention(c); }}
@@ -3554,7 +3554,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                   {mentionToken?.leading && (
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2 bg-panel/50 px-3 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                      className="flex w-full items-center gap-2 bg-recess/60 px-3 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                       onMouseDown={(e) => { e.preventDefault(); onOpenSettings("agents"); }}
                     >
                       <Bot className="h-3.5 w-3.5 shrink-0" /> 管理助手与团队…
@@ -3563,7 +3563,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 </div>
               )}
               {slashOpen && (
-                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-xl bg-overlay p-1 shadow-pop" role="listbox" aria-label="斜杠命令建议">
+                <div className="surface-float absolute bottom-full left-0 right-0 z-10 mb-2 max-h-80 overflow-y-auto rounded-xl p-1" role="listbox" aria-label="斜杠命令建议">
                   {slashSuggestions.map((c, i) => (
                     <button
                       key={c.cmd}
@@ -3571,7 +3571,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                       aria-selected={i === slashIdx}
                       className={cn(
                         "flex w-full flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
-                        i === slashIdx ? "bg-accent-soft text-accent-text" : "hover:bg-accent",
+                        i === slashIdx ? "bg-selected text-foreground" : "hover:bg-accent",
                       )}
                       onMouseEnter={() => setSlashIdx(i)}
                       onMouseDown={(e) => { e.preventDefault(); applySlash(c.cmd); }}
@@ -3579,7 +3579,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                       <span className="flex w-full items-center gap-2">
                         <span className="font-mono font-medium">{c.cmd}</span>
                         {c.source && c.source !== "builtin" && (
-                          <span className="shrink-0 rounded bg-panel px-1 text-xs font-normal text-muted-foreground">
+                          <span className="shrink-0 rounded bg-control px-1 text-xs font-normal text-muted-foreground">
                             {slashSourceLabel(c.source)}
                           </span>
                         )}
@@ -3700,7 +3700,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 disabled={!active && providerCount === 0}
                 // 限制不断增高的文本域，使长内容粘贴时缩小消息列表，而不是把输
                 // 入框挤出视口。
-                className="max-h-48 min-h-[64px] resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 text-md leading-[1.65] shadow-none hover:bg-transparent focus:bg-transparent focus-visible:border-0 focus-visible:ring-0"
+                className="!max-h-48 min-h-[64px] resize-none overflow-y-auto !bg-transparent px-3.5 pb-1 pt-3 text-md leading-[1.65] !shadow-none hover:!bg-transparent focus:!bg-transparent focus-visible:!outline-none"
               />
               <input
                 ref={fileRef}
@@ -3851,7 +3851,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                           <button
                             type="button"
                             className={cn(
-                              "flex h-8 min-w-0 max-w-[360px] items-center gap-1.5 rounded-lg bg-control px-2.5 text-ui text-foreground transition-colors hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 md:min-w-[180px]",
+                              "surface-control flex h-8 min-w-0 max-w-[360px] items-center gap-1.5 rounded-lg px-2.5 text-ui text-foreground transition-colors hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring/70 md:min-w-[180px]",
                               intelligenceOpen && "text-muted-foreground",
                             )}
                             aria-label={availableLevels.length > 0 ? "选择推理强度" : "选择模型"}
@@ -3900,8 +3900,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                                     role="option"
                                     aria-selected={selected}
                                     className={cn(
-                                      "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-ui transition-colors hover:bg-accent-soft",
-                                      selected && "bg-accent-soft text-accent-text",
+                                      "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-ui transition-colors hover:bg-accent",
+                                      selected && "bg-selected text-foreground",
                                     )}
                                     onClick={() => {
                                       if (!selected) chooseComposerModel(m.id);
@@ -4081,7 +4081,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         t.status === "completed"
                           ? "bg-success-soft text-success-text"
                           : t.status === "running" || t.status === "verifying"
-                            ? "bg-accent-soft text-accent-text"
+                            ? "bg-selected text-foreground"
                             : t.status === "waiting_approval" || t.status === "budget_paused"
                               ? "bg-warning-soft text-warning-text"
                               : "bg-danger-soft text-danger-text",

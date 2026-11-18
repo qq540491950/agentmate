@@ -513,8 +513,8 @@ func TestSidebarSettingsNormalizeAndPersist(t *testing.T) {
 }
 
 // TestThemePresetNormalizeAndPersist：较旧的配置文件会默认使用
-// Nord，未知预设会回退为
-// Nord，有效预设会在重新加载后保留，且不会影响其他外观偏好。
+// 石墨，未知预设会回退为
+// 石墨，有效预设会在重新加载后保留，且不会影响其他外观偏好。
 func TestThemePresetNormalizeAndPersist(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -527,8 +527,8 @@ func TestThemePresetNormalizeAndPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := s.Get().Settings
-	if got.ThemePreset != "nord" {
-		t.Fatalf("default themePreset = %q, want nord", got.ThemePreset)
+	if got.ThemePreset != "graphite" {
+		t.Fatalf("default themePreset = %q, want graphite", got.ThemePreset)
 	}
 	if got.ThemeMode != "system" || got.FontScale != "lg" || got.ChatWidth != "wide" {
 		t.Fatalf("appearance preferences changed during migration: %+v", got)
@@ -552,8 +552,8 @@ func TestThemePresetNormalizeAndPersist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := s3.Get().Settings.ThemePreset; got != "nord" {
-		t.Fatalf("invalid themePreset = %q, want nord fallback", got)
+	if got := s3.Get().Settings.ThemePreset; got != "graphite" {
+		t.Fatalf("invalid themePreset = %q, want graphite fallback", got)
 	}
 }
 

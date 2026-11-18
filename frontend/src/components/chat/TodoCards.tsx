@@ -36,7 +36,7 @@ export function TodoListCard({ resp }: { resp: { [k: string]: any } | null }) {
     ? `${active.length} 个进行中`
     : active[0]?.content ?? "";
   return (
-    <div className="rounded-xl bg-panel/70 px-4 py-3">
+    <div className="surface-raised rounded-xl bg-panel px-4 py-3">
       <button
         type="button"
         className="flex w-full min-w-0 items-center gap-2 text-left"
@@ -87,7 +87,7 @@ export function TodoChecklist({ todos }: { todos: TodoItem[] }) {
           ) : t.status === "blocked" ? (
             <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
           ) : (
-            <span className="mt-0.5 inline-block h-3.5 w-3.5 shrink-0 rounded-full bg-muted" />
+            <span className="mt-0.5 inline-block h-3.5 w-3.5 shrink-0 rounded-full bg-recess shadow-inset" />
           )}
           <span className="min-w-0">
             <span className={cn(
@@ -135,7 +135,7 @@ export function PlanChip({ todos, running, waiting = false, onDismiss }: {
         <button
           type="button"
           aria-label={`任务计划 ${done}/${todos.length} 完成，${statusText}`}
-          className="inline-flex h-7 max-w-[190px] items-center gap-1.5 rounded-md bg-panel px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="surface-control inline-flex h-7 max-w-[190px] items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           {allDone ? (
             <Check className="h-3.5 w-3.5 shrink-0 text-success" />
@@ -207,7 +207,7 @@ export function PlanDock({ todos, running, waiting = false }: {
     : active[0]?.content ?? "";
   if (todos.length === 0) return null;
   return (
-    <section data-slot="plan-dock" className="mb-2 rounded-xl bg-panel px-3 py-2.5" aria-label="当前任务计划">
+    <section data-slot="plan-dock" className="surface-raised mb-2 rounded-xl bg-panel px-3 py-2.5" aria-label="当前任务计划">
       <div className="flex items-center gap-2">
         {blocked > 0
           ? <AlertCircle className="h-4 w-4 shrink-0 text-warning-text" />

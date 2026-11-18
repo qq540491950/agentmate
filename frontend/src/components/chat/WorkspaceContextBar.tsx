@@ -208,7 +208,7 @@ export function WorkspaceContextBar({
                 type="button"
                 disabled={branchBusy}
                 aria-label={project ? `切换项目，当前 ${project.name}` : "选择项目或目录"}
-                className="inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-lg bg-panel/70 px-2.5 text-xs text-foreground transition-colors hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:cursor-not-allowed disabled:opacity-50"
+                className="surface-control inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-lg px-2.5 text-xs text-foreground transition-colors hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring/70 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {project ? <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <FolderPlus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                 <span className="truncate">{projectLabel}</span>
@@ -239,8 +239,8 @@ export function WorkspaceContextBar({
                       aria-selected={selected}
                       onClick={() => chooseProject(item.id)}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent-soft",
-                        selected && "bg-accent-soft text-accent-text",
+                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-control",
+                        selected && "bg-selected text-foreground",
                       )}
                     >
                       <Folder className="h-3.5 w-3.5 shrink-0" />
@@ -257,7 +257,7 @@ export function WorkspaceContextBar({
                 <button
                   type="button"
                   onClick={chooseDirectory}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent-soft"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-control"
                 >
                   <FolderPlus className="h-3.5 w-3.5 shrink-0" />
                   选择其他目录…
@@ -265,7 +265,7 @@ export function WorkspaceContextBar({
                 <button
                   type="button"
                   onClick={() => chooseProject("")}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent-soft hover:text-foreground"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-control hover:text-foreground"
                 >
                   <Folder className="h-3.5 w-3.5 shrink-0" />
                   不在项目中工作
@@ -275,7 +275,7 @@ export function WorkspaceContextBar({
           </Popover>
         ) : (
           <TooltipHint content={context?.workspaceDir || "默认项目"}>
-            <span className="inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-lg bg-panel/70 px-2.5 text-xs text-muted-foreground">
+            <span className="surface-control inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground">
               <FolderOpen className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{project?.name ?? "默认项目"}</span>
             </span>
@@ -283,7 +283,7 @@ export function WorkspaceContextBar({
         )}
 
         <TooltipHint content="任务在本机执行">
-          <span className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-panel/70 px-2.5 text-xs text-muted-foreground">
+          <span className="surface-control inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground">
             <Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             本地
           </span>
@@ -291,7 +291,7 @@ export function WorkspaceContextBar({
 
         {project && (
           branchPending ? (
-            <span className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-panel/70 px-2.5 text-xs text-muted-foreground">
+            <span className="surface-control inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
               读取分支…
             </span>
@@ -309,7 +309,7 @@ export function WorkspaceContextBar({
                   <button
                     type="button"
                     aria-label={`切换 Git 分支，当前 ${branchLabel}`}
-                    className="inline-flex h-7 max-w-[220px] items-center gap-1.5 rounded-lg bg-panel/70 px-2.5 text-xs text-foreground transition-colors hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                    className="surface-control inline-flex h-7 max-w-[220px] items-center gap-1.5 rounded-lg px-2.5 text-xs text-foreground transition-colors hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring/70"
                   >
                     {branchBusy ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                     <span className="truncate">{branchBusy ? "切换中…" : branchLabel}</span>
@@ -376,8 +376,8 @@ export function WorkspaceContextBar({
                         disabled={disabled}
                         onClick={() => void switchBranch(branch)}
                         className={cn(
-                          "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50",
-                          branch.current && "bg-accent-soft text-accent-text",
+                          "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-control disabled:cursor-not-allowed disabled:opacity-50",
+                          branch.current && "bg-selected text-foreground",
                         )}
                       >
                         <GitBranch className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -402,7 +402,7 @@ export function WorkspaceContextBar({
                       setNewBranch("");
                       setCreateOpen(true);
                     }}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-control disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Plus className="h-3.5 w-3.5 shrink-0" />
                     创建并检出分支…
@@ -411,7 +411,7 @@ export function WorkspaceContextBar({
               </PopoverContent>
             </Popover>
           ) : (
-            <span className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-panel/70 px-2.5 text-xs text-muted-foreground">
+            <span className="surface-control inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground">
               <GitBranch className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               无 Git 仓库
             </span>

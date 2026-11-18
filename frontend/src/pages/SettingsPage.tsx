@@ -501,8 +501,8 @@ export function SettingsPage({
                     className={cn(
                       "flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors",
                       tab === key
-                        ? "bg-accent-soft font-medium text-accent-text"
-                        : "text-muted-foreground hover:bg-overlay/60 hover:text-foreground",
+                        ? "surface-selected font-medium text-foreground"
+                        : "text-muted-foreground hover:bg-control hover:text-foreground",
                     )}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
@@ -534,7 +534,7 @@ export function SettingsPage({
           </CardHeader>
           <CardContent className="grid gap-2">
             <ThemeChoice
-              value={settings.themePreset || "nord"}
+              value={settings.themePreset || "graphite"}
               onChange={(themePreset) => update({ themePreset })}
             />
             <SettingRow label="明暗模式" description="跟随系统时只改变明暗，不改变当前主题">
@@ -956,7 +956,7 @@ export function SettingsPage({
                 placeholder="text-embedding-3-small / BAAI/bge-large-zh-v1.5"
               />
             </div>
-            <div className="grid gap-1.5 rounded-lg bg-panel/60 p-2.5">
+            <div className="grid gap-1.5 rounded-lg bg-recess/60 p-2.5">
               <div className="grid grid-cols-2 gap-2">
                 <Input value={kbNewName} onChange={(e) => setKbNewName(e.target.value)} placeholder="文件名（如 meeting-notes.md）" />
                 <Input value={kbNewContent} onChange={(e) => setKbNewContent(e.target.value)} placeholder="初始内容（必填）" />
@@ -1014,7 +1014,7 @@ export function SettingsPage({
                 )}
               </div>
               {kbFiles.length > 0 && (
-                <div className="grid gap-1 rounded-lg bg-panel/60 p-2">
+                <div className="grid gap-1 rounded-lg bg-recess/60 p-2">
                   {kbFiles.map((f) => (
                     <div key={f.name} className="flex items-center justify-between gap-2 text-xs">
                       <TooltipHint content="预览文件">
@@ -1104,7 +1104,7 @@ export function SettingsPage({
             <CardTitle className="text-base">长期记忆</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2">
-            <div className="flex items-center justify-between rounded-lg bg-panel/60 p-2.5">
+            <div className="flex items-center justify-between rounded-lg bg-recess/60 p-2.5">
               <div>
                 <div className="text-sm font-medium">自动存入长期记忆</div>
                 <div className="text-xs text-muted-foreground">每轮对话结束后自动将该会话存入记忆（含工具调用摘要）</div>
@@ -1354,7 +1354,7 @@ export function SettingsPage({
               </Button>
             </div>
             {(a2aStatuses.length ?? 0) > 0 && (
-              <div className="grid gap-1.5 rounded-lg bg-panel/60 p-2.5">
+              <div className="grid gap-1.5 rounded-lg bg-recess/60 p-2.5">
                 {a2aStatuses.map((st) => (
                   <div key={st.agentId} className="flex items-center justify-between gap-2 text-xs">
                     <span className="truncate">
@@ -1400,7 +1400,7 @@ export function SettingsPage({
             <div className="mt-1 text-xs text-muted-foreground">本地 AI Agent 桌面应用</div>
             <UpdateCard />
             <div className="mt-4 grid gap-1">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-panel/40 px-3 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-recess/40 px-3 py-3">
                 <div>
                   <div className="text-sm font-medium text-foreground">版本记录</div>
                   <div className="text-xs text-muted-foreground">查看所有版本与更新说明</div>
@@ -1409,7 +1409,7 @@ export function SettingsPage({
                   查看
                 </Button>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-panel/40 px-3 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-recess/40 px-3 py-3">
                 <div>
                   <div className="text-sm font-medium text-foreground">问题反馈</div>
                   <div className="text-xs text-muted-foreground">在浏览器打开 GitHub 表单，自动填入版本与环境</div>
@@ -1419,7 +1419,7 @@ export function SettingsPage({
                 </Button>
               </div>
             </div>
-            <details className="mt-3 rounded-lg bg-panel/40 p-3 text-xs text-muted-foreground">
+            <details className="mt-3 rounded-lg bg-recess/40 p-3 text-xs text-muted-foreground">
               <summary className="cursor-pointer select-none hover:text-foreground">技术信息</summary>
               <div className="mt-2 grid gap-1">
                 <div>运行时：Google ADK Go v2（Runner / LLMAgent / AgentTool）</div>

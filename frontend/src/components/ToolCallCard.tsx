@@ -94,7 +94,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
     <div
       className={cn(
         "text-sm transition-colors",
-        compact ? "rounded-lg" : "rounded-xl bg-panel/60",
+        compact ? "rounded-lg" : "surface-raised rounded-xl bg-panel",
       )}
       data-toolcard={name}
     >
@@ -103,7 +103,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
           className={cn(
             "flex w-full items-center gap-2 text-left",
             compact
-              ? "rounded-lg px-2 py-1.5 transition-colors hover:bg-accent-soft focus-visible:bg-accent-soft"
+              ? "rounded-lg px-2 py-1.5 transition-colors hover:bg-control focus-visible:bg-control"
               : "px-3 py-2.5",
           )}
           aria-label={`${running ? "正在运行" : failed ? "失败" : "完成"}：${display.action}${display.target ? ` ${display.target}` : ""}`}
@@ -164,7 +164,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
       {open && (
         <div className={cn(
           "space-y-2",
-          compact ? "mt-1 rounded-md bg-control/70 p-2" : "bg-panel/40 px-3 py-2",
+          compact ? "mt-1 rounded-md bg-recess/70 p-2 shadow-inset" : "bg-recess/50 px-3 py-2",
         )}>
           {showInput && (
             <div>
@@ -176,7 +176,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
                   className="border-0 bg-transparent px-1 py-0 text-3xs opacity-60 hover:opacity-100"
                 />
               </div>
-              <pre className="max-h-44 overflow-auto rounded bg-control px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
+              <pre className="max-h-44 overflow-auto rounded bg-recess px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
                 {highlightText(inputJSON, filterQ ?? "", "bg-accent-soft text-foreground rounded-sm")}
               </pre>
             </div>
@@ -191,7 +191,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
                   className="border-0 bg-transparent px-1 py-0 text-3xs opacity-60 hover:opacity-100"
                 />
               </div>
-              <pre className="max-h-44 overflow-auto rounded bg-control px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
+              <pre className="max-h-44 overflow-auto rounded bg-recess px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
                 {highlightText(outputJSON, filterQ ?? "", "bg-accent-soft text-foreground rounded-sm")}
               </pre>
             </div>
@@ -202,7 +202,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
         </div>
       )}
       {showPaths && (
-        <div className={cn("flex flex-wrap items-center gap-1.5", compact ? "px-2 pb-1.5 pt-0.5" : "bg-panel/40 px-3 py-2")}>
+        <div className={cn("flex flex-wrap items-center gap-1.5", compact ? "px-2 pb-1.5 pt-0.5" : "bg-recess/50 px-3 py-2")}>
           <span className="text-xs text-muted-foreground">产物：</span>
           {paths.map((p) => (
             <ArtifactOpenButton
@@ -296,7 +296,7 @@ export function ArtifactPreview({ path, sessionID, onClose }: { path: string | n
             )}
           </DialogTitle>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-auto rounded-lg bg-control p-3">
+        <div className="surface-inset min-h-0 flex-1 overflow-auto rounded-lg p-3">
           {showDiff && sessionID && path ? (
             <DiffView sessionID={sessionID} path={path} />
           ) : (

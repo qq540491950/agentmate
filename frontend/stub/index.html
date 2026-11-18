@@ -14,14 +14,14 @@
           var params = new URLSearchParams(window.location.search);
           if (presets.indexOf(params.get("theme")) >= 0) prefs.themePreset = params.get("theme");
           if (modes.indexOf(params.get("mode")) >= 0) prefs.themeMode = params.get("mode");
-          var preset = presets.indexOf(prefs.themePreset) >= 0 ? prefs.themePreset : "nord";
+          var preset = presets.indexOf(prefs.themePreset) >= 0 ? prefs.themePreset : "graphite";
           var mode = modes.indexOf(prefs.themeMode) >= 0 ? prefs.themeMode : "dark";
           var dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
           document.documentElement.dataset.theme = preset;
           document.documentElement.classList.toggle("dark", dark);
           document.documentElement.style.colorScheme = dark ? "dark" : "light";
         } catch (error) {
-          document.documentElement.dataset.theme = "nord";
+          document.documentElement.dataset.theme = "graphite";
           document.documentElement.classList.add("dark");
           document.documentElement.style.colorScheme = "dark";
         }

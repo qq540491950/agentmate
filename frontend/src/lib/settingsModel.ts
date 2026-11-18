@@ -187,7 +187,7 @@ const COMPARE_DEFAULTS: Partial<Record<keyof Settings, unknown>> = {
   workspaceDir: "",
   language: "zh-CN",
   themeMode: "dark",
-  themePreset: "nord",
+  themePreset: "graphite",
   accent: "blue",
   fontScale: "md",
   chatWidth: "medium",

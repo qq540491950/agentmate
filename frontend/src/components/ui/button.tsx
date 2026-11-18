@@ -4,15 +4,15 @@ import { cn } from "@/lib/utils"
 import { Slot } from "radix-ui"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border-0 bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/60 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:ring-2 aria-invalid:ring-danger/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border-0 bg-clip-padding text-sm font-medium whitespace-nowrap transition-[background-color,box-shadow,color,transform] outline-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring/70 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:outline-2 aria-invalid:outline-danger/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/85",
-        outline: "bg-control text-foreground hover:bg-accent aria-expanded:bg-accent",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-accent aria-expanded:bg-accent",
+        default: "surface-raised-strong bg-primary text-primary-foreground hover:brightness-[1.03]",
+        outline: "surface-control text-foreground hover:bg-accent aria-expanded:bg-accent",
+        secondary: "surface-raised bg-secondary text-secondary-foreground hover:bg-accent aria-expanded:bg-accent",
         ghost: "hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground",
-        destructive: "bg-danger-soft text-danger-text hover:bg-danger/20 focus-visible:ring-danger/40",
+        destructive: "bg-danger-soft text-danger-text shadow-edge hover:bg-danger/20 focus-visible:outline-danger/50",
         link: "text-accent-text underline-offset-4 hover:underline",
       },
       size: {

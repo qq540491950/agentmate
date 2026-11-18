@@ -1,32 +1,33 @@
-# AgentMate 设计系统（Nord 表面契约）
+# AgentMate 设计系统（轻材质表面契约）
 
 > 状态：规范（normative）。适用于 `frontend/**`；与根 `AGENTS.md`、`frontend/AGENTS.md` 一起阅读。设计意图与验收范围见 [UI 视觉系统重构规格](specs/ui-surface-redesign.md)（GitHub #80）。本文件取代旧的“发丝线分区 + 自由强调色”设计系统。
 >
-> 迁移状态：Nord 表面契约已落地；后续 UI 改动按本契约执行。历史 hairline/accent 文档不作为样式范例。
+> 迁移状态：轻材质表面契约已落地；后续 UI 改动按本契约执行。历史 hairline/accent 文档不作为样式范例。
 
 ## 1. 北极星
 
-**表面承担结构，线条只承担交互。** 界面不靠边框划分区域，而靠克制的表面明度差、间距、圆角和状态底纹建立层级。Nord 是默认推荐主题；主题是一套完整色板，不是给中性灰换一个强调色。
+**表面承担结构，材质承担高度，线条只承担交互。** 界面不靠边框划分区域，而靠克制的表面明度差、1px 高光/暗边、柔和阴影、间距和圆角建立层级。石墨（碳灰）是默认推荐主题；主题是一套完整色板，不是给中性灰换一个强调色。
 
 四条不可破坏的原则：
 
-1. 布局容器默认没有常驻 border/ring；层级靠 `canvas` / `chrome` / `panel` / `overlay` 四类表面。
+1. 布局容器默认没有常驻 border/ring；层级靠 `canvas` / `chrome` / `panel` / `overlay` 四类表面，以及受控的 `surface-raised` / `surface-inset` / `surface-float` 材质。
 2. 相邻表面只差一到两级明度，目标对比比例 **1.05–1.30**；不能看不见，也不能色块跳变。
 3. 强调色稀缺：当前项、focus、运行态、少量链接；主按钮保持中性高对比。
 4. 每个主题都有完整 light/dark 令牌，并通过对比度与键盘走查才可交付。
+5. 立体感只来自“光从上方来”：顶部高光、底部暗边、柔和环境阴影与内凹控件；不使用玻璃拟态、双面同色厚阴影或彩色光效。
 
 ## 2. 主题模型
 
 | 主题预设 | 定位 | 允许 |
 |---|---|---|
-| `nord` | 默认推荐；Polar Night / Snow Storm / Frost | 完整 light/dark |
-| `graphite` | 当前中性灰专业观感 | 完整 light/dark |
+| `graphite` | 默认推荐；碳灰近单色 + 柔和材质，Codex 风 | 完整 light/dark |
+| `nord` | 保留北欧冷调；Polar Night / Snow Storm / Frost | 完整 light/dark |
 | `paper` | 暖象牙/米白 + 深墨 | 完整 light/dark |
 | `contrast` | 可访问性高对比 | 完整 light/dark；允许明确控件描边 |
 
 明暗模式 `light | dark | system` 与主题预设正交。`system` 只跟随操作系统明暗，不改变预设。不要新增按项目、Agent、会话或页面覆盖主题的机制，也不要恢复自由强调色选择器。
 
-旧配置缺少主题预设时回退 `nord`；未知值回退 `nord`；旧 `accent` 不再参与渲染。迁移必须保留 `themeMode`、字号、对话栏宽等无关偏好。
+旧配置缺少主题预设时回退 `graphite`；未知值回退 `graphite`；旧 `accent` 不再参与渲染。迁移必须保留 `themeMode`、字号、对话栏宽等无关偏好。
 
 ## 3. 语义令牌
 
@@ -39,9 +40,12 @@
 | `panel` | `card` | 执行组、composer、设置分组、管理列表容器、任务结果面板 |
 | `overlay` | `elevated` / `popover` | 菜单、对话框、toast、浮层 |
 | `control` | `control` | outline 按钮、复选框等可识别控件填充；不用于布局分区 |
+| `selected` | 新增 | 当前会话、当前设置标签、当前分段项等“选中并抬升”的表面 |
+| `bubble` | 新增 | 用户消息气泡、与 composer 同族的低对比抬升面 |
+| `recess` | 新增 | 输入框、代码块、工具输出、分段控件轨道等内容的内凹面 |
 | `choice-selected` | 新增 | 分段控件（含主题/权限设置）的选中填充；文字固定用 `foreground` |
 | `choice-selected-danger` | 新增 | 危险选项的选中填充；危险色只用于图标/状态 |
-| `accent-soft` | 由 `brand` 派生 | 选中行、候选选中、composer 拖拽、当前轮 |
+| `accent-soft` | 由 `brand` 派生 | 少量强调底纹、候选项 hover、拖拽提示；不再承担会话选中 |
 | `accent-text` | 由 `brand` 派生 | 强调文字、链接、图标 |
 | `primary` | `primary` | 中性主按钮 |
 | `border` / `line` | `border` | 仅功能边界，不用于布局分区 |
@@ -56,6 +60,29 @@
 
 状态必须同时有图标或文字，不允许“只有彩色边框”的表达。
 
+### 3.3 轻材质
+
+材质令牌只在主题根节点定义，组件通过工具类消费：
+
+| 工具类 | 用途 | 组成 |
+|---|---|---|
+| `surface-raised` | 卡片、设置分组、工具组、管理列表行 | 顶部高光 + 底部暗边 + 小环境阴影 |
+| `surface-raised-strong` | 主按钮、引导卡、需要更明显抬升的面板 | 顶部高光 + 底部暗边 + 强一档环境阴影 |
+| `surface-control` | outline 按钮、会话行操作、分段候选 | `control` 底 + 顶部高光 + 微阴影 |
+| `surface-inset` | 输入框、代码块、工具输出、审批参数 | `recess` 底 + 顶部内阴影 |
+| `surface-bubble` | 用户消息气泡 | `bubble` 底 + 顶部高光 + 柔和阴影 |
+| `surface-composer` | Composer | `panel` 底 + 顶部高光 + 底部暗边 + 强环境阴影 |
+| `surface-float` | 菜单、Popover、Dialog、Toast、Tooltip | `overlay` 底 + 顶部高光 + 浮层阴影 |
+| `surface-selected` | 当前会话、当前设置标签 | `selected` 底 + 顶部高光 |
+| `surface-row` | 文件行、列表行 | `panel` 底 + 顶部高光 |
+
+约束：
+
+- 深色主题靠顶部 1px 高光与柔和黑阴影建立高度；浅色主题靠底部暗边与低透明度阴影。
+- 顶部高光不超过 6% 白，底部暗边不超过 22% 黑；浅色阴影不超过 9% 黑。
+- 一屏最多同时出现两级明显抬升；大面积设置分组只允许 L1，不叠加大阴影。
+- `border` 仍是功能令牌，不因材质系统恢复布局分区线。
+
 ## 4. Nord 基线
 
 使用官方 Polar Night / Snow Storm / Frost / Aurora 作为身份基础；文字态颜色按 WCAG 修正，保留原始色做底纹与图标。
@@ -63,10 +90,13 @@
 | 语义角色 | Nord 深色 | Nord 浅色 |
 |---|---|---|
 | `canvas` | `#2E3440` | `#ECEFF4` |
-| `chrome` | `#3B4252` | `#E5E9F0` |
-| `panel` | `#434C5E` | `#FFFFFF` |
-| `overlay` | `#4C566A` | `#FFFFFF` |
-| `control` | `#485265` | `#EBEFF4` |
+| `chrome` | `#323845` | `#E4E8EF` |
+| `panel` | `#373E4B` | `#FFFFFF` |
+| `overlay` | `#3E4655` | `#FFFFFF` |
+| `control` | `#3B4351` | `#E9EDF3` |
+| `selected` | `#3F4755` | `#DCE3ED` |
+| `bubble` | `#353C48` | `#E4E9F1` |
+| `recess` | `#2A303A` | `#E7EBF1` |
 | `foreground` | `#ECEFF4` | `#2E3440` |
 | `muted-foreground` | `#D8DEE9` | `#4C566A` |
 | `accent`（装饰/底纹） | `#88C0D0` | `#5E81AC` |
@@ -78,10 +108,29 @@
 | `success-text` | `#BED6AB` | `#3F6B3F` |
 | `focus-ring` | `#88C0D0` | `#4C6A91` |
 
+### 4.1 石墨（默认，碳灰）
+
+| 语义角色 | 深色 | 浅色 |
+|---|---|---|
+| `canvas` | `#17191D` | `#F6F7F9` |
+| `chrome` | `#1B1E24` | `#EFF1F4` |
+| `panel` | `#21252C` | `#FFFFFF` |
+| `overlay` | `#282D36` | `#FFFFFF` |
+| `control` | `#252A33` | `#EDF0F4` |
+| `selected` | `#2A303A` | `#E6EAF0` |
+| `bubble` | `#23282F` | `#EBEFF5` |
+| `recess` | `#131519` | `#F0F2F5` |
+| `foreground` | `#ECEEF2` | `#1D2229` |
+| `muted-foreground` | `#A6ADB8` | `#5A636F` |
+| `accent-text` | `#9CC2FF` | `#3A6EA5` |
+| `primary` | `#F2F3F5` | `#1D2229` |
+| `primary-foreground` | `#17191D` | `#FFFFFF` |
+
 补充约束：
 
-- Nord 深色 `canvas/chrome/panel/overlay` 相邻比例约 1.24 / 1.17 / 1.17；浅色 `canvas/chrome` 约 1.06、`chrome/panel` 约 1.22。
-- 选择控件专用 `choice-selected` / `choice-selected-danger`：Nord 深色 `#4F6173` / `#5C5D6D`，Nord 浅色 `#D2DCE8` / `#EDD8DB`；其他主题在各自令牌块中校准，均通过 `themeContract` 的选择态对比度测试。
+- Nord 深色 `canvas/chrome/panel/overlay` 相邻比例约 1.06 / 1.09 / 1.13；浅色 `canvas/chrome` 约 1.07、`chrome/panel` 约 1.23。
+- 石墨深色 `canvas/chrome/panel` 约 1.05 / 1.09；`selected/chrome` 约 1.26；`bubble/canvas` 约 1.19。
+- 选择控件专用 `choice-selected` / `choice-selected-danger`：Nord 深色 `#4A5464` / `#5C5D6D`，Nord 浅色 `#CFDAE8` / `#EDD8DB`；其他主题在各自令牌块中校准，均通过 `themeContract` 的选择态对比度测试。
 - 若浅色 chrome 在实际 100% 亮度下不可感知，只能在 Nord 色族内微调 chrome，不得加回分割线。
 - 代码高亮使用 Frost/Aurora 语义槽位；每个主题定义自己的语法色，组件不写死紫色/绿色。
 - Nord 官方色值来源记录在主题样式注释中；修改色值必须同步对比度测试。
@@ -108,13 +157,14 @@
 
 - 深色主题：chrome/panel/overlay 相对 canvas 逐级更亮。
 - 浅色主题：chrome 相对 canvas 略深，panel/overlay 相对 canvas 更亮。
-- `canvas` / `chrome` / `panel` 主布局相邻表面比例 1.05–1.30；超过 1.35 视为跳变，低于 1.05 视为不可感知。`overlay` 可与 `panel` 同色，由阴影承担浮层分离。
-- 阴影只用于 overlay 和必要的 composer；不要用阴影堆叠制造层级。
+- `canvas` / `chrome` / `panel` 主布局相邻表面比例 1.05–1.30；`selected/chrome` 与 `bubble/canvas` 也保持 1.05–1.30。`overlay` 可与 `panel` 同色，由阴影承担浮层分离。
+- 阴影用于“抬升/悬浮/内凹”三类材质：卡片与列表行只允许 L1 轻阴影，composer 与浮层允许更强阴影；不要给每个嵌套层都叠阴影。
+- 深色主题以顶部 1px 高光为主要高度线索，浅色主题以底部暗边和低透明度阴影为主；两者都不得替代 focus ring 或状态文字。
 
 ### 5.4 选择控件
 
-- 设置页的主题、权限、模式、字号、栏宽等少量互斥选项统一使用紧凑分段控件；**静止面必须使用 `control`**，不得使用与父级 `panel` 同色的 `panel`，否则点击区域会退化成纯文字。
-- 选中面使用 `choice-selected` / `choice-selected-danger`，与 `control` 的对比度目标 ≥1.20 / ≥1.15；选中文字使用 `foreground`，不要用 `accent-text` 或 `danger-text` 作为正文（它们在软底纹上可能低于 4.5:1）。
+- 设置页的主题、权限、模式、字号、栏宽等少量互斥选项统一使用紧凑分段控件；轨道使用 `recess` + 内阴影，未选中项使用 `control/60`，不得让点击区域退化成纯文字。
+- 选中面使用 `choice-selected` / `choice-selected-danger` + `surface-raised`，与 `control` 的对比度目标 ≥1.20 / ≥1.15；选中文字使用 `foreground`，不要用 `accent-text` 或 `danger-text` 作为正文（它们在软底纹上可能低于 4.5:1）。
 - 选中态同时提供 Check 图标或 `aria-checked`，不能只靠颜色；危险状态用危险色图标 + 文字，不用危险色正文或强调色描边。
 - 分段控件保持 8px 控件圆角、28–32px 高度和 ≥8px 间距。
 - 设置页不再使用大型主题预览卡或权限说明卡；选项说明只在设置行左侧显示一次。主题切换即时作用于整个界面，当前界面就是预览。
@@ -136,20 +186,20 @@
 |---|---|
 | 应用壳 | 根 `canvas`；顶栏、对话侧栏、设置导航 `chrome`；内容面板 `panel`；浮层 `overlay` |
 | 顶栏 | 40px 高，无底边线；品牌图标 `accent-soft`；窗口控制 hover 用 overlay/danger-soft |
-| 对话侧栏 | `chrome`，无右边线；当前项 `accent-soft` + `accent-text`，不加左竖条；项目组行仅保留 hover，不随当前会话高亮 |
+| 对话侧栏 | `chrome`，无右边线；当前项 `selected` + `foreground` + 顶部高光，不加左竖条；项目组行仅保留 hover，不随当前会话高亮 |
 | 会话头 | `canvas`，无底边线；标题、目标徽标、操作靠间距组织 |
-| 设置导航 | `chrome`，无右边线，固定宽 240px；选中项 `accent-soft` + `accent-text` |
-| 设置分组 | `panel` 底，无 ring；标题可在面板外；设置行无 border，靠 12–16px 内距 |
-| 选择控件 | 未选中 `control` 面；选中使用 `choice-selected` / `choice-selected-danger` + `foreground` 文字 + Check 图标；无布局边框 |
-| 管理列表 | 一个 `panel` 容器包住连续行；行 hover 用 overlay；不要每项一张描边卡 |
-| 对话正文 | 助手无气泡全宽；用户 `accent-soft` 气泡无 ring；当前轮只加底纹浓度 |
-| 执行组 | 每回合单块 `panel`；折叠态用“用时/失败摘要”一行收束，展开后按时间顺序显示旁白、思考与工具行；用底纹/留白/缩进分层，不逐层套框 |
+| 设置导航 | `chrome`，无右边线，固定宽 240px；选中项 `selected` + `foreground` + 顶部高光 |
+| 设置分组 | `panel` 底 + `surface-raised`，无 ring；标题可在面板外；设置行无 border，靠 12–16px 内距 |
+| 选择控件 | 轨道 `recess` + 内阴影；未选中 `control/60`；选中使用 `choice-selected` / `choice-selected-danger` + `surface-raised` + `foreground` 文字 + Check 图标；无布局边框 |
+| 管理列表 | 一个内凹容器包住连续行；行使用 `surface-row` / `panel`，hover 用 overlay；不要每项一张描边卡 |
+| 对话正文 | 助手无气泡全宽；用户 `surface-bubble`，当前轮用 `surface-selected` 提高一档；无 ring |
+| 执行组 | 每回合单块 `surface-raised` + `panel`；折叠态用“用时/失败摘要”一行收束，展开后按时间顺序显示旁白、思考与工具行；内部用 `recess` 内凹，不逐层套框 |
 | 确认卡 | `*-soft` 底 + 状态图标 + 文字；无 border/左色条 |
 | 思考过程 | 低对比底纹 + 图标 + 缩进；无左竖线 |
-| Composer | `panel` 底、16px 圆角、无 border；聚焦不显示整块包边/ring，靠文本光标与内部控件自身焦点提示；拖拽用 `accent-soft` |
+| Composer | `surface-composer`、16px 圆角、无 border；聚焦不显示整块包边/ring，靠文本光标与内部控件自身焦点提示；拖拽用 `selected` |
 | Composer 模型/思考强度 | 模型与当前档位共用一个纯文字按钮，打开后按钮显示当前操作名（选择推理强度/选择模型），并在同一 `overlay` 浮层内切换「思考强度」与「选择模型」；模型行文案为「模型 · 供应商」，思考强度用单轨滑杆，标题显示当前档位，刻度只做位置提示 |
-| 菜单/Popover/Dialog | overlay 底 + shadow；无 ring/border；选中项 `accent-soft` |
-| 悬浮提示 | 统一使用 Radix Tooltip：`overlay` 底 + `shadow-pop`、8px 圆角、12px 文字、无箭头/边框；短提示居中，长路径与多行说明左对齐并自动换行；禁止原生 `title` 气泡 |
+| 菜单/Popover/Dialog | `surface-float` + `overlay` 底；无 ring/border；选中项 `accent-soft` |
+| 悬浮提示 | 统一使用 Radix Tooltip：`surface-float` + `overlay` 底、8px 圆角、12px 文字、无箭头/边框；短提示居中，长路径与多行说明左对齐并自动换行；禁止原生 `title` 气泡 |
 | 任务结果区 | `chrome` 独立底色；标签、文件行、预览区用底纹/间距；无 `border-l` |
 | 空态 | panel/overlay 底 + 图标 + 标题 + 说明 + 主操作；禁止 dashed border |
 | Toast/更新卡 | 只用语义令牌；状态色只出现在图标、标签、进度和软底纹 |
@@ -171,9 +221,11 @@
 | 元数据 / canvas、panel | 4.5:1 |
 | accent-text / canvas、panel | 4.5:1 |
 | 状态 text / 对应 soft 底纹 | 4.5:1 |
+| 正文、元数据 / bubble、selected | 4.5:1 |
 | primary-foreground / primary | 4.5:1 |
 | focus ring / 相邻表面 | 3:1 |
 | canvas / chrome / panel 相邻表面 | 1.05–1.30 |
+| selected / chrome、bubble / canvas | 1.05–1.30 |
 
 补充：
 
@@ -187,12 +239,12 @@
 
 - [ ] 是否只使用语义令牌，没有组件内 hex/palette 类？
 - [ ] 布局 chrome、卡片、设置行、列表行、弹窗是否都没有常驻边框/ring？
-- [ ] 导航/会话选中态是否使用 `accent-soft` + `accent-text`；分段控件是否使用 `choice-selected` + `foreground`，而不是左竖条/描边？
+- [ ] 导航/会话选中态是否使用 `selected` + `foreground` + 顶部高光；分段控件是否使用 `choice-selected` + `surface-raised`，而不是左竖条/描边？
 - [ ] 确认卡/错误/警告是否同时有图标或文字，而不是只有彩色边框？
 - [ ] 相邻表面在 100% 亮度下是否可感知，但没有明显色块跳变？
 - [ ] light/dark 两套是否都完整且对比度通过？
 - [ ] 键盘 focus、aria-label、reduced-motion 是否走查？
-- [ ] 浏览器桩是否覆盖 Nord dark/light + 一个非 Nord 主题？
+- [ ] 浏览器桩是否覆盖石墨 dark/light、Nord 和一个非默认主题？
 - [ ] 是否运行 `cd frontend && npx tsc --noEmit && npm test && npm run build`？
 - [ ] 修改现有组件时，触达的容器/行/选中态是否已迁移，而不是复制旁边的旧 hairline？
 

@@ -73,7 +73,7 @@ describe("TurnBlock", () => {
     const blockTag = openingTag(html, "turn-block");
     const bubbleTag = openingTag(html, "user-bubble-body");
 
-    expect(bubbleTag).toContain("bg-accent-soft");
+    expect(bubbleTag).toContain("surface-selected");
     expect(bubbleTag).not.toContain("ring-");
     expect(blockTag).not.toContain("ring-");
   });

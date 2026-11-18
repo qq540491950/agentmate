@@ -99,7 +99,7 @@ export function ReasoningEffortPanel({
         onClick={onOpenModelPicker}
         disabled={!onOpenModelPicker}
         aria-label={`选择模型，当前 ${levelLabel(displayLevel.level)}${modelName ? `，${modelName}` : ""}`}
-        className="mx-auto flex w-full flex-col items-center rounded-lg px-3 py-2 text-center transition-colors enabled:hover:bg-accent-soft disabled:cursor-default"
+        className="mx-auto flex w-full flex-col items-center rounded-lg px-3 py-2 text-center transition-colors enabled:hover:bg-control disabled:cursor-default"
       >
         <span
           data-slot="reasoning-effort-value"

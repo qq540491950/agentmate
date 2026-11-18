@@ -4,6 +4,26 @@
 
 ## 视觉测试与体验设计
 
+### 第二百九十九轮迭代：轻材质立体表面与碳灰默认主题（已实施）
+
+依据：用户对比 Codex 截图，要求当前界面全面重构为更立体、更接近 Codex 的观感，并明确左侧会话与输入/输出区域颜色应相近但有区分。现有 Nord 深色 `canvas/chrome/panel` 相邻 RGB 差约 10，视觉上像多个色块；用户气泡仍使用青蓝 `accent-soft`，与近单色目标冲突，且设计系统只允许浮层/composer 使用阴影，缺少统一的抬升与内凹材质。
+
+**实现要点**
+
+- 新增 `selected` / `bubble` / `recess` 三个表面角色，以及 `surface-raised` / `surface-raised-strong` / `surface-control` / `surface-inset` / `surface-bubble` / `surface-composer` / `surface-float` / `surface-selected` / `surface-row` 工具类。
+- 材质统一为“光从上方来”：顶部 1px 高光 + 底部 1px 暗边 + 柔和环境阴影；输入框、代码块、工具输出和分段控件轨道使用内凹面。仍不允许布局级 border/ring、玻璃拟态或厚重拟物。
+- 石墨（碳灰）重调为默认主题：`canvas #17191D → chrome #1B1E24 → panel #21252C`，`selected/chrome` 约 1.26、`bubble/canvas` 约 1.19；浅色对应 `#F6F7F9 → #EFF1F4 → #FFFFFF`。旧配置缺失/未知主题回退石墨，已保存的 Nord 等选择保持不变。
+- Nord 保留但收敛深色表面差：`#2E3440 → #323845 → #373E4B`，降低色块跳变；纸墨同步收紧，高对比保留明确边界。
+- 会话选中行、设置导航、任务结果标签改为 `selected` + `foreground` + 顶部高光；用户消息改为 `surface-bubble`，当前轮用 `surface-selected`；composer 使用 `surface-composer`，形成“同色系、不同高度”的输入/输出关系。
+- 基础组件统一迁移：按钮、卡片、输入框、Textarea、Select、分段控件、Tabs、Switch、Slider、Dialog、AlertDialog、Popover、Dropdown、Sheet、Tooltip、Toast、代码块、管理列表与任务结果区。
+- 清理组件内 `bg-panel/40…/90` 散落半透明表面，改为 `recess` 内凹面或 `surface-control`；焦点样式在材质组件上从 ring 改为 outline，避免被材质 `box-shadow` 覆盖。
+
+**测试证据**
+
+- `npx tsc --noEmit`、`npm test`（47 文件 / 341 例）、`npm run build` 通过。
+- `go test ./internal/...`、`go vet ./internal/... .`、`wails3 build` 通过。
+- 浏览器桩走查：石墨深色/浅色聊天页、Nord 深色、设置·外观、Agents 行式列表、新增 Agent 对话框、执行组折叠/展开；确认侧栏与画布接近、选中行可辨识、composer 与用户气泡同族、执行组单块抬升且内部步骤内凹。
+
 ### 第二百九十八轮迭代：执行过程收敛为每回合单容器（已实施）
 
 依据：用户对比 Codex 与 AgentMate 截图，Codex 同一回合只有一个“用时”折叠入口，AgentMate 却被多段过程旁白切成多个“执行过程”卡片，并出现 54s / 54s / 34s / 24s 这类重叠计时。代码核对确认根因是显示单位不同：`groupTurn` 遇到 assistant 消息就切段，且协议没有 commentary / final 语义，最终答复只能靠位置推断。
