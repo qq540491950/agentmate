@@ -167,7 +167,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({ content, classNam
               <table className="w-full text-xs">{children}</table>
             </div>
           ),
-          th: ({ children }: any) => <th className="border-b border-border bg-muted/40 px-2.5 py-1.5 text-left font-medium">{children}</th>,
+          th: ({ children }: any) => <th className="border-b border-border bg-recess px-3 py-2 text-left font-medium">{children}</th>,
           td: ({ children }: any) => <td className="border-b border-border px-2.5 py-1.5">{children}</td>,
         }}
       >

@@ -2669,8 +2669,8 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       aria-current={s.id === activeID ? "page" : undefined}
       data-session-id={s.id}
       className={cn(
-        "group relative flex cursor-pointer items-center gap-1.5 rounded-md py-[3px] text-md leading-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring/70",
-        indented ? "pl-7 pr-1.5" : "px-2.5",
+        "group relative flex min-h-8 cursor-pointer items-center gap-2 rounded-lg py-1 text-md leading-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+        indented ? "pl-7 pr-2" : "px-3",
         s.id === activeID
           ? "surface-selected font-medium text-foreground"
           : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -2683,15 +2683,6 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
         }
       }}
     >
-      {indented && (
-        <span
-          aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute left-[13px] top-1/2 h-[3px] w-[3px] -translate-y-1/2 rounded-full",
-            s.id === activeID ? "bg-foreground/55" : "bg-muted-foreground/40 group-hover:bg-foreground/50",
-          )}
-        />
-      )}
       <span className="min-w-0 flex-1">
         <SessionRowLabel
           title={s.title}
@@ -2784,7 +2775,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               <button
                 aria-label="新建对话"
                 onClick={createDirectSession}
-                className="surface-control inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-sm leading-5 font-medium text-foreground transition-colors hover:bg-accent"
+                className="surface-control inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-ui leading-5 font-medium text-foreground transition-colors hover:bg-accent"
               >
                 <SquarePen className="h-3 w-3" />
                 新对话
@@ -2795,7 +2786,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 aria-label="折叠对话列表"
                 aria-expanded={!sidebarCollapsed}
                 onClick={toggleSidebar}
-                className="flex h-7 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="flex h-8 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <PanelLeftClose className="h-3.5 w-3.5" />
               </button>
@@ -2806,7 +2797,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="h-7 rounded-md pl-8 text-sm leading-5 placeholder:text-muted-foreground/70"
+              className="h-8 rounded-lg pl-8 text-ui leading-5 placeholder:text-muted-foreground"
               placeholder="搜索对话"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -2863,7 +2854,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                               else next.add(g.key);
                               return next;
                             })}
-                            className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-md leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                            className="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-left text-md leading-5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                           >
                             {isPinned
                               ? <Pin className="h-3.5 w-3.5 shrink-0 opacity-70" />
@@ -2949,7 +2940,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                           {sessionWindow.visible.map((s) => renderSessionRow(s))}
                           {g.sessions.length > PROJECT_SESSION_LIMIT && (
                             <button
-                              className="flex w-full items-center rounded-md py-1 pl-7 pr-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                              className="flex min-h-8 w-full items-center rounded-lg py-1 pl-7 pr-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                               aria-expanded={expanded}
                               aria-label={expanded
                                 ? `收起「${g.label}」的全部对话`
@@ -3055,7 +3046,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
 
       {/* 聊天区域 */}
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <div className="flex h-12 items-center justify-between bg-canvas px-4">
+        <div className="flex h-12 items-center justify-between bg-canvas px-5">
           <div className="flex min-w-0 items-center gap-2">
             {sidebarCollapsed && (
               <TooltipHint content="展开对话列表（⌘B）">
@@ -3063,14 +3054,14 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                   aria-label="展开对话列表"
                   aria-expanded={false}
                   onClick={toggleSidebar}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 >
                   <PanelLeftOpen className="h-4 w-4" />
                 </button>
               </TooltipHint>
             )}
             <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="max-w-[360px] truncate text-sm font-semibold">{active ? active.title : "AgentMate"}</span>
+            <span className="max-w-[360px] truncate text-sm font-medium">{active ? active.title : "AgentMate"}</span>
             {active && (
               (() => {
                 const label = sessionTargetBadgeLabel(active.targetType);
@@ -3098,7 +3089,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               <TooltipHint content="在会话内搜索消息（⌘F）">
                 <button
                   className={cn(
-                    "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                    "inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
                     filterOpen && "bg-selected text-foreground",
                   )}
                   aria-label="在会话内搜索消息"
@@ -3111,7 +3102,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             {active && (
               <TooltipHint content="重命名会话">
                 <button
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   aria-label="重命名会话"
                   onClick={() => { setRenaming(active); setRenameText(active.title); }}
                 >
@@ -3124,7 +3115,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             {active && approvals.length > 0 && (
               <TooltipHint content="打开审批队列">
                 <button
-                  className="inline-flex h-7 items-center gap-1 rounded-md bg-warning-soft px-2 text-xs text-warning-text transition-colors hover:bg-accent"
+                  className="inline-flex h-8 items-center gap-1 rounded-lg bg-warning-soft px-2.5 text-xs text-warning-text transition-colors hover:bg-accent"
                   onClick={() => setApprovalQueueOpen(true)}
                 >
                   <ShieldCheck className="h-3.5 w-3.5" />
@@ -3205,7 +3196,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
               onChange={(e) => setMsgFilter(e.target.value)}
               placeholder="过滤当前会话的消息（匹配文本/工具名/参数/结果）"
               aria-label="过滤当前会话的消息"
-              className="h-7 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              className="h-8 flex-1 bg-transparent text-ui outline-none placeholder:text-muted-foreground"
             />
             {filterQ && (
               <span className="shrink-0 text-xs text-muted-foreground">{filteredMessages.length}/{messages.length} 条</span>
@@ -3263,11 +3254,11 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
             />
           </div>
           <ScrollArea className="flex-1" viewportRef={scrollRef} aria-label="会话消息">
-            <div data-slot="message-column" className="mx-auto chat-col space-y-4 px-5 py-6">
+            <div data-slot="message-column" className="mx-auto chat-col space-y-5 px-6 py-7">
               {(() => {
                 if (omittedItems <= 0) return null;
                 return (
-                  <div className="rounded-lg bg-recess/60 px-3 py-2 text-center text-xs text-muted-foreground">
+                  <div className="rounded-lg bg-recess px-3 py-2 text-center text-xs text-muted-foreground">
                     <div className="flex items-center justify-center gap-2">
                       <span>
                         已省略较早的 {omittedMessages} 条{filterQ ? "匹配" : ""}消息（完整历史已保存，可导出查看）
@@ -3554,7 +3545,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                   {mentionToken?.leading && (
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2 bg-recess/60 px-3 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                      className="flex w-full items-center gap-2 bg-recess px-3 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                       onMouseDown={(e) => { e.preventDefault(); onOpenSettings("agents"); }}
                     >
                       <Bot className="h-3.5 w-3.5 shrink-0" /> 管理助手与团队…
@@ -3700,7 +3691,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                 disabled={!active && providerCount === 0}
                 // 限制不断增高的文本域，使长内容粘贴时缩小消息列表，而不是把输
                 // 入框挤出视口。
-                className="!max-h-48 min-h-[64px] resize-none overflow-y-auto !bg-transparent px-3.5 pb-1 pt-3 text-md leading-[1.65] !shadow-none hover:!bg-transparent focus:!bg-transparent focus-visible:!outline-none"
+              className="!max-h-48 min-h-[72px] resize-none overflow-y-auto !bg-transparent px-4 pb-1.5 pt-3.5 text-md leading-[1.65] !shadow-none hover:!bg-transparent focus:!bg-transparent focus-visible:!outline-none"
               />
               <input
                 ref={fileRef}
@@ -3720,7 +3711,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                   <span>{composerPolicyHint}</span>
                 </div>
               )}
-              <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5">
+              <div className="flex items-center justify-between gap-2 px-2 pb-2">
                 <div className="flex items-center gap-0.5">
                   <TooltipHint
                     content={!active || modelMultimodal
@@ -3746,7 +3737,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                           disabled={(!active && providerCount === 0) || executionPolicyBusy}
                           aria-label={`本会话权限：${composerPolicyLabel}`}
                           className={cn(
-                            "flex h-7 max-w-[148px] items-center gap-1 rounded-md px-2 text-xs transition-colors",
+                            "flex h-8 max-w-[160px] items-center gap-1 rounded-lg px-2.5 text-ui transition-colors",
                             composerExecutionPolicy.sandboxProfile === "danger-full-access"
                               ? "bg-danger-soft text-danger-text hover:bg-overlay"
                               : "text-muted-foreground hover:bg-overlay hover:text-foreground",
@@ -3815,7 +3806,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                         <button
                           type="button"
                           aria-label={contextTip.ariaLabel}
-                          className="hidden shrink-0 items-center rounded-md px-1 py-0.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 sm:flex"
+                          className="hidden shrink-0 items-center rounded-md px-1 py-0.5 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring sm:flex"
                         >
                           {contextUsage
                             ? <ContextRing usage={contextUsage} />
@@ -3851,7 +3842,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                           <button
                             type="button"
                             className={cn(
-                              "surface-control flex h-8 min-w-0 max-w-[360px] items-center gap-1.5 rounded-lg px-2.5 text-ui text-foreground transition-colors hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring/70 md:min-w-[180px]",
+                              "surface-control flex h-8 min-w-0 max-w-[360px] items-center gap-1.5 rounded-lg px-2.5 text-ui text-foreground transition-colors hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring md:min-w-[180px]",
                               intelligenceOpen && "text-muted-foreground",
                             )}
                             aria-label={availableLevels.length > 0 ? "选择推理强度" : "选择模型"}
@@ -3912,7 +3903,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
                                       <span className="min-w-0 flex-1 truncate">
                                         {modelLabel(m)}
                                         {composerProviderName && (
-                                          <span className={cn("text-muted-foreground", selected && "text-accent-text/80")}>
+                                          <span className={cn("text-muted-foreground", selected && "text-accent-text")}>
                                             {` · ${composerProviderName}`}
                                           </span>
                                         )}
@@ -3985,7 +3976,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       <Dialog open={statsOpen} onOpenChange={setStatsOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-base">会话统计</DialogTitle>
+            <DialogTitle>会话统计</DialogTitle>
           </DialogHeader>
           {stats && (
             <>
@@ -4064,7 +4055,7 @@ export function ChatPage({ themePreset, themeMode, onAppearanceChange, onOpenHel
       <Dialog open={turnsOpen} onOpenChange={setTurnsOpen}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle className="text-base">运行详情 · Trace 时间线</DialogTitle>
+            <DialogTitle>运行详情 · Trace 时间线</DialogTitle>
           </DialogHeader>
           <div className="max-h-[70vh] space-y-2 overflow-y-auto">
             {turnList.length === 0 ? (

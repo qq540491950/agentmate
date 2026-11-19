@@ -147,14 +147,14 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
 
   return (
     <div
-      className="surface-raised rounded-xl bg-panel text-sm"
+      className="surface-raised rounded-xl bg-panel text-ui"
       data-toolgroup
       data-state={status}
       data-display-mode={displayMode}
     >
       <button
         type="button"
-        className="flex w-full min-w-0 items-center gap-2 px-3.5 py-2.5 text-left"
+        className="flex min-h-10 w-full min-w-0 items-center gap-2 px-4 py-3 text-left"
         aria-expanded={expanded}
         onClick={() => setUserExpanded(!expanded)}
       >
@@ -163,7 +163,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
           <span className="sr-only">执行过程</span>
           <span className="shrink-0">{meta.icon}</span>
           {summaryText && (
-            <span data-slot="execution-summary" className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            <span data-slot="execution-summary" className="min-w-0 flex-1 truncate text-ui text-muted-foreground">
               <TooltipHint content={summaryHint}>
                 <span className="block truncate">{summaryText}</span>
               </TooltipHint>
@@ -198,7 +198,7 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
             tabIndex={expanded ? 0 : -1}
             aria-label="执行过程步骤"
             onScroll={onExecutionScroll}
-            className="max-h-64 space-y-1 overflow-y-auto overscroll-contain bg-recess/60 px-2 py-2 shadow-inset focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring/70"
+            className="max-h-64 space-y-0.5 overflow-y-auto overscroll-contain bg-recess px-2 py-2 shadow-inset focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
           >
             {trace.map((item) => {
               if (item.kind === "tool") {
@@ -225,12 +225,12 @@ export function ToolCallGroup({ group, live, runningTools, durations, sessionID,
                 <MessageMarkdown
                   key={m.id}
                   content={m.text}
-                  className="px-2 py-1 text-ui leading-[1.7] text-muted-foreground"
+                  className="px-2 py-1.5 text-ui leading-[1.7] text-muted-foreground"
                 />
               ) : m.kind === "tool_result" && m.toolName === "plan_todos" ? (
                 <TodoListCard key={m.id} resp={m.toolResp ?? null} />
               ) : m.kind === "warning" ? (
-                <div key={m.id} className="rounded-lg bg-warning-soft px-2 py-1.5 text-xs text-warning-text">
+                <div key={m.id} className="rounded-lg bg-warning-soft px-3 py-2 text-xs leading-relaxed text-warning-text">
                   {m.text}
                 </div>
               ) : null;

@@ -135,7 +135,7 @@ export function PlanChip({ todos, running, waiting = false, onDismiss }: {
         <button
           type="button"
           aria-label={`任务计划 ${done}/${todos.length} 完成，${statusText}`}
-          className="surface-control inline-flex h-7 max-w-[190px] items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="surface-control inline-flex h-8 max-w-[190px] items-center gap-1.5 rounded-lg px-2.5 text-ui text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           {allDone ? (
             <Check className="h-3.5 w-3.5 shrink-0 text-success" />
@@ -171,7 +171,7 @@ export function PlanChip({ todos, running, waiting = false, onDismiss }: {
             <button
               type="button"
               aria-label="关闭任务计划"
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               onClick={onDismiss}
             >
               <X className="h-3.5 w-3.5" />
@@ -207,7 +207,7 @@ export function PlanDock({ todos, running, waiting = false }: {
     : active[0]?.content ?? "";
   if (todos.length === 0) return null;
   return (
-    <section data-slot="plan-dock" className="surface-raised mb-2 rounded-xl bg-panel px-3 py-2.5" aria-label="当前任务计划">
+    <section data-slot="plan-dock" className="surface-raised mb-2 rounded-xl bg-panel px-4 py-3" aria-label="当前任务计划">
       <div className="flex items-center gap-2">
         {blocked > 0
           ? <AlertCircle className="h-4 w-4 shrink-0 text-warning-text" />
@@ -231,7 +231,7 @@ export function PlanDock({ todos, running, waiting = false }: {
         )}
         <button
           type="button"
-          className="ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           aria-label={expanded ? "收起任务计划" : "展开任务计划"}
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}

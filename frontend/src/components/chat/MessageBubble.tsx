@@ -28,7 +28,7 @@ export function ConfirmCard({ m, onConfirm }: {
   const riskyHint = /脱离沙箱|工作区外|受保护路径|只读模式|预检失败/.test(hint);
   return (
     <div className={cn(
-      "shadow-edge rounded-xl px-4 py-3",
+      "rounded-xl px-4 py-3.5",
       status === "pending" && "bg-warning-soft",
       status === "approved" && "bg-success-soft",
       status === "rejected" && "bg-danger-soft",
@@ -66,7 +66,7 @@ export function ConfirmCard({ m, onConfirm }: {
         </pre>
       )}
       {m.policy && (
-        <div className="mt-1.5 break-all rounded-md bg-recess/70 px-2 py-1.5 text-xs text-muted-foreground">
+        <div className="mt-1.5 break-all rounded-md bg-recess px-2 py-1.5 text-xs text-muted-foreground">
           暂停时策略：{m.policy}
         </div>
       )}
@@ -77,10 +77,10 @@ export function ConfirmCard({ m, onConfirm }: {
       )}
       {status === "pending" ? (
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <Button size="sm" className="h-7 px-3 text-xs" onClick={() => onConfirm(m.id, m.callId, true)}>
+          <Button size="sm" className="h-8 px-3" onClick={() => onConfirm(m.id, m.callId, true)}>
             <Check className="mr-1 h-3 w-3" /> 允许执行
           </Button>
-          <Button size="sm" variant="outline" className="h-7 px-3 text-xs" onClick={() => onConfirm(m.id, m.callId, false)}>
+          <Button size="sm" variant="outline" className="h-8 px-3" onClick={() => onConfirm(m.id, m.callId, false)}>
             <X className="mr-1 h-3 w-3" /> 拒绝
           </Button>
         </div>
@@ -120,14 +120,14 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
       <div data-slot="thinking-row" className="rounded-lg">
         <button
           type="button"
-          className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-control focus-visible:bg-control focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring/70"
+          className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-ui text-muted-foreground transition-colors hover:bg-control focus-visible:bg-control focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
           aria-expanded={open}
           aria-label={open ? "收起思考过程" : "展开思考过程"}
           onClick={() => setOpen((v) => !v)}
         >
           <Brain className="h-3.5 w-3.5 shrink-0" />
           <span className="shrink-0 font-medium">思考过程</span>
-          <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">
             {preview || (m.streaming ? "思考中…" : "")}
           </span>
           {m.streaming && <Loader2 className="h-3 w-3 shrink-0 animate-spin" />}
@@ -136,7 +136,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
         {open && (
           <div
             data-slot="thinking-body"
-            className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-recess/70 px-2 py-1.5 text-xs leading-[1.7] text-muted-foreground shadow-inset"
+            className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-recess px-2 py-1.5 text-xs leading-[1.7] text-muted-foreground shadow-inset"
           >
             {m.text || (m.streaming ? "思考中…" : "")}
           </div>
@@ -145,7 +145,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ m, inline = false }: 
     );
   }
   return (
-    <div className="surface-raised rounded-lg bg-panel px-3 py-2">
+    <div className="rounded-xl bg-control px-4 py-3">
       <button
         type="button"
         className="flex w-full items-center gap-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
@@ -400,7 +400,7 @@ export const MessageBubble = memo(function MessageBubble({ m, isLastAssistant, o
             <div className="flex items-center gap-0.5">
               {m.usage && m.usage.totalTokens > 0 && (
                 <TooltipHint content={`输入 ${m.usage.promptTokens} + 输出 ${m.usage.completionTokens}`}>
-                  <span className="mr-1 text-2xs tabular-nums text-muted-foreground/70">
+                  <span className="mr-1 text-2xs tabular-nums text-muted-foreground">
                     {m.usage.totalTokens.toLocaleString()} tokens{costOf(m.usage) && ` · ${costOf(m.usage)}`}
                   </span>
                 </TooltipHint>
@@ -468,7 +468,7 @@ function DelegationCard({ resp }: { resp: { [k: string]: any } | null }) {
         )}
       </div>
       {text ? (
-        <div className="mt-2 whitespace-pre-wrap break-words text-ui leading-[1.55] text-foreground/90">{text}</div>
+        <div className="mt-2 whitespace-pre-wrap break-words text-ui leading-[1.55] text-foreground">{text}</div>
       ) : (
         <div className="mt-2 text-sm text-danger-text">{String(resp?.error ?? "成员未返回结果")}</div>
       )}

@@ -171,12 +171,14 @@
 
 ## 6. 排版、间距、圆角、动效
 
-- 字体栈：`Geist Variable → PingFang SC → Microsoft YaHei UI → Noto Sans SC → Source Han Sans SC → system-ui`；不换字体。
+- 字体栈：`Geist Variable → PingFang SC → Noto Sans SC → Microsoft YaHei UI → Source Han Sans SC → system-ui`；不换字体或图标库。Windows 上优先使用 Noto Sans SC，避免与 Geist 混排时退回字形更钝的雅黑。
 - 自定义 `text-ui` 字号必须由共享 `cn`（`@/lib/utils`）注册合并规则；`components/ui/**` 不得直接从 `cn` 引入默认合并器，否则与文字颜色同时出现时字号会被丢弃。
 - 正文、对话侧栏会话/项目行、侧栏底部版本/更新 15px / 1.7（侧栏行保持紧凑行高）；设置导航 14px；控件与普通列表 13px；元数据下限 12px；禁止 10/11px 中文。
+- 不得使用 `text-*/70`、`text-*/60` 一类透明度弱化文字；需要次级文字时使用 `muted-foreground`，并对其实际表面验证有效对比度 ≥ 4.5:1。
 - 页面标题 20–24px，区块标题 15–16px，卡片标题 15px；使用既有 `text-*` 阶梯。
 - 间距：页面 32、区块 24、组 16、行内 8/12；用间距替代边框。
 - 圆角：控件 8px、面板 12px、大面板/对话框 16px、用户气泡 16px；不新增任意值。
+- 控件高度：紧凑 28px、默认 32px、主要输入 36px；图标使用 16px 视觉尺寸与 1.75 笔画，不为单个按钮手动加粗。
 - Composer 在跟随「对话栏宽」偏好的同时，最大宽度额外封顶 `60rem`（960px）；窄屏继续由 `calc(100% - 120px)` 保护。
 - 过渡 120–200ms，统一 `--ease-standard`；不做全屏主题颜色渐变；`prefers-reduced-motion` 下关闭非必要动画。
 
@@ -238,6 +240,7 @@
 ## 10. 评审清单
 
 - [ ] 是否只使用语义令牌，没有组件内 hex/palette 类？
+- [ ] 是否没有 10/11px 中文、文字透明度与散落 `bg-*/NN` 表面填充？
 - [ ] 布局 chrome、卡片、设置行、列表行、弹窗是否都没有常驻边框/ring？
 - [ ] 导航/会话选中态是否使用 `selected` + `foreground` + 顶部高光；分段控件是否使用 `choice-selected` + `surface-raised`，而不是左竖条/描边？
 - [ ] 确认卡/错误/警告是否同时有图标或文字，而不是只有彩色边框？

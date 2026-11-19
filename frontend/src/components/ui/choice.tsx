@@ -62,13 +62,13 @@ export function SegmentedControl<T extends string>({
             }}
             data-value={option.value}
             className={cn(
-              "inline-flex h-8 min-w-16 items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] transition-[background-color,box-shadow,color] outline-none",
-              "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring/70 disabled:pointer-events-none disabled:opacity-50",
+              "inline-flex h-8 min-w-16 items-center justify-center gap-1.5 rounded-lg px-3 text-ui transition-[background-color,box-shadow,color] outline-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50",
               selected
                 ? option.danger
                   ? "surface-raised bg-choice-selected-danger font-medium text-foreground"
                   : "surface-raised bg-choice-selected font-medium text-foreground"
-                : "bg-control/60 text-muted-foreground hover:bg-control hover:text-foreground",
+                : "bg-control text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
           >
             {selected && (

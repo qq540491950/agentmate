@@ -46,7 +46,7 @@ describe("theme token contract", () => {
     for (const mode of modes) {
       it(`${theme}/${mode} keeps text, statuses and focus readable`, () => {
         const tokens = declarationsFor(theme, mode);
-        for (const background of ["canvas", "chrome", "panel", "overlay", "bubble", "selected"]) {
+        for (const background of ["canvas", "chrome", "panel", "overlay", "bubble", "selected", "recess", "control"]) {
           expect(contrast(tokens.foreground, tokens[background]), `foreground/${background}`).toBeGreaterThanOrEqual(4.5);
           expect(contrast(tokens["muted-foreground"], tokens[background]), `muted/${background}`).toBeGreaterThanOrEqual(4.5);
         }

@@ -208,7 +208,7 @@ export function WorkspaceContextBar({
                 type="button"
                 disabled={branchBusy}
                 aria-label={project ? `切换项目，当前 ${project.name}` : "选择项目或目录"}
-                className="surface-control inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-lg px-2.5 text-xs text-foreground transition-colors hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring/70 disabled:cursor-not-allowed disabled:opacity-50"
+                className="surface-control inline-flex h-8 max-w-[240px] items-center gap-1.5 rounded-lg px-2.5 text-ui text-foreground transition-colors hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {project ? <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <FolderPlus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                 <span className="truncate">{projectLabel}</span>
@@ -309,7 +309,7 @@ export function WorkspaceContextBar({
                   <button
                     type="button"
                     aria-label={`切换 Git 分支，当前 ${branchLabel}`}
-                    className="surface-control inline-flex h-7 max-w-[220px] items-center gap-1.5 rounded-lg px-2.5 text-xs text-foreground transition-colors hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring/70"
+                    className="surface-control inline-flex h-8 max-w-[220px] items-center gap-1.5 rounded-lg px-2.5 text-ui text-foreground transition-colors hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                   >
                     {branchBusy ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                     <span className="truncate">{branchBusy ? "切换中…" : branchLabel}</span>

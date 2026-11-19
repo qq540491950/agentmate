@@ -39,7 +39,7 @@ export function TurnStatus({ label = "正在思考", className }: {
         <span className="wb-dot-pulse h-1 w-1 rounded-full bg-accent-text/70 [animation-delay:320ms]" />
       </span>
       {elapsedLabel && (
-        <span className="tabular-nums text-2xs text-muted-foreground/60">
+        <span className="tabular-nums text-2xs text-muted-foreground">
           {elapsedLabel}
         </span>
       )}

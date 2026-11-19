@@ -93,7 +93,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
   return (
     <div
       className={cn(
-        "text-sm transition-colors",
+        "text-ui transition-colors",
         compact ? "rounded-lg" : "surface-raised rounded-xl bg-panel",
       )}
       data-toolcard={name}
@@ -103,8 +103,8 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
           className={cn(
             "flex w-full items-center gap-2 text-left",
             compact
-              ? "rounded-lg px-2 py-1.5 transition-colors hover:bg-control focus-visible:bg-control"
-              : "px-3 py-2.5",
+              ? "min-h-9 rounded-lg px-3 py-2 transition-colors hover:bg-control focus-visible:bg-control focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+              : "min-h-12 px-4 py-3",
           )}
           aria-label={`${running ? "正在运行" : failed ? "失败" : "完成"}：${display.action}${display.target ? ` ${display.target}` : ""}`}
           onClick={() => setOpen((v) => !v)}
@@ -122,11 +122,11 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
           <>
             {failed && <span className="shrink-0 text-xs text-danger-text">失败</span>}
             <span className="flex min-w-0 flex-1 items-center gap-1.5">
-              <span className="shrink-0 text-xs text-muted-foreground">{display.action}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{display.action}</span>
               {display.target && (
                 <span
                   className={cn(
-                    "min-w-0 truncate text-xs text-foreground",
+                    "min-w-0 truncate text-ui text-foreground",
                     display.mono && "font-mono",
                   )}
                 >
@@ -164,7 +164,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
       {open && (
         <div className={cn(
           "space-y-2",
-          compact ? "mt-1 rounded-md bg-recess/70 p-2 shadow-inset" : "bg-recess/50 px-3 py-2",
+          compact ? "mt-1 rounded-lg bg-recess p-2.5 shadow-inset" : "bg-recess px-4 py-3",
         )}>
           {showInput && (
             <div>
@@ -173,7 +173,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
                 <CopyButton
                   text={inputJSON}
                   label="复制输入参数"
-                  className="border-0 bg-transparent px-1 py-0 text-3xs opacity-60 hover:opacity-100"
+                  className="border-0 bg-transparent px-1 py-0 text-2xs opacity-70 hover:opacity-100"
                 />
               </div>
               <pre className="max-h-44 overflow-auto rounded bg-recess px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
@@ -188,7 +188,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
                 <CopyButton
                   text={outputJSON}
                   label="复制输出结果"
-                  className="border-0 bg-transparent px-1 py-0 text-3xs opacity-60 hover:opacity-100"
+                  className="border-0 bg-transparent px-1 py-0 text-2xs opacity-70 hover:opacity-100"
                 />
               </div>
               <pre className="max-h-44 overflow-auto rounded bg-recess px-2 py-1.5 font-mono text-xs leading-[1.7] text-muted-foreground">
@@ -202,7 +202,7 @@ export const ToolCallCard = memo(function ToolCallCard({ name, sessionID, args, 
         </div>
       )}
       {showPaths && (
-        <div className={cn("flex flex-wrap items-center gap-1.5", compact ? "px-2 pb-1.5 pt-0.5" : "bg-recess/50 px-3 py-2")}>
+        <div className={cn("flex flex-wrap items-center gap-1.5", compact ? "px-2 pb-1.5 pt-0.5" : "bg-recess px-3 py-2")}>
           <span className="text-xs text-muted-foreground">产物：</span>
           {paths.map((p) => (
             <ArtifactOpenButton
@@ -224,7 +224,7 @@ export function ArtifactOpenButton({ path, label, sessionID }: { path: string; l
       <Button
         variant="outline"
         size="sm"
-        className="h-6 gap-1 px-2 text-xs"
+        className="h-7 gap-1 px-2.5"
         onClick={() => setTarget(path)}
       >
         <FileImage className="h-3 w-3" />
@@ -281,7 +281,7 @@ export function ArtifactPreview({ path, sessionID, onClose }: { path: string | n
     <Dialog open={!!path} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
+          <DialogTitle className="flex items-center gap-2">
             {art && kindIcon(art.kind)}
             <span className="min-w-0 truncate">{art?.name ?? path}</span>
             {art && (

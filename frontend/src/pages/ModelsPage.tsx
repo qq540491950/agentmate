@@ -292,7 +292,7 @@ export function ModelsPage() {
         }
       />
 
-      <div className="surface-inset grid gap-1.5 rounded-2xl p-1.5">
+      <div className="surface-inset grid gap-1 rounded-2xl p-1.5">
         {providers.length === 0 && (
           <Card>
             <CardContent className="p-8 text-center text-sm text-muted-foreground">
@@ -303,7 +303,7 @@ export function ModelsPage() {
         {providers.map((p) => (
           <div
             key={p.id}
-            className="surface-row flex items-center gap-3.5 rounded-xl bg-panel px-4 py-3.5"
+            className="surface-row flex items-center gap-4 rounded-xl bg-panel px-4 py-4 transition-colors hover:bg-overlay"
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-text">
               <Boxes className="h-4 w-4" />
@@ -446,7 +446,7 @@ export function ModelsPage() {
                   </div>
                 </label>
 
-                <div className="flex items-center justify-between rounded-lg bg-recess/60 px-3 py-2.5">
+                <div className="flex items-center justify-between rounded-lg bg-recess px-3 py-2.5">
                   <div>
                     <div className="text-sm font-medium">设为默认供应商</div>
                     <div className="text-2xs text-muted-foreground">新会话默认使用该供应商的首个模型</div>
@@ -476,7 +476,7 @@ export function ModelsPage() {
                 }
               >
                 {(editing.models ?? []).length === 0 ? (
-                  <div className="flex flex-col items-center gap-1 rounded-xl bg-recess/50 px-4 py-8 text-center">
+                  <div className="flex flex-col items-center gap-1 rounded-xl bg-recess px-4 py-8 text-center">
                     <Boxes className="h-5 w-5 text-muted-foreground" />
                     <div className="text-sm font-medium">还没有模型</div>
                     <p className="text-xs text-muted-foreground">从供应商接口拉取，或手动添加模型 ID。</p>
@@ -489,7 +489,7 @@ export function ModelsPage() {
                         <div
                           key={i}
                           className={cn(
-                            "overflow-hidden rounded-xl bg-recess/60 transition-colors",
+                            "overflow-hidden rounded-xl bg-recess transition-colors",
                             open && "bg-selected",
                           )}
                         >
@@ -533,7 +533,7 @@ export function ModelsPage() {
                             </TooltipHint>
                           </div>
                           {open && (
-                            <div className="bg-recess/40 px-3 py-4">
+                            <div className="bg-control px-3 py-4">
                               <ModelRowEditor
                                 model={m}
                                 index={i}

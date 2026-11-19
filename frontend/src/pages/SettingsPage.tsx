@@ -31,7 +31,7 @@ import { ArtifactPreview } from "@/components/ToolCallCard";
 import { UpdateCard } from "@/components/UpdateCard";
 import { ThemeChoice } from "@/components/ThemeChoice";
 import { cn } from "@/lib/utils";
-import { SettingRow } from "@/components/layout/PageShell";
+import { PageHeader, SettingRow } from "@/components/layout/PageShell";
 import { buildIssueReportURL } from "@/lib/issue";
 import {
   CHAT_WIDTHS,
@@ -94,6 +94,18 @@ const SETTINGS_ICONS: Record<SettingsTab, LucideIcon> = {
   knowledge: BookOpen,
   data: Database,
   about: Info,
+};
+
+const CONFIG_PAGE_META: Record<
+  "appearance" | "conversation" | "network" | "knowledge" | "data" | "about",
+  { title: string; description: string }
+> = {
+  appearance: { title: "外观与交互", description: "主题、字号、阅读宽度与运行过程的呈现方式" },
+  conversation: { title: "对话与上下文", description: "会话、上下文压缩与长期记忆策略" },
+  network: { title: "网络与服务", description: "代理、终端和本机服务的安全边界" },
+  knowledge: { title: "知识库", description: "维护可检索的知识文件与向量索引" },
+  data: { title: "数据与存储", description: "备份、迁移、日志和本地数据状态" },
+  about: { title: "关于", description: "版本、运行环境与问题反馈" },
 };
 
 export function SettingsPage({
@@ -459,13 +471,16 @@ export function SettingsPage({
     ? `${settings.titleProviderId}\t${settings.titleModel}`
     : "main";
   const showConfigSaveBar = isConfigSettingsTab(tab);
-  const configContentWidth = tab === "knowledge" || tab === "about" ? "max-w-3xl" : "max-w-4xl";
+  const configContentWidth = tab === "knowledge" || tab === "about" ? "max-w-3xl" : "max-w-5xl";
+  const configPageMeta = tab === "about" || isConfigSettingsTab(tab)
+    ? CONFIG_PAGE_META[tab as keyof typeof CONFIG_PAGE_META]
+    : undefined;
 
   return (
     <div className="flex h-full bg-canvas">
       <aside className="flex w-60 shrink-0 flex-col bg-chrome py-4 text-sidebar-foreground">
-        <div className="mb-2 flex items-center justify-between px-4">
-          <span className="text-sm font-semibold">设置</span>
+        <div className="mb-3 flex items-center justify-between px-4">
+          <span className="text-ui font-semibold">设置</span>
           {onClose && (
             <TooltipHint content="返回对话（Esc）">
               <button
@@ -478,7 +493,7 @@ export function SettingsPage({
             </TooltipHint>
           )}
         </div>
-        <nav aria-label="设置分类" className="flex flex-1 flex-col gap-3 overflow-y-auto px-2 pb-3">
+        <nav aria-label="设置分类" className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 pb-3">
           {SETTINGS_GROUPS.map((group) => (
             <div
               key={group.key}
@@ -501,7 +516,7 @@ export function SettingsPage({
                     aria-current={tab === key ? "page" : undefined}
                     onClick={() => setTab(key)}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors",
+                      "flex h-9 items-center gap-2.5 rounded-lg px-3 text-left text-sm transition-colors",
                       tab === key
                         ? "surface-selected font-medium text-foreground"
                         : "text-muted-foreground hover:bg-control hover:text-foreground",
@@ -525,14 +540,17 @@ export function SettingsPage({
         {tab === "models" && <ModelsPage />}
         {(isConfigSettingsTab(tab) || tab === "about") && (
         <div className="flex h-full flex-col bg-canvas">
-        <div className={cn("min-h-0 flex-1 overflow-y-auto p-6", showConfigSaveBar && "pb-0")}>
+        <div className={cn("min-h-0 flex-1 overflow-y-auto p-8", showConfigSaveBar && "pb-0")}>
       {/* 配置页面采用稳定单列布局；知识/关于保留各自更窄的单列宽度。 */}
       <div className={cn("mx-auto", configContentWidth)}>
+      {configPageMeta && (
+        <PageHeader title={configPageMeta.title} description={configPageMeta.description} />
+      )}
       <div className="grid gap-4">
         {tab === "appearance" && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">外观</CardTitle>
+            <CardTitle className="text-base">主题与阅读</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2">
             <ThemeChoice
@@ -1158,7 +1176,7 @@ export function SettingsPage({
             <CardTitle className="text-base">长期记忆</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2">
-            <div className="flex items-center justify-between rounded-lg bg-recess/60 p-2.5">
+            <div className="flex items-center justify-between rounded-lg bg-recess p-2.5">
               <div>
                 <div className="text-sm font-medium">自动存入长期记忆</div>
                 <div className="text-xs text-muted-foreground">每轮对话结束后自动将该会话存入记忆（含工具调用摘要）</div>
@@ -1410,7 +1428,7 @@ export function SettingsPage({
               </Button>
             </div>
             {(a2aStatuses.length ?? 0) > 0 && (
-              <div className="grid gap-1.5 rounded-lg bg-recess/60 p-2.5">
+              <div className="grid gap-1.5 rounded-lg bg-recess p-2.5">
                 {a2aStatuses.map((st) => (
                   <div key={st.agentId} className="flex items-center justify-between gap-2 text-xs">
                     <span className="truncate">
@@ -1456,7 +1474,7 @@ export function SettingsPage({
             <div className="mt-1 text-xs text-muted-foreground">本地 AI Agent 桌面应用</div>
             <UpdateCard />
             <div className="mt-4 grid gap-1">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-recess/40 px-3 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-recess px-3 py-3">
                 <div>
                   <div className="text-sm font-medium text-foreground">版本记录</div>
                   <div className="text-xs text-muted-foreground">查看所有版本与更新说明</div>
@@ -1465,7 +1483,7 @@ export function SettingsPage({
                   查看
                 </Button>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-recess/40 px-3 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-recess px-3 py-3">
                 <div>
                   <div className="text-sm font-medium text-foreground">问题反馈</div>
                   <div className="text-xs text-muted-foreground">在浏览器打开 GitHub 表单，自动填入版本与环境</div>
@@ -1475,7 +1493,7 @@ export function SettingsPage({
                 </Button>
               </div>
             </div>
-            <details className="mt-3 rounded-lg bg-recess/40 p-3 text-xs text-muted-foreground">
+            <details className="mt-3 rounded-lg bg-recess p-3 text-xs text-muted-foreground">
               <summary className="cursor-pointer select-none hover:text-foreground">技术信息</summary>
               <div className="mt-2 grid gap-1">
                 <div>运行时：Google ADK Go v2（Runner / LLMAgent / AgentTool）</div>
@@ -1493,8 +1511,8 @@ export function SettingsPage({
       </div>
         </div>
         {showConfigSaveBar && (
-        <div className="shrink-0 bg-canvas px-6 pb-6 pt-4">
-          <div className={cn("mx-auto flex justify-end px-3", configContentWidth)}>
+        <div className="shrink-0 bg-canvas px-8 pb-8 pt-4">
+          <div className={cn("mx-auto flex justify-end", configContentWidth)}>
             <Button onClick={() => void save()} disabled={saving || !dirty}>
               {saving ? "保存中…" : "保存设置"}
             </Button>
@@ -1507,7 +1525,7 @@ export function SettingsPage({
       <Dialog open={pendingPolicy !== null} onOpenChange={(open) => { if (!open) setPendingPolicy(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base">
+            <DialogTitle className="flex items-center gap-2">
               <TriangleAlert className="h-4 w-4 text-danger-text" aria-hidden="true" />
               启用完全访问权限？
             </DialogTitle>
@@ -1528,7 +1546,7 @@ export function SettingsPage({
       <Dialog open={leaveDialogOpen} onOpenChange={(open) => { if (!open) closeLeaveDialog(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base">有未保存的设置</DialogTitle>
+            <DialogTitle>有未保存的设置</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             离开设置中心前要保存这些修改吗？放弃后，未保存的外观预览也会恢复。

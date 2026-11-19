@@ -4,6 +4,25 @@
 
 ## 视觉测试与体验设计
 
+### 第三百零一轮迭代：组件质感与视觉精度全量校准（已实施）
+
+依据：用户反馈各组件仍显粗糙、缺少 Codex 式质感。浏览器桩与代码走查确认根因不是缺少装饰，而是视觉底座失准：约 58 处 10/11px 字号、136 处透明度变体、58 处半透明表面；浅色顶部高光达到 82% 白；主题级 `shadow-card` / `shadow-panel` 无人消费；Windows 同时安装 Noto Sans SC 与微软雅黑，但字体栈优先命中后者；按钮、输入框与圆角同时存在多套尺寸。
+
+**实现要点**
+
+- 排版：移除 `text-3xs`，元数据下限统一为 12px；控件、菜单、标签统一 13px，聊天正文保持 15px/1.7；中文回退顺序改为 `PingFang SC → Noto Sans SC → Microsoft YaHei UI`，并为 Geist 与中文启用统一字距/连字特性。
+- 材质：浅色顶部高光从 82% 收敛到 6%；降低卡片、气泡、composer、浮层和对话框阴影强度；新增 `surface-dialog` 并让 composer/dialog 使用各自的阴影 token；删除无效的 `shadow-card` / `shadow-panel` 分支。
+- 对比度：移除全部文字透明度与散落 `bg-*/NN` 表面填充，统一回到 `foreground`、`muted-foreground`、`recess`、`control` 等语义 token；主题契约新增 recess/control 上的正文与元数据对比度检查。
+- 控件：圆角统一为控件 8px、面板 12px、对话框 16px；按钮高度统一 28/32/36px，表单输入 36px；Lucide 图标全局 1.75 笔画；focus ring 改为完整强调色，不再使用低透明度描边。
+- 页面：设置页配置标签补齐统一 `PageHeader`，导航和内容边距对齐管理页；侧栏会话行提升到 32px 并移除当前项圆点；聊天头、composer 工具栏、执行组、工具行、Agents / Teams / Skills / Models / MCP 列表与对话框统一新的字号、行高和连续面板节奏。
+- 防回归：新增 `designAudit.test.ts`，阻止 10/11px 类、文字透明度、半透明表面、字体回退倒退、圆角令牌漂移和无效阴影 token 再次进入组件层。
+
+**测试证据**
+
+- `npx tsc --noEmit` 通过；`npm test -- --run` 48 个文件 / 347 个用例全绿；`npm run build` 通过。
+- 浏览器桩走查石墨深色/浅色：对话页、设置外观页、Agents 列表、新增 Agent 对话框、执行过程展开态；确认中文由 Noto Sans SC 渲染、卡片边缘与阴影收敛、控件高度与焦点环一致、正文和元数据不再发灰。
+- 代码审计：`text-3xs`、10/11px 文本类、文字透明度、`bg-(panel|recess|control|selected|bubble|chrome|overlay|canvas|muted|accent)/NN` 均为 0 处。
+
 ### 第三百轮迭代：供应商弹窗与设置页全量视觉走查（已实施）
 
 依据：用户截图反馈模型供应商配置弹窗过窄，长模型 ID 被挤压截断；随后要求用 `diagnosing-bugs` 的反馈回路和 `ui-ux-pro-max` 的表单、弹窗与无障碍规则检查全部页面。浏览器桩复现确认：1280×800 下弹窗仅 768px 宽，模型 ID 输入约 337px；设置内弹窗按 Esc 会同时关闭弹窗与设置页；知识库页存在仅靠 placeholder 的输入、重复文件入口和信息层级混杂。

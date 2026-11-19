@@ -154,7 +154,7 @@ export function UpdateCard() {
       : null;
 
   return (
-    <div className="mt-3 rounded-xl bg-recess/60 p-3">
+    <div className="mt-3 rounded-xl bg-recess p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-foreground">
           {stateLabel(status ?? ({ state: "idle" } as UpdateStatus))}
@@ -208,14 +208,14 @@ export function UpdateCard() {
             {notesOpen ? "收起更新说明" : "查看更新说明"}
           </button>
           {notesOpen && (
-            <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded bg-muted/40 p-2 text-xs text-muted-foreground">
+            <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded bg-recess p-2 text-xs text-muted-foreground">
               {status.notes}
             </pre>
           )}
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 bg-recess/40 pt-2">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 bg-recess pt-2">
         <div className="flex items-center gap-2">
           <Switch
             id="auto-check-update"

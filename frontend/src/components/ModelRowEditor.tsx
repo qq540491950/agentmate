@@ -135,7 +135,7 @@ export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericVal
 
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="输入类型" hint="文本始终可用">
-            <div className="flex h-8 items-center justify-between gap-2 rounded-md bg-recess/60 px-2.5">
+            <div className="flex h-9 items-center justify-between gap-2 rounded-lg bg-recess px-3">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <ImageIcon className="h-3.5 w-3.5" /> 图片输入
               </span>
@@ -172,7 +172,7 @@ export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericVal
 
       {/* 思考级别 */}
       <section
-        className="grid gap-3 rounded-xl bg-recess/60 p-3"
+        className="grid gap-3 rounded-xl bg-recess p-3"
         aria-labelledby={`reasoning-title-${index}`}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -205,7 +205,7 @@ export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericVal
         {r.enabled && (
           <>
             {levels.length === 0 ? (
-              <p className="rounded-lg bg-recess/50 px-3 py-4 text-center text-xs text-muted-foreground">
+              <p className="rounded-lg bg-control px-3 py-4 text-center text-xs text-muted-foreground">
                 暂无档位。点击「自动补全」按模型家族带出默认档位，或手动添加。
               </p>
             ) : (
@@ -264,7 +264,7 @@ export function ModelRowEditor({ model, index, onSuggest, onChange, onNumericVal
               </div>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-2 bg-recess/40 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-recess pt-3">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-muted-foreground">默认档</span>
                 <Select

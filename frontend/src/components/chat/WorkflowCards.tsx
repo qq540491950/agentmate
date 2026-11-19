@@ -39,7 +39,7 @@ export function BudgetPauseCard({
       ? "模型调用达到软阈值"
       : "token 用量达到软阈值";
   return (
-    <div className="mx-4 mb-3 rounded-xl bg-warning-soft p-3 text-sm text-warning-text" role="status">
+    <div className="mx-4 mb-3 rounded-xl bg-warning-soft p-4 text-sm text-warning-text" role="status">
       <div className="flex items-start gap-2">
         <PauseCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <div className="min-w-0 flex-1">
@@ -75,7 +75,7 @@ export function VerificationCard({
   const tone = blocked ? "danger" : exempt ? "success" : "warning";
   const Icon = blocked ? CircleAlert : exempt ? ShieldCheck : CheckCircle2;
   return (
-    <div className={cn("mx-4 mb-3 rounded-xl p-3 text-sm", statusTone(tone))} role="status">
+    <div className={cn("mx-4 mb-3 rounded-xl p-4 text-sm", statusTone(tone))} role="status">
       <div className="flex items-start gap-2">
         <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <div className="min-w-0 flex-1">
@@ -84,7 +84,7 @@ export function VerificationCard({
           </div>
           {verification.reason && <p className="mt-1 text-xs">{verification.reason}</p>}
           {verification.artifact && (
-            <p className="mt-1 break-all text-xs opacity-90">输出 artifact：{verification.artifact}</p>
+            <p className="mt-1 break-all text-xs">输出 artifact：{verification.artifact}</p>
           )}
           {blocked && (
             <div className="mt-2 flex flex-wrap gap-2">
@@ -115,7 +115,7 @@ export function RecoveryBanner({
         ? "上次运行因预算暂停"
         : "上次运行未完成";
   return (
-    <div className="mx-4 mb-3 rounded-xl bg-warning-soft p-3 text-sm text-warning-text" role="status">
+    <div className="mx-4 mb-3 rounded-xl bg-warning-soft p-4 text-sm text-warning-text" role="status">
       <div className="flex flex-wrap items-center gap-2">
         <CircleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
         <span className="min-w-0 flex-1">{label}。可从检查点继续，或先查看工作区变更。</span>
@@ -169,10 +169,10 @@ export function ApprovalQueueDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="text-base">审批队列 · {approvals.length} 项待处理</DialogTitle>
+          <DialogTitle>审批队列 · {approvals.length} 项待处理</DialogTitle>
         </DialogHeader>
         {approvals.length === 0 ? (
-          <div className="rounded-xl bg-recess/60 p-3 text-sm text-muted-foreground">当前没有待批准的调用。</div>
+          <div className="rounded-xl bg-recess p-3 text-sm text-muted-foreground">当前没有待批准的调用。</div>
         ) : (
           <>
             <div className="flex flex-wrap gap-2">
@@ -250,10 +250,10 @@ export function PlanEditorDialog({
     <Dialog open={open} onOpenChange={(next) => { if (next) setDraft(initial); onOpenChange(next); }}>
       <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle className="text-base">编辑计划</DialogTitle>
+          <DialogTitle>编辑计划</DialogTitle>
         </DialogHeader>
         <div className="max-h-[62vh] space-y-2 overflow-y-auto">
-          {draft.length === 0 && <div className="rounded-xl bg-recess/60 p-3 text-sm text-muted-foreground">还没有计划步骤。</div>}
+          {draft.length === 0 && <div className="rounded-xl bg-recess p-3 text-sm text-muted-foreground">还没有计划步骤。</div>}
           {draft.map((step, index) => (
             <div key={step.id || index} className="surface-raised rounded-xl bg-panel p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -261,19 +261,19 @@ export function PlanEditorDialog({
                   value={step.id}
                   onChange={(e) => update(index, { id: e.target.value })}
                   aria-label="步骤 ID"
-                  className="h-8 w-28 rounded-lg bg-control px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="surface-inset h-9 w-28 rounded-lg px-3 text-ui text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                 />
                 <input
                   value={step.content}
                   onChange={(e) => update(index, { content: e.target.value })}
                   aria-label="步骤标题"
-                  className="h-8 min-w-48 flex-1 rounded-lg bg-control px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="surface-inset h-9 min-w-48 flex-1 rounded-lg px-3 text-ui text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                 />
                 <select
                   value={step.status}
                   onChange={(e) => update(index, { status: e.target.value })}
                   aria-label="步骤状态"
-                  className="h-8 rounded-lg bg-control px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="surface-inset h-9 rounded-lg px-3 text-ui text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                 >
                   {["pending", "in_progress", "blocked", "completed", "failed", "skipped"].map((status) => (
                     <option key={status} value={status}>{status}</option>
@@ -289,7 +289,7 @@ export function PlanEditorDialog({
                   <input
                     value={step.dependsOnText}
                     onChange={(e) => update(index, { dependsOnText: e.target.value })}
-                    className="mt-1 h-8 w-full rounded-lg bg-control px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="surface-inset mt-1 h-9 w-full rounded-lg px-3 text-ui text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                   />
                 </label>
                 <label className="text-xs text-muted-foreground">

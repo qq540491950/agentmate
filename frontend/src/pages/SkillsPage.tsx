@@ -248,7 +248,7 @@ export function SkillsPage() {
         </span>
       </div>
 
-      <div className="surface-inset grid gap-1.5 rounded-2xl p-1.5">
+      <div className="surface-inset grid gap-1 rounded-2xl p-1.5">
         {scope === "project" && projectSkillsLoading && (
           <Card>
             <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
@@ -271,8 +271,8 @@ export function SkillsPage() {
           const source = skillSource(s.id);
           const readOnly = isReadOnlySkill(s.id);
           return (
-            <div key={s.id} className="surface-row flex items-start gap-3.5 rounded-xl bg-panel px-4 py-3.5">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft">
+            <div key={s.id} className="surface-row flex items-start gap-4 rounded-xl bg-panel px-4 py-4 transition-colors hover:bg-overlay">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft">
                 <Sparkles className="h-4 w-4 text-accent-text" />
               </span>
               <div className="min-w-0 flex-1">

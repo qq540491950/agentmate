@@ -63,14 +63,14 @@ function FileRowBody({ file }: { file: WorkspaceFileInfo }) {
           {file.status && (
             <Badge
               variant={file.status === WorkspaceChangeStatus.ChangeDeleted ? "destructive" : "outline"}
-              className={cn("shrink-0 px-1 py-0 text-3xs font-normal", statusMeta[file.status]?.className)}
+              className={cn("shrink-0 px-1 py-0 text-2xs font-normal", statusMeta[file.status]?.className)}
             >
               {statusMeta[file.status]?.label || file.status}
             </Badge>
           )}
         </span>
         <span className="mt-0.5 block truncate text-2xs text-muted-foreground">{file.path}</span>
-        <span className="mt-0.5 block text-3xs text-muted-foreground">
+        <span className="mt-0.5 block text-2xs text-muted-foreground">
           {fmtSize(file.size)} · {fmtTime(file.modTime)}
           {!file.previewable && " · 需外部打开"}
         </span>
@@ -151,7 +151,7 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 bg-recess/40 px-3 py-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 bg-recess px-3 py-3 text-xs text-muted-foreground">
         <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在计算 diff…
       </div>
     );
@@ -162,12 +162,12 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
   if (!result) return null;
   if (result.unsupported) {
     return (
-      <div className="bg-recess/40 px-3 py-2 text-2xs text-muted-foreground">{result.unsupported}</div>
+      <div className="bg-recess px-3 py-2 text-2xs text-muted-foreground">{result.unsupported}</div>
     );
   }
   if (!result.hunks?.length) {
     return (
-      <div className="bg-recess/40 px-3 py-2 text-2xs text-muted-foreground">与任务基线一致，无行级变更。</div>
+      <div className="bg-recess px-3 py-2 text-2xs text-muted-foreground">与任务基线一致，无行级变更。</div>
     );
   }
   // 用于「复制 Patch」的统一补丁文本——与 git diff 显示的内容一致。
@@ -182,11 +182,11 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
     .join("\n");
 
   return (
-    <div className="bg-recess/40">
+    <div className="bg-recess">
       <div className="max-h-80 overflow-auto font-mono text-2xs leading-4">
         {result.hunks.map((h, hi) => (
           <div key={hi}>
-            <div className="sticky top-0 z-10 bg-recess/90 px-2 py-0.5 text-3xs text-muted-foreground">
+            <div className="sticky top-0 z-10 bg-recess px-2 py-0.5 text-2xs text-muted-foreground">
               @@ -{h.oldStart},{h.oldLines} +{h.newStart},{h.newLines} @@
             </div>
             {(h.lines ?? []).map((l, li) => (
@@ -198,8 +198,8 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
                   l.type === "del" && "bg-danger-soft",
                 )}
               >
-                <span className="w-9 shrink-0 select-none pr-1 text-right text-muted-foreground/50">{l.oldNo || ""}</span>
-                <span className="w-9 shrink-0 select-none pr-1 text-right text-muted-foreground/50">{l.newNo || ""}</span>
+                <span className="w-9 shrink-0 select-none pr-1 text-right text-muted-foreground">{l.oldNo || ""}</span>
+                <span className="w-9 shrink-0 select-none pr-1 text-right text-muted-foreground">{l.newNo || ""}</span>
                 <span
                   className={cn(
                     "min-w-0 flex-1 whitespace-pre-wrap break-all pr-2",
@@ -214,7 +214,7 @@ export function DiffView({ sessionID, path }: { sessionID: string; path: string 
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-3 bg-recess/50 px-3 py-1.5 font-mono text-3xs text-muted-foreground">
+      <div className="flex items-center gap-3 bg-recess px-3 py-1.5 font-mono text-2xs text-muted-foreground">
         <span className="text-success">+{result.addedLines}</span>
         <span className="text-danger-text">-{result.removedLines}</span>
         {result.truncated && <span className="font-sans">内容过长已截断</span>}
@@ -361,13 +361,13 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
             <div className="flex items-center gap-1.5 text-sm font-medium">
               任务结果
               {running && (
-                <Badge variant="secondary" className="gap-1 px-1.5 py-0 text-3xs font-normal">
+                <Badge variant="secondary" className="gap-1 px-1.5 py-0 text-2xs font-normal">
                   <Loader2 className="h-2.5 w-2.5 animate-spin" /> 运行中
                 </Badge>
               )}
             </div>
             <TooltipHint content={workspace || "未配置工作区"}>
-              <div className="truncate text-3xs text-muted-foreground">{workspace || "未配置工作区"}</div>
+              <div className="truncate text-2xs text-muted-foreground">{workspace || "未配置工作区"}</div>
             </TooltipHint>
           </div>
           <TooltipHint content="刷新任务结果">
@@ -409,7 +409,7 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
               onClick={() => setTab(value)}
               onKeyDown={(e) => onTabKeyDown(e, value)}
             >
-              {label} {count > 0 && <span className="text-3xs text-muted-foreground">({count})</span>}
+              {label} {count > 0 && <span className="text-2xs text-muted-foreground">({count})</span>}
             </button>
           ))}
         </div>
@@ -456,7 +456,7 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
                   type="button"
                   aria-pressed={changeFilter === value}
                   className={cn(
-                    "rounded-full px-2 py-0.5 text-3xs transition-colors",
+                    "rounded-full px-2 py-0.5 text-2xs transition-colors",
                     changeFilter === value ? "bg-selected text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                   onClick={() => setChangeFilter(value)}
@@ -497,7 +497,7 @@ export function TaskWorkspacePanel({ sessionID, workspace, open, running, refres
           </ScrollArea>
 
           {activeSnapshot && (
-            <div className="bg-recess/40 px-3 py-1.5 text-3xs text-muted-foreground">
+            <div className="bg-recess px-3 py-1.5 text-2xs text-muted-foreground">
               已发现 {activeSnapshot.discovered} 个文件 · 基线 {fmtTime(activeSnapshot.baselineAt)} · 刷新于 {fmtTime(activeSnapshot.refreshedAt)}
             </div>
           )}

@@ -38,7 +38,7 @@ function Slider({
         data-slot="slider-thumb"
         aria-label={thumbAriaLabel}
         aria-valuetext={thumbAriaValueText}
-        className="block size-8 rounded-full bg-primary shadow-control transition-[box-shadow,transform] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring/70 disabled:pointer-events-none motion-reduce:transition-none"
+        className="block size-8 rounded-full bg-primary shadow-control transition-[box-shadow,transform] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none motion-reduce:transition-none"
       />
     </SliderPrimitive.Root>
   )

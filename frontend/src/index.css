@@ -14,15 +14,13 @@
 --------------------------------------------------------------------------- */
 
 @theme {
-    --font-sans: 'Geist Variable', 'PingFang SC', 'Microsoft YaHei UI',
-        'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif;
+    --font-sans: 'Geist Variable', 'PingFang SC', 'Noto Sans SC',
+        'Microsoft YaHei UI', 'Source Han Sans SC', system-ui, sans-serif;
     --font-mono: 'Geist Mono', 'JetBrains Mono', ui-monospace, 'SF Mono',
         Consolas, 'Liberation Mono', monospace;
 
-    --text-2xs: 0.6875rem;
+    --text-2xs: 0.75rem;
     --text-2xs--line-height: 1rem;
-    --text-3xs: 0.625rem;
-    --text-3xs--line-height: 0.875rem;
     --text-ui: 0.8125rem;
     --text-ui--line-height: 1.25rem;
     --text-md: 0.9375rem;
@@ -31,11 +29,9 @@
     --radius-xs: 4px;
     --radius-sm: 6px;
     --radius-md: 8px;
-    --radius-lg: 10px;
+    --radius-lg: 8px;
     --radius-xl: 12px;
     --radius-2xl: 16px;
-    --radius-3xl: 20px;
-    --radius-4xl: 24px;
 
     --ease-standard: cubic-bezier(0.2, 0, 0, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -105,26 +101,10 @@
     --color-background: var(--background);
 }
 
-@utility shadow-card {
-    box-shadow: var(--shadow-card);
-}
-@utility shadow-panel {
-    box-shadow: var(--shadow-panel);
-}
-@utility shadow-composer {
-    --tw-shadow: var(--shadow-composer);
-    box-shadow: var(--tw-shadow);
-}
-@utility shadow-pop {
-    box-shadow: var(--shadow-pop);
-}
-@utility shadow-dialog {
-    box-shadow: var(--shadow-dialog);
-}
 /* 轻材质：顶部高光 + 底部暗边 + 柔和环境阴影。布局仍不得用 border 分区。 */
 @utility surface-raised {
     background-image: var(--sheen);
-    box-shadow: var(--edge-top), var(--edge-bottom), var(--shadow-raised);
+    box-shadow: var(--edge-top), var(--shadow-raised);
 }
 @utility surface-raised-strong {
     background-image: var(--sheen);
@@ -145,12 +125,17 @@
 @utility surface-composer {
     background-color: var(--panel);
     background-image: var(--sheen);
-    box-shadow: var(--edge-top), var(--edge-bottom), var(--shadow-raised-strong);
+    box-shadow: var(--edge-top), var(--shadow-composer);
 }
 @utility surface-float {
     background-color: var(--overlay);
     background-image: var(--sheen);
     box-shadow: var(--edge-top), var(--shadow-pop);
+}
+@utility surface-dialog {
+    background-color: var(--overlay);
+    background-image: var(--sheen);
+    box-shadow: var(--edge-top), var(--shadow-dialog);
 }
 @utility surface-selected {
     background-color: var(--selected);
@@ -226,19 +211,17 @@
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
     --scrim: rgb(15 23 42 / 24%);
-    --shadow-card: var(--shadow-raised);
-    --shadow-panel: var(--shadow-raised);
-    --shadow-composer: 0 12px 32px rgb(15 23 42 / 10%), 0 2px 8px rgb(15 23 42 / 5%);
-    --shadow-pop: 0 12px 32px rgb(15 23 42 / 12%), 0 2px 8px rgb(15 23 42 / 6%);
-    --shadow-dialog: 0 24px 64px rgb(15 23 42 / 18%), 0 6px 18px rgb(15 23 42 / 8%);
-    --edge-top: inset 0 1px 0 rgb(255 255 255 / 82%);
+    --shadow-composer: 0 2px 6px rgb(15 23 42 / 5%), 0 12px 28px rgb(15 23 42 / 8%);
+    --shadow-pop: 0 8px 24px rgb(15 23 42 / 10%), 0 2px 6px rgb(15 23 42 / 5%);
+    --shadow-dialog: 0 16px 48px rgb(15 23 42 / 14%), 0 4px 12px rgb(15 23 42 / 6%);
+    --edge-top: inset 0 1px 0 rgb(255 255 255 / 6%);
     --edge-bottom: inset 0 -1px 0 rgb(15 23 42 / 6%);
-    --shadow-raised: 0 1px 2px rgb(15 23 42 / 7%), 0 8px 24px rgb(15 23 42 / 7%);
-    --shadow-raised-strong: 0 2px 6px rgb(15 23 42 / 8%), 0 16px 40px rgb(15 23 42 / 9%);
-    --shadow-control: 0 1px 1px rgb(15 23 42 / 5%);
-    --shadow-bubble: 0 1px 2px rgb(15 23 42 / 5%), 0 8px 20px rgb(15 23 42 / 4%);
-    --shadow-inset: inset 0 1px 2px rgb(15 23 42 / 7%), inset 0 -1px 0 rgb(255 255 255 / 70%);
-    --sheen: linear-gradient(180deg, rgb(255 255 255 / 0%), rgb(15 23 42 / 2%));
+    --shadow-raised: 0 1px 1px rgb(15 23 42 / 4%), 0 4px 12px rgb(15 23 42 / 4%);
+    --shadow-raised-strong: 0 1px 2px rgb(15 23 42 / 5%), 0 8px 20px rgb(15 23 42 / 7%);
+    --shadow-control: 0 1px 1px rgb(15 23 42 / 4%);
+    --shadow-bubble: 0 1px 2px rgb(15 23 42 / 4%), 0 4px 12px rgb(15 23 42 / 3%);
+    --shadow-inset: inset 0 1px 2px rgb(15 23 42 / 6%), inset 0 -1px 0 rgb(255 255 255 / 28%);
+    --sheen: linear-gradient(180deg, rgb(255 255 255 / 0%), rgb(15 23 42 / 1.5%));
     --tok-kw: #7C4D91;
     --tok-str: #3F6B3F;
     --tok-num: #3D5A80;
@@ -256,13 +239,16 @@
 /* 深色材质对所有主题一致：顶部微亮、底部微暗，阴影比浅色更克制。 */
 :root.dark {
     --edge-top: inset 0 1px 0 rgb(255 255 255 / 6%);
-    --edge-bottom: inset 0 -1px 0 rgb(0 0 0 / 22%);
-    --shadow-raised: 0 1px 2px rgb(0 0 0 / 24%), 0 10px 28px rgb(0 0 0 / 14%);
-    --shadow-raised-strong: 0 2px 6px rgb(0 0 0 / 26%), 0 16px 40px rgb(0 0 0 / 16%);
-    --shadow-control: 0 1px 1px rgb(0 0 0 / 16%);
-    --shadow-bubble: 0 1px 2px rgb(0 0 0 / 18%), 0 8px 20px rgb(0 0 0 / 8%);
-    --shadow-inset: inset 0 1px 2px rgb(0 0 0 / 30%), inset 0 -1px 0 rgb(255 255 255 / 3%);
-    --sheen: linear-gradient(180deg, rgb(255 255 255 / 3.5%), transparent 52%);
+    --edge-bottom: inset 0 -1px 0 rgb(0 0 0 / 18%);
+    --shadow-composer: 0 2px 6px rgb(0 0 0 / 22%), 0 14px 32px rgb(0 0 0 / 14%);
+    --shadow-pop: 0 12px 32px rgb(0 0 0 / 32%), 0 2px 8px rgb(0 0 0 / 20%);
+    --shadow-dialog: 0 20px 56px rgb(0 0 0 / 42%), 0 4px 14px rgb(0 0 0 / 24%);
+    --shadow-raised: 0 1px 2px rgb(0 0 0 / 18%), 0 8px 20px rgb(0 0 0 / 9%);
+    --shadow-raised-strong: 0 1px 2px rgb(0 0 0 / 22%), 0 12px 28px rgb(0 0 0 / 12%);
+    --shadow-control: 0 1px 1px rgb(0 0 0 / 12%);
+    --shadow-bubble: 0 1px 2px rgb(0 0 0 / 16%), 0 6px 16px rgb(0 0 0 / 7%);
+    --shadow-inset: inset 0 1px 2px rgb(0 0 0 / 26%), inset 0 -1px 0 rgb(255 255 255 / 3%);
+    --sheen: linear-gradient(180deg, rgb(255 255 255 / 2.5%), transparent 52%);
 }
 
 :root.dark,
@@ -320,11 +306,6 @@
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
     --scrim: rgb(0 0 0 / 58%);
-    --shadow-card: var(--shadow-raised);
-    --shadow-panel: var(--shadow-raised);
-    --shadow-composer: 0 14px 36px rgb(0 0 0 / 24%), 0 2px 8px rgb(0 0 0 / 20%);
-    --shadow-pop: 0 18px 48px rgb(0 0 0 / 38%), 0 2px 10px rgb(0 0 0 / 28%);
-    --shadow-dialog: 0 28px 80px rgb(0 0 0 / 48%), 0 6px 20px rgb(0 0 0 / 28%);
     --tok-kw: #B48EAD;
     --tok-str: #A3BE8C;
     --tok-num: #81A1C1;
@@ -390,11 +371,6 @@
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
     --scrim: rgb(15 23 42 / 24%);
-    --shadow-card: 0 0 #0000;
-    --shadow-panel: 0 0 #0000;
-    --shadow-composer: 0 12px 32px rgb(15 23 42 / 10%), 0 2px 8px rgb(15 23 42 / 5%);
-    --shadow-pop: 0 12px 32px rgb(15 23 42 / 12%), 0 2px 8px rgb(15 23 42 / 6%);
-    --shadow-dialog: 0 24px 64px rgb(15 23 42 / 18%), 0 6px 18px rgb(15 23 42 / 8%);
     --tok-kw: #7C4D91;
     --tok-str: #3F6B3F;
     --tok-num: #3D5A80;
@@ -460,11 +436,6 @@
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
     --scrim: rgb(0 0 0 / 58%);
-    --shadow-card: 0 0 #0000;
-    --shadow-panel: 0 0 #0000;
-    --shadow-composer: 0 14px 36px rgb(0 0 0 / 24%), 0 2px 8px rgb(0 0 0 / 20%);
-    --shadow-pop: 0 18px 48px rgb(0 0 0 / 38%), 0 2px 10px rgb(0 0 0 / 28%);
-    --shadow-dialog: 0 28px 80px rgb(0 0 0 / 48%), 0 6px 20px rgb(0 0 0 / 28%);
     --tok-kw: #C4A7E7;
     --tok-str: #BED6AB;
     --tok-num: #8FB8F0;
@@ -530,11 +501,6 @@
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
     --scrim: rgb(44 40 35 / 22%);
-    --shadow-card: 0 0 #0000;
-    --shadow-panel: 0 0 #0000;
-    --shadow-composer: 0 12px 32px rgb(44 40 35 / 10%), 0 2px 8px rgb(44 40 35 / 5%);
-    --shadow-pop: 0 12px 32px rgb(44 40 35 / 12%), 0 2px 8px rgb(44 40 35 / 6%);
-    --shadow-dialog: 0 24px 64px rgb(44 40 35 / 18%), 0 6px 18px rgb(44 40 35 / 8%);
     --tok-kw: #7A4A8C;
     --tok-str: #4F6B3A;
     --tok-num: #3F5F87;
@@ -600,11 +566,6 @@
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
     --scrim: rgb(0 0 0 / 58%);
-    --shadow-card: 0 0 #0000;
-    --shadow-panel: 0 0 #0000;
-    --shadow-composer: 0 14px 36px rgb(0 0 0 / 24%), 0 2px 8px rgb(0 0 0 / 20%);
-    --shadow-pop: 0 18px 48px rgb(0 0 0 / 38%), 0 2px 10px rgb(0 0 0 / 28%);
-    --shadow-dialog: 0 28px 80px rgb(0 0 0 / 48%), 0 6px 20px rgb(0 0 0 / 28%);
     --tok-kw: #D7B3E8;
     --tok-str: #BED6AB;
     --tok-num: #9BC0F0;
@@ -670,11 +631,6 @@
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
     --scrim: rgb(0 0 0 / 24%);
-    --shadow-card: 0 0 #0000;
-    --shadow-panel: 0 0 #0000;
-    --shadow-composer: 0 12px 32px rgb(0 0 0 / 12%), 0 2px 8px rgb(0 0 0 / 8%);
-    --shadow-pop: 0 12px 32px rgb(0 0 0 / 16%), 0 2px 8px rgb(0 0 0 / 10%);
-    --shadow-dialog: 0 24px 64px rgb(0 0 0 / 22%), 0 6px 18px rgb(0 0 0 / 12%);
     --tok-kw: #7A00B8;
     --tok-str: #006400;
     --tok-num: #003FA3;
@@ -740,11 +696,6 @@
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
     --scrim: rgb(0 0 0 / 75%);
-    --shadow-card: 0 0 #0000;
-    --shadow-panel: 0 0 #0000;
-    --shadow-composer: 0 14px 36px rgb(0 0 0 / 45%), 0 2px 8px rgb(0 0 0 / 35%);
-    --shadow-pop: 0 18px 48px rgb(0 0 0 / 55%), 0 2px 10px rgb(0 0 0 / 40%);
-    --shadow-dialog: 0 28px 80px rgb(0 0 0 / 65%), 0 6px 20px rgb(0 0 0 / 40%);
     --tok-kw: #FFB3FF;
     --tok-str: #7EE787;
     --tok-num: #8EC5FF;
@@ -794,6 +745,11 @@
     }
   html {
     @apply font-sans;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+    font-optical-sizing: auto;
+    }
+  svg.lucide {
+    stroke-width: 1.75;
     }
   ::selection {
     background: var(--accent-soft);
@@ -867,7 +823,7 @@
 /* Raw <button>s（会话行、图标按钮、chips）没有自带的 focus 样式；shadcn
    组件在自己的基类里管理 outline，不受这条元素级规则影响。 */
 button:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--ring) 65%, transparent);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 

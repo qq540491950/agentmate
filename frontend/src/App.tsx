@@ -177,7 +177,7 @@ export default function App() {
         <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-base">快捷键与命令</DialogTitle>
+              <DialogTitle>快捷键与命令</DialogTitle>
             </DialogHeader>
             <div className="grid gap-2 text-sm">
               {[
@@ -197,7 +197,7 @@ export default function App() {
                 ["/todos", "查看当前任务计划"],
                 ["/new", "新建对话"],
               ].map(([k, d]) => (
-                <div key={k} className="flex items-center justify-between rounded-lg bg-recess/60 px-3 py-1.5">
+                <div key={k} className="flex items-center justify-between rounded-lg bg-recess px-3 py-1.5">
                   <span className="font-mono text-xs">{k}</span>
                   <span className="text-xs text-muted-foreground">{d}</span>
                 </div>

@@ -249,7 +249,7 @@ export function SidebarFooter({
                     BADGE_TONE[badge.tone],
                   )}
                 >
-                  {badge.tone === "ready" && <Check className="h-3.5 w-3.5" strokeWidth={2.4} />}
+                  {badge.tone === "ready" && <Check className="h-3.5 w-3.5" />}
                   {badge.tone === "progress" && status?.state === "downloading" && (
                     <span
                       className="h-3.5 w-3.5 rounded-full"
@@ -266,7 +266,7 @@ export function SidebarFooter({
                   )}
                   {badge.tone === "error" && <TriangleAlert className="h-3.5 w-3.5" />}
                   {badge.tone === "brand" && (
-                    <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.4} />
+                    <ArrowUp className="h-3.5 w-3.5" />
                   )}
                   {badge.label}
                 </button>
@@ -307,7 +307,7 @@ export function SidebarFooter({
                 <DropdownMenuLabel>主题</DropdownMenuLabel>
                 <DropdownMenuRadioGroup value={themePreset} onValueChange={onThemePresetChange}>
                   {THEME_OPTIONS.map((theme) => (
-                    <DropdownMenuRadioItem key={theme.value} value={theme.value} className="text-xs">
+                    <DropdownMenuRadioItem key={theme.value} value={theme.value}>
                       {theme.label}
                     </DropdownMenuRadioItem>
                   ))}
@@ -316,14 +316,14 @@ export function SidebarFooter({
                 <DropdownMenuLabel>明暗模式</DropdownMenuLabel>
                 <DropdownMenuRadioGroup value={themeMode} onValueChange={onThemeModeChange}>
                   {THEME_MODES.map((mode) => (
-                    <DropdownMenuRadioItem key={mode.value} value={mode.value} className="text-xs">
+                    <DropdownMenuRadioItem key={mode.value} value={mode.value}>
                       {mode.value === "light" ? <Sun /> : mode.value === "dark" ? <Moon /> : <Monitor />}
                       {mode.label}
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-xs" onSelect={onOpenSettings}>
+                <DropdownMenuItem onSelect={onOpenSettings}>
                   <SettingsIcon /> 外观设置…
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -341,7 +341,7 @@ export function SidebarFooter({
           className="w-[300px] max-w-[calc(100vw-24px)] overflow-hidden p-0"
         >
           <div className="flex items-start gap-2.5 p-3.5 pb-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-accent-soft text-accent-text">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-text">
               {status.state === "downloading" || status.state === "verifying" || status.state === "installing" ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : status.state === "error" ? (
@@ -351,13 +351,13 @@ export function SidebarFooter({
               )}
             </span>
             <div className="min-w-0 flex-1 pt-px">
-              <div className="text-3xs font-semibold uppercase tracking-[0.12em] text-accent-text">
+              <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-accent-text">
                 {title}
               </div>
               <div className="mt-0.5 text-ui leading-tight font-semibold tracking-[-0.01em] text-foreground">
                 AgentMate {availableVersion ? <span className="text-accent-text">v{availableVersion}</span> : ""}
               </div>
-              <div className="mt-0.5 text-3xs text-muted-foreground">
+              <div className="mt-0.5 text-2xs text-muted-foreground">
                 当前版本 {currentVersion ? `v${currentVersion}` : "未知"}
               </div>
             </div>
@@ -373,8 +373,8 @@ export function SidebarFooter({
           </div>
 
           {status.state === "available" && status.notes && (
-            <div className="mx-3.5 mb-3 rounded-lg bg-muted/50 p-2.5">
-              <div className="mb-1 text-3xs font-medium text-foreground/80">本次更新</div>
+            <div className="mx-3.5 mb-3 rounded-lg bg-recess p-2.5">
+              <div className="mb-1 text-2xs font-medium text-foreground">本次更新</div>
               <div className="max-h-28 overflow-y-auto whitespace-pre-wrap text-2xs leading-relaxed text-muted-foreground">
                 {status.notes}
               </div>
@@ -402,7 +402,7 @@ export function SidebarFooter({
                   style={{ width: `${percent ?? 6}%` }}
                 />
               </div>
-              <div className="mt-1.5 flex items-center justify-between text-3xs text-muted-foreground">
+              <div className="mt-1.5 flex items-center justify-between text-2xs text-muted-foreground">
                 <span>
                   {progress
                     ? `${formatUpdateBytes(progress.written)} / ${progress.total ? formatUpdateBytes(progress.total) : "未知大小"}`
@@ -418,7 +418,7 @@ export function SidebarFooter({
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div className="h-full w-2/3 animate-pulse rounded-full bg-brand" />
               </div>
-              <div className="mt-1.5 text-3xs text-muted-foreground">
+              <div className="mt-1.5 text-2xs text-muted-foreground">
                 {status.state === "verifying" ? "校验下载内容，请稍候…" : "正在准备安装，请稍候…"}
               </div>
             </div>
@@ -432,7 +432,7 @@ export function SidebarFooter({
           )}
 
           {status.canAutoInstall === false && status.state === "available" && (
-            <div className="mx-3.5 mb-3 rounded-lg bg-muted/50 p-2.5 text-2xs leading-relaxed text-muted-foreground">
+            <div className="mx-3.5 mb-3 rounded-lg bg-recess p-2.5 text-2xs leading-relaxed text-muted-foreground">
               {status.reason || "当前安装方式不支持应用内更新，请打开发布页下载。"}
             </div>
           )}
@@ -441,7 +441,7 @@ export function SidebarFooter({
             {status.state === "available" && (
               <Button
                 size="sm"
-                className="h-8 w-full gap-1.5 text-xs"
+                className="h-8 w-full gap-1.5"
                 onClick={install}
                 disabled={busy}
               >
@@ -462,7 +462,7 @@ export function SidebarFooter({
               <button
                 type="button"
                 onClick={() => setPanelOpen(false)}
-                className="w-full rounded-md py-1.5 text-center text-3xs text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                className="w-full rounded-md py-1.5 text-center text-2xs text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 更新在后台继续
               </button>
@@ -471,7 +471,7 @@ export function SidebarFooter({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-8 w-full gap-1.5 text-xs"
+                className="h-8 w-full gap-1.5"
                 onClick={install}
                 disabled={busy}
               >
@@ -481,7 +481,7 @@ export function SidebarFooter({
             )}
           </div>
 
-          <div className="flex items-center justify-between bg-recess/60 px-3.5 py-2 text-3xs text-muted-foreground">
+          <div className="flex items-center justify-between bg-recess px-3.5 py-2 text-2xs text-muted-foreground">
             {status.state === "available" && status.canAutoInstall ? (
               <button type="button" className="hover:text-foreground" onClick={skip}>
                 跳过此版本
@@ -512,14 +512,14 @@ export function SidebarFooter({
         <AlertDialogContent className="max-w-[360px] gap-0 overflow-hidden p-0">
           <div className="flex flex-col items-center px-5 pb-3 pt-5 text-center">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-success">
-              <Check className="h-4 w-4" strokeWidth={2.4} />
+              <Check className="h-4 w-4" />
             </div>
-            <AlertDialogTitle className="mt-3 text-base">更新已准备就绪</AlertDialogTitle>
+            <AlertDialogTitle className="mt-3">更新已准备就绪</AlertDialogTitle>
             <AlertDialogDescription className="mt-1.5 text-xs leading-relaxed">
               新版本已下载并完成校验。重启 AgentMate 后即可使用。
             </AlertDialogDescription>
           </div>
-          <div className="mx-5 rounded-lg bg-muted/50 px-3 py-2.5">
+          <div className="mx-5 rounded-lg bg-recess px-3 py-2.5">
             <div className="flex items-center justify-between text-2xs">
               <div className="flex items-center gap-1.5 text-muted-foreground">
                 <span>AgentMate</span>
@@ -530,7 +530,7 @@ export function SidebarFooter({
             <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
               <div className="h-full w-full rounded-full bg-success" />
             </div>
-            <div className="mt-1 flex justify-between text-3xs text-muted-foreground">
+            <div className="mt-1 flex justify-between text-2xs text-muted-foreground">
               <span>下载与安装准备</span>
               <span className="text-success">100%</span>
             </div>
@@ -538,16 +538,16 @@ export function SidebarFooter({
           <div className="mx-5 mt-3 text-center text-2xs leading-relaxed text-muted-foreground">
             会话与设置会自动保存。若有正在运行的任务，建议先结束再重启。
           </div>
-          <AlertDialogFooter className="mt-4 bg-muted/40 p-3 sm:flex-row">
+          <AlertDialogFooter className="mt-4 bg-recess p-3 sm:flex-row">
             <AlertDialogCancel asChild>
-              <Button size="sm" variant="outline" className="flex-1 text-xs" disabled={busy}>
+              <Button size="sm" variant="outline" className="flex-1" disabled={busy}>
                 稍后重启
               </Button>
             </AlertDialogCancel>
             <AlertDialogAction asChild>
               <Button
                 size="sm"
-                className="flex-1 text-xs"
+                className="flex-1"
                 disabled={busy}
                 onClick={(event) => {
                   event.preventDefault();

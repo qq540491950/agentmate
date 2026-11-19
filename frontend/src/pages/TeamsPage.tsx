@@ -34,14 +34,14 @@ function TeamTopology({ team, agentName, remoteName, modelName }: {
     ...(team.remoteMemberIds ?? []).map((id) => ({ id, label: remoteName(id), kind: "remote" as const })),
   ];
   return (
-    <div className="rounded-xl bg-recess/60 p-3">
+    <div className="rounded-xl bg-recess p-3">
       <div className="flex flex-col items-center gap-2">
         <div className="rounded-lg bg-accent-soft px-3 py-1.5 text-center">
           <div className="flex items-center justify-center gap-1 text-xs font-semibold text-accent-text">
             {isAuto ? <Compass className="h-3 w-3" /> : <Crown className="h-3 w-3" />}
             {isAuto ? "自动协调员" : agentName(team.leadAgentId)}
           </div>
-          <div className="text-3xs text-muted-foreground">
+          <div className="text-2xs text-muted-foreground">
             {isAuto ? modelName(team.model) || "分派任务 · 汇总结果" : "调度成员 · 汇总结果"}
           </div>
         </div>
@@ -54,13 +54,13 @@ function TeamTopology({ team, agentName, remoteName, modelName }: {
                 return (
                   <div key={m.id} className="flex flex-col items-center">
                     <div className="h-2 w-px bg-border" />
-                    <div className="rounded-lg bg-recess/70 px-2.5 py-1.5 text-center">
+                    <div className="rounded-lg bg-recess px-2.5 py-1.5 text-center">
                       <div className="flex items-center justify-center gap-1 text-xs font-medium">
                         {isLead && <Crown className="h-3 w-3 text-accent-text" />}
                         {m.kind === "remote" && <Globe2 className="h-3 w-3 text-muted-foreground" />}
                         {m.label}
                       </div>
-                      <div className="text-3xs text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         {isLead ? "负责人" : m.kind === "remote" ? "远程成员" : "成员"}
                       </div>
                     </div>
@@ -190,24 +190,26 @@ export function TeamsPage() {
         }
       />
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="surface-inset grid gap-1 rounded-2xl p-1.5">
         {teams.length === 0 && (
-          <Card className="md:col-span-2">
+          <Card>
             <CardContent className="p-8 text-center text-sm text-muted-foreground">
               <EmptyState icon={Users} title="还没有团队" desc="创建团队前请先在「Agents」页创建成员 Agent。" />
             </CardContent>
           </Card>
         )}
         {teams.map((t) => (
-          <Card key={t.id}>
-            <CardContent className="p-4">
+          <div
+            key={t.id}
+            className="surface-row rounded-xl bg-panel px-4 py-4 transition-colors hover:bg-overlay"
+          >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft">
                     <Users className="h-4 w-4 text-accent-text" />
                   </div>
                   <div>
-                    <div className="font-medium">{t.name}</div>
+                    <div className="text-sm font-medium">{t.name}</div>
                     <div className="text-xs text-muted-foreground">
                       {t.autoCoordinate
                         ? `自动协调员 · ${modelName(t.providerId, t.model) || "?"}`
@@ -230,12 +232,11 @@ export function TeamsPage() {
               {t.description && (
                 <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{t.description}</p>
               )}
-              <div className="mt-3">
+              <div className="mt-4 max-w-2xl">
                 <TeamTopology team={t} agentName={agentName} remoteName={remoteName}
                   modelName={(id) => modelName(t.providerId, id)} />
               </div>
-            </CardContent>
-          </Card>
+          </div>
         ))}
       </div>
 
@@ -256,7 +257,7 @@ export function TeamsPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label>成员 Agent（可多选）</Label>
-                <div className="grid gap-2 rounded-lg bg-recess/60 p-3">
+                <div className="grid gap-2 rounded-lg bg-recess p-3">
                   {agents.map((a) => (
                     <label key={a.id} className="flex items-center gap-2 text-sm">
                       <Checkbox
@@ -275,7 +276,7 @@ export function TeamsPage() {
               {remotes.length > 0 && (
                 <div className="grid gap-1.5">
                   <Label>远程成员（A2A，可选）</Label>
-                  <div className="grid gap-2 rounded-lg bg-recess/60 p-3">
+                  <div className="grid gap-2 rounded-lg bg-recess p-3">
                     {remotes.map((r) => (
                       <label key={r.id} className="flex items-center gap-2 text-sm">
                         <Checkbox
@@ -291,7 +292,7 @@ export function TeamsPage() {
                   </div>
                 </div>
               )}
-              <div className="flex items-center justify-between rounded-lg bg-recess/60 p-3">
+              <div className="flex items-center justify-between rounded-lg bg-recess p-3">
                 <div>
                   <div className="text-sm font-medium">自动协调员模式</div>
                   <div className="text-xs text-muted-foreground">
